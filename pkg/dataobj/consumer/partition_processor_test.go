@@ -166,6 +166,7 @@ func TestIdleFlush(t *testing.T) {
 				prometheus.NewRegistry(),
 				bufPool,
 				tc.idleTimeout,
+				nil,
 			)
 
 			if tc.initBuilder {
@@ -235,6 +236,7 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 		prometheus.NewRegistry(),
 		bufPool,
 		200*time.Millisecond,
+		nil,
 	)
 
 	require.NoError(t, p.initBuilder())
@@ -296,6 +298,7 @@ func TestIdleFlushWithEmptyData(t *testing.T) {
 		prometheus.NewRegistry(),
 		bufPool,
 		200*time.Millisecond,
+		nil,
 	)
 
 	require.NoError(t, p.initBuilder())

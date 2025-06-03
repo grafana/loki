@@ -16,32 +16,46 @@ import (
 )
 
 type Metrics struct {
-	TCPConnections           *prometheus.GaugeVec
-	TCPConnectionsLimit      *prometheus.GaugeVec
-	RequestDuration          *prometheus.HistogramVec
-	PerTenantRequestDuration *prometheus.HistogramVec
-	PerTenantRequestTotal    *prometheus.CounterVec
-	ReceivedMessageSize      *prometheus.HistogramVec
-	SentMessageSize          *prometheus.HistogramVec
-	InflightRequests         *prometheus.GaugeVec
-	RequestThroughput        *prometheus.HistogramVec
+	TCPConnections                 *prometheus.GaugeVec
+	TCPConnectionsLimit            *prometheus.GaugeVec
+	GRPCConcurrentStreamsByConnMax *prometheus.GaugeVec
+	GRPCConcurrentStreamsLimit     *prometheus.GaugeVec
+	RequestDuration                *prometheus.HistogramVec
+	PerTenantRequestDuration       *prometheus.HistogramVec
+	PerTenantRequestTotal          *prometheus.CounterVec
+	ReceivedMessageSize            *prometheus.HistogramVec
+	SentMessageSize                *prometheus.HistogramVec
+	InflightRequests               *prometheus.GaugeVec
+	RequestThroughput              *prometheus.HistogramVec
+	InvalidClusterRequests         *prometheus.CounterVec
 }
 
 func NewServerMetrics(cfg Config) *Metrics {
-	reg := promauto.With(cfg.registererOrDefault())
+	reg := cfg.registererOrDefault()
+	factory := promauto.With(reg)
 
 	return &Metrics{
-		TCPConnections: reg.NewGaugeVec(prometheus.GaugeOpts{
+		TCPConnections: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "tcp_connections",
 			Help:      "Current number of accepted TCP connections.",
 		}, []string{"protocol"}),
-		TCPConnectionsLimit: reg.NewGaugeVec(prometheus.GaugeOpts{
+		TCPConnectionsLimit: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "tcp_connections_limit",
 			Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
 		}, []string{"protocol"}),
-		RequestDuration: reg.NewHistogramVec(prometheus.HistogramOpts{
+		GRPCConcurrentStreamsByConnMax: factory.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: cfg.MetricsNamespace,
+			Name:      "grpc_concurrent_streams_by_connection_max",
+			Help:      "The current number of concurrent streams in the connection with the most.",
+		}, []string{}),
+		GRPCConcurrentStreamsLimit: factory.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: cfg.MetricsNamespace,
+			Name:      "grpc_concurrent_streams_limit",
+			Help:      "The max number of concurrent streams that can be accepted (0 means no limit).",
+		}, []string{}),
+		RequestDuration: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       cfg.MetricsNamespace,
 			Name:                            "request_duration_seconds",
 			Help:                            "Time (in seconds) spent serving HTTP requests.",
@@ -50,7 +64,7 @@ func NewServerMetrics(cfg Config) *Metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route", "status_code", "ws"}),
-		PerTenantRequestDuration: reg.NewHistogramVec(prometheus.HistogramOpts{
+		PerTenantRequestDuration: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       cfg.MetricsNamespace,
 			Name:                            "per_tenant_request_duration_seconds",
 			Help:                            "Time (in seconds) spent serving HTTP requests for a particular tenant.",
@@ -59,29 +73,29 @@ func NewServerMetrics(cfg Config) *Metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route", "status_code", "ws", "tenant"}),
-		PerTenantRequestTotal: reg.NewCounterVec(prometheus.CounterOpts{
+		PerTenantRequestTotal: factory.NewCounterVec(prometheus.CounterOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "per_tenant_request_total",
 			Help:      "Total count of requests for a particular tenant.",
 		}, []string{"method", "route", "status_code", "ws", "tenant"}),
-		ReceivedMessageSize: reg.NewHistogramVec(prometheus.HistogramOpts{
+		ReceivedMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "request_message_bytes",
 			Help:      "Size (in bytes) of messages received in the request.",
 			Buckets:   middleware.BodySizeBuckets,
 		}, []string{"method", "route"}),
-		SentMessageSize: reg.NewHistogramVec(prometheus.HistogramOpts{
+		SentMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "response_message_bytes",
 			Help:      "Size (in bytes) of messages sent in response.",
 			Buckets:   middleware.BodySizeBuckets,
 		}, []string{"method", "route"}),
-		InflightRequests: reg.NewGaugeVec(prometheus.GaugeOpts{
+		InflightRequests: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "inflight_requests",
 			Help:      "Current number of inflight requests.",
 		}, []string{"method", "route"}),
-		RequestThroughput: reg.NewHistogramVec(prometheus.HistogramOpts{
+		RequestThroughput: factory.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       cfg.MetricsNamespace,
 			Name:                            "request_throughput_" + cfg.Throughput.Unit,
 			Help:                            "Server throughput of running requests.",
@@ -91,5 +105,6 @@ func NewServerMetrics(cfg Config) *Metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
+		InvalidClusterRequests: middleware.NewInvalidClusterRequests(reg, cfg.MetricsNamespace),
 	}
 }

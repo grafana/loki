@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -367,8 +365,8 @@ func (i *TSDBIndex) Volume(
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Index.Volume")
+	defer sp.End()
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 

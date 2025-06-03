@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -98,7 +99,7 @@ func ValidateQueryTimeRangeLimits(ctx context.Context, userID string, limits Tim
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, util_log.Logger)).Log(
 			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
 			"original", origStartTime,
 			"updated", from)

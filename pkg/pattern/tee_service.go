@@ -302,7 +302,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 			ts.sendDuration,
 			instrument.ErrorCode,
 			func(ctx context.Context) error {
-				sp := spanlogger.FromContext(ctx)
+				sp := spanlogger.FromContext(ctx, ts.logger)
 				client, err := ts.ringClient.GetClientFor(clientRequest.ingesterAddr)
 				if err != nil {
 					return err

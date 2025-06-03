@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -111,7 +112,7 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
@@ -120,23 +121,28 @@ type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
 
 func NewPushStats() *Stats {
 	return &Stats{
-		LogLinesBytes:                   map[string]map[time.Duration]int64{},
-		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
-		PolicyNumLines:                  map[string]int64{},
-		ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{},
+		LogLinesBytes:                     map[string]map[time.Duration]int64{},
+		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
+		PolicyNumLines:                    map[string]int64{},
+		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
+		MostRecentEntryTimestampPerStream: map[string]time.Time{},
+		StreamSizeBytes:                   map[string]int64{},
 	}
 }
 
 type Stats struct {
-	Errs                            []error
-	PolicyNumLines                  map[string]int64
-	LogLinesBytes                   PolicyWithRetentionWithBytes
-	StructuredMetadataBytes         PolicyWithRetentionWithBytes
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
-	StreamLabelsSize                int64
-	MostRecentEntryTimestamp        time.Time
-	ContentType                     string
-	ContentEncoding                 string
+	Errs                              []error
+	PolicyNumLines                    map[string]int64
+	LogLinesBytes                     PolicyWithRetentionWithBytes
+	StructuredMetadataBytes           PolicyWithRetentionWithBytes
+	ResourceAndSourceMetadataLabels   map[string]map[time.Duration]push.LabelsAdapter
+	StreamLabelsSize                  int64
+	MostRecentEntryTimestamp          time.Time
+	MostRecentEntryTimestampPerStream map[string]time.Time
+	StreamSizeBytes                   map[string]int64
+	HashOfAllStreams                  uint64
+	ContentType                       string
+	ContentEncoding                   string
 
 	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
@@ -145,13 +151,13 @@ type Stats struct {
 	IsInternalStream bool // True for aggregated metrics or pattern streams
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, limits, maxRecvMsgSize, tracker, streamResolver, logPushRequestStreams, logger)
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP string) (*logproto.PushRequest, *Stats, error) {
+	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
-			return nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
+			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	var (
@@ -231,11 +237,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
 	}
 
-	// X-Forwarded-For header may have 2 or more comma-separated addresses: the 2nd (and additional) are typically appended by proxies which handled the traffic.
-	// Therefore, if the header is included, only log the first address
-	agentIP := strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	if agentIP != "" {
-		logValues = append(logValues, "presumedAgentIp", strings.TrimSpace(agentIP))
+	if presumedAgentIP != "" {
+		logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
 	}
 
 	userAgent := r.Header.Get("User-Agent")
@@ -243,13 +246,30 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
 	}
 
+	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
+		resultHash := uint64(0)
+		for _, stream := range req.Streams {
+			// I don't believe a hash will be set, but if it is, use it.
+			hash := stream.Hash
+			if hash == 0 {
+				// calculate an fnv32 hash of the stream labels
+				// reusing our query hash function for simplicity
+				hash = uint64(util.HashedQuery(stream.Labels))
+			}
+			// xor the hash with the result hash, this will result in the same hash regardless of the order of the streams
+			resultHash ^= hash
+		}
+		logValues = append(logValues, "hashOfLabels", resultHash)
+		pushStats.HashOfAllStreams = resultHash
+	}
+
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
-	return req, err
+	return req, pushStats, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -319,6 +339,14 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 	pushStats.ContentEncoding = contentEncoding
 
 	discoverServiceName := limits.DiscoverServiceName(userID)
+
+	logServiceNameDiscovery := false
+	logPushRequestStreams := false
+	if tenantConfigs != nil {
+		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
+		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+	}
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 		pushStats.StreamLabelsSize += int64(len(s.Labels))
@@ -334,7 +362,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 		}
 
 		var beforeServiceName string
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			beforeServiceName = lbs.String()
 		}
 
@@ -352,7 +380,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			s.Labels = lbs.String()
 		}
 
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			level.Debug(logger).Log(
 				"msg", "push request stream before service name discovery",
 				"labels", beforeServiceName,
@@ -375,10 +403,15 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
+		// These two variables are used to track the most recent entry timestamp and the size of the stream.
+		// They are only used when logPushRequestStreams is true.
+		mostRecentEntryTimestamp := time.Time{}
+		streamSizeBytes := int64(0)
 		for _, e := range s.Entries {
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
+			streamSizeBytes += int64(len(e.Line)) + entryLabelsSize
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 			totalBytesReceived += int64(len(e.Line))
 			totalBytesReceived += entryLabelsSize
@@ -386,6 +419,16 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, maxRecvMsgS
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
 			}
+
+			if e.Timestamp.After(mostRecentEntryTimestamp) {
+				mostRecentEntryTimestamp = e.Timestamp
+			}
+		}
+
+		// Only populate this map if we are going to log it.
+		if logPushRequestStreams {
+			pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
+			pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
 		}
 
 		if tracker != nil && !pushStats.IsInternalStream {
