@@ -1,6 +1,7 @@
 package goldfish
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -183,10 +184,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 	}
 
 	// Replace the body so it can be read again
-	resp.Body = io.NopCloser(io.MultiReader(
-		io.NopCloser(io.MultiReader()),
-		resp.Body,
-	))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Extract statistics if this is a successful response
 	var stats QueryStats
