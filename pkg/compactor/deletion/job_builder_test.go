@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"math"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
@@ -15,6 +15,8 @@ import (
 )
 
 func TestJobBuilder_buildJobs(t *testing.T) {
+	now := model.Now()
+
 	for _, tc := range []struct {
 		name          string
 		setupManifest func(client client.ObjectClient)
@@ -32,7 +34,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					UserID:    user1,
 					Query:     lblFooBar,
 					StartTime: 0,
-					EndTime:   math.MaxInt64,
+					EndTime:   now,
 				})
 				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
 				require.NoError(t, err)
@@ -50,8 +52,17 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					Id:   "0_0",
 					Type: jobqueue.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
@@ -64,7 +75,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					UserID:    user1,
 					Query:     lblFooBar,
 					StartTime: 0,
-					EndTime:   math.MaxInt64,
+					EndTime:   now,
 				})
 				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
 				require.NoError(t, err)
@@ -82,16 +93,34 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					Id:   "0_0",
 					Type: jobqueue.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 				{
 					Id:   "0_1",
 					Type: jobqueue.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
@@ -130,16 +159,107 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					Id:   "0_0",
 					Type: jobqueue.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(25, 25)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(25, 25)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								RequestID: req1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   100,
+							},
+						},
 					}),
 				},
 				{
 					Id:   "1_0",
 					Type: jobqueue.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(50, 25)),
-						DeletionQueries: []string{lblFooBar, lblFizzBuzz},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(50, 25)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								RequestID: req1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   100,
+							},
+							{
+								UserID:    user1,
+								RequestID: req2,
+								Query:     lblFizzBuzz,
+								StartTime: 51,
+								EndTime:   100,
+							},
+						},
+					}),
+				},
+			},
+		},
+		{
+			name: "one manifest in storage with multiple segments due to multiple tables",
+			setupManifest: func(client client.ObjectClient) {
+				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
+					UserID:    user1,
+					Query:     lblFooBar,
+					StartTime: 0,
+					EndTime:   now,
+				})
+				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				require.NoError(t, err)
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(0, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table2, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(100, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.Finish(context.Background()))
+			},
+			expectedJobs: []jobqueue.Job{
+				{
+					Id:   "0_0",
+					Type: jobqueue.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionJob{
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, 100)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
+					}),
+				},
+				{
+					Id:   "0_0",
+					Type: jobqueue.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionJob{
+						TableName: table2,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(100, 100)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
