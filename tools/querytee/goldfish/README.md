@@ -1,5 +1,7 @@
 # Goldfish - Query Comparison for Loki QueryTee
 
+**⚠️ EXPERIMENTAL**: Goldfish is an experimental feature and its API/configuration may change in future releases.
+
 Goldfish is a feature within QueryTee that enables sampling and comparison of query responses between multiple Loki cells. It helps identify discrepancies and performance differences between cells during migrations or when running multiple Loki deployments.
 
 ## Features
