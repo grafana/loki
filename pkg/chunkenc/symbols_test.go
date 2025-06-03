@@ -119,7 +119,7 @@ func TestSymbolizer(t *testing.T) {
 							Value: 0,
 						},
 					}, nil)
-					require.Equal(t, `{""=""}`, ret.String())
+					require.Equal(t, labels.EmptyLabels(), ret)
 				}
 
 				require.Equal(t, tc.expectedNumLabels, len(s.labels))
