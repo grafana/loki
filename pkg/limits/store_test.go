@@ -96,44 +96,45 @@ func TestUsageStore_UpdateRateBuckets(t *testing.T) {
 	require.NoError(t, s.Update("tenant", metadata, time1))
 	stream, ok := s.Get("tenant", 0x1)
 	require.True(t, ok)
-	expected := newRateBuckets(DefaultRateWindow, time.Minute)
+	expected := newRateBuckets(5*time.Minute, time.Minute)
 	expected[0].timestamp = time1.UnixNano()
 	expected[0].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
+	// Update the first bucket with the same metadata but 1 second later.
+	clock.Advance(time.Second)
+	time2 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time2))
+	expected[0].size = 200
 	require.Equal(t, expected, stream.rateBuckets)
 	// Advance the clock forward to the next bucket. Should update the second
 	// bucket and leave the first bucket unmodified.
 	clock.Advance(time.Minute)
-	time2 := clock.Now()
-	require.NoError(t, s.Update("tenant", metadata, time2))
-	stream, ok = s.Get("tenant", 0x1)
-	require.True(t, ok)
-	expected[1].timestamp = time2.UnixNano()
-	expected[1].size = 100
-	require.Equal(t, expected, stream.rateBuckets)
-	// Update the second bucket again. Its size should be incremented from 100
-	// to 200.
-	require.NoError(t, s.Update("tenant", metadata, time2))
-	stream, ok = s.Get("tenant", 0x1)
-	require.True(t, ok)
-	expected[1].size = 200
-	require.Equal(t, expected, stream.rateBuckets)
-	// Advance the clock to the last bucket.
-	clock.Advance(3 * time.Minute)
 	time3 := clock.Now()
 	require.NoError(t, s.Update("tenant", metadata, time3))
 	stream, ok = s.Get("tenant", 0x1)
 	require.True(t, ok)
-	expected[4].timestamp = time3.UnixNano()
+	// As the clock is now 1 second ahead of the bucket start time, we must
+	// truncate the expected time to the start of the bucket.
+	expected[1].timestamp = time3.Truncate(time.Minute).UnixNano()
+	expected[1].size = 100
+	require.Equal(t, expected, stream.rateBuckets)
+	// Advance the clock to the last bucket.
+	clock.Advance(3 * time.Minute)
+	time4 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time4))
+	stream, ok = s.Get("tenant", 0x1)
+	require.True(t, ok)
+	expected[4].timestamp = time4.Truncate(time.Minute).UnixNano()
 	expected[4].size = 100
 	require.Equal(t, expected, stream.rateBuckets)
 	// Advance the clock one last one. It should wrap around to the start of
 	// the list and replace the original bucket with time1.
 	clock.Advance(time.Minute)
-	time4 := clock.Now()
-	require.NoError(t, s.Update("tenant", metadata, time4))
+	time5 := clock.Now()
+	require.NoError(t, s.Update("tenant", metadata, time5))
 	stream, ok = s.Get("tenant", 0x1)
 	require.True(t, ok)
-	expected[0].timestamp = time4.UnixNano()
+	expected[0].timestamp = time5.Truncate(time.Minute).UnixNano()
 	expected[0].size = 100
 	require.Equal(t, expected, stream.rateBuckets)
 }
