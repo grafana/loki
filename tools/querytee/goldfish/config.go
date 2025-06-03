@@ -130,7 +130,8 @@ func (f *tenantRulesFlag) Set(value string) error {
 		return nil
 	}
 
-	for pair := range strings.SplitSeq(value, ",") {
+	pairs := strings.Split(value, ",")
+	for _, pair := range pairs {
 		parts := strings.SplitN(pair, ":", 2)
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid tenant rule format: %s", pair)
