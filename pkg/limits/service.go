@@ -8,7 +8,6 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,114 +27,66 @@ const (
 	RingName = "ingest-limits"
 )
 
-// MetadataTopic returns the metadata topic name for the given topic.
-func MetadataTopic(topic string) string {
-	return topic + ".metadata"
-}
-
-type metrics struct {
-	tenantStreamEvictionsTotal *prometheus.CounterVec
-
-	kafkaReadBytesTotal prometheus.Counter
-
-	tenantIngestedBytesTotal *prometheus.CounterVec
-}
-
-func newMetrics(reg prometheus.Registerer) *metrics {
-	return &metrics{
-		tenantStreamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_stream_evictions_total",
-			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-		kafkaReadBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_kafka_read_bytes_total",
-			Help:      "Total number of bytes read from Kafka.",
-		}),
-		tenantIngestedBytesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_tenant_ingested_bytes_total",
-			Help:      "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-	}
-}
-
 // Service is a service that manages stream metadata limits.
 type Service struct {
 	services.Service
-
-	cfg               Config
-	logger            log.Logger
-	clientReader      *kgo.Client
-	clientWriter      *kgo.Client
-	lifecycler        *ring.Lifecycler
-	lifecyclerWatcher *services.FailureWatcher
-
+	cfg                 Config
+	kafkaReader         *kgo.Client
+	kafkaWriter         *kgo.Client
+	lifecycler          *ring.Lifecycler
+	lifecyclerWatcher   *services.FailureWatcher
+	limits              Limits
+	limitsChecker       *limitsChecker
 	partitionManager    *partitionManager
 	partitionLifecycler *partitionLifecycler
+	consumer            *consumer
+	producer            *producer
+	usage               *usageStore
+	logger              log.Logger
 
-	// metrics
-	metrics *metrics
-
-	// limits
-	limits Limits
-
-	// Track stream metadata
-	usage    *usageStore
-	consumer *consumer
-	producer *producer
+	// Metrics.
+	streamEvictionsTotal *prometheus.CounterVec
 
 	// Used for tests.
 	clock quartz.Clock
 }
 
-// Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *Service) Flush() {}
-
-// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
-func (s *Service) TransferOut(_ context.Context) error {
-	return nil
-}
-
 // New creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
+func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	var err error
 	s := &Service{
-		cfg:     cfg,
-		logger:  logger,
-		metrics: newMetrics(reg),
-		limits:  lims,
-		clock:   quartz.NewReal(),
+		cfg:    cfg,
+		limits: limits,
+		logger: logger,
+		streamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_evictions_total",
+			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		clock: quartz.NewReal(),
 	}
-
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
-
 	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
-
 	// Initialize lifecycler
 	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
-
 	// Watch the lifecycler
 	s.lifecyclerWatcher = services.NewFailureWatcher()
 	s.lifecyclerWatcher.WatchService(s.lifecycler)
-
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
 	kCfg.Topic = cfg.Topic
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
-
 	offsetManager, err := partition.NewKafkaOffsetManager(
 		kCfg,
 		cfg.ConsumerGroup,
@@ -152,8 +103,7 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		cfg.ActiveWindow,
 		logger,
 	)
-
-	s.clientReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
+	s.kafkaReader, err = client.NewReaderClient("ingest-limits-reader", kCfg, logger, reg,
 		kgo.ConsumerGroup(cfg.ConsumerGroup),
 		kgo.ConsumeTopics(cfg.Topic),
 		kgo.Balancers(kgo.CooperativeStickyBalancer()),
@@ -165,14 +115,12 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-
-	s.clientWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
+	s.kafkaWriter, err = client.NewWriterClient("ingest-limits-writer", kCfg, 20, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
-
 	s.consumer = newConsumer(
-		s.clientReader,
+		s.kafkaReader,
 		s.partitionManager,
 		s.usage,
 		newOffsetReadinessCheck(s.partitionManager),
@@ -181,16 +129,43 @@ func New(cfg Config, lims Limits, logger log.Logger, reg prometheus.Registerer) 
 		reg,
 	)
 	s.producer = newProducer(
-		s.clientWriter,
+		s.kafkaWriter,
 		kCfg.Topic,
 		s.cfg.NumPartitions,
 		cfg.LifecyclerConfig.Zone,
 		logger,
 		reg,
 	)
-
+	s.limitsChecker = newLimitsChecker(
+		limits,
+		s.usage,
+		s.producer,
+		s.partitionManager,
+		s.cfg.NumPartitions,
+		logger,
+		reg,
+	)
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
+}
+
+// GetAssignedPartitions implements the [proto.IngestLimitsServer] interface.
+func (s *Service) GetAssignedPartitions(
+	_ context.Context,
+	_ *proto.GetAssignedPartitionsRequest,
+) (*proto.GetAssignedPartitionsResponse, error) {
+	resp := proto.GetAssignedPartitionsResponse{
+		AssignedPartitions: s.partitionManager.ListByState(partitionReady),
+	}
+	return &resp, nil
+}
+
+// ExceedsLimits implements the proto.IngestLimitsServer interface.
+func (s *Service) ExceedsLimits(
+	ctx context.Context,
+	req *proto.ExceedsLimitsRequest,
+) (*proto.ExceedsLimitsResponse, error) {
+	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
@@ -214,18 +189,15 @@ func (s *Service) starting(ctx context.Context) (err error) {
 			_ = services.StopAndAwaitTerminated(context.Background(), s.lifecycler)
 		}
 	}()
-
 	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
 	err = s.lifecycler.StartAsync(context.Background())
 	if err != nil {
 		return err
 	}
-
 	err = s.lifecycler.AwaitRunning(ctx)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -236,7 +208,6 @@ func (s *Service) running(ctx context.Context) error {
 	// Start the eviction goroutine
 	go s.evictOldStreamsPeriodic(ctx)
 	go s.consumer.Run(ctx)
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -260,7 +231,7 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 		case <-ticker.C:
 			evicted := s.usage.Evict()
 			for tenant, numEvicted := range evicted {
-				s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
+				s.streamEvictionsTotal.WithLabelValues(tenant).Add(float64(numEvicted))
 			}
 		}
 	}
@@ -271,18 +242,15 @@ func (s *Service) evictOldStreamsPeriodic(ctx context.Context) {
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
 func (s *Service) stopping(failureCase error) error {
-	if s.clientReader != nil {
-		s.clientReader.Close()
+	if s.kafkaReader != nil {
+		s.kafkaReader.Close()
 	}
-
-	if s.clientWriter != nil {
-		s.clientWriter.Close()
+	if s.kafkaWriter != nil {
+		s.kafkaWriter.Close()
 	}
-
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
-
 	var allErrs util.MultiError
 	allErrs.Add(services.StopAndAwaitTerminated(context.Background(), s.lifecycler))
 	allErrs.Add(failureCase)
@@ -290,58 +258,10 @@ func (s *Service) stopping(failureCase error) error {
 	return allErrs.Err()
 }
 
-// GetAssignedPartitions implements the proto.IngestLimitsServer interface.
-// It returns the partitions that the tenant is assigned to and the instance still owns.
-func (s *Service) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest) (*proto.GetAssignedPartitionsResponse, error) {
-	resp := proto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.partitionManager.ListByState(partitionReady),
-	}
-	return &resp, nil
-}
+// Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *Service) Flush() {}
 
-// ExceedsLimits implements the proto.IngestLimitsServer interface.
-// It returns the number of active streams for a tenant and the status of requested streams.
-func (s *Service) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	streams := req.Streams
-	valid := 0
-	for _, stream := range streams {
-		partition := int32(stream.StreamHash % uint64(s.cfg.NumPartitions))
-
-		// TODO(periklis): Do we need to report this as an error to the frontend?
-		if assigned := s.partitionManager.Has(partition); !assigned {
-			level.Warn(s.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
-			continue
-		}
-
-		streams[valid] = stream
-		valid++
-	}
-	streams = streams[:valid]
-
-	accepted, rejected, err := s.usage.UpdateCond(req.Tenant, streams, s.clock.Now(), s.limits)
-	if err != nil {
-		return nil, err
-	}
-
-	var ingestedBytes uint64
-	for _, stream := range accepted {
-		ingestedBytes += stream.TotalSize
-
-		err := s.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to send streams", "error", err)
-		}
-	}
-
-	s.metrics.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
-
-	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
-	for _, stream := range rejected {
-		results = append(results, &proto.ExceedsLimitsResult{
-			StreamHash: stream.StreamHash,
-			Reason:     uint32(ReasonExceedsMaxStreams),
-		})
-	}
-
-	return &proto.ExceedsLimitsResponse{Results: results}, nil
+// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *Service) TransferOut(_ context.Context) error {
+	return nil
 }

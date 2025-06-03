@@ -58,7 +58,6 @@ require (
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
-	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.32.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/influxdata/telegraf v1.34.1
@@ -76,9 +75,9 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/oklog/run v1.1.0
 	github.com/oklog/ulid v1.3.1 // indirect
-	github.com/opentracing-contrib/go-grpc v0.1.2
-	github.com/opentracing-contrib/go-stdlib v1.1.0
-	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b
+	github.com/opentracing-contrib/go-grpc v0.1.2 // indirect
+	github.com/opentracing-contrib/go-stdlib v1.1.0 // indirect
+	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b // indirect
 	github.com/oschwald/geoip2-golang v1.11.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.22
@@ -153,6 +152,8 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.30.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.60.0
+	go.opentelemetry.io/otel/sdk v1.35.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/text v0.25.0
@@ -244,11 +245,9 @@ require (
 	go.opentelemetry.io/collector/pipeline v0.118.0 // indirect
 	go.opentelemetry.io/collector/processor v0.118.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.35.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.60.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.35.0 // indirect
 	go.opentelemetry.io/contrib/samplers/jaegerremote v0.29.0 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.17.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.35.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
@@ -412,8 +411,8 @@ require (
 	go.mongodb.org/mongo-driver v1.17.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.118.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0

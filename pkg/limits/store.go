@@ -101,12 +101,25 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 
 // Iter iterates all active streams and calls f for each iterated stream.
 // As this method acquires a read lock, f must not block.
-func (s *usageStore) Iter(fn iterateFunc) {
+func (s *usageStore) Iter(f iterateFunc) {
+	// To prevent time moving forward while iterating, use the current time
+	// to check the active and rate window.
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for partition, streams := range partitions {
 				for _, stream := range streams {
-					fn(tenant, partition, stream)
+					if withinActiveWindow(stream.lastSeenAt) {
+						stream.rateBuckets = getActiveRateBuckets(
+							stream.rateBuckets,
+							withinRateWindow,
+						)
+						f(tenant, partition, stream)
+					}
 				}
 			}
 		}
@@ -116,55 +129,67 @@ func (s *usageStore) Iter(fn iterateFunc) {
 // IterTenant iterates all active streams for the tenant and calls f for
 // each iterated stream. As this method acquires a read lock, f must not
 // block.
-func (s *usageStore) IterTenant(tenant string, fn iterateFunc) {
+func (s *usageStore) IterTenant(tenant string, f iterateFunc) {
+	// To prevent time moving forward while iterating, use the current time
+	// to check the active and rate window.
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+	)
 	s.withRLock(tenant, func(i int) {
 		for partition, streams := range s.stripes[i][tenant] {
 			for _, stream := range streams {
-				fn(tenant, partition, stream)
+				if withinActiveWindow(stream.lastSeenAt) {
+					stream.rateBuckets = getActiveRateBuckets(
+						stream.rateBuckets,
+						withinRateWindow,
+					)
+					f(tenant, partition, stream)
+				}
 			}
 		}
 	})
 }
 
-// Get finds the stream for the tenant. It returns false if the stream does
-// not exist.
+// Get returns the stream for the tenant. It returns false if the stream has
+// expired or does not exist.
 func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
 	var (
-		partition = s.getPartitionForHash(streamHash)
-		stream    streamUsage
-		ok        bool
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+		partition          = s.getPartitionForHash(streamHash)
+		stream             streamUsage
+		ok                 bool
 	)
 	s.withRLock(tenant, func(i int) {
-		var (
-			partitions tenantUsage
-			streams    map[uint64]streamUsage
-		)
-		partitions, ok = s.stripes[i][tenant]
+		stream, ok = s.get(i, tenant, partition, streamHash)
 		if !ok {
 			return
 		}
-		streams, ok = partitions[partition]
-		if !ok {
+		if !withinActiveWindow(stream.lastSeenAt) {
+			ok = false
 			return
 		}
-		stream, ok = streams[streamHash]
+		stream.rateBuckets = getActiveRateBuckets(stream.rateBuckets, withinRateWindow)
 	})
 	return stream, ok
 }
 
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
-	if !s.withinActiveWindow(seenAt) {
+	if !s.withinActiveWindow(seenAt.UnixNano()) {
 		return errOutsideActiveWindow
 	}
 	partition := s.getPartitionForHash(metadata.StreamHash)
 	s.withLock(tenant, func(i int) {
-		s.recordMetadata(i, tenant, partition, metadata, seenAt)
+		s.update(i, tenant, partition, metadata, seenAt)
 	})
 	return nil
 }
 
 func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
-	if !s.withinActiveWindow(seenAt) {
+	if !s.withinActiveWindow(seenAt.UnixNano()) {
 		return nil, nil, errOutsideActiveWindow
 	}
 	var (
@@ -200,7 +225,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 					continue
 				}
 			}
-			s.recordMetadata(i, tenant, partition, m, seenAt)
+			s.update(i, tenant, partition, m, seenAt)
 			accepted = append(accepted, m)
 		}
 	})
@@ -285,7 +310,20 @@ func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	}
 }
 
-func (s *usageStore) recordMetadata(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
+func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
+	partitions, ok := s.stripes[i][tenant]
+	if !ok {
+		return
+	}
+	streams, ok := partitions[partition]
+	if !ok {
+		return
+	}
+	stream, ok = streams[streamHash]
+	return
+}
+
+func (s *usageStore) update(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition)
 	streamHash, totalSize := metadata.StreamHash, metadata.TotalSize
 	// Get the stats for the stream.
@@ -367,8 +405,31 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 }
 
 // withinActiveWindow returns true if t is within the active window.
-func (s *usageStore) withinActiveWindow(t time.Time) bool {
-	return s.clock.Now().Add(-s.activeWindow).Before(t)
+func (s *usageStore) withinActiveWindow(t int64) bool {
+	return s.clock.Now().Add(-s.activeWindow).UnixNano() <= t
+}
+
+// newActiveWindowFunc returns a func that returns true if t is within
+// the active window. It memoizes the start of the active time window.
+func (s *usageStore) newActiveWindowFunc(now time.Time) func(t int64) bool {
+	activeWindowStart := now.Add(-s.activeWindow).UnixNano()
+	return func(t int64) bool {
+		return activeWindowStart <= t
+	}
+}
+
+// withinRateWindow returns true if t is within the rate window.
+func (s *usageStore) withinRateWindow(t int64) bool {
+	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
+}
+
+// newRateWindowFunc returns a func that returns true if t is within
+// the rate window. It memoizes the start of the rate time window.
+func (s *usageStore) newRateWindowFunc(now time.Time) func(t int64) bool {
+	rateWindowStart := now.Add(-s.rateWindow).UnixNano()
+	return func(t int64) bool {
+		return rateWindowStart <= t
+	}
 }
 
 // checkInitMap checks if the maps for the tenant and partition are
@@ -383,11 +444,29 @@ func (s *usageStore) checkInitMap(i int, tenant string, partition int32) {
 	}
 }
 
-// Used in tests.
-func (s *usageStore) set(tenant string, stream streamUsage) {
+// Used in tests. Is not goroutine-safe.
+func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage, bool) {
+	partition := s.getPartitionForHash(streamHash)
+	i := s.getStripe(tenant)
+	return s.get(i, tenant, partition, streamHash)
+}
+
+// Used in tests. Is not goroutine-safe.
+func (s *usageStore) setForTests(tenant string, stream streamUsage) {
 	partition := s.getPartitionForHash(stream.hash)
 	s.withLock(tenant, func(i int) {
 		s.checkInitMap(i, tenant, partition)
 		s.stripes[i][tenant][partition][stream.hash] = stream
 	})
+}
+
+// getActiveRateBuckets returns the buckets within the active window.
+func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) bool) []rateBucket {
+	result := make([]rateBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		if withinRateWindow(bucket.timestamp) {
+			result = append(result, bucket)
+		}
+	}
+	return result
 }

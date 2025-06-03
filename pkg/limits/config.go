@@ -52,10 +52,6 @@ type Config struct {
 	KafkaConfig      kafka.Config          `yaml:"-"`
 	ConsumerGroup    string                `yaml:"consumer_group"`
 	Topic            string                `yaml:"topic"`
-
-	// Deprecated.
-	WindowSize     time.Duration `yaml:"window_size" doc:"hidden|deprecated"`
-	BucketDuration time.Duration `yaml:"bucket_duration" doc:"hidden|deprecated"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

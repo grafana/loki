@@ -3,8 +3,6 @@ package queryrange
 import (
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -27,8 +25,8 @@ func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.
 
 func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "serializeRoundTripper.do")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "serializeRoundTripper.do")
+	defer sp.End()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
@@ -61,8 +59,8 @@ func NewSerializeHTTPHandler(next queryrangebase.Handler, codec queryrangebase.C
 
 func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "serializeHTTPHandler.ServerHTTP")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "serializeHTTPHandler.ServerHTTP")
+	defer sp.End()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {

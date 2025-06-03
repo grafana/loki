@@ -108,7 +108,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		return chunkRefs, false, nil
 	}
 
-	logger, ctx := spanlogger.New(ctx, bq.logger, "bloomquerier.FilterChunkRefs")
+	logger, ctx := spanlogger.NewOTel(ctx, bq.logger, tracer, "bloomquerier.FilterChunkRefs")
 	defer logger.Finish()
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
