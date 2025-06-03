@@ -156,11 +156,10 @@ func TestInstancePushQuery(t *testing.T) {
 			lbs,
 		),
 		labels.New(
-			labels.Label{Name: constants.AggregatedMetricLabel, Value: "test_service"},
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
 		),
 		[]logproto.LabelAdapter{
 			{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
-			{Name: "is_pattern", Value: "true"},
 		},
 	)
 
@@ -175,11 +174,10 @@ func TestInstancePushQuery(t *testing.T) {
 			lbs,
 		),
 		labels.New(
-			labels.Label{Name: constants.AggregatedMetricLabel, Value: "test_service"},
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
 		),
 		[]logproto.LabelAdapter{
 			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
-			{Name: "is_pattern", Value: "true"},
 		},
 	)
 
@@ -195,11 +193,10 @@ func TestInstancePushQuery(t *testing.T) {
 			lbs,
 		),
 		labels.New(
-			labels.Label{Name: constants.AggregatedMetricLabel, Value: "test_service"},
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
 		),
 		[]logproto.LabelAdapter{
 			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
-			{Name: "is_pattern", Value: "true"},
 		},
 	)
 }
@@ -389,7 +386,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
-				{Name: "is_metric", Value: "true"},
 			},
 		)
 
@@ -408,7 +404,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelError},
-				{Name: "is_metric", Value: "true"},
 			},
 		)
 
@@ -427,7 +422,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 			[]logproto.LabelAdapter{
 				{Name: constants.LevelLabel, Value: constants.LogLevelError},
-				{Name: "is_metric", Value: "true"},
 			},
 		)
 

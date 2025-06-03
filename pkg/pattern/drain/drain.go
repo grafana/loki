@@ -311,7 +311,6 @@ func (d *Drain) writePattern(
 
 	newStructuredMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: lvl},
-		{Name: "is_pattern", Value: "true"},
 	}
 
 	if d.writer != nil {

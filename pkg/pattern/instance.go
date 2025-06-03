@@ -337,7 +337,6 @@ func (i *instance) writeAggregatedMetrics(
 
 	sturcturedMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: level},
-		{Name: "is_metric", Value: "true"},
 	}
 
 	if i.writer != nil {
