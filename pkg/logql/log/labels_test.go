@@ -331,25 +331,25 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
-	b.add[StructuredMetadataLabel] = []labels.Label{{"toreplace", "buzz"}, {"fzz", "bzz"}}
-	b.add[ParsedLabel] = []labels.Label{{"pzz", "pvzz"}}
-	expected := []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "buzz"}, {"pzz", "pvzz"}}
+	b.add[StructuredMetadataLabel] = []labels.Label{{Name: "toreplace", Value: "buzz"}, {Name: "fzz", Value: "bzz"}}
+	b.add[ParsedLabel] = []labels.Label{{Name: "pzz", Value: "pvzz"}}
+	expected := []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
 	actual := b.UnsortedLabels(nil)
 	require.ElementsMatch(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = []labels.Label{{"fzz", "bzz"}}
-	b.add[ParsedLabel] = []labels.Label{{"toreplace", "buzz"}, {"pzz", "pvzz"}}
-	expected = []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "buzz"}, {"pzz", "pvzz"}}
+	b.add[StructuredMetadataLabel] = []labels.Label{{Name: "fzz", Value: "bzz"}}
+	b.add[ParsedLabel] = []labels.Label{{Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
+	expected = []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
 	actual = b.UnsortedLabels(nil)
 	sortLabelSlice(expected)
 	sortLabelSlice(actual)
 	assert.Equal(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = []labels.Label{{"fzz", "bzz"}, {"toreplacezz", "test"}}
-	b.add[ParsedLabel] = []labels.Label{{"toreplacezz", "buzz"}, {"pzz", "pvzz"}}
-	expected = []labels.Label{{"cluster", "us-central1"}, {"namespace", "loki"}, {"fzz", "bzz"}, {"toreplace", "fuzz"}, {"pzz", "pvzz"}, {"toreplacezz", "buzz"}}
+	b.add[StructuredMetadataLabel] = []labels.Label{{Name: "fzz", Value: "bzz"}, {Name: "toreplacezz", Value: "test"}}
+	b.add[ParsedLabel] = []labels.Label{{Name: "toreplacezz", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
+	expected = []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "fuzz"}, {Name: "pzz", Value: "pvzz"}, {Name: "toreplacezz", Value: "buzz"}}
 	actual = b.UnsortedLabels(nil)
 	sortLabelSlice(expected)
 	sortLabelSlice(actual)
