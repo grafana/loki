@@ -41,7 +41,8 @@ type ringGatherer struct {
 	zoneCmp                 func(a, b string) int
 
 	// Metrics.
-	unansweredStreams prometheus.Counter
+	streams           prometheus.Counter
+	streamsUnanswered prometheus.Counter
 }
 
 // newRingGatherer returns a new ringGatherer.
@@ -60,10 +61,16 @@ func newRingGatherer(
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
 		zoneCmp:                 defaultZoneCmp,
-		unansweredStreams: promauto.With(reg).NewCounter(
+		streams: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_total",
+				Help: "The total number of received streams.",
+			},
+		),
+		streamsUnanswered: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_unanswered_streams_total",
-				Help: "The total number of unanswered streams.",
+				Help: "The total number of received streams that could not be checked.",
 			},
 		),
 	}
@@ -74,6 +81,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
+	g.streams.Add(float64(len(req.Streams)))
 	rs, err := g.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
@@ -127,7 +135,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			break
 		}
 	}
-	g.unansweredStreams.Add(float64(len(streams)))
+	g.streamsUnanswered.Add(float64(len(streams)))
 	return responses, nil
 }
 
