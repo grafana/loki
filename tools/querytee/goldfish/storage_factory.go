@@ -2,11 +2,16 @@ package goldfish
 
 import (
 	"fmt"
+
+	"github.com/go-kit/log"
 )
 
 // NewStorage creates a storage backend based on configuration
-func NewStorage(config StorageConfig) (Storage, error) {
+func NewStorage(config StorageConfig, logger log.Logger) (Storage, error) {
 	switch config.Type {
+	case "":
+		// No storage configured, use no-op storage
+		return NewNoOpStorage(logger), nil
 	case "cloudsql":
 		// TODO: Update CloudSQL implementation and auth/config
 		return NewCloudSQLStorage(config)
