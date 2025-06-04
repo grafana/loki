@@ -1,10 +1,24 @@
 package limits
 
 import (
-	"context"
+	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+var (
+	// partitionsDesc is a gauge which tracks the state of the partitions
+	// in the partitionManager. The value of the gauge is set to the value of
+	// the partitionState enum.
+	partitionsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_partitions",
+		"The state of each partition.",
+		[]string{"partition"},
+		nil,
+	)
 )
 
 type partitionState int
@@ -47,15 +61,19 @@ type partitionEntry struct {
 }
 
 // newPartitionManager returns a new [PartitionManager].
-func newPartitionManager() *partitionManager {
-	return &partitionManager{
+func newPartitionManager(reg prometheus.Registerer) (*partitionManager, error) {
+	m := partitionManager{
 		partitions: make(map[int32]partitionEntry),
 		clock:      quartz.NewReal(),
 	}
+	if err := reg.Register(&m); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+	return &m, nil
 }
 
 // Assign assigns the partitions.
-func (m *partitionManager) Assign(_ context.Context, partitions []int32) {
+func (m *partitionManager) Assign(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -151,10 +169,29 @@ func (m *partitionManager) SetReady(partition int32) bool {
 }
 
 // Revoke deletes the partitions.
-func (m *partitionManager) Revoke(_ context.Context, partitions []int32) {
+func (m *partitionManager) Revoke(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
 		delete(m.partitions, partition)
+	}
+}
+
+// Describe implements [prometheus.Collector].
+func (m *partitionManager) Describe(descs chan<- *prometheus.Desc) {
+	descs <- partitionsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (m *partitionManager) Collect(metrics chan<- prometheus.Metric) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	for partition, entry := range m.partitions {
+		metrics <- prometheus.MustNewConstMetric(
+			partitionsDesc,
+			prometheus.GaugeValue,
+			float64(entry.state),
+			strconv.FormatInt(int64(partition), 10),
+		)
 	}
 }

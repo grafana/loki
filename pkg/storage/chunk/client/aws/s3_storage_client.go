@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -36,6 +37,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/client/awsd")
 
 const (
 	SignatureVersionV4 = "v4"
