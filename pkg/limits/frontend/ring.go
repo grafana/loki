@@ -67,9 +67,9 @@ func newRingGatherer(
 				Help: "The total number of received streams.",
 			},
 		),
-		streamsUnanswered: promauto.With(reg).NewCounter(
+		streamsFailed: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
-				Name: "loki_ingest_limits_frontend_unanswered_streams_total",
+				Name: "loki_ingest_limits_frontend_streams_failed_total",
 				Help: "The total number of received streams that could not be checked.",
 			},
 		),
@@ -135,7 +135,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			break
 		}
 	}
-	g.streamsUnanswered.Add(float64(len(streams)))
+	g.streamsFailed.Add(float64(len(streams)))
 	return responses, nil
 }
 
