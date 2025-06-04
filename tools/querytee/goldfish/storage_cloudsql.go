@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
 // CloudSQLStorage implements Storage for Google Cloud SQL
@@ -18,12 +18,17 @@ type CloudSQLStorage struct {
 
 // NewCloudSQLStorage creates a new CloudSQL storage backend
 func NewCloudSQLStorage(config StorageConfig) (*CloudSQLStorage, error) {
-	dsn := fmt.Sprintf("host=%s dbname=%s sslmode=disable",
-		config.CloudSQLConnectionName,
+	// Build DSN for CloudSQL proxy connection
+	// The proxy handles SSL/TLS, so we use sslmode=disable
+	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
+		config.CloudSQLHost,
+		config.CloudSQLPort,
 		config.CloudSQLDatabase,
+		config.CloudSQLUser,
+		config.CloudSQLPassword,
 	)
 
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

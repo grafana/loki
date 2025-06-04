@@ -19,12 +19,12 @@ type mockStorage struct {
 	closed  bool
 }
 
-func (m *mockStorage) StoreQuerySample(ctx context.Context, sample *QuerySample) error {
+func (m *mockStorage) StoreQuerySample(_ context.Context, sample *QuerySample) error {
 	m.samples = append(m.samples, *sample)
 	return nil
 }
 
-func (m *mockStorage) StoreComparisonResult(ctx context.Context, result *ComparisonResult) error {
+func (m *mockStorage) StoreComparisonResult(_ context.Context, result *ComparisonResult) error {
 	m.results = append(m.results, *result)
 	return nil
 }
