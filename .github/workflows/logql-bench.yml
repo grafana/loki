@@ -51,6 +51,7 @@ jobs:
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/data.zip
+          retention-days: 7
 
   setup-matrix:
     name: Setup matrix
@@ -120,3 +121,4 @@ jobs:
         with:
           name: logql-bench-results-${{ matrix.store }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
+          retention-days: 7
