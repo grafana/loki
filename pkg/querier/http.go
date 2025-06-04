@@ -22,8 +22,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/objstore"
-	"golang.org/x/sync/errgroup"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -151,9 +151,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		resLength = len(resp.Values)
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	sp := 
-  
-  .SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
