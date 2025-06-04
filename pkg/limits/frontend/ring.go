@@ -81,7 +81,6 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
-	g.streams.Add(float64(len(req.Streams)))
 	rs, err := g.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
@@ -104,6 +103,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// each time we receive the responses from a zone.
 	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	streams = append(streams, req.Streams...)
+	g.streams.Add(float64(len(streams)))
 	// Query each zone as ordered in zonesToQuery. If a zone answers all
 	// streams, the request is satisfied and there is no need to query
 	// subsequent zones. If a zone answers just a subset of streams
