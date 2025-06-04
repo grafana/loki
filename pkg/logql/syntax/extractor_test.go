@@ -157,7 +157,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				streamExtractor := extractors[0].ForStream(lbls)
 				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
 
-				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine), labels.EmptyLabels())
 				require.True(t, ok)
 
 				seen := make(map[string]float64, len(samples))
@@ -176,7 +176,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				streamExtractor = extractors[0].ForStream(lbls)
 				require.NotNil(t, streamExtractor, "multi-variant stream extractor should not be nil")
 
-				mvSamples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				mvSamples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine), labels.EmptyLabels())
 				require.True(t, ok)
 
 				// remove variant label
@@ -412,7 +412,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				streamExtractor := extractors[0].ForStream(lbls)
 				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
 
-				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine))
+				samples, ok := streamExtractor.Process(now.UnixNano(), []byte(tc.testLine), labels.EmptyLabels())
 				require.True(t, ok)
 
 				expectedSamples := make(map[string]float64, len(tc.expected))

@@ -34,12 +34,10 @@ func Test_ConsolidatedMultiVariantExtractor(t *testing.T) {
 		// Attempt to create a consolidated multi-variant extractor
 		// This will fail because the function doesn't exist yet
 		extractor := NewConsolidatedMultiVariantExtractor(commonPipeline, variants)
-		streamExtractor := extractor.ForStream(labels.Labels{
-			{Name: "foo", Value: "bar"},
-		})
+		streamExtractor := extractor.ForStream(labels.FromStrings("foo", "bar"))
 
 		// Process a log line
-		samples, ok := streamExtractor.ProcessString(1000, "test log line")
+		samples, ok := streamExtractor.ProcessString(1000, "test log line", labels.EmptyLabels())
 		require.True(t, ok)
 		require.Len(t, samples, 2)
 
@@ -80,8 +78,8 @@ func (m *MockCommonPipeline) Reset() {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockCommonPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	lblsResult := NewLabelsResult(labels.String(), labels.Hash(), labels, nil, nil)
+func (m *MockCommonPipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	lblsResult := NewLabelsResult(lbls.String(), lbls.Hash(), lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	return &MockCommonStreamPipeline{
 		counter:       m.counter,
 		shouldPass:    m.shouldPass,
@@ -122,8 +120,8 @@ type MockVariantSpecificExtractor struct {
 	shouldExtract  bool
 }
 
-func (m *MockVariantSpecificExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	lblsResult := NewLabelsResult(labels.String(), labels.Hash(), labels, nil, nil)
+func (m *MockVariantSpecificExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	lblsResult := NewLabelsResult(lbls.String(), lbls.Hash(), lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	return &mockVariantSpecificStreamExtractor{
 		valueToExtract: m.valueToExtract,
 		shouldExtract:  m.shouldExtract,
@@ -142,7 +140,7 @@ func (m *mockVariantSpecificStreamExtractor) BaseLabels() LabelsResult {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *mockVariantSpecificStreamExtractor) Process(_ int64, _ []byte, _ ...labels.Label) ([]ExtractedSample, bool) {
+func (m *mockVariantSpecificStreamExtractor) Process(_ int64, _ []byte, _ labels.Labels) ([]ExtractedSample, bool) {
 	result := []ExtractedSample{
 		{
 			Value:  m.valueToExtract,
@@ -153,8 +151,8 @@ func (m *mockVariantSpecificStreamExtractor) Process(_ int64, _ []byte, _ ...lab
 	return result, m.shouldExtract
 }
 
-func (m *mockVariantSpecificStreamExtractor) ProcessString(ts int64, line string, lbls ...labels.Label) ([]ExtractedSample, bool) {
-	return m.Process(ts, []byte(line), lbls...)
+func (m *mockVariantSpecificStreamExtractor) ProcessString(ts int64, line string, lbls labels.Labels) ([]ExtractedSample, bool) {
+	return m.Process(ts, []byte(line), lbls)
 }
 
 func (m *mockVariantSpecificStreamExtractor) ReferencedStructuredMetadata() bool {

@@ -131,13 +131,18 @@ func (p *KWayMerge) read() error {
 			p.batches[i], _ = p.inputs[i].Value()
 		}
 
+		// Prevent out-of-bounds error: `p.inputs[i].Read()` returned a batch with 0 rows, and therefore does not have a value at offset `p.offsets[i]`.
+		// However, since the call did not return EOF, the next read may return rows again, so we only skip without marking the input as exhausted.
+		if p.batches[i].NumRows() == 0 {
+			continue
+		}
+
 		// Fetch timestamp value at current offset
 		col, err := p.columnEval(p.batches[i])
 		if err != nil {
 			return err
 		}
-		arr := col.ToArray()
-		tsCol, ok := arr.(*array.Timestamp)
+		tsCol, ok := col.ToArray().(*array.Timestamp)
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}

@@ -55,7 +55,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	} else {
 		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
-	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
+	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
 
 	f := &Frontend{
 		cfg:                     cfg,

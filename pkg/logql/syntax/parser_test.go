@@ -3506,7 +3506,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			samples, matches = sp.Process(0, in)
+			samples, matches = sp.Process(0, in, labels.EmptyLabels())
 		}
 
 		v = samples[0].Value
@@ -3677,6 +3677,22 @@ func TestParseLabels(t *testing.T) {
 			desc:   "basic",
 			input:  `{job="foo"}`,
 			output: labels.FromStrings("job", "foo"),
+		},
+		{
+			desc:  "multiple labels, already sorted",
+			input: `{env="a", job="foo"}`,
+			output: labels.FromStrings(
+				"env", "a",
+				"job", "foo",
+			),
+		},
+		{
+			desc:  "multiple labels, not sorted",
+			input: `{job="foo", env="a"}`,
+			output: labels.FromStrings(
+				"env", "a",
+				"job", "foo",
+			),
 		},
 		{
 			desc:   "strip empty label value",

@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"sort"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -238,7 +237,7 @@ func TestKeyShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			require.False(t, result)
 		})
 	}
@@ -278,7 +277,7 @@ func TestLabelShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
 			require.Equal(t, ParsedLabel, category)
@@ -1075,7 +1074,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			[]byte(`buzz=foo bar=�f`),
 			labels.EmptyLabels(),
 			labels.FromStrings("bar", " f", "buzz", "foo"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1084,7 +1083,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"bar", "foo"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1094,7 +1093,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "foo bar",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1104,7 +1103,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1114,7 +1113,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1124,7 +1123,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", `foo ba\r baz`,
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1134,7 +1133,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo bar\nb\\az",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1145,7 +1144,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo bar",
 				"latency", "10ms",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1155,7 +1154,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "foo bar",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1166,7 +1165,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foo_extracted", "foo bar",
 				"foobar", "10ms",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1178,7 +1177,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foo_bar", "10ms",
 				"test_dash", "foo",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1186,7 +1185,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			nil,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1268,10 +1267,9 @@ func TestLogfmtParser_parse(t *testing.T) {
 				_, _ = p.Process(0, tt.line, b)
 
 				want := tt.want
-				if tt.wantStrict != nil {
+				if !tt.wantStrict.IsEmpty() {
 					want = tt.wantStrict
 				}
-				sort.Sort(want)
 				require.Equal(t, want, b.LabelsResult().Labels())
 			})
 		}
@@ -1338,7 +1336,6 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 					_, _ = p.Process(0, tt.line, b)
 
 					want := tt.want
-					sort.Sort(want)
 					require.Equal(t, want, b.LabelsResult().Labels())
 				})
 			}

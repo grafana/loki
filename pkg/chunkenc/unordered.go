@@ -140,9 +140,19 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 				return true, nil
 			}
 		}
-		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
+		symbols, err := hb.symbolizer.Add(structuredMetadata)
+		if err != nil {
+			return false, err
+		}
+
+		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
 	} else {
-		e.entries = []nsEntry{{line, hb.symbolizer.Add(structuredMetadata)}}
+		symbols, err := hb.symbolizer.Add(structuredMetadata)
+		if err != nil {
+			return false, err
+		}
+
+		e.entries = []nsEntry{{line, symbols}}
 	}
 
 	// Update hb metdata
@@ -323,7 +333,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 
 			for _, extractor := range extractor {
-				samples, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
 				if !ok || len(samples) == 0 {
 					return nil
 				}
@@ -645,7 +655,7 @@ func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer
 	}
 
 	if decodedBlock.Format() < UnorderedHeadBlockFmt && decodedBlock.Format() != desiredIfNotUnordered {
-		return decodedBlock.Convert(desiredIfNotUnordered, nil)
+		return decodedBlock.Convert(desiredIfNotUnordered, symbolizer)
 	}
 	return decodedBlock, nil
 }
