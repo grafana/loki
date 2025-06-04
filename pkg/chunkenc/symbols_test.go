@@ -161,32 +161,32 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 		{
 			name: "basic label normalization",
 			labelsToAdd: []labels.Labels{
-				{
-					{Name: "foo-bar", Value: "value1"},
-					{Name: "fizz_buzz", Value: "value2"},
-				},
+				labels.FromStrings(
+					"foo-bar", "value1",
+					"fizz_buzz", "value2",
+				),
 			},
 			expectedLabels: []labels.Labels{
-				{
-					{Name: "foo_bar", Value: "value1"},
-					{Name: "fizz_buzz", Value: "value2"},
-				},
+				labels.FromStrings(
+					"foo_bar", "value1",
+					"fizz_buzz", "value2",
+				),
 			},
 			description: "hyphens should be converted to underscores in label names",
 		},
 		{
 			name: "same string as name and value",
 			labelsToAdd: []labels.Labels{
-				{
-					{Name: "foo-bar", Value: "foo-bar"},
-					{Name: "fizz-buzz", Value: "fizz-buzz"},
-				},
+				labels.FromStrings(
+					"foo-bar", "foo-bar",
+					"fizz-buzz", "fizz-buzz",
+				),
 			},
 			expectedLabels: []labels.Labels{
-				{
-					{Name: "foo_bar", Value: "foo-bar"},
-					{Name: "fizz_buzz", Value: "fizz-buzz"},
-				},
+				labels.FromStrings(
+					"foo_bar", "foo-bar",
+					"fizz_buzz", "fizz-buzz",
+				),
 			},
 			description: "only normalize when string is used as a name, not as a value",
 		},
@@ -267,10 +267,10 @@ func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
 	s := newSymbolizer()
 
 	// Add some labels and serialize them
-	originalLabels := labels.Labels{
-		{Name: "foo-bar", Value: "value1"},
-		{Name: "fizz-buzz", Value: "value2"},
-	}
+	originalLabels := labels.FromStrings(
+		"foo-bar", "value1",
+		"fizz-buzz", "value2",
+	)
 	_, err := s.Add(originalLabels)
 	require.NoError(t, err)
 
@@ -282,19 +282,21 @@ func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
 	loaded := symbolizerFromCheckpoint(buf.Bytes())
 
 	// Add new labels with the same names but different values
-	newLabels := labels.Labels{
-		{Name: "foo-bar", Value: "new-value1"},
-		{Name: "fizz-buzz", Value: "new-value2"},
-	}
+	newLabels := labels.FromStrings(
+		"foo-bar", "new-value1",
+		"fizz-buzz", "new-value2",
+	)
 	symbols, err := loaded.Add(newLabels)
 	require.NoError(t, err)
 
 	// Check that the normalization is consistent
 	result := loaded.Lookup(symbols, nil)
-	require.Equal(t, "foo_bar", result[0].Name, "first label should be normalized")
-	require.Equal(t, "new-value1", result[0].Value, "first value should be unchanged")
-	require.Equal(t, "fizz_buzz", result[1].Name, "second label should be normalized")
-	require.Equal(t, "new-value2", result[1].Value, "second value should be unchanged")
+	expected := map[string]string{
+		"foo_bar":   "new-value1",
+		"fizz_buzz": "new-value2",
+	}
+
+	require.Equal(t, expected, result.Map(), "label names should be normalized")
 }
 
 func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {

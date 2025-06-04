@@ -333,7 +333,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 
 			for _, extractor := range extractor {
-				samples, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
 				if !ok || len(samples) == 0 {
 					return nil
 				}
