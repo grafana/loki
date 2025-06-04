@@ -29,9 +29,12 @@ type SamplingConfig struct {
 type StorageConfig struct {
 	Type string `yaml:"type"` // "cloudsql", "bigquery", "rds", etc.
 
-	// CloudSQL specific
-	CloudSQLConnectionName string `yaml:"cloudsql_connection_name"`
-	CloudSQLDatabase       string `yaml:"cloudsql_database"`
+	// CloudSQL specific (via proxy)
+	CloudSQLHost     string `yaml:"cloudsql_host"`
+	CloudSQLPort     int    `yaml:"cloudsql_port"`
+	CloudSQLDatabase string `yaml:"cloudsql_database"`
+	CloudSQLUser     string `yaml:"cloudsql_user"`
+	CloudSQLPassword string `yaml:"cloudsql_password"`
 
 	// BigQuery specific
 	BigQueryProject string `yaml:"bigquery_project"`
@@ -55,8 +58,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Storage flags
 	f.StringVar(&cfg.StorageConfig.Type, "goldfish.storage.type", "", "Storage backend type (cloudsql, bigquery, rds)")
-	f.StringVar(&cfg.StorageConfig.CloudSQLConnectionName, "goldfish.storage.cloudsql.connection-name", "", "CloudSQL connection name")
+	f.StringVar(&cfg.StorageConfig.CloudSQLHost, "goldfish.storage.cloudsql.host", "cloudsql-proxy", "CloudSQL proxy host")
+	f.IntVar(&cfg.StorageConfig.CloudSQLPort, "goldfish.storage.cloudsql.port", 5432, "CloudSQL proxy port")
 	f.StringVar(&cfg.StorageConfig.CloudSQLDatabase, "goldfish.storage.cloudsql.database", "", "CloudSQL database name")
+	f.StringVar(&cfg.StorageConfig.CloudSQLUser, "goldfish.storage.cloudsql.user", "", "CloudSQL database user")
+	f.StringVar(&cfg.StorageConfig.CloudSQLPassword, "goldfish.storage.cloudsql.password", "", "CloudSQL database password")
 	f.StringVar(&cfg.StorageConfig.BigQueryProject, "goldfish.storage.bigquery.project", "", "BigQuery project ID")
 	f.StringVar(&cfg.StorageConfig.BigQueryDataset, "goldfish.storage.bigquery.dataset", "", "BigQuery dataset name")
 	f.StringVar(&cfg.StorageConfig.DSN, "goldfish.storage.dsn", "", "Generic database DSN")
@@ -87,8 +93,8 @@ func (cfg *Config) Validate() error {
 
 	switch cfg.StorageConfig.Type {
 	case "cloudsql":
-		if cfg.StorageConfig.CloudSQLConnectionName == "" || cfg.StorageConfig.CloudSQLDatabase == "" {
-			return errors.New("CloudSQL connection name and database must be specified")
+		if cfg.StorageConfig.CloudSQLDatabase == "" || cfg.StorageConfig.CloudSQLUser == "" {
+			return errors.New("CloudSQL database and user must be specified")
 		}
 	case "bigquery":
 		if cfg.StorageConfig.BigQueryProject == "" || cfg.StorageConfig.BigQueryDataset == "" {
