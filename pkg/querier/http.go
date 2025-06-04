@@ -476,7 +476,9 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return pattern.MergePatternResponses(responses.get()), nil
 }
 
-func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.QueryPatternsRequest, interval *interval) (*logproto.QueryPatternsResponse, error) {
+func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.QueryPatternsRequest, interval *QueryInterval) (*logproto.QueryPatternsResponse, error) {
+	req.Start = interval.start
+	req.End = interval.end
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return nil, err
@@ -574,7 +576,7 @@ func getLevelAndPattern(metric labels.Labels) (string, string) {
 		lvl = constants.LogLevelUnknown
 	}
 
-	pattern := metric.Get(constants.PatternLabel)
+	pattern := metric.Get("decoded_pattern")
 	return lvl, pattern
 }
 

@@ -863,6 +863,10 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-allowed-line-length
   [max_allowed_line_length: <int> | default = 3000]
 
+  # How long to retain patterns in the pattern ingester after they are pushed.
+  # CLI flag: -pattern-ingester.retain-for
+  [retain_for: <duration> | default = 3h]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.

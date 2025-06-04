@@ -1814,9 +1814,9 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 			DetectedLabelsRequest: r,
 		}, nil
 	case *logproto.QueryPatternsRequest:
-    // We turn a QueryPatternsRequest into a LokiRequest when querying the store
-    // for persisted patterns, which we store as a specially crafted log line in the actual chunks. 
-    // We need to leverage the logic of the query engine to properly extract them correctly.
+		// We turn a QueryPatternsRequest into a LokiRequest when querying the store
+		// for persisted patterns, which we store as a specially crafted log line in the actual chunks.
+		// We need to leverage the logic of the query engine to properly extract them correctly.
 		query, err := r.GetSampleQuery()
 		if err != nil {
 			return nil, err

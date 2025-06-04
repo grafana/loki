@@ -2,7 +2,11 @@ package querier
 
 import "time"
 
-func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time, queryIngestersWithin time.Duration) (*interval, *interval) {
+type QueryInterval struct {
+	start, end time.Time
+}
+
+func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time, queryIngestersWithin time.Duration) (*QueryInterval, *QueryInterval) {
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := cfg.IngesterQueryStoreMaxLookback != 0
 
@@ -11,7 +15,7 @@ func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time,
 
 	// query ingester for whole duration.
 	if ingesterMLB == -1 {
-		i := &interval{
+		i := &QueryInterval{
 			start: queryStart,
 			end:   queryEnd,
 		}
@@ -29,7 +33,7 @@ func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time,
 
 	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
 	if !ingesterQueryWithinRange {
-		return nil, &interval{
+		return nil, &QueryInterval{
 			start: queryStart,
 			end:   queryEnd,
 		}
@@ -39,7 +43,7 @@ func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time,
 
 	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
 	if !limitQueryInterval {
-		i := &interval{
+		i := &QueryInterval{
 			start: queryStart,
 			end:   queryEnd,
 		}
@@ -48,20 +52,20 @@ func BuildQueryIntervalsWithLookback(cfg Config, queryStart, queryEnd time.Time,
 
 	// since we are limiting the query interval, check if the query touches just the ingesters, if yes then query just the ingesters.
 	if ingesterOldestStartTime.Before(queryStart) {
-		return &interval{
+		return &QueryInterval{
 			start: queryStart,
 			end:   queryEnd,
 		}, nil
 	}
 
 	// limit the start of ingester query interval to ingesterOldestStartTime.
-	ingesterQueryInterval := &interval{
+	ingesterQueryInterval := &QueryInterval{
 		start: ingesterOldestStartTime,
 		end:   queryEnd,
 	}
 
 	// limit the end of ingester query interval to ingesterOldestStartTime.
-	storeQueryInterval := &interval{
+	storeQueryInterval := &QueryInterval{
 		start: queryStart,
 		end:   ingesterOldestStartTime,
 	}

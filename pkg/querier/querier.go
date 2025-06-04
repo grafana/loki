@@ -49,10 +49,6 @@ import (
 
 var tracer = otel.Tracer("pkg/querier")
 
-type interval struct {
-	start, end time.Time
-}
-
 // Config for a querier.
 type Config struct {
 	TailMaxDuration           time.Duration    `yaml:"tail_max_duration"`
@@ -303,7 +299,7 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod(queryIngestersW
 	return mlb
 }
 
-func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*QueryInterval, *QueryInterval) {
 	return BuildQueryIntervalsWithLookback(q.cfg, queryStart, queryEnd, q.cfg.QueryIngestersWithin)
 }
 
