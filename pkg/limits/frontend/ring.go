@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -37,6 +39,9 @@ type ringGatherer struct {
 	numPartitions           int
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	zoneCmp                 func(a, b string) int
+
+	// Metrics.
+	unansweredStreams prometheus.Counter
 }
 
 // newRingGatherer returns a new ringGatherer.
@@ -46,6 +51,7 @@ func newRingGatherer(
 	numPartitions int,
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
+	reg prometheus.Registerer,
 ) *ringGatherer {
 	return &ringGatherer{
 		logger:                  logger,
@@ -54,6 +60,12 @@ func newRingGatherer(
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
 		zoneCmp:                 defaultZoneCmp,
+		unansweredStreams: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_unanswered_streams_total",
+				Help: "The total number of unanswered streams.",
+			},
+		),
 	}
 }
 
@@ -115,8 +127,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			break
 		}
 	}
-	// TODO(grobinson): In a subsequent change, I will figure out what to do
-	// about unanswered streams.
+	g.unansweredStreams.Add(float64(len(streams)))
 	return responses, nil
 }
 
