@@ -226,7 +226,7 @@ block_builder:
   [chunk_target_size: <int> | default = 1536KB]
 
   # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
+  # lz4-256k, lz4-1M, lz4, flate, zstd, s2)
   # CLI flag: -blockbuilder.chunk-encoding
   [chunk_encoding: <string> | default = "snappy"]
 
@@ -3296,7 +3296,7 @@ flush_op_backoff:
 [chunk_target_size: <int> | default = 1572864]
 
 # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-# lz4-256k, lz4-1M, lz4, flate, zstd)
+# lz4-256k, lz4-1M, lz4, flate, zstd, s2)
 # CLI flag: -ingester.chunk-encoding
 [chunk_encoding: <string> | default = "gzip"]
 
