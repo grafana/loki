@@ -43,7 +43,7 @@ type ringGatherer struct {
 	// Metrics.
 	streams                prometheus.Counter
 	streamsFailed          prometheus.Counter
-	missingPartitionsTotal *prometheus.CounterVec
+	partitionsMissingTotal *prometheus.CounterVec
 }
 
 // newRingGatherer returns a new ringGatherer.
@@ -74,9 +74,9 @@ func newRingGatherer(
 				Help: "The total number of received streams that could not be checked.",
 			},
 		),
-		missingPartitionsTotal: promauto.With(reg).NewCounterVec(
+		partitionsMissingTotal: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "loki_ingest_limits_frontend_missing_partitions_total",
+				Name: "loki_ingest_limits_frontend_partitions_missing_total",
 				Help: "The total number of times an instance was missing for a requested partition.",
 			},
 			[]string{"zone"},
@@ -154,7 +154,7 @@ func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 		partition := int32(stream.StreamHash % uint64(g.numPartitions))
 		addr, ok := partitions[partition]
 		if !ok {
-			g.missingPartitionsTotal.WithLabelValues(zone).Inc()
+			g.partitionsMissingTotal.WithLabelValues(zone).Inc()
 			continue
 		}
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
