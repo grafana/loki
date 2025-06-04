@@ -1,5 +1,3 @@
-version: "3.3"
-
 networks:
   loki:
 
@@ -16,6 +14,12 @@ services:
     image: grafana/promtail:latest
     volumes:
       - /var/log:/var/log
+      - /home/mario/jenkins/workspace/orders-microservice/logs:/var/log/orders-microservice
+      - /home/mario/jenkins/workspace/customers-microservice/logs:/var/log/customers-microservice
+      - /home/mario/jenkins/workspace/orders-microservice/logs:/var/log/payment-microservice
+      - /home/mario/jenkins/workspace/orders-microservice/logs:/var/log/cronjobs-microservice
+
+      - ./promtail.yaml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     networks:
       - loki

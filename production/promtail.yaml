@@ -1,0 +1,50 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*.log
+
+  - job_name: orders
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: orders
+          __path__: /var/log/orders-microservice/*.log
+
+  - job_name: customers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: customers
+          __path__: /var/log/customers-microservice/*.log
+
+  - job_name: payment
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: payment
+          __path__: /var/log/payment-microservice/*.log
+
+  - job_name: cronjobs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: cronjobs
+          __path__: /var/log/cronjobs-microservice/*.log
