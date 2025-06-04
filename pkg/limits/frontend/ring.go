@@ -41,8 +41,8 @@ type ringGatherer struct {
 	zoneCmp                 func(a, b string) int
 
 	// Metrics.
-	streams           prometheus.Counter
-	streamsUnanswered prometheus.Counter
+	streams       prometheus.Counter
+	streamsFailed prometheus.Counter
 }
 
 // newRingGatherer returns a new ringGatherer.
