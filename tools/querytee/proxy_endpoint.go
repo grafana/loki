@@ -74,7 +74,11 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tenant := extractTenant(r)
 
 	// Determine if we should sample this query
-	shouldSample := p.goldfishManager != nil && p.goldfishManager.ShouldSample(tenant)
+	shouldSample := false
+	if p.goldfishManager != nil {
+		shouldSample = p.goldfishManager.ShouldSample(tenant)
+		level.Debug(p.logger).Log("msg", "Goldfish sampling decision", "tenant", tenant, "sampled", shouldSample, "path", r.URL.Path)
+	}
 
 	// Send the same request to all backends.
 	resCh := make(chan *backendResponse, len(p.backends))
@@ -127,7 +131,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	wg.Add(len(p.backends))
 	for i, b := range p.backends {
-		go func() {
+		go func(idx int, backend *ProxyBackend) {
 			defer wg.Done()
 			var (
 				bodyReader io.ReadCloser
@@ -138,16 +142,16 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
-			if b.filter != nil && !b.filter.Match([]byte(r.URL.String())) {
-				lvl(p.logger).Log("msg", "Skipping non-preferred backend", "path", r.URL.Path, "query", query, "backend", b.name)
+			if backend.filter != nil && !backend.filter.Match([]byte(r.URL.String())) {
+				lvl(p.logger).Log("msg", "Skipping non-preferred backend", "path", r.URL.Path, "query", query, "backend", backend.name)
 				return
 			}
 
-			status, body, err := b.ForwardRequest(r, bodyReader)
+			status, body, err := backend.ForwardRequest(r, bodyReader)
 			elapsed := time.Since(start)
 
 			res := &backendResponse{
-				backend:  b,
+				backend:  backend,
 				status:   status,
 				body:     body,
 				err:      err,
@@ -159,7 +163,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				lvl = level.Warn
 			}
 
-			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", b.name, "status", status, "elapsed", elapsed)
+			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", backend.name, "status", status, "elapsed", elapsed)
 			p.metrics.requestDuration.WithLabelValues(
 				res.backend.name,
 				r.Method,
@@ -170,14 +174,14 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				if b.preferred {
-					expectedResponseIdx = i
+				if backend.preferred {
+					expectedResponseIdx = idx
 				}
-				responses[i] = res
+				responses[idx] = res
 			}
 
 			resCh <- res
-		}()
+		}(i, b)
 	}
 
 	// Wait until all backend requests completed.
@@ -214,11 +218,33 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	// Process with Goldfish if enabled and sampled
 	if goldfishSample && p.goldfishManager != nil && len(responses) >= 2 {
-		// Find Cell A and Cell B responses (assuming first two backends)
-		cellAResp := responses[0]
-		cellBResp := responses[1]
+		// Use preferred backend as Cell A, first non-preferred as Cell B
+		var cellAResp, cellBResp *backendResponse
+
+		// Find preferred backend response
+		for _, resp := range responses {
+			if resp != nil && resp.backend.preferred {
+				cellAResp = resp
+				break
+			}
+		}
+
+		// Find first non-preferred backend response
+		for _, resp := range responses {
+			if resp != nil && !resp.backend.preferred {
+				cellBResp = resp
+				break
+			}
+		}
 
 		if cellAResp != nil && cellBResp != nil {
+			level.Info(p.logger).Log("msg", "Processing query with Goldfish",
+				"tenant", extractTenant(r),
+				"query", r.URL.Query().Get("query"),
+				"cellA_backend", cellAResp.backend.name,
+				"cellA_status", cellAResp.status,
+				"cellB_backend", cellBResp.backend.name,
+				"cellB_status", cellBResp.status)
 			go p.processWithGoldfish(r, cellAResp, cellBResp)
 		}
 	}
@@ -328,7 +354,9 @@ func extractTenant(r *http.Request) string {
 
 // processWithGoldfish sends the query and responses to Goldfish for comparison
 func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBResp *backendResponse) {
-	ctx := context.Background()
+	// Use a detached context with timeout since this runs async
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// Capture response data with actual durations
 	cellAData, err := goldfish.CaptureResponse(&http.Response{

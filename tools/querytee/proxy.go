@@ -233,6 +233,7 @@ func (p *Proxy) Start() error {
 		// Add Goldfish if configured
 		if p.goldfishManager != nil {
 			endpoint.WithGoldfish(p.goldfishManager)
+			level.Info(p.logger).Log("msg", "Goldfish attached to route", "path", route.Path, "methods", strings.Join(route.Methods, ","))
 		}
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}

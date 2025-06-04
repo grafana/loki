@@ -82,6 +82,7 @@ func (m *Manager) ShouldSample(tenantID string) bool {
 
 	sampled := m.sampler.ShouldSample(tenantID)
 	m.metrics.samplingDecisions.WithLabelValues(tenantID, fmt.Sprintf("%v", sampled)).Inc()
+	level.Debug(m.logger).Log("msg", "Goldfish sampling check", "tenant", tenantID, "sampled", sampled, "default_rate", m.config.SamplingConfig.DefaultRate)
 	return sampled
 }
 
@@ -93,6 +94,10 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	}
 
 	correlationID := uuid.New().String()
+	level.Info(m.logger).Log("msg", "Processing query pair in Goldfish",
+		"correlation_id", correlationID,
+		"tenant", extractTenant(req),
+		"query_type", getQueryType(req.URL.Path))
 
 	// Create query sample with performance statistics
 	sample := &QuerySample{
@@ -134,6 +139,69 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
+	// Log comparison results with stats
+	logLevel := level.Info
+	if result.ComparisonStatus != ComparisonStatusMatch {
+		logLevel = level.Warn
+	}
+
+	// Build log fields
+	logFields := []interface{}{
+		"msg", "query comparison completed",
+		"correlation_id", correlationID,
+		"tenant", sample.TenantID,
+		"query_type", sample.QueryType,
+		"comparison_status", result.ComparisonStatus,
+		"cell_a_exec_time_ms", sample.CellAStats.ExecTimeMs,
+		"cell_b_exec_time_ms", sample.CellBStats.ExecTimeMs,
+		"cell_a_bytes_processed", sample.CellAStats.BytesProcessed,
+		"cell_b_bytes_processed", sample.CellBStats.BytesProcessed,
+		"cell_a_entries_returned", sample.CellAStats.TotalEntriesReturned,
+		"cell_b_entries_returned", sample.CellBStats.TotalEntriesReturned,
+	}
+
+	// Add performance ratios if available
+	if result.PerformanceMetrics.QueryTimeRatio > 0 {
+		logFields = append(logFields, "query_time_ratio", result.PerformanceMetrics.QueryTimeRatio)
+	}
+
+	// Add difference summary if there are any
+	if len(result.DifferenceDetails) > 0 {
+		// Count types of differences
+		perfDiffs := 0
+		contentDiffs := 0
+		for key := range result.DifferenceDetails {
+			if key == "content_hash" || key == "status_code" || key == "entries_returned" || key == "bytes_processed" || key == "lines_processed" {
+				contentDiffs++
+			} else if key == "exec_time_variance" {
+				perfDiffs++
+			}
+		}
+		if contentDiffs > 0 {
+			logFields = append(logFields, "content_differences", contentDiffs)
+		}
+		if perfDiffs > 0 {
+			logFields = append(logFields, "performance_variances", perfDiffs)
+		}
+	}
+
+	logLevel(m.logger).Log(logFields...)
+
+	// Log specific performance differences if significant
+	if execTimeVar, ok := result.DifferenceDetails["exec_time_variance"]; ok {
+		if variance, ok := execTimeVar.(map[string]any); ok {
+			if ratio, ok := variance["ratio"].(float64); ok && (ratio > 2.0 || ratio < 0.5) {
+				level.Info(m.logger).Log(
+					"msg", "significant execution time difference detected",
+					"correlation_id", correlationID,
+					"cell_a_ms", variance["cell_a_ms"],
+					"cell_b_ms", variance["cell_b_ms"],
+					"ratio", ratio,
+				)
+			}
+		}
+	}
+
 	// Store comparison result if storage is available
 	if m.storage != nil {
 		if err := m.storage.StoreComparisonResult(ctx, &result); err != nil {
@@ -142,17 +210,6 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		} else {
 			m.metrics.storageOperations.WithLabelValues("store_result", "success").Inc()
 		}
-	}
-
-	// Log significant differences
-	if result.ComparisonStatus != ComparisonStatusMatch {
-		level.Warn(m.logger).Log(
-			"msg", "query comparison mismatch",
-			"correlation_id", correlationID,
-			"tenant", sample.TenantID,
-			"status", result.ComparisonStatus,
-			"query_type", sample.QueryType,
-		)
 	}
 }
 
