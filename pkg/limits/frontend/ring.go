@@ -41,8 +41,9 @@ type ringGatherer struct {
 	zoneCmp                 func(a, b string) int
 
 	// Metrics.
-	streams       prometheus.Counter
-	streamsFailed prometheus.Counter
+	streams           prometheus.Counter
+	streamsFailed     prometheus.Counter
+	partitionsMissing *prometheus.CounterVec
 }
 
 // newRingGatherer returns a new ringGatherer.
@@ -72,6 +73,13 @@ func newRingGatherer(
 				Name: "loki_ingest_limits_frontend_streams_failed_total",
 				Help: "The total number of received streams that could not be checked.",
 			},
+		),
+		partitionsMissing: promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_partitions_missing_total",
+				Help: "The total number of times an instance was missing for a requested partition.",
+			},
+			[]string{"zone"},
 		),
 	}
 }
@@ -146,7 +154,7 @@ func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 		partition := int32(stream.StreamHash % uint64(g.numPartitions))
 		addr, ok := partitions[partition]
 		if !ok {
-			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partition, "zone", zone)
+			g.partitionsMissing.WithLabelValues(zone).Inc()
 			continue
 		}
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
