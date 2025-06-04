@@ -2,6 +2,7 @@ package limits
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -28,8 +29,8 @@ type limitsChecker struct {
 	logger           log.Logger
 
 	// Metrics.
-	tenantIngestedBytesTotal       *prometheus.CounterVec
-	streamInvalidPartitionAssigned *prometheus.CounterVec
+	tenantIngestedBytesTotal *prometheus.CounterVec
+	streamDiscardedTotal     *prometheus.CounterVec
 
 	// Used in tests.
 	clock quartz.Clock
@@ -47,10 +48,10 @@ func newLimitsChecker(limits Limits, store *usageStore, producer *producer, part
 			Name: "loki_ingest_limits_tenant_ingested_bytes_total",
 			Help: "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		streamInvalidPartitionAssigned: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_ingest_limits_stream_invalid_partition_assigned_total",
-			Help: "Total number of times a stream was assigned to a partition that is not owned by the instance.",
-		}, []string{"tenant"}),
+		streamDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingest_limits_streams_discarded_total",
+			Help: "Total number of times streams were discarded.",
+		}, []string{"partition"}),
 		clock: quartz.NewReal(),
 	}
 }
@@ -63,7 +64,7 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
 		if assigned := c.partitionManager.Has(partition); !assigned {
-			c.streamInvalidPartitionAssigned.WithLabelValues(req.Tenant).Inc()
+			c.streamDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
 			continue
 		}
 
