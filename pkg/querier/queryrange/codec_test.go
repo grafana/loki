@@ -17,13 +17,15 @@ import (
 	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -569,19 +571,29 @@ func TestLokiRequestSpanLogging(t *testing.T) {
 		EndTs:   end,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func TestLokiInstantRequestSpanLogging(t *testing.T) {
@@ -590,16 +602,25 @@ func TestLokiInstantRequestSpanLogging(t *testing.T) {
 		TimeTs: now,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "ts" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "ts" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 1, found, "expected to find ts attribute in span")
 }
 
 func TestLokiSeriesRequestSpanLogging(t *testing.T) {
@@ -610,19 +631,29 @@ func TestLokiSeriesRequestSpanLogging(t *testing.T) {
 		EndTs:   end,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func TestLabelRequestSpanLogging(t *testing.T) {
@@ -635,19 +666,29 @@ func TestLabelRequestSpanLogging(t *testing.T) {
 		},
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func Test_codec_DecodeProtobufResponseParity(t *testing.T) {

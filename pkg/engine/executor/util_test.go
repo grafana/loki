@@ -1,18 +1,24 @@
 package executor
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
 		}, nil),
+
 		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer builder.Release()
@@ -29,6 +35,50 @@ var (
 		},
 	)
 )
+
+func ascendingTimestampPipeline(start time.Time) *recordGenerator {
+	return timestampPipeline(start, ascending)
+}
+
+func descendingTimestampPipeline(start time.Time) *recordGenerator {
+	return timestampPipeline(start, descending)
+}
+
+const (
+	ascending  = time.Duration(1)
+	descending = time.Duration(-1)
+)
+
+func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
+	return newRecordGenerator(
+		arrow.NewSchema([]arrow.Field{
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
+		}, nil),
+
+		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
+			defer idColBuilder.Release()
+
+			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
+			defer tsColBuilder.Release()
+
+			for i := int64(0); i < sz; i++ {
+				idColBuilder.Append(offset + i)
+				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
+			}
+
+			idData := idColBuilder.NewArray()
+			defer idData.Release()
+
+			tsData := tsColBuilder.NewArray()
+			defer tsData.Release()
+
+			columns := []arrow.Array{idData, tsData}
+			return array.NewRecord(schema, columns, sz)
+		},
+	)
+}
 
 type recordGenerator struct {
 	schema *arrow.Schema
@@ -62,7 +112,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	for {
 		err := pipeline.Read()
-		if err == EOF {
+		if errors.Is(err, EOF) {
 			break
 		}
 		if err != nil {

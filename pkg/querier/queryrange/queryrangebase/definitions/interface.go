@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
@@ -49,8 +49,8 @@ type Request interface {
 	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
-	// LogToSpan writes information about this request to an OpenTracing span
-	LogToSpan(opentracing.Span)
+	// LogToSpan writes information about this request to an OTel span
+	LogToSpan(trace.Span)
 }
 
 type CachingOptions = resultscache.CachingOptions

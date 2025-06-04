@@ -19,7 +19,7 @@ const (
 	opaDefaultPackage         = "lokistack"
 	opaDefaultAPIGroup        = "loki.grafana.com"
 	opaMetricsPortName        = "opa-metrics"
-	opaDefaultLabelMatcher    = "kubernetes_namespace_name"
+	opaDefaultLabelMatchers   = "kubernetes_namespace_name,k8s_namespace_name"
 	opaNetworkLabelMatchers   = "SrcK8S_Namespace,DstK8S_Namespace"
 	ocpMonitoringGroupByLabel = "namespace"
 )
@@ -53,7 +53,8 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 
 	if mode != lokiv1.OpenshiftNetwork {
 		args = append(args, []string{
-			fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatcher),
+			fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatchers),
+			"--opa.viaq-to-otel-migration=true",
 		}...)
 	} else {
 		args = append(args, []string{

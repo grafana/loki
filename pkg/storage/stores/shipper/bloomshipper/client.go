@@ -13,9 +13,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -503,12 +504,12 @@ func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, deli
 		cacheDur time.Duration
 	)
 	defer func() {
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			sp.LogKV(
-				"cache_duration", cacheDur,
-				"total_duration", time.Since(start),
-			)
-		}
+		sp := trace.SpanFromContext(ctx)
+		sp.SetAttributes(
+			attribute.String("cache_duration", cacheDur.String()),
+			attribute.String("total_duration", time.Since(start).String()),
+		)
+
 	}()
 
 	if delimiter != "" {

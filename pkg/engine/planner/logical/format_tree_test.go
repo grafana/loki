@@ -32,7 +32,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral[int64](21),
+			Right: NewLiteral(21),
 			Op:    types.BinaryOpGt,
 		},
 	)
@@ -50,7 +50,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 SELECT <%4> table=%2 predicate=%3
 │   └── BinOp <%3> op=GT left=metadata.age right=21
 │       ├── ColumnRef column=age type=metadata
-│       └── Literal value=21 kind=int
+│       └── Literal value=21 kind=integer
 └── MAKETABLE <%2> selector=EQ label.app "users"
         └── BinOp <%1> op=EQ left=label.app right="users"
             ├── ColumnRef column=app type=label
@@ -75,7 +75,7 @@ func TestFormatSortQuery(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral[int64](21),
+			Right: NewLiteral(21),
 			Op:    types.BinaryOpGt,
 		},
 	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
@@ -95,7 +95,7 @@ SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
 └── SELECT <%4> table=%2 predicate=%3
     │   └── BinOp <%3> op=GT left=metadata.age right=21
     │       ├── ColumnRef column=age type=metadata
-    │       └── Literal value=21 kind=int
+    │       └── Literal value=21 kind=integer
     └── MAKETABLE <%2> selector=EQ label.app "users"
             └── BinOp <%1> op=EQ left=label.app right="users"
                 ├── ColumnRef column=app type=label

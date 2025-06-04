@@ -137,19 +137,19 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 			chunks := make([]Chunk, 0, len(t.chunks[userID][seriesID]))
 			for _, chk := range t.chunks[userID][seriesID] {
 				chunks = append(chunks, Chunk{
-					ChunkID: []byte(getChunkID(chk.ChunkRef)),
+					ChunkID: getChunkID(chk.ChunkRef),
 					From:    chk.From,
 					Through: chk.Through,
 				})
 			}
-			series := Series{}
+			series := series{}
 			series.Reset(
 				[]byte(seriesID),
 				[]byte(userID),
 				labels.NewBuilder(t.chunks[userID][seriesID][0].Metric).Del(labels.MetricName).Labels(),
 			)
 			series.AppendChunks(chunks...)
-			if err := callback(series); err != nil {
+			if err := callback(&series); err != nil {
 				return err
 			}
 		}
@@ -168,10 +168,10 @@ func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
-func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID []byte) error {
+func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
 	seriesID := string(labelsSeriesID(labels.NewBuilder(lbls).Set(labels.MetricName, "logs").Labels()))
 	for i, chk := range t.chunks[string(userID)][seriesID] {
-		if getChunkID(chk.ChunkRef) == string(chunkID) {
+		if getChunkID(chk.ChunkRef) == chunkID {
 			t.chunks[string(userID)][seriesID] = append(t.chunks[string(userID)][seriesID][:i], t.chunks[string(userID)][seriesID][i+1:]...)
 		}
 	}
@@ -201,9 +201,9 @@ func (t *table) Put(chk chunk.Chunk) {
 func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	var chunks []chunk.Chunk
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 
 	for seriesID := range t.chunks[userID] {
 		for _, chk := range t.chunks[userID][seriesID] {

@@ -3,6 +3,7 @@ package logical
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -73,8 +74,8 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 	builder = builder.Sort(*timestampColumnRef(), ascending, false)
 
 	// SELECT -> Filter
-	start := query.Start().UnixNano()
-	end := query.End().UnixNano()
+	start := query.Start()
+	end := query.End()
 	for _, value := range convertQueryRangeToPredicates(start, end) {
 		builder = builder.Select(value)
 	}
@@ -145,7 +146,7 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 
 func convertLineFilter(filter syntax.LineFilter) Value {
 	return &BinOp{
-		Left:  logColumnRef(),
+		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
 	}
@@ -174,8 +175,8 @@ func timestampColumnRef() *ColumnRef {
 	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
-func logColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinLog, types.ColumnTypeBuiltin)
+func lineColumnRef() *ColumnRef {
+	return NewColumnRef(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin)
 }
 
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
@@ -235,16 +236,16 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	return nil, fmt.Errorf("invalid label filter %T", expr)
 }
 
-func convertQueryRangeToPredicates(start, end int64) []*BinOp {
+func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 	return []*BinOp{
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(uint64(start)),
+			Right: NewLiteral(start),
 			Op:    types.BinaryOpGte,
 		},
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(uint64(end)),
+			Right: NewLiteral(end),
 			Op:    types.BinaryOpLt,
 		},
 	}

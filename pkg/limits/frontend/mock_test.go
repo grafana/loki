@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -13,65 +14,83 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// mockStreamUsageGatherer mocks a StreamUsageGatherer. It avoids having to
-// set up a mock ring to test the frontend.
-type mockStreamUsageGatherer struct {
+// mockExceedsLimitsGatherer mocks an ExeceedsLimitsGatherer. It avoids having
+// to set up a mock ring to test the frontend.
+type mockExceedsLimitsGatherer struct {
 	t *testing.T
 
-	expectedRequest *GetStreamUsageRequest
-	responses       []GetStreamUsageResponse
+	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
+	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
 }
 
-func (g *mockStreamUsageGatherer) GetStreamUsage(_ context.Context, r GetStreamUsageRequest) ([]GetStreamUsageResponse, error) {
-	if expected := g.expectedRequest; expected != nil {
-		require.Equal(g.t, *expected, r)
+func (g *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+	if expected := g.expectedExceedsLimitsRequest; expected != nil {
+		require.Equal(g.t, expected, req)
 	}
-	return g.responses, nil
+	return g.exceedsLimitsResponses, nil
 }
 
-// mockIngestLimitsClient mocks logproto.IngestLimitsClient.
+// mockIngestLimitsClient mocks proto.IngestLimitsClient.
 type mockIngestLimitsClient struct {
-	logproto.IngestLimitsClient
+	proto.IngestLimitsClient
 	t *testing.T
 
-	// The requests expected to be received.
-	expectedAssignedPartitionsRequest *logproto.GetAssignedPartitionsRequest
-	expectedStreamUsageRequest        *logproto.GetStreamUsageRequest
+	// The complete set of expected requests over the lifetime of the client.
+	// We don't check the expected requests for GetAssignedPartitions as it
+	// has no fields. Instead, tests should check the number of requests
+	// received with [Finished].
+	expectedExceedsLimitsRequests []*proto.ExceedsLimitsRequest
 
-	// The mocked responses.
-	getAssignedPartitionsResponse    *logproto.GetAssignedPartitionsResponse
-	getAssignedPartitionsResponseErr error
-	getStreamUsageResponse           *logproto.GetStreamUsageResponse
-	getStreamUsageResponseErr        error
+	// The complete set of mocked responses over the lifetime of the client.
+	// When a request is received, it consumes the next response (or error)
+	// until there are no more left. Aadditional requests fail with an error.
+	getAssignedPartitionsResponses    []*proto.GetAssignedPartitionsResponse
+	getAssignedPartitionsResponseErrs []error
+	exceedsLimitsResponses            []*proto.ExceedsLimitsResponse
+	exceedsLimitsResponseErrs         []error
 
-	// The call count.
-	assignedPartitionsCallCount int
-	streamUsageCallCount        int
+	// The actual request counts.
+	numAssignedPartitionsRequests int
+	numExceedsLimitsRequests      int
 }
 
-func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, r *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
-	if expected := m.expectedAssignedPartitionsRequest; expected != nil {
-		require.Equal(m.t, expected, r)
+func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *proto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*proto.GetAssignedPartitionsResponse, error) {
+	idx := m.numAssignedPartitionsRequests
+	// Check that we haven't received more requests than we have mocked
+	// responses.
+	if idx >= len(m.getAssignedPartitionsResponses) {
+		return nil, errors.New("unexpected GetAssignedPartitionsRequest")
 	}
-	m.assignedPartitionsCallCount++
-	if err := m.getAssignedPartitionsResponseErr; err != nil {
+	m.numAssignedPartitionsRequests++
+	if err := m.getAssignedPartitionsResponseErrs[idx]; err != nil {
 		return nil, err
 	}
-	return m.getAssignedPartitionsResponse, nil
+	return m.getAssignedPartitionsResponses[idx], nil
 }
 
-func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, r *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
-	if expected := m.expectedStreamUsageRequest; expected != nil {
-		require.Equal(m.t, expected, r)
+func (m *mockIngestLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest, _ ...grpc.CallOption) (*proto.ExceedsLimitsResponse, error) {
+	idx := m.numExceedsLimitsRequests
+	// Check that we haven't received more requests than we have mocked
+	// responses.
+	if idx >= len(m.exceedsLimitsResponses) {
+		return nil, errors.New("unexpected ExceedsLimitsRequest")
 	}
-	m.streamUsageCallCount++
-	if err := m.getStreamUsageResponseErr; err != nil {
+	m.numExceedsLimitsRequests++
+	if len(m.expectedExceedsLimitsRequests) > 0 {
+		require.Equal(m.t, m.expectedExceedsLimitsRequests[idx], req)
+	}
+	if err := m.exceedsLimitsResponseErrs[idx]; err != nil {
 		return nil, err
 	}
-	return m.getStreamUsageResponse, nil
+	return m.exceedsLimitsResponses[idx], nil
+}
+
+func (m *mockIngestLimitsClient) Finished() {
+	require.Equal(m.t, len(m.getAssignedPartitionsResponses), m.numAssignedPartitionsRequests)
+	require.Equal(m.t, len(m.exceedsLimitsResponses), m.numExceedsLimitsRequests)
 }
 
 func (m *mockIngestLimitsClient) Close() error {
@@ -89,9 +108,9 @@ func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.Heal
 }
 
 // mockFactory mocks ring_client.PoolFactory. It returns a mocked
-// logproto.IngestLimitsClient.
+// proto.IngestLimitsClient.
 type mockFactory struct {
-	clients map[string]logproto.IngestLimitsClient
+	clients map[string]proto.IngestLimitsClient
 }
 
 func (f *mockFactory) FromInstance(inst ring.InstanceDesc) (ring_client.PoolClient, error) {
@@ -112,24 +131,7 @@ func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, err
 	return m.rs, nil
 }
 
-type mockLimits struct {
-	maxGlobalStreams int
-	ingestionRate    float64
-}
-
-func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
-	return m.maxGlobalStreams
-}
-
-func (m *mockLimits) IngestionRateBytes(_ string) float64 {
-	return m.ingestionRate
-}
-
-func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
-	return 1000
-}
-
-func newMockRingWithClientPool(_ *testing.T, name string, clients []logproto.IngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
+func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockIngestLimitsClient, instances []ring.InstanceDesc) (ring.ReadRing, *ring_client.Pool) {
 	// Set up the mock ring.
 	ring := &mockReadRing{
 		rs: ring.ReplicationSet{
@@ -138,7 +140,7 @@ func newMockRingWithClientPool(_ *testing.T, name string, clients []logproto.Ing
 	}
 	// Set up the factory that is used to create clients on demand.
 	factory := &mockFactory{
-		clients: make(map[string]logproto.IngestLimitsClient),
+		clients: make(map[string]proto.IngestLimitsClient),
 	}
 	for i := 0; i < len(clients); i++ {
 		factory.clients[instances[i].Addr] = clients[i]

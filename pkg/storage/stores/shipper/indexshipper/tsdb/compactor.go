@@ -297,7 +297,7 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 	logprotoChunkRef := logproto.ChunkRef{
 		UserID: c.userID,
 	}
-	var series retention.Series
+	series := retention.NewSeries()
 	for seriesID, stream := range c.builder.streams {
 		series.Reset(
 			getUnsafeBytes(seriesID),
@@ -313,7 +313,7 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 			logprotoChunkRef.Checksum = chk.Checksum
 
 			series.AppendChunks(retention.Chunk{
-				ChunkID: getUnsafeBytes(schemaCfg.ExternalKey(logprotoChunkRef)),
+				ChunkID: schemaCfg.ExternalKey(logprotoChunkRef),
 				From:    logprotoChunkRef.From,
 				Through: logprotoChunkRef.Through,
 			})
@@ -367,8 +367,8 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID []byte) error {
-	chk, err := chunk.ParseExternalKey(string(userID), string(chunkID))
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
 		return err
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	loki_util "github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -38,14 +39,14 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, maxRecvMsgSize, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, streamResolver)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver)
 	return req, stats, nil
 }
 
@@ -104,7 +105,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, streamResolver StreamResolver) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -112,6 +113,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
 
+	// Track if request used the Loki OTLP exporter label
+	var usingLokiExporter bool
+
+	logServiceNameDiscovery := false
+	logPushRequestStreams := false
+	if tenantConfigs != nil {
+		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
+		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+	}
+
+	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
 		res := rls.At(i).Resource()
@@ -120,7 +132,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
 		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
 		var pushedLabels model.LabelSet
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			pushedLabels = make(model.LabelSet, 30)
 		}
 
@@ -139,7 +151,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			if action == IndexLabel {
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-					if logPushRequestStreams && pushedLabels != nil {
+					if logServiceNameDiscovery && pushedLabels != nil {
 						pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 					}
 
@@ -165,7 +177,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 
 		// this must be pushed to the end after log lines are also evaluated
-		if logPushRequestStreams {
+		if logServiceNameDiscovery {
 			var sb strings.Builder
 			sb.WriteString("{")
 			labels := make([]string, 0, len(pushedLabels))
@@ -205,6 +217,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
+
+		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
+		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
+			usingLokiExporter = true
+		}
 
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
@@ -275,7 +292,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				log := logs.At(k)
 
 				// Use the existing function that already handles log attributes properly
-				logLabels, entry := otlpLogToPushEntry(log, otlpConfig, logPushRequestStreams, pushedLabels)
+				logLabels, entry := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels)
+				if entry.Timestamp.After(mostRecentEntryTimestamp) {
+					mostRecentEntryTimestamp = entry.Timestamp
+				}
 
 				// Combine resource labels with log labels if any log attributes were indexed
 				var entryLabelsStr string
@@ -358,6 +378,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 	}
 
+	stats.MostRecentEntryTimestamp = mostRecentEntryTimestamp
+
 	pr := &push.PushRequest{
 		Streams: make([]push.Stream, 0, len(pushRequestsByStream)),
 	}
@@ -367,13 +389,32 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		if len(stream.Entries) > 0 || len(stream.Labels) > 0 {
 			pr.Streams = append(pr.Streams, stream)
 		}
+		if logPushRequestStreams {
+			mostRecentEntryTimestamp := time.Time{}
+			streamSizeBytes := int64(0)
+			// It's difficult to calculate these values inline when we process the payload because promotion of resource attributes or log attributes to labels can change the stream with each entry.
+			// So for simplicity and because this logging is typically disabled, we iterate on the entries to calculate these values here.
+			for _, entry := range stream.Entries {
+				streamSizeBytes += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
+				if entry.Timestamp.After(mostRecentEntryTimestamp) {
+					mostRecentEntryTimestamp = entry.Timestamp
+				}
+			}
+			stats.MostRecentEntryTimestampPerStream[stream.Labels] = mostRecentEntryTimestamp
+			stats.StreamSizeBytes[stream.Labels] = streamSizeBytes
+		}
+	}
+
+	// Increment exporter streams metric once per request if seen
+	if usingLokiExporter {
+		otlpExporterStreams.WithLabelValues(userID).Inc()
 	}
 
 	return pr
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
-func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushRequestStreams bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry) {
+func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
 	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
@@ -393,7 +434,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushReques
 		if action == IndexLabel {
 			for _, lbl := range attributeAsLabels {
 				logLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-				if logPushRequestStreams && pushedLabels != nil {
+				if logServiceNameDiscovery && pushedLabels != nil {
 					pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 				}
 			}
@@ -420,7 +461,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logPushReques
 		// Add severity_text as an index label if configured
 		if otlpConfig.SeverityTextAsLabel {
 			logLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
-			if logPushRequestStreams && pushedLabels != nil {
+			if logServiceNameDiscovery && pushedLabels != nil {
 				pushedLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
 			}
 		}

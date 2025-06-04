@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -38,6 +40,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
+
+var tracer = otel.Tracer("pkg/logql")
 
 const (
 	DefaultBlockedQueryMessage = "blocked by policy"
@@ -159,12 +163,16 @@ type EngineOpts struct {
 
 	// Enable the next generation Loki Query Engine for supported queries.
 	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
+
+	// Batch size of the v2 execution engine.
+	BatchSize int `yaml:"batch_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -242,16 +250,16 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "query.Exec")
+	defer sp.End()
 
-	sp.LogKV(
-		"type", GetRangeType(q.params),
-		"query", q.params.QueryString(),
-		"start", q.params.Start(),
-		"end", q.params.End(),
-		"step", q.params.Step(),
-		"length", q.params.End().Sub(q.params.Start()),
+	sp.SetAttributes(
+		attribute.String("type", string(GetRangeType(q.params))),
+		attribute.String("query", q.params.QueryString()),
+		attribute.String("start", q.params.Start().String()),
+		attribute.String("end", q.params.End().String()),
+		attribute.String("step", q.params.Step().String()),
+		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
 	if q.logExecQuery {
@@ -287,7 +295,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	sp.LogKV(statResult.KVList()...)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
 

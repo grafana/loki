@@ -42,13 +42,10 @@ type Message interface {
 	// Type returns the Type of the message. Type must be a known, valid type.
 	Type() Type
 
-	// Invalidates should return true if this message takes precedence over m.
-	Invalidates(m Message) bool
-
-	// Cache should return true if this Message should be cached into the local
-	// state. Messages in the local state will be synchronized with peers over
-	// time, and is useful for anti-entropy.
-	Cache() bool
+	// Name returns the name of the node this message is for. When queueing Messages
+	// for broadcast, newer messages immediately invalidate older messages with
+	// the same Name.
+	Name() string
 }
 
 // Encode encodes m into a byte slice that can be broadcast to other peers.

@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	otlptranslate "github.com/prometheus/otlptranslator"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,7 +33,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -514,8 +514,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	defer d.waitSimulatedLatency(ctx, tenantID, start)
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
 }
 
@@ -526,6 +524,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if err != nil {
 		return nil, err
 	}
+
+	start := time.Now()
+	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
@@ -579,13 +580,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var ingestionBlockedError error
 
 	func() {
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogKV("event", "start to validate request")
-			defer func() {
-				sp.LogKV("event", "finished to validate request")
-			}()
-		}
+		sp := trace.SpanFromContext(ctx)
+		sp.AddEvent("start to validate request")
+		defer sp.AddEvent("finished to validate request")
 
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
@@ -721,7 +718,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	var skipMetadataHashes map[uint64]struct{}
 	if d.cfg.IngestLimitsEnabled {
 		streamsAfterLimits, reasonsForHashes, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
 		if err != nil {
@@ -737,18 +733,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			level.Debug(d.logger).Log("msg", "request exceeded limits, some streams will be dropped", "tenant", tenantID)
 			if !d.cfg.IngestLimitsDryRunEnabled {
 				streams = streamsAfterLimits
-			}
-		}
-
-		if len(reasonsForHashes) > 0 && d.cfg.IngestLimitsDryRunEnabled {
-			// When IngestLimitsDryRunEnabled is true, we need to stop stream hashes
-			// that exceed the stream limit from being written to the metadata topic.
-			// If we don't do this, the stream hashes that should have been rejected
-			// will instead being counted as a known stream, causing a disagreement
-			// in metrics between the limits service and ingesters.
-			skipMetadataHashes = make(map[uint64]struct{})
-			for streamHash := range reasonsForHashes {
-				skipMetadataHashes[streamHash] = struct{}{}
 			}
 		}
 	}
@@ -791,7 +775,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, skipMetadataHashes, tenantID, &tracker, subring)
+		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -800,13 +784,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		ingesterDescs := map[string]ring.InstanceDesc{}
 
 		if err := func() error {
-			sp := opentracing.SpanFromContext(ctx)
-			if sp != nil {
-				sp.LogKV("event", "started to query ingesters ring")
-				defer func() {
-					sp.LogKV("event", "finished to query ingesters ring")
-				}()
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("started to query ingesters ring")
+			defer sp.AddEvent("finished to query ingesters ring")
 
 			for i, stream := range streams {
 				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
@@ -834,9 +814,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
 				// This is to make sure all ingesters get samples even if we return early
 				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				if sp := opentracing.SpanFromContext(ctx); sp != nil {
-					localCtx = opentracing.ContextWithSpan(localCtx, sp)
-				}
+				sp := trace.SpanFromContext(ctx)
+				localCtx = trace.ContextWithSpan(localCtx, sp)
+
 				select {
 				case <-ctx.Done():
 					cancel()
@@ -1226,10 +1206,10 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, skipMetadataHashes map[uint64]struct{}, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
-			err := d.sendStreamToKafka(ctx, s, skipMetadataHashes, tenant, subring)
+			err := d.sendStreamToKafka(ctx, s, tenant, subring)
 			if err != nil {
 				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
@@ -1238,7 +1218,7 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStr
 	}
 }
 
-func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, skipMetadataHashes map[uint64]struct{}, tenant string, subring *ring.PartitionRing) error {
+func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
@@ -1264,29 +1244,6 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 			"fail",
 		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
-	}
-
-	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-	if _, ok := skipMetadataHashes[stream.HashKeyNoShard]; !ok {
-		// However, unlike stream records, the distributor writes stream metadata
-		// records to one of a fixed number of partitions, the size of which is
-		// determined ahead of time. It does not use a ring. The reason for this
-		// is that we want to be able to scale components that consume metadata
-		// records independent of ingesters.
-		metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
-		metadata, err := kafka.EncodeStreamMetadata(
-			metadataPartitionID,
-			d.cfg.KafkaConfig.Topic,
-			tenant,
-			stream.HashKeyNoShard,
-			entriesSize,
-			structuredMetadataSize,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		records = append(records, metadata)
 	}
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
