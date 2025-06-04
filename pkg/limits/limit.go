@@ -28,7 +28,8 @@ type limitsChecker struct {
 	logger           log.Logger
 
 	// Metrics.
-	tenantIngestedBytesTotal *prometheus.CounterVec
+	tenantIngestedBytesTotal       *prometheus.CounterVec
+	streamInvalidPartitionAssigned *prometheus.CounterVec
 
 	// Used in tests.
 	clock quartz.Clock
@@ -46,6 +47,10 @@ func newLimitsChecker(limits Limits, store *usageStore, producer *producer, part
 			Name: "loki_ingest_limits_tenant_ingested_bytes_total",
 			Help: "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
+		streamInvalidPartitionAssigned: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingest_limits_stream_invalid_partition_assigned_total",
+			Help: "Total number of times a stream was assigned to a partition that is not owned by the instance.",
+		}, []string{"tenant"}),
 		clock: quartz.NewReal(),
 	}
 }
@@ -58,7 +63,7 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
 		if assigned := c.partitionManager.Has(partition); !assigned {
-			level.Warn(c.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
+			c.streamInvalidPartitionAssigned.WithLabelValues(req.Tenant).Inc()
 			continue
 		}
 
