@@ -23,6 +23,9 @@ func NewSampler(config SamplingConfig) *Sampler {
 
 // ShouldSample determines if a query from a tenant should be sampled
 func (s *Sampler) ShouldSample(tenantID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	rate := s.getSamplingRate(tenantID)
 	if rate <= 0 {
 		return false
@@ -31,12 +34,11 @@ func (s *Sampler) ShouldSample(tenantID string) bool {
 		return true
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return s.rng.Float64() < rate
 }
 
 // getSamplingRate returns the sampling rate for a tenant
+// Must be called with s.mu held
 func (s *Sampler) getSamplingRate(tenantID string) float64 {
 	if rate, ok := s.config.TenantRules[tenantID]; ok {
 		return rate
