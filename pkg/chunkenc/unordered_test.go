@@ -297,7 +297,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 }
 
 func TestHeadBlockInterop(t *testing.T) {
-	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil), &headBlock{}
+	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
 		metaLabels := labels.FromStrings("foo", fmt.Sprint(99-i))
@@ -326,29 +326,31 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Equal(t, ordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt, newSymbolizer())
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock with structured metadata
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
+	symbolizer := newSymbolizer()
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, symbolizer)
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
-		format: UnorderedWithStructuredMetadataHeadBlockFmt,
-		rt:     unordered.rt,
-		lines:  unordered.lines,
-		size:   unordered.size,
-		mint:   unordered.mint,
-		maxt:   unordered.maxt,
+		format:     UnorderedWithStructuredMetadataHeadBlockFmt,
+		rt:         unordered.rt,
+		lines:      unordered.lines,
+		size:       unordered.size,
+		mint:       unordered.mint,
+		maxt:       unordered.maxt,
+		symbolizer: symbolizer,
 	}, recovered)
 
 	// Ensure we can recover unordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, newSymbolizer())
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
 	// Ensure trying to recover unordered checkpoint into unordered with structured metadata keeps it in unordered format
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	require.NoError(t, err)
 	require.Equal(t, unordered, recovered)
 
@@ -754,7 +756,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
-		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
+		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()),
 		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
 		"ordered":                            &headBlock{},
 	} {

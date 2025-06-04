@@ -38,7 +38,7 @@ type symbols []symbol
 // symbols are actually index numbers assigned based on when the entry is seen for the first time.
 type symbolizer struct {
 	mtx            sync.RWMutex
-	symbolsMap     map[string]uint32
+	symbolsMap     map[string]uint32 // symbolsMap is only used on the write path for deduping symbol writes
 	labels         []string
 	size           int
 	compressedSize int
