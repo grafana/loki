@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -331,10 +332,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	disableCacheReq := false
-	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
-		disableCacheReq = true
-	}
+	disableCacheReq := strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal
 
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
@@ -1600,6 +1598,19 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			},
 			Headers: headers,
 		}, nil
+	case *QueryPatternsResponse:
+		resp0 := responses[0].(*QueryPatternsResponse)
+
+		logprotoResps := make([]*logproto.QueryPatternsResponse, 0, len(responses))
+		for _, r := range responses {
+			logprotoResps = append(logprotoResps, r.(*QueryPatternsResponse).Response)
+		}
+
+		mergedPatterns := pattern.MergePatternResponses(logprotoResps)
+		return &QueryPatternsResponse{
+			Response: &logproto.QueryPatternsResponse{Series: mergedPatterns.Series},
+			Headers:  resp0.Headers,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
@@ -1802,8 +1813,31 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsDetectedLabelsWrapper{
 			DetectedLabelsRequest: r,
 		}, nil
+	case *logproto.QueryPatternsRequest:
+    // We turn a QueryPatternsRequest into a LokiRequest when querying the store
+    // for persisted patterns, which we store as a specially crafted log line in the actual chunks. 
+    // We need to leverage the logic of the query engine to properly extract them correctly.
+		query, err := r.GetSampleQuery()
+		if err != nil {
+			return nil, err
+		}
+
+		expr, err := syntax.ParseExpr(query)
+		if err != nil {
+			return nil, err
+		}
+
+		return &paramsRangeWrapper{
+			LokiRequest: &LokiRequest{
+				Query:   expr.String(),
+				Step:    r.GetStep(),
+				StartTs: r.GetStart(),
+				EndTs:   r.GetEnd(),
+				Plan:    &plan.QueryPlan{AST: expr},
+			},
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, *QueryPatternsRequest got (%T)", r)
 	}
 }
 
