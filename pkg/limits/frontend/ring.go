@@ -114,7 +114,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// zones.
 	responses := make([]*proto.ExceedsLimitsResponse, 0)
 	for _, zone := range zonesToQuery {
-		resps, answered, err := g.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone])
+		resps, answered, err := g.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
 		if err != nil {
 			continue
 		}
@@ -139,14 +139,14 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	return responses, nil
 }
 
-func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
+func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
 	// For each stream, figure out which instance consume its partition.
 	instancesForStreams := make(map[string][]*proto.StreamMetadata)
 	for _, stream := range streams {
 		partition := int32(stream.StreamHash % uint64(g.numPartitions))
 		addr, ok := partitions[partition]
 		if !ok {
-			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partition)
+			level.Warn(g.logger).Log("msg", "no instance found for partition", "partition", partition, "zone", zone)
 			continue
 		}
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
