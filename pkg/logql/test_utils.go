@@ -118,7 +118,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	for _, stream := range in {
 		sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -147,23 +147,28 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 		for _, extractor := range ex {
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
-				if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
-					var s *logproto.Series
-					var found bool
-					s, found = resBySeries[lbs.String()]
-					if !found {
-						s = &logproto.Series{
-							Labels:     lbs.String(),
-							StreamHash: exs.BaseLabels().Hash(),
-						}
-						resBySeries[lbs.String()] = s
-					}
 
-					s.Samples = append(s.Samples, logproto.Sample{
-						Timestamp: e.Timestamp.UnixNano(),
-						Value:     f,
-						Hash:      xxhash.Sum64([]byte(e.Line)),
-					})
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
+					for _, sample := range samples {
+						lbs := sample.Labels
+						f := sample.Value
+						var s *logproto.Series
+						var found bool
+						s, found = resBySeries[lbs.String()]
+						if !found {
+							s = &logproto.Series{
+								Labels:     lbs.String(),
+								StreamHash: exs.BaseLabels().Hash(),
+							}
+							resBySeries[lbs.String()] = s
+						}
+
+						s.Samples = append(s.Samples, logproto.Sample{
+							Timestamp: e.Timestamp.UnixNano(),
+							Value:     f,
+							Hash:      xxhash.Sum64([]byte(e.Line)),
+						})
+					}
 				}
 			}
 		}

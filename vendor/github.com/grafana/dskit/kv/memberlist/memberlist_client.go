@@ -31,6 +31,7 @@ const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
 	notifyMsgQueueSize         = 1024        // size of buffered channels to handle memberlist messages
+	watchPrefixBufferSize      = 128         // size of buffered channel for the WatchPrefix function
 )
 
 // Client implements kv.Client interface, by using memberlist.KV
@@ -153,12 +154,13 @@ type KVConfig struct {
 	ClusterLabelVerificationDisabled bool   `yaml:"cluster_label_verification_disabled" category:"advanced"`
 
 	// List of members to join
-	JoinMembers      flagext.StringSlice `yaml:"join_members"`
-	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff" category:"advanced"`
-	MaxJoinBackoff   time.Duration       `yaml:"max_join_backoff" category:"advanced"`
-	MaxJoinRetries   int                 `yaml:"max_join_retries" category:"advanced"`
-	AbortIfJoinFails bool                `yaml:"abort_if_cluster_join_fails"`
-	RejoinInterval   time.Duration       `yaml:"rejoin_interval" category:"advanced"`
+	JoinMembers          flagext.StringSlice `yaml:"join_members"`
+	MinJoinBackoff       time.Duration       `yaml:"min_join_backoff" category:"advanced"`
+	MaxJoinBackoff       time.Duration       `yaml:"max_join_backoff" category:"advanced"`
+	MaxJoinRetries       int                 `yaml:"max_join_retries" category:"advanced"`
+	AbortIfFastJoinFails bool                `yaml:"abort_if_cluster_fast_join_fails" category:"advanced"`
+	AbortIfJoinFails     bool                `yaml:"abort_if_cluster_join_fails"`
+	RejoinInterval       time.Duration       `yaml:"rejoin_interval" category:"advanced"`
 
 	// Remove LEFT ingesters from ring after this timeout.
 	LeftIngestersTimeout   time.Duration `yaml:"left_ingesters_timeout" category:"advanced"`
@@ -171,12 +173,22 @@ type KVConfig struct {
 	// How much space to use to keep received and sent messages in memory (for troubleshooting).
 	MessageHistoryBufferBytes int `yaml:"message_history_buffer_bytes" category:"advanced"`
 
+	// Size of the buffer for key watchers.
+	WatchPrefixBufferSize int `yaml:"watch_prefix_buffer_size" category:"advanced"`
+
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
 	MetricsNamespace string `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
 	Codecs []codec.Codec `yaml:"-"`
+
+	// The backoff configuration used by retries when discovering memberlist members via DNS.
+	// This useful to override it in tests.
+	discoverMembersBackoff backoff.Config `yaml:"-"`
+
+	// Hooks used for testing.
+	beforeJoinMembersOnStartupHook func(_ context.Context)
 }
 
 // RegisterFlagsWithPrefix registers flags.
@@ -192,7 +204,8 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
 	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
-	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", cfg.AbortIfJoinFails, "If this node fails to join memberlist cluster, abort.")
+	f.BoolVar(&cfg.AbortIfFastJoinFails, prefix+"memberlist.abort-if-fast-join-fails", false, "Abort if this node fails the fast memberlist cluster joining procedure at startup. When enabled, it's guaranteed that other services, depending on memberlist, have an updated view over the cluster state when they're started.")
+	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", cfg.AbortIfJoinFails, "Abort if this node fails to join memberlist cluster at startup. When enabled, it's not guaranteed that other services are started only after the cluster state has been successfully updated; use 'abort-if-fast-join-fails' instead.")
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
 	f.DurationVar(&cfg.ObsoleteEntriesTimeout, prefix+"memberlist.obsolete-entries-timeout", mlDefaults.PushPullInterval, "How long to keep obsolete entries in the KV store.")
@@ -210,8 +223,15 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.ClusterLabel, prefix+"memberlist.cluster-label", mlDefaults.Label, "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.")
 	f.BoolVar(&cfg.ClusterLabelVerificationDisabled, prefix+"memberlist.cluster-label-verification-disabled", mlDefaults.SkipInboundLabelCheck, "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.")
 	f.DurationVar(&cfg.BroadcastTimeoutForLocalUpdatesOnShutdown, prefix+"memberlist.broadcast-timeout-for-local-updates-on-shutdown", 10*time.Second, "Timeout for broadcasting all remaining locally-generated updates to other nodes when shutting down. Only used if there are nodes left in the memberlist cluster, and only applies to locally-generated updates, not to broadcast messages that are result of incoming gossip updates. 0 = no timeout, wait until all locally-generated updates are sent.")
+	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
+
+	cfg.discoverMembersBackoff = backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 5 * time.Second,
+		MaxRetries: 10,
+	}
 }
 
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
@@ -298,6 +318,7 @@ type KV struct {
 	casFailures                         prometheus.Counter
 	casSuccesses                        prometheus.Counter
 	watchPrefixDroppedNotifications     *prometheus.CounterVec
+	numberOfKeyNotifications            prometheus.Gauge
 
 	storeValuesDesc        *prometheus.Desc
 	storeTombstones        *prometheus.GaugeVec
@@ -496,7 +517,13 @@ func (m *KV) starting(ctx context.Context) error {
 
 	// Try to fast-join memberlist cluster in Starting state, so that we don't start with empty KV store.
 	if len(m.cfg.JoinMembers) > 0 {
-		m.fastJoinMembersOnStartup(ctx)
+		if err := m.fastJoinMembersOnStartup(ctx); err != nil {
+			level.Error(m.logger).Log("msg", "failed to fast-join the memberlist cluster at startup", "err", err)
+
+			if m.cfg.AbortIfFastJoinFails {
+				return fmt.Errorf("failed to fast-join the memberlist cluster at startup: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -505,16 +532,19 @@ func (m *KV) starting(ctx context.Context) error {
 var errFailedToJoinCluster = errors.New("failed to join memberlist cluster on startup")
 
 func (m *KV) running(ctx context.Context) error {
-	ok := m.joinMembersOnStartup(ctx)
-	if !ok && m.cfg.AbortIfJoinFails {
-		return errFailedToJoinCluster
-	}
-
+	// The key notifications goroutine must be started as the very first thing, otherwise watch key notifications
+	// will be delayed. In particular, it must be started before the memberlist cluster full-join procedure (below)
+	// because it may take a long time to complete.
 	if m.cfg.NotifyInterval > 0 {
 		// Start delayed key notifications.
 		notifTicker := time.NewTicker(m.cfg.NotifyInterval)
 		defer notifTicker.Stop()
 		go m.monitorKeyNotifications(ctx, notifTicker.C)
+	}
+
+	ok := m.joinMembersOnStartup(ctx)
+	if !ok && m.cfg.AbortIfJoinFails {
+		return errFailedToJoinCluster
 	}
 
 	var tickerChan <-chan time.Time
@@ -549,7 +579,7 @@ func (m *KV) running(ctx context.Context) error {
 		case <-obsoleteEntriesTickerChan:
 			// cleanupObsoleteEntries is normally called during push/pull, but if there are no other
 			// nodes to push/pull with, we can call it periodically to make sure we remove unused entries from memory.
-			level.Info(m.logger).Log("msg", "initiating cleanup of obsolete entries")
+			level.Debug(m.logger).Log("msg", "initiating cleanup of obsolete entries")
 			m.cleanupObsoleteEntries()
 
 		case <-ctx.Done():
@@ -580,10 +610,15 @@ func (m *KV) JoinMembers(members []string) (int, error) {
 }
 
 // fastJoinMembersOnStartup attempts to reach small subset of nodes (computed as RetransmitMult * log10(number of discovered members + 1)).
-func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
+func (m *KV) fastJoinMembersOnStartup(ctx context.Context) error {
 	startTime := time.Now()
 
-	nodes := m.discoverMembers(ctx, m.cfg.JoinMembers)
+	nodes, err := m.discoverMembersWithRetries(ctx, m.cfg.JoinMembers)
+	if err != nil && len(nodes) == 0 {
+		return err
+	}
+
+	// Shuffle the node addresses to randomize the ones picked for the fast join.
 	math_rand.Shuffle(len(nodes), func(i, j int) {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
@@ -606,18 +641,24 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 		nodes = nodes[1:]
 	}
 
-	l := level.Info(m.logger)
-	// Warn, if we didn't join any node.
 	if totalJoined == 0 {
-		l = level.Warn(m.logger)
+		level.Warn(m.logger).Log("msg", "memberlist fast-join failed because no node has been successfully reached", "elapsed_time", time.Since(startTime))
+		return fmt.Errorf("no memberlist node reached during fast-join procedure")
 	}
-	l.Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
+
+	level.Info(m.logger).Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
+	return nil
 }
 
 // The joinMembersOnStartup method resolves the addresses of the given join_members hosts and asks memberlist to join to them.
 // This method cannot be called before KV.running state as it may wait for K8S DNS to resolve the service addresses of members
 // running this very method. Which means the service needs to be READY for K8S to add it to DNS.
 func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
+	// Trigger a hook used for testing.
+	if m.cfg.beforeJoinMembersOnStartupHook != nil {
+		m.cfg.beforeJoinMembersOnStartupHook(ctx)
+	}
+
 	if len(m.cfg.JoinMembers) == 0 {
 		return true
 	}
@@ -682,7 +723,10 @@ func (m *KV) joinMembersInBatches(ctx context.Context) (int, error) {
 		// Rediscover nodes and try to join a subset of them with each batch.
 		// When the list of nodes is large by the time we reach the end of the list some of the
 		// IPs can be unreachable.
-		newlyResolved := m.discoverMembers(ctx, m.cfg.JoinMembers)
+		//
+		// Ignores any DNS resolution error because it's not really actionable in this
+		// context.
+		newlyResolved, _ := m.discoverMembersWithRetries(ctx, m.cfg.JoinMembers)
 		if len(newlyResolved) > 0 {
 			// If the resolution fails we keep using the nodes list from the last resolution.
 			// If that failed too, then we fail the join attempt.
@@ -740,10 +784,11 @@ func (m *KV) joinMembersBatch(ctx context.Context, nodes []string) (successfully
 	return successfullyJoined, lastErr
 }
 
-// Provides a dns-based member disovery to join a memberlist cluster w/o knowning members' addresses upfront.
-func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
+// Provides a dns-based member discovery to join a memberlist cluster w/o knowning members' addresses upfront.
+// May both return some addresses and an error in case of a partial resolution.
+func (m *KV) discoverMembers(ctx context.Context, members []string) ([]string, error) {
 	if len(members) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var ms, resolve []string
@@ -759,12 +804,34 @@ func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
 
 	err := m.provider.Resolve(ctx, resolve)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","), "err", err)
+		level.Warn(m.logger).Log("msg", "failed to resolve members", "addrs", strings.Join(resolve, ","), "err", err)
 	}
 
 	ms = append(ms, m.provider.Addresses()...)
 
-	return ms
+	return ms, err
+}
+
+// Like discoverMembers() but retries (up to 10 times) on error.
+func (m *KV) discoverMembersWithRetries(ctx context.Context, members []string) ([]string, error) {
+	boff := backoff.New(ctx, m.cfg.discoverMembersBackoff)
+
+	var (
+		lastErr   error
+		lastAddrs []string
+	)
+
+	for boff.Ongoing() {
+		lastAddrs, lastErr = m.discoverMembers(ctx, members)
+		if lastErr == nil {
+			return lastAddrs, nil
+		}
+
+		boff.Wait()
+	}
+
+	// We may have both some addresses and error, in case of a partial resolution.
+	return lastAddrs, lastErr
 }
 
 // While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.
@@ -896,7 +963,7 @@ func (m *KV) WatchKey(ctx context.Context, key string, codec codec.Codec, f func
 // Watching ends when 'f' returns false, context is done, or this client is shut down.
 func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, f func(string, interface{}) bool) {
 	// we use bigger buffer here, since keys are interesting and we don't want to lose them.
-	w := make(chan string, 16)
+	w := make(chan string, m.cfg.WatchPrefixBufferSize)
 
 	// register watcher
 	m.watchersMu.Lock()
@@ -991,6 +1058,7 @@ func (m *KV) sendKeyNotifications() {
 			return nil
 		}
 		newMap := make(map[string]struct{})
+		m.numberOfKeyNotifications.Set(float64(len(m.keyNotifications)))
 		notifs := m.keyNotifications
 		m.keyNotifications = newMap
 		return notifs

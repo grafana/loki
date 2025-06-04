@@ -5,14 +5,17 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/tracing"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -37,6 +40,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
+
+var tracer = otel.Tracer("pkg/logql")
 
 const (
 	DefaultBlockedQueryMessage = "blocked by policy"
@@ -158,12 +163,16 @@ type EngineOpts struct {
 
 	// Enable the next generation Loki Query Engine for supported queries.
 	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
+
+	// Batch size of the v2 execution engine.
+	BatchSize int `yaml:"batch_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -241,16 +250,16 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "query.Exec")
+	defer sp.End()
 
-	sp.LogKV(
-		"type", GetRangeType(q.params),
-		"query", q.params.QueryString(),
-		"start", q.params.Start(),
-		"end", q.params.End(),
-		"step", q.params.Step(),
-		"length", q.params.End().Sub(q.params.Start()),
+	sp.SetAttributes(
+		attribute.String("type", string(GetRangeType(q.params))),
+		attribute.String("query", q.params.QueryString()),
+		attribute.String("start", q.params.Start().String()),
+		attribute.String("end", q.params.End().String()),
+		attribute.String("step", q.params.Step().String()),
+		attribute.String("length", q.params.End().Sub(q.params.Start()).String()),
 	)
 
 	if q.logExecQuery {
@@ -286,7 +295,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	sp.LogKV(statResult.KVList()...)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
 
@@ -453,6 +462,62 @@ func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
 	}
 }
 
+func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.Vector, sm map[string]map[uint64]promql.Series, skippedVariants map[string]struct{}) int {
+	count := 0
+	metadataCtx := metadata.FromContext(ctx)
+
+	for _, p := range vec {
+		var (
+			series promql.Series
+			hash   = p.Metric.Hash()
+			ok     bool
+		)
+
+		if !p.Metric.Has(constants.VariantLabel) {
+			continue
+		}
+
+		variantLabel := p.Metric.Get(constants.VariantLabel)
+
+		if _, ok = skippedVariants[variantLabel]; ok {
+			continue
+		}
+
+		if _, ok = sm[variantLabel]; !ok {
+			variant := make(map[uint64]promql.Series)
+			sm[variantLabel] = variant
+		}
+
+		if len(sm[variantLabel]) >= maxSeries {
+			skippedVariants[variantLabel] = struct{}{}
+			// This can cause count to be negative, as we may be removing series added in a previous iteration
+			// However, since we sum this value across all iterations, a negative will make sure the total series count is correct
+			count = count - len(sm[variantLabel])
+			delete(sm, variantLabel)
+			metadataCtx.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", maxSeries, variantLabel))
+			continue
+		}
+
+		series, ok = sm[variantLabel][hash]
+		if !ok {
+			series = promql.Series{
+				Metric: p.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+			sm[variantLabel][hash] = series
+			count++
+		}
+
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: p.T,
+			F: p.F,
+		})
+		sm[variantLabel][hash] = series
+	}
+
+	return count
+}
+
 func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
@@ -509,6 +574,78 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
+}
+
+func (q *query) JoinMultiVariantSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
+	}
+
+	seriesIndex := map[string]map[uint64]promql.Series{}
+	// Track variants that exceed the limit across all steps
+	// use a map for faster lookup
+	skippedVariants := map[string]struct{}{}
+
+	if GetRangeType(q.params) == InstantType {
+		multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
+
+		// Filter the vector to remove skipped variants
+		filterVariantVector(&vec, skippedVariants)
+
+		// an instant query sharded first/last_over_time can return a single vector
+		sortByValue, err := Sortable(q.params)
+		if err != nil {
+			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
+		}
+		if !sortByValue {
+			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
+		}
+		return vec, nil
+	}
+
+	seriesCount := 0
+	for next {
+		vec = r.SampleVector()
+		// Filter out any samples from variants we've already skipped
+		filterVariantVector(&vec, skippedVariants)
+		seriesCount += multiVariantVectorsToSeries(ctx, maxSeries, vec, seriesIndex, skippedVariants)
+
+		next, _, r = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+	series := make([]promql.Series, 0, seriesCount)
+	for _, ss := range seriesIndex {
+		for _, s := range ss {
+			series = append(series, s)
+		}
+	}
+	result := promql.Matrix(series)
+	sort.Sort(result)
+
+	return result, stepEvaluator.Error()
+}
+
+// filterVariantVector removes samples from the vector that belong to skipped variants
+func filterVariantVector(vec *promql.Vector, skipped map[string]struct{}) {
+	if len(skipped) == 0 {
+		return
+	}
+
+	// Filter the vector
+	for i := 0; i < len(*vec); i++ {
+		sample := (*vec)[i]
+		if sample.Metric.Has(constants.VariantLabel) {
+			variant := sample.Metric.Get(constants.VariantLabel)
+			if _, shouldSkip := skipped[variant]; shouldSkip {
+				*vec = slices.Delete(*vec, i, i+1)
+				i-- // Adjust the index since we removed an item
+			}
+		}
+	}
 }
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
@@ -687,12 +824,7 @@ func (q *query) evalVariants(
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			// TDOO(twhitney): what is merge first last for?
-			mfl := false
-			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
-			// 	mfl = true
-			// }
-			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+			return q.JoinMultiVariantSampleVector(ctx, next, vec, stepEvaluator, maxSeries)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}

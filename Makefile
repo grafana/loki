@@ -18,7 +18,7 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.24.1
+GO_VERSION         := 1.24.2
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
 BUILD_IMAGE_TAG    := 0.34.6
 
@@ -373,7 +373,19 @@ else
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
-	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+	faillint -paths \
+		"sync/atomic=go.uber.org/atomic" \
+		./...
+
+	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
+	faillint -paths \
+		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
+		./...
+
+	# We don't use opentracing anymore.
+	faillint -paths \
+		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
+		./...
 endif
 
 ########
@@ -847,3 +859,12 @@ else
 	@echo "Checking diff"
 	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif
+
+.PHONY: update-loki-release-sha
+update-loki-release-sha:
+	@echo "Updating loki-release SHA in .github/jsonnetfile.json"
+	@NEW_SHA=$$(curl -s https://api.github.com/repos/grafana/loki-release/commits/main | jq -r .sha); \
+	jq --arg new_sha "$$NEW_SHA" '.dependencies[] |= if .source.git.remote == "https://github.com/grafana/loki-release.git" then .version = $$new_sha else . end' .github/jsonnetfile.json > .github/jsonnetfile.json.tmp && \
+	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
+	@echo "Updated successfully"
+	@$(MAKE) release-workflows

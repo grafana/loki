@@ -87,7 +87,7 @@ func (d *QuotaFilterComponent) encode(pe packetEncoder) error {
 			return err
 		}
 	} else if d.MatchType == QuotaMatchDefault {
-		if err := pe.putString(""); err != nil {
+		if err := pe.putNullableString(nil); err != nil {
 			return err
 		}
 	} else {

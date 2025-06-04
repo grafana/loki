@@ -7,15 +7,18 @@ import (
 	"net/http"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
+
+var tracer = otel.Tracer("pkg/querier/queryrange")
 
 var (
 	jsonStd   = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -43,7 +46,6 @@ func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) 
 
 // encode encodes a Prometheus response and injects Loki stats.
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
-	sp := opentracing.SpanFromContext(ctx)
 	var buf bytes.Buffer
 
 	err := p.encodeTo(&buf)
@@ -51,9 +53,7 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		return nil, err
 	}
 
-	if sp != nil {
-		sp.LogFields(otlog.Int("bytes", buf.Len()))
-	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("bytes", buf.Len()))
 
 	resp := http.Response{
 		Header: http.Header{

@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -16,8 +16,8 @@ import (
 )
 
 func encodeResponseParquet(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "codec.EncodeResponse")
+	defer sp.End()
 
 	var buf bytes.Buffer
 
@@ -92,9 +92,9 @@ func encodeLogsParquetTo(response *LokiResponse, w io.Writer) error {
 			return err
 		}
 		lblsMap := make(map[string]string)
-		for _, keyValue := range lbls {
-			lblsMap[keyValue.Name] = keyValue.Value
-		}
+		lbls.Range(func(lbl labels.Label) {
+			lblsMap[lbl.Name] = lbl.Value
+		})
 
 		for _, entry := range stream.Entries {
 			row := LogStreamRowType{

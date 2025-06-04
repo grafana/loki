@@ -24,18 +24,24 @@ func (cfg *ClusterValidationConfig) RegisteredFlags() flagext.RegisteredFlags {
 
 type ServerClusterValidationConfig struct {
 	ClusterValidationConfig `yaml:",inline"`
-	GRPC                    ClusterValidationProtocolConfig `yaml:"grpc" category:"experimental"`
-	registeredFlags         flagext.RegisteredFlags         `yaml:"-"`
+	GRPC                    ClusterValidationProtocolConfig                  `yaml:"grpc" category:"experimental"`
+	HTTP                    ClusterValidationProtocolWithExcludedPathsConfig `yaml:"http" category:"experimental"`
+	registeredFlags         flagext.RegisteredFlags                          `yaml:"-"`
 }
 
 func (cfg *ServerClusterValidationConfig) Validate() error {
-	return cfg.GRPC.Validate("grpc", cfg.Label)
+	err := cfg.GRPC.Validate("grpc", cfg.Label)
+	if err != nil {
+		return err
+	}
+	return cfg.HTTP.Validate("http", cfg.Label)
 }
 
 func (cfg *ServerClusterValidationConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.registeredFlags = flagext.TrackRegisteredFlags(prefix, f, func(prefix string, f *flag.FlagSet) {
 		cfg.ClusterValidationConfig.RegisterFlagsWithPrefix(prefix, f)
 		cfg.GRPC.RegisterFlagsWithPrefix(prefix+"grpc.", f)
+		cfg.HTTP.RegisterFlagsWithPrefix(prefix+"http.", f)
 	})
 }
 
@@ -67,4 +73,14 @@ func (cfg *ClusterValidationProtocolConfig) RegisterFlagsWithPrefix(prefix strin
 	enabledFlag := prefix + "enabled"
 	f.BoolVar(&cfg.SoftValidation, softValidationFlag, false, fmt.Sprintf("When enabled, soft cluster label validation is executed. Can be enabled only together with %s", enabledFlag))
 	f.BoolVar(&cfg.Enabled, enabledFlag, false, "When enabled, cluster label validation is executed: configured cluster validation label is compared with the cluster validation label received through the requests.")
+}
+
+type ClusterValidationProtocolWithExcludedPathsConfig struct {
+	ClusterValidationProtocolConfig `yaml:",inline"`
+	ExcludedPaths                   flagext.StringSliceCSV `yaml:"excluded_paths" category:"experimental"`
+}
+
+func (cfg *ClusterValidationProtocolWithExcludedPathsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.ClusterValidationProtocolConfig.RegisterFlagsWithPrefix(prefix, f)
+	f.Var(&cfg.ExcludedPaths, prefix+"excluded-paths", "Comma-separated list of url paths that are excluded from the cluster validation check.")
 }

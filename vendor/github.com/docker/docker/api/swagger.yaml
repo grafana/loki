@@ -19,10 +19,10 @@ produces:
 consumes:
   - "application/json"
   - "text/plain"
-basePath: "/v1.48"
+basePath: "/v1.50"
 info:
   title: "Docker Engine API"
-  version: "1.48"
+  version: "1.50"
   x-logo:
     url: "https://docs.docker.com/assets/images/logo-docker-main.png"
   description: |
@@ -55,8 +55,8 @@ info:
     the URL is not supported by the daemon, a HTTP `400 Bad Request` error message
     is returned.
 
-    If you omit the version-prefix, the current version of the API (v1.48) is used.
-    For example, calling `/info` is the same as calling `/v1.48/info`. Using the
+    If you omit the version-prefix, the current version of the API (v1.50) is used.
+    For example, calling `/info` is the same as calling `/v1.50/info`. Using the
     API without a version-prefix is deprecated and will be removed in a future release.
 
     Engine releases in the near future should support this version of the API,
@@ -1428,63 +1428,10 @@ definitions:
       when starting a container from the image.
     type: "object"
     properties:
-      Hostname:
-        description: |
-          The hostname to use for the container, as a valid RFC 1123 hostname.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.48.
-        type: "string"
-        example: ""
-      Domainname:
-        description: |
-          The domain name to use for the container.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.48.
-        type: "string"
-        example: ""
       User:
         description: "The user that commands are run as inside the container."
         type: "string"
         example: "web:web"
-      AttachStdin:
-        description: |
-          Whether to attach to `stdin`.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
-      AttachStdout:
-        description: |
-          Whether to attach to `stdout`.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
-      AttachStderr:
-        description: |
-          Whether to attach to `stderr`.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
       ExposedPorts:
         description: |
           An object mapping ports to an empty object in the form:
@@ -1501,39 +1448,6 @@ definitions:
           "80/tcp": {},
           "443/tcp": {}
         }
-      Tty:
-        description: |
-          Attach standard streams to a TTY, including `stdin` if it is not closed.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
-      OpenStdin:
-        description: |
-          Open `stdin`
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
-      StdinOnce:
-        description: |
-          Close `stdin` after one attached client disconnects.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
       Env:
         description: |
           A list of environment variables to set inside the container in the
@@ -1559,18 +1473,6 @@ definitions:
         default: false
         example: false
         x-nullable: true
-      Image:
-        description: |
-          The name (or reference) of the image to use when creating the container,
-          or which was used when the container was created.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.48.
-        type: "string"
-        default: ""
-        example: ""
       Volumes:
         description: |
           An object mapping mount point paths inside the container to empty
@@ -1599,30 +1501,6 @@ definitions:
         items:
           type: "string"
         example: []
-      NetworkDisabled:
-        description: |
-          Disable networking for the container.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.48.
-        type: "boolean"
-        default: false
-        example: false
-        x-nullable: true
-      MacAddress:
-        description: |
-          MAC address of the container.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.48.
-        type: "string"
-        default: ""
-        example: ""
-        x-nullable: true
       OnBuild:
         description: |
           `ONBUILD` metadata that were defined in the image's `Dockerfile`.
@@ -1645,17 +1523,6 @@ definitions:
         type: "string"
         example: "SIGTERM"
         x-nullable: true
-      StopTimeout:
-        description: |
-          Timeout to stop a container in seconds.
-
-          <p><br /></p>
-
-          > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.48.
-        type: "integer"
-        default: 10
-        x-nullable: true
       Shell:
         description: |
           Shell for when `RUN`, `CMD`, and `ENTRYPOINT` uses a shell.
@@ -1666,19 +1533,11 @@ definitions:
         example: ["/bin/sh", "-c"]
     # FIXME(thaJeztah): temporarily using a full example to remove some "omitempty" fields. Remove once the fields are removed.
     example:
-      "Hostname": ""
-      "Domainname": ""
       "User": "web:web"
-      "AttachStdin": false
-      "AttachStdout": false
-      "AttachStderr": false
       "ExposedPorts": {
         "80/tcp": {},
         "443/tcp": {}
       }
-      "Tty": false
-      "OpenStdin": false
-      "StdinOnce": false
       "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"]
       "Cmd": ["/bin/sh"]
       "Healthcheck": {
@@ -1690,7 +1549,6 @@ definitions:
         "StartInterval": 0
       }
       "ArgsEscaped": true
-      "Image": ""
       "Volumes": {
         "/app/data": {},
         "/app/config": {}
@@ -2955,6 +2813,23 @@ definitions:
           > **Deprecated**: This field is deprecated since API v1.8, and will be omitted in a future API version. Use the information in progressDetail instead.
       progressDetail:
         $ref: "#/definitions/ProgressDetail"
+
+  DeviceInfo:
+    type: "object"
+    description: |
+      DeviceInfo represents a device that can be used by a container.
+    properties:
+      Source:
+        type: "string"
+        example: "cdi"
+        description: |
+          The origin device driver.
+      ID:
+        type: "string"
+        example: "vendor.com/gpu=0"
+        description: |
+          The unique identifier for the device within its source driver.
+          For CDI devices, this would be an FQDN like "vendor.com/gpu=0".
 
   ErrorDetail:
     type: "object"
@@ -6856,6 +6731,17 @@ definitions:
               description: "The network pool size"
               type: "integer"
               example: "24"
+      FirewallBackend:
+        $ref: "#/definitions/FirewallInfo"
+      DiscoveredDevices:
+        description: |
+          List of devices discovered by device drivers.
+
+          Each device includes information about its source driver, kind, name,
+          and additional driver-specific attributes.
+        type: "array"
+        items:
+          $ref: "#/definitions/DeviceInfo"
       Warnings:
         description: |
           List of warnings / informational messages about missing features, or
@@ -6939,6 +6825,37 @@ definitions:
             default: "plugins.moby"
             example: "plugins.moby"
 
+  FirewallInfo:
+    description: |
+      Information about the daemon's firewalling configuration.
+
+      This field is currently only used on Linux, and omitted on other platforms.
+    type: "object"
+    x-nullable: true
+    properties:
+      Driver:
+        description: |
+          The name of the firewall backend driver.
+        type: "string"
+        example: "nftables"
+      Info:
+        description: |
+          Information about the firewall backend, provided as
+          "label" / "value" pairs.
+
+          <p><br /></p>
+
+          > **Note**: The information returned in this field, including the
+          > formatting of values and labels, should not be considered stable,
+          > and may change without notice.
+        type: "array"
+        items:
+          type: "array"
+          items:
+            type: "string"
+        example:
+          - ["ReloadedAt", "2025-01-01T00:00:00Z"]
+
   # PluginsInfo is a temp struct holding Plugins name
   # registered with docker daemon. It is used by Info struct
   PluginsInfo:
@@ -6984,32 +6901,6 @@ definitions:
     type: "object"
     x-nullable: true
     properties:
-      AllowNondistributableArtifactsCIDRs:
-        description: |
-          List of IP ranges to which nondistributable artifacts can be pushed,
-          using the CIDR syntax [RFC 4632](https://tools.ietf.org/html/4632).
-
-          <p><br /></p>
-
-          > **Deprecated**: Pushing nondistributable artifacts is now always enabled
-          > and this field is always `null`. This field will be removed in a API v1.49.
-        type: "array"
-        items:
-          type: "string"
-        example: []
-      AllowNondistributableArtifactsHostnames:
-        description: |
-          List of registry hostnames to which nondistributable artifacts can be
-          pushed, using the format `<hostname>[:<port>]` or `<IP address>[:<port>]`.
-
-          <p><br /></p>
-
-          > **Deprecated**: Pushing nondistributable artifacts is now always enabled
-          > and this field is always `null`. This field will be removed in a API v1.49.
-        type: "array"
-        items:
-          type: "string"
-        example: []
       InsecureRegistryCIDRs:
         description: |
           List of IP ranges of insecure registries, using the CIDR syntax
@@ -7179,13 +7070,6 @@ definitions:
         description: "Actual commit ID of external tool."
         type: "string"
         example: "cfb82a876ecc11b5ca0977d1733adbe58599088a"
-      Expected:
-        description: |
-          Commit ID of external tool expected by dockerd as set at build time.
-
-          **Deprecated**: This field is deprecated and will be omitted in a API v1.49.
-        type: "string"
-        example: "2d41c047c83e09a6d61d464906feb2a2f3c52aa4"
 
   SwarmInfo:
     description: |
@@ -9934,6 +9818,18 @@ paths:
           description: "Do not delete untagged parent images"
           type: "boolean"
           default: false
+        - name: "platforms"
+          in: "query"
+          description: |
+            Select platform-specific content to delete.
+            Multiple values are accepted.
+            Each platform is a OCI platform encoded as a JSON string.
+          type: "array"
+          items:
+            # This should be OCIPlatform
+            # but $ref is not supported for array in query in Swagger 2.0
+            # $ref: "#/definitions/OCIPlatform"
+            type: "string"
       tags: ["Image"]
   /images/search:
     get:
@@ -10491,13 +10387,9 @@ paths:
 
         ### Image tarball format
 
-        An image tarball contains one directory per image layer (named using its long ID), each containing these files:
+        An image tarball contains [Content as defined in the OCI Image Layout Specification](https://github.com/opencontainers/image-spec/blob/v1.1.1/image-layout.md#content).
 
-        - `VERSION`: currently `1.0` - the file format version
-        - `json`: detailed layer information, similar to `docker inspect layer_id`
-        - `layer.tar`: A tarfile containing the filesystem changes in this layer
-
-        The `layer.tar` file contains `aufs` style `.wh..wh.aufs` files and directories for storing attribute changes and deletions.
+        Additionally, includes the manifest.json file associated with a backwards compatible docker save format.
 
         If the tarball defines a repository, the tarball should also include a `repositories` file at the root that contains a list of repository and tag names mapped to layer IDs.
 
@@ -10537,6 +10429,7 @@ paths:
             If not provided, the full multi-platform image will be saved.
 
             Example: `{"os": "linux", "architecture": "arm", "variant": "v5"}`
+      tags: ["Image"]
   /images/get:
     get:
       summary: "Export several images"
@@ -10571,6 +10464,16 @@ paths:
           type: "array"
           items:
             type: "string"
+        - name: "platform"
+          type: "string"
+          in: "query"
+          description: |
+            JSON encoded OCI platform describing a platform which will be used
+            to select a platform-specific image to be saved if the image is
+            multi-platform.
+            If not provided, the full multi-platform image will be saved.
+
+            Example: `{"os": "linux", "architecture": "arm", "variant": "v5"}`
       tags: ["Image"]
   /images/load:
     post:

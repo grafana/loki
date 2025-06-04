@@ -110,6 +110,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [server: <server>]
 
 ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
   [node_name: <string> | default = "<hostname>"]
@@ -744,17 +748,9 @@ compactor_grpc_client:
 [memberlist: <memberlist>]
 
 kafka_config:
-  # The Kafka backend address.
-  # CLI flag: -kafka.address
-  [address: <string> | default = "localhost:9092"]
-
   # The Kafka topic name.
   # CLI flag: -kafka.topic
   [topic: <string> | default = ""]
-
-  # The Kafka client ID.
-  # CLI flag: -kafka.client-id
-  [client_id: <string> | default = ""]
 
   # The maximum time allowed to open a connection to a Kafka broker.
   # CLI flag: -kafka.dial-timeout
@@ -764,6 +760,24 @@ kafka_config:
   # to the Kafka backend.
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
+
+  reader_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.reader.address
+    [address: <string> | default = ""]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.reader.client-id
+    [client_id: <string> | default = ""]
+
+  writer_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.writer.address
+    [address: <string> | default = ""]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.writer.client-id
+    [client_id: <string> | default = ""]
 
   # The SASL username for authentication to Kafka using the PLAIN mechanism.
   # Both username and password must be set.
@@ -826,6 +840,15 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # The maximum number of workers to use for processing records from Kafka.
+  # CLI flag: -kafka.max-consumer-workers
+  [max_consumer_workers: <int> | default = 1]
+
+  # Enable collection of the following kafka latency histograms: read-wait,
+  # read-timing, write-wait, write-timing
+  # CLI flag: -kafka.enable-kafka-histograms
+  [enable_kafka_histograms: <boolean> | default = false]
+
 dataobj:
   consumer:
     builderconfig:
@@ -884,19 +907,30 @@ ingest_limits:
   # CLI flag: -ingest-limits.enabled
   [enabled: <boolean> | default = false]
 
-  # The time window for which stream metadata is considered active.
-  # CLI flag: -ingest-limits.window-size
-  [window_size: <duration> | default = 1h]
+  # The duration for which which streams are considered active. Streams that
+  # have not been updated within this window are considered inactive and not
+  # counted towards limits.
+  # CLI flag: -ingest-limits.active-window
+  [active_window: <duration> | default = 2h]
 
   # The time window for rate calculation. This should match the window used in
   # Prometheus rate() queries for consistency.
   # CLI flag: -ingest-limits.rate-window
   [rate_window: <duration> | default = 5m]
 
-  # The granularity of time buckets used for sliding window rate calculation.
-  # Smaller buckets provide more precise rate tracking but require more memory.
-  # CLI flag: -ingest-limits.bucket-duration
-  [bucket_duration: <duration> | default = 1m]
+  # The size of the buckets used to calculate stream rates. Smaller buckets
+  # provide more precise rates but require more memory.
+  # CLI flag: -ingest-limits.bucket-size
+  [bucket_size: <duration> | default = 1m]
+
+  # The interval at which old streams are evicted.
+  # CLI flag: -ingest-limits.eviction-interval
+  [eviction_interval: <duration> | default = 10m]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
 
   lifecycler:
     ring:
@@ -1035,10 +1069,14 @@ ingest_limits:
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
-  # The number of partitions for the Kafka topic used to read and write stream
-  # metadata. It is fixed, not a maximum.
-  # CLI flag: -ingest-limits.num-partitions
-  [num_partitions: <int> | default = 64]
+  # The consumer group for the Kafka topic used to read stream metadata records.
+  # CLI flag: -ingest-limits.consumer-group
+  [consumer_group: <string> | default = "ingest-limits"]
+
+  # The topic for the Kafka topic used to read and write stream metadata
+  # records.
+  # CLI flag: -ingest-limits.topic
+  [topic: <string> | default = ""]
 
 ingest_limits_frontend:
   client_config:
@@ -1208,6 +1246,10 @@ ingest_limits_frontend:
   # The number of partitions to use for the ring.
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
+
+  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
+  [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
@@ -2144,7 +2186,7 @@ The `compactor` block configures the compactor component, which compacts index s
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
-[working_directory: <string> | default = ""]
+[working_directory: <string> | default = "/var/loki/compactor"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
@@ -2596,6 +2638,10 @@ tenant_topic:
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
   [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -4252,7 +4298,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.max-join-retries
 [max_join_retries: <int> | default = 10]
 
-# If this node fails to join memberlist cluster, abort.
+# Abort if this node fails the fast memberlist cluster joining procedure at
+# startup. When enabled, it's guaranteed that other services, depending on
+# memberlist, have an updated view over the cluster state when they're started.
+# CLI flag: -memberlist.abort-if-fast-join-fails
+[abort_if_cluster_fast_join_fails: <boolean> | default = false]
+
+# Abort if this node fails to join memberlist cluster at startup. When enabled,
+# it's not guaranteed that other services are started only after the cluster
+# state has been successfully updated; use 'abort-if-fast-join-fails' instead.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = false]
 
@@ -4289,6 +4343,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # troubleshooting (two buffers). 0 to disable.
 # CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
+
+# Size of the buffered channel for the WatchPrefix function.
+# CLI flag: -memberlist.watch-prefix-buffer-size
+[watch_prefix_buffer_size: <int> | default = 128]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
@@ -4373,10 +4431,26 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request
 [log_push_request: <boolean> | default = false]
 
+# Log a commutative hash of the labels for all streams in a push request. In
+# some cases this can potentially be used as an identifier of the agent sending
+# the stream. Calculating hashes is epensive so only enable as needed.
+# CLI flag: -operation-config.log-hash-of-labels
+[log_hash_of_labels: <boolean> | default = false]
+
 # Log every stream in a push request (very verbose, recommend to enable via
 # runtime config only).
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
+
+# Only show streams that match a provided IP address, LogPushRequestStreams must
+# be enabled. Can be used multiple times to filter by multiple IPs.
+# CLI flag: -operation-config.filter-push-request-streams-ips
+[filter_push_request_streams_ips: <list of strings> | default = []]
+
+# Log service name discovery (very verbose, recommend to enable via runtime
+# config only).
+# CLI flag: -operation-config.log-service-name-discovery
+[log_service_name_discovery: <boolean> | default = false]
 
 # Log metrics for duplicate lines received.
 # CLI flag: -operation-config.log-duplicate-metrics
@@ -4497,6 +4571,10 @@ engine:
   # Experimental: Enable next generation query engine for supported queries.
   # CLI flag: -querier.engine.enable-v2-engine
   [enable_v2_engine: <boolean> | default = false]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5536,6 +5614,23 @@ cluster_validation:
     # only together with server.cluster-validation.grpc.enabled
     # CLI flag: -server.cluster-validation.grpc.soft-validation
     [soft_validation: <boolean> | default = false]
+
+  http:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.http.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.http.enabled
+    # CLI flag: -server.cluster-validation.http.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+    # Comma-separated list of url paths that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-paths
+    [excluded_paths: <string> | default = ""]
 ```
 
 ### storage_config

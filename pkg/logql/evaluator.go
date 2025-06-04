@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type QueryRangeType string
@@ -358,6 +359,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
+	case *CountMinSketchEvalExpr:
+		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -1432,7 +1435,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 						return nil, err
 					}
 
-					e.Grouping.Groups = append(e.Grouping.Groups, "__variant__")
+					e.Grouping.Groups = append(e.Grouping.Groups, constants.VariantLabel)
 
 					sort.Strings(e.Grouping.Groups)
 					variantEvaluator = &VectorAggEvaluator{
@@ -1477,7 +1480,6 @@ type sampleWithLabelsAndStreamHash struct {
 	streamHash uint64
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIterator) Next(index int) bool {
 	// Check if there are samples in the buffer for the requested index
 	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
@@ -1524,7 +1526,7 @@ func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
 
 	for _, lbl := range metric {
 		// TODO: make constant
-		if lbl.Name == "__variant__" {
+		if lbl.Name == constants.VariantLabel {
 			val, err := strconv.Atoi(lbl.Value)
 			if err != nil {
 				it.err = err
@@ -1571,14 +1573,12 @@ type bufferedVariantsIteratorWrapper struct {
 	index int
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIteratorWrapper) Next() bool {
 	return it.bufferedVariantsIterator.Next(it.index)
 }
 
 // VariantsEvaluator is responsible for making sure the window is loaded from all
 // evaluators for all variants
-// TODO(twhitney): does this need its own test?
 type VariantsEvaluator struct {
 	current int64
 

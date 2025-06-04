@@ -81,7 +81,7 @@ func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
 			if err != nil {
 				return nil, fmt.Errorf("cannot parse iowait: %w", err)
 			}
-			//not sure how this translates, don't report, add to kernel, something else?
+			// not sure how this translates, don't report, add to kernel, something else?
 			/*case "swap":
 			swap[cpuNumber], err = strconv.ParseFloat(fields[4], 64)
 			if err != nil {
@@ -159,10 +159,7 @@ func parseISAInfo(cmdOutput string) ([]string, error) {
 		return nil, errors.New("attempted to parse invalid isainfo output")
 	}
 
-	flags := make([]string, len(words)-4)
-	for i, val := range words[4:] { //nolint:gosimple //FIXME
-		flags[i] = val
-	}
+	flags := words[4:]
 	sort.Strings(flags)
 
 	return flags, nil
@@ -265,6 +262,6 @@ func parseProcessorInfo(cmdOutput string) ([]InfoStat, error) {
 	return result, nil
 }
 
-func CountsWithContext(ctx context.Context, logical bool) (int, error) {
+func CountsWithContext(_ context.Context, _ bool) (int, error) {
 	return runtime.NumCPU(), nil
 }

@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"slices"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.
@@ -136,14 +137,13 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	pr.buf = slices.Grow(pr.buf, len(s))
+	pr.buf = slicegrow.GrowToCap(pr.buf, len(s))
 	pr.buf = pr.buf[:len(s)]
-
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
 	for i := range s {
-		s[i].Values = slices.Grow(s[i].Values, len(pr.columns))
+		s[i].Values = slicegrow.GrowToCap(s[i].Values, len(pr.columns))
 		s[i].Values = s[i].Values[:len(pr.columns)]
 	}
 
@@ -224,7 +224,12 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 			columnRead := columnRow - startRow
 			for i := columnRead; i < int64(maxRead); i++ {
-				s[n+int(i)].Values[columnIndex] = Value{}
+				// Reset values to 0 without discarding any memory they are pointing to,
+				// rather than setting it to NULL. This prevents the caller from being able
+				// to distinguish between the zero value and a NULL.
+				if !s[n+int(i)].Values[columnIndex].IsNil() {
+					s[n+int(i)].Values[columnIndex].Zero()
+				}
 			}
 		}
 
@@ -235,15 +240,16 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 	return n, nil
 }
 
-// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
-// values are appended to dst, with the remainder of the slice set to NULL.
+// reuseRowsBuffer prepares dst for reading up to len(src) values. Non-NULL
+// values of a column are appended to dst, with the remainder of the slice set to NULL.
 //
 // The resulting slice is len(src).
 func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
-	dst = slices.Grow(dst, len(src))
+	dst = slicegrow.GrowToCap(dst, len(src))
 	dst = dst[:0]
 
-	for _, row := range src {
+	filledLength := 0
+	for i, row := range src {
 		if columnIndex >= len(row.Values) {
 			continue
 		}
@@ -252,10 +258,24 @@ func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
 		if value.IsNil() {
 			continue
 		}
-		dst = append(dst, value)
-	}
 
-	filledLength := len(dst)
+		// Only appending the values to dst without swapping could result in sublte bugs:
+		// Assume the column is sparsely polulated with non-null values
+		// 1. A non-null value from src[500] could be copied to dst[5].
+		// 2. When the reader writes back dst[5] to src[5], we now have the same value at both src[5] and src[500]
+		//    This also assumes fewer than requested values are read.
+		// 3. This creates memory aliasing - changes to one position would affect the other
+		//
+		// Swapping ensures that the values being reused are in the same position in src and dst.
+		// This way when we write back to src, we do not risk referring to the same location twice.
+		if i != filledLength {
+			src[filledLength].Values[columnIndex], src[i].Values[columnIndex] =
+				value, src[filledLength].Values[columnIndex]
+		}
+
+		dst = append(dst, value)
+		filledLength++
+	}
 
 	dst = dst[:len(src)]
 	clear(dst[filledLength:])

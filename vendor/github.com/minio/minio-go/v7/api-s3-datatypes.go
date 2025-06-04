@@ -35,6 +35,14 @@ type listAllMyBucketsResult struct {
 	Owner owner
 }
 
+// listAllMyDirectoryBucketsResult container for listDirectoryBuckets response.
+type listAllMyDirectoryBucketsResult struct {
+	Buckets struct {
+		Bucket []BucketInfo
+	}
+	ContinuationToken string
+}
+
 // owner container for bucket owner information.
 type owner struct {
 	DisplayName string
@@ -366,6 +374,7 @@ type completeMultipartUploadResult struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumType      string
 }
 
 // CompletePart sub container lists individual part numbers and their

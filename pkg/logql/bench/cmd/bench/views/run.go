@@ -90,45 +90,45 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "up", "k":
 			if m.showDiff {
 				if m.DiffViewport.AtTop() {
-					m.Viewport.LineUp(1)
+					m.Viewport.ScrollUp(1)
 				} else {
-					m.DiffViewport.LineUp(1)
+					m.DiffViewport.ScrollUp(1)
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.LineUp(1)
+				m.Viewport.ScrollUp(1)
 			}
 			return m, nil
 		case "down", "j":
 			if m.showDiff {
 				if m.DiffViewport.AtBottom() {
-					m.Viewport.LineDown(1)
+					m.Viewport.ScrollDown(1)
 				} else {
-					m.DiffViewport.LineDown(1)
+					m.DiffViewport.ScrollDown(1)
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.LineDown(1)
+				m.Viewport.ScrollDown(1)
 			}
 			return m, nil
 		case "pgup", "b":
 			if m.showDiff {
 				if m.DiffViewport.AtTop() {
-					m.Viewport.HalfViewUp()
+					m.Viewport.HalfPageUp()
 				} else {
-					m.DiffViewport.HalfViewUp()
+					m.DiffViewport.HalfPageUp()
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.HalfViewUp()
+				m.Viewport.HalfPageUp()
 			}
 			return m, nil
 		case "pgdown", " ":
 			if m.showDiff {
 				if m.DiffViewport.AtBottom() {
-					m.Viewport.HalfViewDown()
+					m.Viewport.HalfPageDown()
 				} else {
-					m.DiffViewport.HalfViewDown()
+					m.DiffViewport.HalfPageDown()
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.HalfViewDown()
+				m.Viewport.HalfPageDown()
 			}
 			return m, nil
 		case "+":

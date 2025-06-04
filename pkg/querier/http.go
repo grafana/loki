@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -10,14 +11,15 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
-	"github.com/opentracing/opentracing-go"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,6 +30,8 @@ import (
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -51,13 +55,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, metastore metastore.Metastore, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, metastore, limits, logger),
+		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
 		logger:   logger,
 	}
 }
@@ -76,7 +80,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine {
+	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -91,6 +95,12 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
+}
+
+func hasDataObjectsAvailable(_, end time.Time) bool {
+	// Data objects in object storage lag behind 20-30 minutes.
+	// We are generous and only enable v2 engine queries that end earlier than 1 hour ago, to ensure data objects are available.
+	return end.Before(time.Now().Add(-1 * time.Hour))
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
@@ -121,6 +131,13 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	resp, err := q.querier.Label(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp != nil && q.metricAggregationEnabled(ctx) {
+		resp.Values = q.filterAggregatedMetricsLabel(resp.Values)
+	}
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
@@ -128,14 +145,18 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		resLength = len(resp.Values)
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
+}
+
+func (q *QuerierAPI) metricAggregationEnabled(ctx context.Context) bool {
+	orgID, _ := user.ExtractOrgID(ctx)
+	return q.limits.MetricAggregationEnabled(orgID)
 }
 
 // SeriesHandler returns the list of time series that match a certain label set.
@@ -147,18 +168,35 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	start := time.Now()
 	statsCtx, ctx := stats.NewContext(ctx)
 
+	// filtering out aggregated metrics is quicker if we had a matcher for it, ie. __aggregated__metric__=""
+	// however, that only works fo non-empty matchers, so we still need the filter the response
+	aggMetricsRequestedInAnyGroup := false
+	if q.metricAggregationEnabled(ctx) {
+		var grpsWithAggMetricsFilter []string
+		var err error
+		grpsWithAggMetricsFilter, aggMetricsRequestedInAnyGroup, err = q.filterAggregatedMetrics(req.GetGroups())
+		if err != nil {
+			return nil, stats.Result{}, err
+		}
+		req.Groups = grpsWithAggMetricsFilter
+	}
+
 	resp, err := q.querier.Series(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
 	if resp != nil {
 		resLength = len(resp.Series)
+
+		// filter the response to catch the empty matcher case
+		if !aggMetricsRequestedInAnyGroup && q.metricAggregationEnabled(ctx) {
+			resp = q.filterAggregatedMetricsFromSeriesResp(resp)
+		}
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordSeriesQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
@@ -183,9 +221,8 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordStatsQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
@@ -211,9 +248,8 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordShardsQueryMetrics(
@@ -244,14 +280,84 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(statResult.KVList()...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordVolumeQueryMetrics(ctx, utillog.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
+}
+
+// filterAggregatedMetrics adds a matcher to exclude aggregated metrics unless explicitly requested
+func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, error) {
+	// cannot add filter to an empty matcher set
+	if len(groups) == 0 {
+		return groups, false, nil
+	}
+
+	noAggMetrics, err := labels.NewMatcher(
+		labels.MatchEqual,
+		constants.AggregatedMetricLabel,
+		"",
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	newGroups := make([]string, 0, len(groups)+1)
+
+	aggMetricsRequestedInAnyGroup := false
+	for _, group := range groups {
+		grp, err := syntax.ParseMatchers(group, false)
+		if err != nil {
+			return nil, false, err
+		}
+
+		aggMetricsRequested := false
+		for _, m := range grp {
+			if m.Name == constants.AggregatedMetricLabel {
+				aggMetricsRequested = true
+				aggMetricsRequestedInAnyGroup = true
+				break
+			}
+		}
+
+		if !aggMetricsRequested {
+			grp = append(grp, noAggMetrics)
+		}
+
+		newGroups = append(newGroups, syntax.MatchersString(grp))
+	}
+	return newGroups, aggMetricsRequestedInAnyGroup, nil
+}
+
+func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.SeriesResponse) *logproto.SeriesResponse {
+	for i := 0; i < len(resp.Series); i++ {
+		keys := make([]string, 0, len(resp.Series[i].Labels))
+		for _, label := range resp.Series[i].Labels {
+			keys = append(keys, label.Key)
+		}
+
+		if slices.Contains(keys, constants.AggregatedMetricLabel) {
+			resp.Series = slices.Delete(resp.Series, i, i+1)
+			i--
+		}
+	}
+
+	return resp
+}
+
+func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
+	newLabels := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if label == constants.AggregatedMetricLabel {
+			continue
+		}
+		newLabels = append(newLabels, label)
+	}
+
+	return newLabels
 }
 
 func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
@@ -260,7 +366,7 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 		return nil, err
 	}
 	if resp == nil { // Some stores don't implement this
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, q.logger)).Log(
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
 		return &logproto.DetectedFieldsResponse{
@@ -319,9 +425,10 @@ func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.De
 func WrapQuerySpanAndTimeout(call string, limits querier_limits.Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
-			defer sp.Finish()
-			log := spanlogger.FromContext(req.Context())
+			ctx, sp := tracer.Start(req.Context(), call)
+			defer sp.End()
+
+			log := spanlogger.FromContext(req.Context(), utillog.Logger)
 			defer log.Finish()
 
 			tenants, err := tenant.TenantIDs(ctx)

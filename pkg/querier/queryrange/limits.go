@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,17 +15,18 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -32,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -147,9 +150,10 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 }
 
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
-	defer span.Finish()
-	log := spanlogger.FromContext(ctx)
+	ctx, span := tracer.Start(ctx, "limits")
+	defer span.End()
+
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -273,8 +277,8 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
+	defer sp.End()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -336,7 +340,7 @@ func (q *querySizeLimiter) guessLimitName() string {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, q.logger)
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
@@ -374,8 +378,11 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 type seriesLimiter struct {
 	hashes map[uint64]struct{}
-	rw     sync.RWMutex
-	buf    []byte // buf used for hashing to avoid allocations.
+	// uniqueSeriesPerVariant maps from a variant label value to a map of series fingerprints
+	uniqueSeriesPerVariant map[string]map[uint64]struct{}
+	skipVariants           map[string]struct{}
+	rw                     sync.RWMutex
+	buf                    []byte // buf used for hashing to avoid allocations.
 
 	maxSeries int
 	next      queryrangebase.Handler
@@ -392,10 +399,12 @@ func newSeriesLimiter(maxSeries int) queryrangebase.Middleware {
 // The handler returned is thread safe.
 func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return &seriesLimiter{
-		hashes:    make(map[uint64]struct{}),
-		maxSeries: int(slm),
-		buf:       make([]byte, 0, 1024),
-		next:      next,
+		hashes:                 make(map[uint64]struct{}),
+		uniqueSeriesPerVariant: make(map[string]map[uint64]struct{}),
+		skipVariants:           make(map[string]struct{}),
+		maxSeries:              int(slm),
+		buf:                    make([]byte, 0, 1024),
+		next:                   next,
 	}
 }
 
@@ -404,6 +413,9 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
+
+	metadata := metadata.FromContext(ctx)
+	//TODO(twhitney): Need a way to propagate skipped variants to the queriers
 	res, err := sl.next.Do(ctx, req)
 	if err != nil {
 		return res, err
@@ -416,16 +428,62 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 		return res, nil
 	}
 	sl.rw.Lock()
+	defer sl.rw.Unlock()
+
 	var hash uint64
-	for _, s := range promResponse.Response.Data.Result {
+	for i := 0; i < len(promResponse.Response.Data.Result); i++ {
+		s := promResponse.Response.Data.Result[i]
 		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
+
+		// Extract the variant label, if present
+		variant := ""
+		for _, label := range s.Labels {
+			if label.Name == constants.VariantLabel {
+				variant = label.Value
+				break
+			}
+		}
+
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
-		sl.hashes[hash] = struct{}{}
+
+		// If there's a variant label, track it in the variant map
+		if variant != "" {
+			if _, ok := sl.skipVariants[variant]; ok {
+				// Remove this variant from the result slice
+				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
+				i-- // Adjust the index since we removed an item
+				continue
+			}
+
+			// Get or create the map for this variant
+			variantMap, ok := sl.uniqueSeriesPerVariant[variant]
+			if !ok {
+				variantMap = make(map[uint64]struct{})
+				sl.uniqueSeriesPerVariant[variant] = variantMap
+			}
+
+			variantMap[hash] = struct{}{}
+
+			// Check if adding this series would exceed the limit for this variant
+			if len(variantMap) > sl.maxSeries {
+				sl.skipVariants[variant] = struct{}{}
+				// Remove this variant from the result slice
+				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
+				i-- // Adjust the index since we removed an item
+				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
+				continue
+			}
+		} else {
+			// For non-variant series, track them in the global hashes map
+			sl.hashes[hash] = struct{}{}
+
+			// Check if adding this series would exceed the global limit
+			if len(sl.hashes) > sl.maxSeries {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+			}
+		}
 	}
-	sl.rw.Unlock()
-	if sl.isLimitReached() {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
-	}
+
 	return res, nil
 }
 
@@ -483,11 +541,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		cancel()
 	}()
 
-	span := opentracing.SpanFromContext(ctx)
-
-	if span != nil {
-		request.LogToSpan(span)
-	}
+	span := trace.SpanFromContext(ctx)
+	request.LogToSpan(span)
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -523,12 +578,10 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
 
-			if span != nil {
-				span.LogFields(
-					otlog.String("wait_time", elapsed.String()),
-					otlog.Int64("max_parallelism", int64(parallelism)),
-				)
-			}
+			span.SetAttributes(
+				attribute.String("wait_time", elapsed.String()),
+				attribute.Int64("max_parallelism", int64(parallelism)),
+			)
 
 			defer semWithTiming.sem.Release(int64(1))
 
@@ -622,6 +675,10 @@ func WeightedParallelism(
 		}
 	}
 
+	// We don't need nanosecond precision here so convert to seconds.
+	// This is also important to prevent overflowing int64 when multiplying by parallelism below.
+	tsdbDur = tsdbDur / 1e9
+	otherDur = otherDur / 1e9
 	totalDur := int(tsdbDur + otherDur)
 	// If totalDur is 0, the query likely does not overlap any of the schema configs so just use parallelism of 1 and
 	// let the downstream code handle it.

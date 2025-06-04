@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.read.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -72,7 +72,7 @@ spec:
             - -target={{ .Values.read.targetModule }}
             - -legacy-read-mode=false
             - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
-            {{- with .Values.read.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -85,11 +85,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.read.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.read.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.read.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.read.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -97,6 +97,10 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- if .Values.read.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.read.livenessProbe | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -110,7 +114,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end}}
-            {{- with .Values.read.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.read.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -157,7 +161,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.read.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.read.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}

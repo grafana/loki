@@ -2094,3 +2094,11 @@ func (s *byteScanner) UnreadByte() error {
 	Xungetc(s.t, int32(s.last), s.stream)
 	return nil
 }
+
+// int clock_gettime(clockid_t clk_id, struct timespec *tp);
+func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	panic(todo(""))
+}
