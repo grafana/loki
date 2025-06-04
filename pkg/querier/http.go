@@ -451,7 +451,10 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	// Query store for older data by converting to LogQL query
 	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
 		g.Go(func() error {
-			resp, err := q.queryStoreForPatterns(ctx, req, storeQueryInterval)
+			storeReq := *req
+			storeReq.Start = storeQueryInterval.start
+			storeReq.End = storeQueryInterval.end
+			resp, err := q.queryStoreForPatterns(ctx, &storeReq)
 			if err != nil {
 				return err
 			}
@@ -474,9 +477,7 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return pattern.MergePatternResponses(responses.get()), nil
 }
 
-func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.QueryPatternsRequest, interval *QueryInterval) (*logproto.QueryPatternsResponse, error) {
-	req.Start = interval.start
-	req.End = interval.end
+func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return nil, err
