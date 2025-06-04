@@ -133,7 +133,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f
 	github.com/heroku/x v0.4.3
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
-	github.com/jackc/pgx/v4 v4.18.3
+	github.com/lib/pq v1.10.9
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.3
 	github.com/parquet-go/parquet-go v0.25.0
@@ -201,13 +201,6 @@ require (
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
-	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.14.3 // indirect
-	github.com/jackc/pgio v1.0.0 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgtype v1.14.4 // indirect
 	github.com/kamstrup/intmap v0.5.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240226150601-1dcf7310316a // indirect
