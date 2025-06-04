@@ -32,12 +32,19 @@ Goldfish is configured through command-line flags:
 -goldfish.sampling.default-rate=0.1                              # Sample 10% of queries by default
 -goldfish.sampling.tenant-rules="tenant1:0.5,tenant2:1.0"       # Tenant-specific rates
 
-# Storage configuration (CloudSQL example)
+# Storage configuration (optional - defaults to no-op if not specified)
+# CloudSQL example:
 -goldfish.storage.type=cloudsql
--goldfish.storage.cloudsql.connection-name=project:region:instance
+-goldfish.storage.cloudsql.host=cloudsql-proxy                  # CloudSQL proxy host
+-goldfish.storage.cloudsql.port=5432                           # CloudSQL proxy port
 -goldfish.storage.cloudsql.database=goldfish
+-goldfish.storage.cloudsql.user=goldfish-user
+-goldfish.storage.cloudsql.password=your-password
 -goldfish.storage.max-connections=10                            # Maximum database connections
 -goldfish.storage.max-idle-time=300                            # Connection idle timeout (seconds)
+
+# Or run without storage (sampling and comparison only, no persistence)
+# Simply omit the storage configuration
 ```
 
 ## Architecture

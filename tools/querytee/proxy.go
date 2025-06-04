@@ -188,7 +188,7 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 	// Initialize Goldfish if enabled
 	if cfg.Goldfish.Enabled {
 		// Create storage backend
-		storage, err := goldfish.NewStorage(cfg.Goldfish.StorageConfig)
+		storage, err := goldfish.NewStorage(cfg.Goldfish.StorageConfig, logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create goldfish storage")
 		}
