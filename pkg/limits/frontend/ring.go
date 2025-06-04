@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/limits/proto"
@@ -37,6 +39,10 @@ type ringGatherer struct {
 	numPartitions           int
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	zoneCmp                 func(a, b string) int
+
+	// Metrics.
+	streams       prometheus.Counter
+	streamsFailed prometheus.Counter
 }
 
 // newRingGatherer returns a new ringGatherer.
@@ -46,6 +52,7 @@ func newRingGatherer(
 	numPartitions int,
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
+	reg prometheus.Registerer,
 ) *ringGatherer {
 	return &ringGatherer{
 		logger:                  logger,
@@ -54,6 +61,18 @@ func newRingGatherer(
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
 		zoneCmp:                 defaultZoneCmp,
+		streams: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_total",
+				Help: "The total number of received streams.",
+			},
+		),
+		streamsFailed: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_failed_total",
+				Help: "The total number of received streams that could not be checked.",
+			},
+		),
 	}
 }
 
@@ -84,6 +103,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// each time we receive the responses from a zone.
 	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	streams = append(streams, req.Streams...)
+	g.streams.Add(float64(len(streams)))
 	// Query each zone as ordered in zonesToQuery. If a zone answers all
 	// streams, the request is satisfied and there is no need to query
 	// subsequent zones. If a zone answers just a subset of streams
@@ -115,8 +135,7 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			break
 		}
 	}
-	// TODO(grobinson): In a subsequent change, I will figure out what to do
-	// about unanswered streams.
+	g.streamsFailed.Add(float64(len(streams)))
 	return responses, nil
 }
 
