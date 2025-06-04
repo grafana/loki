@@ -8,7 +8,7 @@ import (
 	"path"
 
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -30,8 +30,6 @@ func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper
 }
 
 func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
-
 	var r *http.Request
 
 	r, err := d.codec.EncodeRequest(ctx, req)
@@ -42,13 +40,7 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 		return nil, err
 	}
 
-	if tracer != nil && span != nil {
-		carrier := opentracing.HTTPHeadersCarrier(r.Header)
-		err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
-		if err != nil {
-			return nil, err
-		}
-	}
+	otelhttptrace.Inject(ctx, r)
 
 	r.URL.Scheme = d.downstreamURL.Scheme
 	r.URL.Host = d.downstreamURL.Host
