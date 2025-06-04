@@ -106,7 +106,8 @@ func TestSymbolizer(t *testing.T) {
 			t.Run(fmt.Sprintf("%s - %s", tc.name, encoding), func(t *testing.T) {
 				s := newSymbolizer()
 				for i, lbls := range tc.labelsToAdd {
-					symbols := s.Add(lbls)
+					symbols, err := s.Add(lbls)
+					require.NoError(t, err)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
 					require.Equal(t, lbls, s.Lookup(symbols, nil))
 				}
@@ -194,7 +195,8 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			// Test direct addition
 			s := newSymbolizer()
 			for i, labels := range tc.labelsToAdd {
-				symbols := s.Add(labels)
+				symbols, err := s.Add(labels)
+				require.NoError(t, err)
 				result := s.Lookup(symbols, nil)
 				require.Equal(t, tc.expectedLabels[i], result, "direct addition: %s", tc.description)
 			}
@@ -206,7 +208,8 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 
 			loaded := symbolizerFromCheckpoint(buf.Bytes())
 			for i, labels := range tc.labelsToAdd {
-				symbols := loaded.Add(labels)
+				symbols, err := s.Add(labels)
+				require.NoError(t, err)
 				result := loaded.Lookup(symbols, nil)
 				require.Equal(t, tc.expectedLabels[i], result, "after checkpoint: %s", tc.description)
 			}
@@ -219,7 +222,8 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			loaded, err = symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(compression.Snappy))
 			require.NoError(t, err)
 			for i, labels := range tc.labelsToAdd {
-				symbols := loaded.Add(labels)
+				symbols, err := s.Add(labels)
+				require.NoError(t, err)
 				result := loaded.Lookup(symbols, nil)
 				require.Equal(t, tc.expectedLabels[i], result, "after compression: %s", tc.description)
 			}
@@ -232,7 +236,8 @@ func TestSymbolizerNormalizationCache(t *testing.T) {
 
 	// Add a label with a name that needs normalization
 	labels1 := labels.Labels{{Name: "foo-bar", Value: "value1"}}
-	symbols1 := s.Add(labels1)
+	symbols1, err := s.Add(labels1)
+	require.NoError(t, err)
 
 	// Look up the label multiple times
 	for i := 0; i < 3; i++ {
@@ -243,7 +248,8 @@ func TestSymbolizerNormalizationCache(t *testing.T) {
 
 	// Add the same label name with a different value
 	labels2 := labels.Labels{{Name: "foo-bar", Value: "value2"}}
-	symbols2 := s.Add(labels2)
+	symbols2, err := s.Add(labels2)
+	require.NoError(t, err)
 
 	// The normalized name should be reused
 	result := s.Lookup(symbols1, nil)
@@ -257,7 +263,7 @@ func TestSymbolizerNormalizationCache(t *testing.T) {
 	require.Equal(t, 1, len(s.normalizedNames), "should have only one normalized name entry")
 }
 
-func TestSymbolizerLabelNormalizationAfterDeserialization(t *testing.T) {
+func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
 	s := newSymbolizer()
 
 	// Add some labels and serialize them
@@ -265,22 +271,23 @@ func TestSymbolizerLabelNormalizationAfterDeserialization(t *testing.T) {
 		{Name: "foo-bar", Value: "value1"},
 		{Name: "fizz-buzz", Value: "value2"},
 	}
-	s.Add(originalLabels)
+	_, err := s.Add(originalLabels)
+	require.NoError(t, err)
 
 	buf := bytes.NewBuffer(nil)
-	_, _, err := s.SerializeTo(buf, compression.GetWriterPool(compression.Snappy))
+	_, _, err = s.CheckpointTo(buf)
 	require.NoError(t, err)
 
-	// Load the serialized data
-	loaded, err := symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(compression.Snappy))
-	require.NoError(t, err)
+	// Load the serializer from checkpoint
+	loaded := symbolizerFromCheckpoint(buf.Bytes())
 
 	// Add new labels with the same names but different values
 	newLabels := labels.Labels{
 		{Name: "foo-bar", Value: "new-value1"},
 		{Name: "fizz-buzz", Value: "new-value2"},
 	}
-	symbols := loaded.Add(newLabels)
+	symbols, err := loaded.Add(newLabels)
+	require.NoError(t, err)
 
 	// Check that the normalization is consistent
 	result := loaded.Lookup(symbols, nil)
@@ -298,7 +305,8 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 		{Name: "foo-bar", Value: "foo-bar"},
 		{Name: "test-label", Value: "test-label"},
 	}
-	originalSymbols := s.Add(originalLabels)
+	originalSymbols, err := s.Add(originalLabels)
+	require.NoError(t, err)
 
 	// Verify initial state
 	result := s.Lookup(originalSymbols, nil)
@@ -309,12 +317,17 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 
 	// Serialize the symbolizer
 	buf := bytes.NewBuffer(nil)
-	_, _, err := s.SerializeTo(buf, compression.GetWriterPool(compression.Snappy))
+	_, _, err = s.SerializeTo(buf, compression.GetWriterPool(compression.Snappy))
 	require.NoError(t, err)
 
 	// Load the serialized data
 	loaded, err := symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(compression.Snappy))
 	require.NoError(t, err)
+	require.True(t, loaded.readOnly)
+
+	// trying to add values to symbolizer loaded from serialized data should throw an error
+	_, err = loaded.Add(labels.Labels{{Name: "foo-bar2", Value: "foo-bar2"}})
+	require.EqualError(t, err, errSymbolizerReadOnly.Error())
 
 	// Look up using the original symbols without re-adding the labels
 	result = loaded.Lookup(originalSymbols, nil)
