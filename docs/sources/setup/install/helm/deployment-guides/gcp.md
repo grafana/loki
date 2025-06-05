@@ -209,7 +209,7 @@ The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storag
  permission. You can use this predefined role or create your own with matching permissions.
 {{< /admonition >}}
 
-Create an IAM policy binding on the bucket(s) using the KSA created previously and the role(s) of your choice. Use a separate command for each bucket.
+Create an IAM policy binding on the bucket(s) using the KSA created previously and the role(s) of your choice. Use a separate command for each bucket (one for chunks, and another for the ruler).
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
@@ -221,10 +221,21 @@ gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
 Replace `<PROJECT_ID>` with the GCP project ID (ex. project-name), `<PROJECT_NUMBER>` with the project number (ex. 1234567890),
 `<NAMESPACE>` with the namespace where Loki is installed, and `<KSA_NAME>` with the name of the KSA you created above.
 
-Example:
+Then do the same thing for the other bucket.
+
+Examples:
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-chunks \
+  --role=roles/storage.objectViewer \
+  --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
+  --condition=None
+```
+
+and
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://loki-gcp-ruler \
   --role=roles/storage.objectViewer \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
