@@ -34,7 +34,7 @@ This guide was accurate at the time it was last updated on **29th of April, 2025
 - Helm 3 or above. Refer to [Installing Helm](https://helm.sh/docs/intro/install/). This should be installed on your local machine.
 - A running Kubernetes cluster on GCP. Refer to [Create a cluster and deploy a workload in the Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/quickstarts/create-cluster).
 - Kubectl installed on your local machine. Refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
-- (Optional, but recommended) gcloud CLI installed on your local machine. Refer to [Install the Google Cloud CLI](https://cloud.google.com/sdk/docs/install-sdk). This is required if you plan to use gcloud CLI to create the GKE cluster and modify the IAM roles and policies locally.
+- gcloud CLI installed on your local machine. Refer to [Install the Google Cloud CLI](https://cloud.google.com/sdk/docs/install-sdk). In this guide, we use gcloud CLI to create the GKE cluster and modify the IAM roles and policies locally.
   
 ### GKE Minimum Requirements
 
@@ -49,6 +49,14 @@ The minimum requirements for deploying Loki on GKE are:
 - Kubernetes version `1.30` or above.
 - `3` nodes for the GKE cluster.
 - Instance type depends on your workload. A good starting point for a production cluster is `n2-standard-8`.
+
+To allow kubectl to support GKE, install the gcloud kubectl auth plugin:
+
+```bash
+gcloud components install gke-gcloud-auth-plugin
+```
+
+This plugin is necessary to use kubectl to authenticate with GKE. [Click here for more details on this plugin](https://cloud.google.com/blog/products/containers-kubernetes/kubectl-auth-changes-in-gke).
 
 {{< admonition type="warning" >}}
 Regional clusters in GKE are designed for resilience, and thus by default span three zones within the region. In the command below, `num-nodes=1`. Note that if you set `num_nodes=3`, you would get 9 nodes in total for the region: 3 in *each* zone. Therefore, leave `num_nodes=1` when you create your cluster.
