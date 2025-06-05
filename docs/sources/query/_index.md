@@ -76,12 +76,6 @@ The optional log pipline may contain any combination of the following expression
 
 Filter expressions are used to look for a certain string or range of values within the log line or label.
 
-For line filters, the following operators can be used:
-- `|=`: Log line contains string
-- `!=`: Log line does not contain string
-- `|~`: Log line contains a match to the regular expression
-- `!~`: Log line does not contain a match to the regular expression
-
 For label filters, the following operators can be used:
 - `==` or `=` for equality.
 - `!=` for inequality.
@@ -89,6 +83,12 @@ For label filters, the following operators can be used:
 - `<` and `<=` for lesser than and lesser than or equal.
 
 `and` and `or` can also be used to chain operations for label filters.
+
+For line filters, the following operators can be used:
+- `|=`: Log line contains string
+- `!=`: Log line does not contain string
+- `|~`: Log line contains a match to the regular expression
+- `!~`: Log line does not contain a match to the regular expression
 
 #### Parser expressions
 
