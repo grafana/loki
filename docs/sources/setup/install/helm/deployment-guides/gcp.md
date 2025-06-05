@@ -27,7 +27,7 @@ This guide was accurate at the time it was last updated on **29th of April, 2025
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
-- **Costs:** Running Loki on GCP will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple GKE cluster with 3 nodes and m5.xlarge instances. You may wish to adjust the instance types and number of nodes based on your workload.
+- **Costs:** Running Loki on GCP will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple GKE cluster with 3 nodes (n2-standard-8 instances). You may wish to adjust the instance types and number of nodes based on your workload.
 
 ## Prerequisites
 
