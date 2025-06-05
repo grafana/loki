@@ -20,11 +20,9 @@ import (
 //
 // The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
 // `MetricsPrefix`
-func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
+func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, clientOpts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 	const fetchMaxBytes = 100_000_000
-
-	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
 
 	address := kafkaCfg.Address
 	clientID := kafkaCfg.ClientID
@@ -33,20 +31,29 @@ func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 		clientID = kafkaCfg.ReaderConfig.ClientID
 	}
 
-	opts = append(
-		opts,
-		kgo.ClientID(clientID),
-		kgo.SeedBrokers(address),
+	// Overridable defaults
+	opts := []kgo.Opt{
 		kgo.FetchMinBytes(1),
 		kgo.FetchMaxBytes(fetchMaxBytes),
-		kgo.FetchMaxWait(5*time.Second),
+		kgo.FetchMaxWait(5 * time.Second),
 		kgo.FetchMaxPartitionBytes(50_000_000),
 
 		// BrokerMaxReadBytes sets the maximum response size that can be read from
 		// Kafka. This is a safety measure to avoid OOMing on invalid responses.
 		// franz-go recommendation is to set it 2x FetchMaxBytes.
-		kgo.BrokerMaxReadBytes(2*fetchMaxBytes),
+		kgo.BrokerMaxReadBytes(2 * fetchMaxBytes),
+	}
+
+	// Clients options and overrides
+	opts = append(opts, clientOpts...)
+
+	// Common options
+	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
+	opts = append(opts,
+		kgo.ClientID(clientID),
+		kgo.SeedBrokers(address),
 	)
+
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)

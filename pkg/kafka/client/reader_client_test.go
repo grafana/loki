@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -81,6 +82,63 @@ func TestNewReaderClient(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewReaderClient_WithClientOpts(t *testing.T) {
+	_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "test", kfake.EnableSASL(), kfake.Superuser("PLAIN", "user", "password"))
+
+	tests := []struct {
+		name       string
+		config     kafka.Config
+		clientOpts []kgo.Opt
+	}{
+		{
+			name: "defaults",
+			config: kafka.Config{
+				Topic:        "abcd",
+				SASLUsername: "user",
+				SASLPassword: flagext.SecretWithValue("password"),
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
+			},
+		},
+		{
+			name: "override defaults",
+			config: kafka.Config{
+				Topic:        "abcd",
+				SASLUsername: "user",
+				SASLPassword: flagext.SecretWithValue("password"),
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
+			},
+			clientOpts: []kgo.Opt{
+				kgo.FetchMinBytes(100),
+				kgo.FetchMaxBytes(1000),
+				kgo.FetchMaxWait(1 * time.Second),
+				kgo.FetchMaxPartitionBytes(1000),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client, err := NewReaderClient(
+				"test-client",
+				test.config,
+				log.NewNopLogger(),
+				prometheus.NewRegistry(),
+				test.clientOpts...,
+			)
+			require.NoError(t, err)
+
+			err = client.Ping(context.Background())
+			require.NoError(t, err)
+		})
+	}
+
 }
 
 func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
