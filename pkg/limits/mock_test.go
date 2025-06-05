@@ -7,20 +7,20 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-type MockLimits struct {
+type mockLimits struct {
 	MaxGlobalStreams int
 	IngestionRate    float64
 }
 
-func (m *MockLimits) MaxGlobalStreamsPerUser(_ string) int {
+func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return m.MaxGlobalStreams
 }
 
-func (m *MockLimits) IngestionRateBytes(_ string) float64 {
+func (m *mockLimits) IngestionRateBytes(_ string) float64 {
 	return m.IngestionRate
 }
 
-func (m *MockLimits) IngestionBurstSizeBytes(_ string) int {
+func (m *mockLimits) IngestionBurstSizeBytes(_ string) int {
 	return 1000
 }
 

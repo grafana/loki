@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -96,9 +97,9 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, predicate.Matchers...)
 
 		if err == nil {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("ingester-chunks-count", len(ingesterChunks))
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.SetAttributes(attribute.Int("ingester-chunks-count", len(ingesterChunks)))
+
 			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		return err
@@ -172,8 +173,8 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "AsyncStore.Volume")
+	defer sp.End()
 
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
@@ -215,12 +216,12 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 
-	sp.LogKV(
-		"user", userID,
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"limit", limit,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int("limit", int(limit)),
 	)
 
 	merged := seriesvolume.Merge(resps, limit)

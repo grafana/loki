@@ -1,7 +1,7 @@
 package sarama
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -26,13 +26,13 @@ func getOrRegisterHistogram(name string, r metrics.Registry) metrics.Histogram {
 func getMetricNameForBroker(name string, broker *Broker) string {
 	// Use broker id like the Java client as it does not contain '.' or ':' characters that
 	// can be interpreted as special character by monitoring tool (e.g. Graphite)
-	return fmt.Sprintf(name+"-for-broker-%d", broker.ID())
+	return name + "-for-broker-" + strconv.FormatInt(int64(broker.ID()), 10)
 }
 
 func getMetricNameForTopic(name string, topic string) string {
 	// Convert dot to _ since reporters like Graphite typically use dot to represent hierarchy
 	// cf. KAFKA-1902 and KAFKA-2337
-	return fmt.Sprintf(name+"-for-topic-%s", strings.ReplaceAll(topic, ".", "_"))
+	return name + "-for-topic-" + strings.ReplaceAll(topic, ".", "_")
 }
 
 func getOrRegisterTopicMeter(name string, topic string, r metrics.Registry) metrics.Meter {

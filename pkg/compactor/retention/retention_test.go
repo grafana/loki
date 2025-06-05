@@ -584,7 +584,7 @@ func TestChunkRewriter(t *testing.T) {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
 				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
-					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					ChunkID: getChunkID(tt.chunk.ChunkRef),
 					From:    tt.chunk.From,
 					Through: tt.chunk.Through,
 				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
@@ -631,6 +631,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
+							Parsed:             logproto.EmptyLabelAdapters(),
 						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
@@ -684,7 +685,7 @@ func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ 
 	time.Sleep(m.delay)
 	m.numExpiryChecks++
 
-	ce := m.chunksExpiry[string(chk.ChunkID)]
+	ce := m.chunksExpiry[chk.ChunkID]
 	return ce.isExpired, ce.filterFunc
 }
 
@@ -1184,7 +1185,7 @@ func TestDuplicateSeriesDetection(t *testing.T) {
 			labels:   chk.Metric,
 			chunks: []Chunk{
 				{
-					ChunkID: []byte(getChunkID(chk.ChunkRef)),
+					ChunkID: getChunkID(chk.ChunkRef),
 					From:    chk.From,
 					Through: chk.Through,
 				},
