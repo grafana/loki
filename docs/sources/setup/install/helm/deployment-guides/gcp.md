@@ -351,7 +351,7 @@ loki:
       
 serviceAccount:
  create: false
- name: loki-gcp-ksa
+ name: <KSA_NAME>
 
 deploymentMode: Distributed
 
@@ -429,6 +429,10 @@ singleBinary:
 
 {{< admonition type="caution" >}}
 Make sure to replace the placeholders with your actual values.
+{{< /admonition >}}
+
+{{< admonition type="note" >}}
+In `values.yaml` above, you may notice that `serviceAccount` is set to `create: false`. This is because you want to use the service account that you created earlier instead of creating a new one.
 {{< /admonition >}}
 
 It is critical to define a valid `values.yaml` file for the Loki deployment. To remove the risk of misconfiguration, let's break down the configuration options to keep in mind when deploying to GCP:
