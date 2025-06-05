@@ -58,10 +58,10 @@ The unique combination of all these pairs is called a *stream*. The goal of the 
 
 The following operators can be used in the log stream selector:
 
-- `=`
-- `!=`
-- `=˜`
-- `!˜`
+- `=` labels that are exactly equal to the log stream selector
+- `!=` labels that are not equal to the log stream selector
+- `=~` labels that are a regex-match to the log stream selector
+- `!~` labels that are not a regex-match to the log stream selector
 
 where the `˜` character is used for regular expressions.
 
