@@ -84,6 +84,7 @@ func NewListenerWrapper(params ListenerWrapperParams) net.Listener {
 		Listener:          params.Listener,
 		name:              params.ListenerResourceName,
 		xdsC:              params.XDSClient,
+		xdsNodeID:         params.XDSClient.BootstrapConfig().Node().GetId(),
 		modeCallback:      params.ModeCallback,
 		isUnspecifiedAddr: params.Listener.Addr().(*net.TCPAddr).IP.IsUnspecified(),
 		conns:             make(map[*connWrapper]bool),
@@ -116,6 +117,7 @@ type listenerWrapper struct {
 
 	name         string
 	xdsC         XDSClient
+	xdsNodeID    string
 	cancelWatch  func()
 	modeCallback ServingModeCallback
 
@@ -173,7 +175,8 @@ func (l *listenerWrapper) handleLDSUpdate(update xdsresource.ListenerUpdate) {
 	// what we have decided to do.
 	if ilc.Address != l.addr || ilc.Port != l.port {
 		l.mu.Lock()
-		l.switchModeLocked(connectivity.ServingModeNotServing, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		err := l.annotateErrorWithNodeID(fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		l.switchModeLocked(connectivity.ServingModeNotServing, err)
 		l.mu.Unlock()
 		return
 	}
@@ -228,12 +231,14 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 				continue
 			}
 			if rcu.err != nil && rcu.data == nil { // Either NACK before update, or resource not found triggers this conditional.
-				fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{
-					Err: rcu.err,
-				})
+				urc := &xdsresource.UsableRouteConfiguration{Err: rcu.err}
+				urc.NodeID = l.xdsNodeID
+				fc.UsableRouteConfiguration.Store(urc)
 				continue
 			}
-			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data))
+			urc := fc.ConstructUsableRouteConfiguration(*rcu.data)
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc)
 		}
 	}
 	if l.rdsHandler.determineRouteConfigurationReady() {
@@ -248,15 +253,21 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 func (l *listenerWrapper) instantiateFilterChainRoutingConfigurationsLocked() {
 	for _, fc := range l.activeFilterChainManager.FilterChains() {
 		if fc.InlineRouteConfig != nil {
-			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*fc.InlineRouteConfig)) // Can't race with an RPC coming in but no harm making atomic.
+			urc := fc.ConstructUsableRouteConfiguration(*fc.InlineRouteConfig)
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
 			continue
 		} // Inline configuration constructed once here, will remain for lifetime of filter chain.
 		rcu := l.rdsHandler.updates[fc.RouteConfigName]
 		if rcu.err != nil && rcu.data == nil {
-			fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{Err: rcu.err})
+			urc := &xdsresource.UsableRouteConfiguration{Err: rcu.err}
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc)
 			continue
 		}
-		fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data)) // Can't race with an RPC coming in but no harm making atomic.
+		urc := fc.ConstructUsableRouteConfiguration(*rcu.data)
+		urc.NodeID = l.xdsNodeID
+		fc.UsableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
 	}
 }
 
@@ -397,10 +408,14 @@ func (l *listenerWrapper) switchModeLocked(newMode connectivity.ServingMode, err
 	}
 }
 
+func (l *listenerWrapper) annotateErrorWithNodeID(err error) error {
+	return fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, err)
+}
+
 func (l *listenerWrapper) onLDSResourceDoesNotExist(err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.switchModeLocked(connectivity.ServingModeNotServing, err)
+	l.switchModeLocked(connectivity.ServingModeNotServing, l.annotateErrorWithNodeID(err))
 	l.activeFilterChainManager = nil
 	l.pendingFilterChainManager = nil
 	l.rdsHandler.updateRouteNamesToWatch(make(map[string]bool))
@@ -445,9 +460,7 @@ func (lw *ldsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
 		lw.logger.Warningf("Resource %q received resource-does-not-exist error after listener was closed", lw.name)
 		return
 	}
-	if lw.logger.V(2) {
-		lw.logger.Infof("LDS watch for resource %q reported resource-does-not-exist error", lw.name)
-	}
+	lw.logger.Warningf("LDS watch for resource %q reported resource-does-not-exist error", lw.name)
 
 	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type Listener not found in received response", lw.name)
 	lw.parent.onLDSResourceDoesNotExist(err)

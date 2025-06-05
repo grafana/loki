@@ -34,7 +34,7 @@ type wrappingWatcher struct {
 }
 
 func (w *wrappingWatcher) OnError(err error, done xdsresource.OnDoneFunc) {
-	w.ResourceWatcher.OnError(fmt.Errorf("[xDS node id: %v]: %v", w.nodeID, err), done)
+	w.ResourceWatcher.OnError(fmt.Errorf("[xDS node id: %v]: %w", w.nodeID, err), done)
 }
 
 // WatchResource uses xDS to discover the resource associated with the provided

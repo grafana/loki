@@ -24,10 +24,15 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
+	deltatocumulative "github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/processor"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -38,13 +43,7 @@ import (
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/storage"
 	otlptranslator "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
-
-	deltatocumulative "github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor"
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.opentelemetry.io/collector/processor"
-	"go.opentelemetry.io/otel/metric/noop"
+	"github.com/prometheus/prometheus/util/compression"
 )
 
 type writeHandler struct {
@@ -150,8 +149,8 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Don't break yolo 1.0 clients if not needed. This is similar to what we did
 		// before 2.0: https://github.com/prometheus/prometheus/blob/d78253319daa62c8f28ed47e40bafcad2dd8b586/storage/remote/write_handler.go#L62
 		// We could give http.StatusUnsupportedMediaType, but let's assume snappy by default.
-	} else if enc != string(SnappyBlockCompression) {
-		err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, SnappyBlockCompression)
+	} else if strings.ToLower(enc) != compression.Snappy {
+		err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
 		h.logger.Error("Error decoding remote write request", "err", err)
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 	}
@@ -164,7 +163,7 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	decompressed, err := snappy.Decode(nil, body)
+	decompressed, err := compression.Decode(compression.Snappy, body, nil)
 	if err != nil {
 		// TODO(bwplotka): Add more context to responded error?
 		h.logger.Error("Error decompressing remote write request", "err", err.Error())
@@ -250,7 +249,7 @@ func (h *writeHandler) write(ctx context.Context, req *prompb.WriteRequest) (err
 
 		// TODO(bwplotka): Even as per 1.0 spec, this should be a 400 error, while other samples are
 		// potentially written. Perhaps unify with fixed writeV2 implementation a bit.
-		if !ls.Has(labels.MetricName) || !ls.IsValid(model.NameValidationScheme) {
+		if !ls.Has(labels.MetricName) || !ls.IsValid(model.UTF8Validation) {
 			h.logger.Warn("Invalid metric names or labels", "got", ls.String())
 			samplesWithInvalidLabels++
 			continue
@@ -391,7 +390,7 @@ func (h *writeHandler) appendV2(app storage.Appender, req *writev2.Request, rs *
 		// Validate series labels early.
 		// NOTE(bwplotka): While spec allows UTF-8, Prometheus Receiver may impose
 		// specific limits and follow https://prometheus.io/docs/specs/remote_write_spec_2_0/#invalid-samples case.
-		if !ls.Has(labels.MetricName) || !ls.IsValid(model.NameValidationScheme) {
+		if !ls.Has(labels.MetricName) || !ls.IsValid(model.UTF8Validation) {
 			badRequestErrs = append(badRequestErrs, fmt.Errorf("invalid metric name or labels, got %v", ls.String()))
 			samplesWithInvalidLabels += len(ts.Samples) + len(ts.Histograms)
 			continue
@@ -513,7 +512,7 @@ func (h *writeHandler) appendV2(app storage.Appender, req *writev2.Request, rs *
 }
 
 // handleHistogramZeroSample appends CT as a zero-value sample with CT value as the sample timestamp.
-// It doens't return errors in case of out of order CT.
+// It doesn't return errors in case of out of order CT.
 func (h *writeHandler) handleHistogramZeroSample(app storage.Appender, ref storage.SeriesRef, l labels.Labels, hist writev2.Histogram, ct int64) (storage.SeriesRef, error) {
 	var err error
 	if hist.IsFloatHistogram() {
@@ -527,25 +526,38 @@ func (h *writeHandler) handleHistogramZeroSample(app storage.Appender, ref stora
 type OTLPOptions struct {
 	// Convert delta samples to their cumulative equivalent by aggregating in-memory
 	ConvertDelta bool
+	// Store the raw delta samples as metrics with unknown type (we don't have a proper type for delta yet, therefore
+	// marking the metric type as unknown for now).
+	// We're in an early phase of implementing delta support (proposal: https://github.com/prometheus/proposals/pull/48/)
+	NativeDelta bool
 }
 
 // NewOTLPWriteHandler creates a http.Handler that accepts OTLP write requests and
 // writes them to the provided appendable.
-func NewOTLPWriteHandler(logger *slog.Logger, reg prometheus.Registerer, appendable storage.Appendable, configFunc func() config.Config, opts OTLPOptions) http.Handler {
+func NewOTLPWriteHandler(logger *slog.Logger, _ prometheus.Registerer, appendable storage.Appendable, configFunc func() config.Config, opts OTLPOptions) http.Handler {
+	if opts.NativeDelta && opts.ConvertDelta {
+		// This should be validated when iterating through feature flags, so not expected to fail here.
+		panic("cannot enable native delta ingestion and delta2cumulative conversion at the same time")
+	}
+
 	ex := &rwExporter{
 		writeHandler: &writeHandler{
 			logger:     logger,
 			appendable: appendable,
 		},
-		config: configFunc,
+		config:                configFunc,
+		allowDeltaTemporality: opts.NativeDelta,
 	}
 
-	wh := &otlpWriteHandler{logger: logger, cumul: ex}
+	wh := &otlpWriteHandler{logger: logger, defaultConsumer: ex}
 
 	if opts.ConvertDelta {
 		fac := deltatocumulative.NewFactory()
-		set := processor.Settings{TelemetrySettings: component.TelemetrySettings{MeterProvider: noop.NewMeterProvider()}}
-		d2c, err := fac.CreateMetrics(context.Background(), set, fac.CreateDefaultConfig(), wh.cumul)
+		set := processor.Settings{
+			ID:                component.NewID(fac.Type()),
+			TelemetrySettings: component.TelemetrySettings{MeterProvider: noop.NewMeterProvider()},
+		}
+		d2c, err := fac.CreateMetrics(context.Background(), set, fac.CreateDefaultConfig(), wh.defaultConsumer)
 		if err != nil {
 			// fac.CreateMetrics directly calls [deltatocumulativeprocessor.createMetricsProcessor],
 			// which only errors if:
@@ -555,13 +567,13 @@ func NewOTLPWriteHandler(logger *slog.Logger, reg prometheus.Registerer, appenda
 			// both cannot be the case, as we pass a valid *Config and valid TelemetrySettings.
 			// as such, we assume this error to never occur.
 			// if it is, our assumptions are broken in which case a panic seems acceptable.
-			panic(err)
+			panic(fmt.Errorf("failed to create metrics processor: %w", err))
 		}
 		if err := d2c.Start(context.Background(), nil); err != nil {
 			// deltatocumulative does not error on start. see above for panic reasoning
 			panic(err)
 		}
-		wh.delta = d2c
+		wh.d2cConsumer = d2c
 	}
 
 	return wh
@@ -569,7 +581,8 @@ func NewOTLPWriteHandler(logger *slog.Logger, reg prometheus.Registerer, appenda
 
 type rwExporter struct {
 	*writeHandler
-	config func() config.Config
+	config                func() config.Config
+	allowDeltaTemporality bool
 }
 
 func (rw *rwExporter) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
@@ -577,10 +590,12 @@ func (rw *rwExporter) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) er
 
 	converter := otlptranslator.NewPrometheusConverter()
 	annots, err := converter.FromMetrics(ctx, md, otlptranslator.Settings{
-		AddMetricSuffixes:                 true,
-		AllowUTF8:                         otlpCfg.TranslationStrategy == config.NoUTF8EscapingWithSuffixes,
+		AddMetricSuffixes:                 otlpCfg.TranslationStrategy != config.NoTranslation,
+		AllowUTF8:                         otlpCfg.TranslationStrategy != config.UnderscoreEscapingWithSuffixes,
 		PromoteResourceAttributes:         otlpCfg.PromoteResourceAttributes,
 		KeepIdentifyingResourceAttributes: otlpCfg.KeepIdentifyingResourceAttributes,
+		ConvertHistogramsToNHCB:           otlpCfg.ConvertHistogramsToNHCB,
+		AllowDeltaTemporality:             rw.allowDeltaTemporality,
 	})
 	if err != nil {
 		rw.logger.Warn("Error translating OTLP metrics to Prometheus write request", "err", err)
@@ -604,8 +619,8 @@ func (rw *rwExporter) Capabilities() consumer.Capabilities {
 type otlpWriteHandler struct {
 	logger *slog.Logger
 
-	cumul consumer.Metrics // only cumulative
-	delta consumer.Metrics // delta capable
+	defaultConsumer consumer.Metrics // stores deltas as-is
+	d2cConsumer     consumer.Metrics // converts deltas to cumulative
 }
 
 func (h *otlpWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -617,13 +632,15 @@ func (h *otlpWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	md := req.Metrics()
-	// if delta conversion enabled AND delta samples exist, use slower delta capable path
-	if h.delta != nil && hasDelta(md) {
-		err = h.delta.ConsumeMetrics(r.Context(), md)
+	// If deltatocumulative conversion enabled AND delta samples exist, use slower conversion path.
+	// While deltatocumulative can also accept cumulative metrics (and then just forwards them as-is), it currently
+	// holds a sync.Mutex when entering ConsumeMetrics. This is slow and not necessary when ingesting cumulative metrics.
+	if h.d2cConsumer != nil && hasDelta(md) {
+		err = h.d2cConsumer.ConsumeMetrics(r.Context(), md)
 	} else {
-		// deltatocumulative currently holds a sync.Mutex when entering ConsumeMetrics.
-		// This is slow and not necessary when no delta samples exist anyways
-		err = h.cumul.ConsumeMetrics(r.Context(), md)
+		// Otherwise use default consumer (alongside cumulative samples, this will accept delta samples and write as-is
+		// if native-delta-support is enabled).
+		err = h.defaultConsumer.ConsumeMetrics(r.Context(), md)
 	}
 
 	switch {
