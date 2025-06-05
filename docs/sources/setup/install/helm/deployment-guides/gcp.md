@@ -106,7 +106,7 @@ gcloud storage buckets create gs://loki-gcp-chunks gs://loki-gcp-ruler \
 
 When you run this command, you should get something like this in response:
 
-```bash
+```console
 Creating gs://loki-gcp-chunks/...
 Creating gs://loki-gcp-ruler/...
 ```
