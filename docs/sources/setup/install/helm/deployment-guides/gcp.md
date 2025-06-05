@@ -227,7 +227,7 @@ Examples:
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-chunks \
-  --role=roles/storage.objectViewer \
+  --role=roles/storage.objectAdmin \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
@@ -236,7 +236,7 @@ and
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-ruler \
-  --role=roles/storage.objectViewer \
+  --role=roles/storage.objectAdmin \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
