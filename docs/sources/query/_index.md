@@ -9,7 +9,7 @@ weight: 600
 
 # Query Loki
 
-The easiest way to look for certain logs stored in Loki is to specify a set of [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels) that identify them. When Loki receives log entries, it groups them into containers called *chunks* and then creates an index for the chunks that acts as a table of contents. When you write a query, Loki searches the index to determine which chunks to retrieve from storage for display.
+When you want to look for certain logs stored in Loki, you specify a set of [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels) that identify them. When Loki receives log entries, it groups them into log streams.  When Loki stores log streams they area compressed and stored in *chunks* and Loki then creates an index for the chunks that acts as a table of contents. When you write a query, Loki searches the index to determine which chunks to retrieve from storage for display.
 
 There are several ways to query Loki, but all of them use LogQL, Loki's query language, under the hood.
 
