@@ -34,7 +34,7 @@ type StorageConfig struct {
 	CloudSQLPort     int    `yaml:"cloudsql_port"`
 	CloudSQLDatabase string `yaml:"cloudsql_database"`
 	CloudSQLUser     string `yaml:"cloudsql_user"`
-	CloudSQLPassword string `yaml:"cloudsql_password"`
+	// CloudSQLPassword provided via GOLDFISH_DB_PASSWORD environment variable
 
 	// BigQuery specific
 	BigQueryProject string `yaml:"bigquery_project"`
@@ -62,7 +62,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.StorageConfig.CloudSQLPort, "goldfish.storage.cloudsql.port", 5432, "CloudSQL proxy port")
 	f.StringVar(&cfg.StorageConfig.CloudSQLDatabase, "goldfish.storage.cloudsql.database", "", "CloudSQL database name")
 	f.StringVar(&cfg.StorageConfig.CloudSQLUser, "goldfish.storage.cloudsql.user", "", "CloudSQL database user")
-	f.StringVar(&cfg.StorageConfig.CloudSQLPassword, "goldfish.storage.cloudsql.password", "", "CloudSQL database password")
 	f.StringVar(&cfg.StorageConfig.BigQueryProject, "goldfish.storage.bigquery.project", "", "BigQuery project ID")
 	f.StringVar(&cfg.StorageConfig.BigQueryDataset, "goldfish.storage.bigquery.dataset", "", "BigQuery dataset name")
 	f.StringVar(&cfg.StorageConfig.DSN, "goldfish.storage.dsn", "", "Generic database DSN")

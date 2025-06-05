@@ -17,7 +17,11 @@ type CloudSQLStorage struct {
 }
 
 // NewCloudSQLStorage creates a new CloudSQL storage backend
-func NewCloudSQLStorage(config StorageConfig) (*CloudSQLStorage, error) {
+func NewCloudSQLStorage(config StorageConfig, password string) (*CloudSQLStorage, error) {
+	if password == "" {
+		return nil, fmt.Errorf("CloudSQL password must be provided via GOLDFISH_DB_PASSWORD environment variable")
+	}
+
 	// Build DSN for CloudSQL proxy connection
 	// The proxy handles SSL/TLS, so we use sslmode=disable
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
@@ -25,7 +29,7 @@ func NewCloudSQLStorage(config StorageConfig) (*CloudSQLStorage, error) {
 		config.CloudSQLPort,
 		config.CloudSQLDatabase,
 		config.CloudSQLUser,
-		config.CloudSQLPassword,
+		password,
 	)
 
 	db, err := sql.Open("postgres", dsn)
