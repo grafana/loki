@@ -421,3 +421,233 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	api := NewQuerierAPI(Config{}, querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
+
+func TestPatternsHandler(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	now := time.Now()
+
+	// Mock pattern responses
+	mockPatternResponse := func(patterns []string) *logproto.QueryPatternsResponse {
+		resp := &logproto.QueryPatternsResponse{
+			Series: make([]*logproto.PatternSeries, 0),
+		}
+		for i, pattern := range patterns {
+			resp.Series = append(resp.Series, &logproto.PatternSeries{
+				Pattern: pattern,
+				Level:   constants.LogLevelInfo,
+				Samples: []*logproto.PatternSample{
+					{
+						Timestamp: model.Time(now.Unix() * 1000),
+						Value:     int64((i + 1) * 100),
+					},
+				},
+			})
+		}
+		return resp
+	}
+
+	tests := []struct {
+		name                          string
+		start, end                    time.Time
+		queryIngestersWithin          time.Duration
+		queryPatternIngestersWithin   time.Duration
+		ingesterQueryStoreMaxLookback time.Duration
+		setupQuerier                  func() Querier
+		patternsFromStore             []string
+		expectedPatterns              []string
+		expectedError                 error
+		queryStoreOnly                bool
+		queryIngesterOnly             bool
+	}{
+		{
+			name:                 "query both ingester and store when time range overlaps and ingesterQueryStoreMaxLookback is not set",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					// Should query recent data only (within queryIngestersWithin)
+					return req.Start.After(now.Add(-3*time.Hour)) && req.End.Equal(now)
+				})).Return(mockPatternResponse([]string{"pattern1", "pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"pattern3", "pattern4"},
+			expectedPatterns:  []string{"pattern1", "pattern2", "pattern3", "pattern4"},
+		},
+		{
+			name:                 "query only store when time range is older than ingester lookback",
+			start:                now.Add(-10 * time.Hour),
+			end:                  now.Add(-4 * time.Hour),
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				// Should not be called
+				q := &querierMock{}
+				return q
+			},
+			patternsFromStore: []string{"old_pattern1", "old_pattern2"},
+			expectedPatterns:  []string{"old_pattern1", "old_pattern2"},
+		},
+		{
+			name:                          "query only ingester when time range is recent and ingesterQueryStoreMaxLookback is set",
+			start:                         now.Add(-30 * time.Minute),
+			end:                           now,
+			queryIngestersWithin:          3 * time.Hour,
+			ingesterQueryStoreMaxLookback: 1 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					return req.Start.Equal(now.Add(-30*time.Minute)) && req.End.Equal(now)
+				})).Return(mockPatternResponse([]string{"recent_pattern1", "recent_pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"old_pattern1", "old_pattern2"},
+			expectedPatterns:  []string{"recent_pattern1", "recent_pattern2"},
+		},
+		{
+			name:           "query store only when configured",
+			start:          now.Add(-2 * time.Hour),
+			end:            now,
+			queryStoreOnly: true,
+			setupQuerier: func() Querier {
+				// Should not be called
+				return newQuerierMock()
+			},
+			patternsFromStore: []string{"store_only_pattern"},
+			expectedPatterns:  []string{"store_only_pattern"},
+		},
+		{
+			name:                 "query ingester only when configured",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngesterOnly:    true,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(mockPatternResponse([]string{"ingester_only_pattern"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"store_only_pattern"},
+			expectedPatterns:  []string{"ingester_only_pattern"},
+		},
+		{
+			name:                 "returns empty response when no patterns found",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{Series: []*logproto.PatternSeries{}}, nil)
+				return q
+			},
+		},
+		{
+			name:                        "query uses pattern-specific lookback when configured",
+			start:                       now.Add(-2 * time.Hour),
+			end:                         now.Add(-90 * time.Minute), // Query ends before pattern ingester lookback
+			queryIngestersWithin:        3 * time.Hour,
+			queryPatternIngestersWithin: 1 * time.Hour, // Pattern ingester only looks back 1 hour
+			setupQuerier: func() Querier {
+				// Should not be called since query is entirely outside pattern ingester lookback
+				return newQuerierMock()
+			},
+			patternsFromStore: []string{"pattern_from_store"},
+			expectedPatterns:  []string{"pattern_from_store"},
+		},
+		{
+			name:                 "merges patterns from both sources correctly",
+			start:                now.Add(-2 * time.Hour),
+			end:                  now,
+			queryIngestersWithin: 3 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
+					Series: []*logproto.PatternSeries{
+						{
+							Pattern: "common_pattern",
+							Samples: []*logproto.PatternSample{
+								{Timestamp: model.Time(now.Add(-30*time.Minute).Unix() * 1000), Value: 100},
+							},
+						},
+						{
+							Pattern: "ingester_pattern",
+							Samples: []*logproto.PatternSample{
+								{Timestamp: model.Time(now.Add(-15*time.Minute).Unix() * 1000), Value: 200},
+							},
+						},
+					},
+				}, nil)
+				return q
+			},
+			patternsFromStore: []string{"common_pattern", "store_pattern"},
+			expectedPatterns:  []string{"common_pattern", "ingester_pattern", "store_pattern"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = tc.queryIngestersWithin
+			if tc.queryPatternIngestersWithin != 0 {
+				conf.QueryPatternIngestersWithin = tc.queryPatternIngestersWithin
+			} else {
+				conf.QueryPatternIngestersWithin = tc.queryIngestersWithin
+			}
+			conf.IngesterQueryStoreMaxLookback = tc.ingesterQueryStoreMaxLookback
+			conf.QueryStoreOnly = tc.queryStoreOnly
+			conf.QueryIngesterOnly = tc.queryIngesterOnly
+
+			querier := tc.setupQuerier()
+
+			// Create a mock engine that returns the expected patterns from store
+			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
+
+			api := &QuerierAPI{
+				cfg:      conf,
+				querier:  querier,
+				limits:   limits,
+				engineV1: engineMock,
+				logger:   log.NewNopLogger(),
+			}
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test-service"}`,
+				Start: tc.start,
+				End:   tc.end,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := api.PatternsHandler(ctx, req)
+
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Collect all patterns from response
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+
+			// Check expected patterns from ingester
+			for _, pattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[pattern], "Expected pattern %s, not found", pattern)
+			}
+
+			require.Equal(t, len(tc.expectedPatterns), len(resp.Series), "Unexpected number of patterns in response")
+
+			// Verify mocks were called as expected (if it's a mock)
+			if q, ok := querier.(*querierMock); ok {
+				q.AssertExpectations(t)
+			}
+		})
+	}
+}

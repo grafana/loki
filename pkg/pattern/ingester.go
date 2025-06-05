@@ -45,6 +45,7 @@ type Config struct {
 	TeeConfig            TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
 	ConnectionTimeout    time.Duration         `yaml:"connection_timeout"`
 	MaxAllowedLineLength int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	RetainFor            time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -99,6 +100,12 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		"pattern-ingester.max-allowed-line-length",
 		drain.DefaultConfig().MaxAllowedLineLength,
 		"The maximum length of log lines that can be used for pattern detection.",
+	)
+	fs.DurationVar(
+		&cfg.RetainFor,
+		"pattern-ingester.retain-for",
+		3*time.Hour,
+		"How long to retain patterns in the pattern ingester after they are pushed.",
 	)
 }
 
