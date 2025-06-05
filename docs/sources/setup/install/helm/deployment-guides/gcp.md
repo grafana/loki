@@ -271,11 +271,7 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana chart repos
     ```bash
     helm repo update
     ```
-3. Create a new namespace for Loki:
 
-    ```bash
-    kubectl create namespace loki
-    ```
 ### Loki Basic Authentication
 
 Loki by default does not come with any authentication. Since we will be deploying Loki to GCP and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
