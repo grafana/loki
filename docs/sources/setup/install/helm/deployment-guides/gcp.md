@@ -621,7 +621,7 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
     This will run the test and output the results. You should see the test writing logs to Loki and querying logs from Loki.
 
 Now that you have successfully deployed Loki in microservices mode on GCP, you may wish to explore the following:
-
+- [Monitor a Loki Cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/)
 - [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/)
 - [Querying Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)
 - [Manage](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/)
