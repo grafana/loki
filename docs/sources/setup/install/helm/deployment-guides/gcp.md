@@ -50,6 +50,10 @@ The minimum requirements for deploying Loki on GKE are:
 - `3` nodes for the GKE cluster.
 - Instance type depends on your workload. A good starting point for a production cluster is `n2-standard-8`.
 
+{{< admonition type="warning" >}}
+Regional clusters in GKE are designed for resilience, and thus by default span three zones within the region. In the command below, `num-nodes=1`. Note that if you set `num_nodes=3`, you would get 9 nodes in total for the region: 3 in *each* zone. Therefore, leave `num_nodes=1` when you create your cluster.
+{{< /admonition >}}
+
 Here is an example of a command you can run using gcloud CLI to create a new cluster:
 
 ```bash
@@ -65,10 +69,6 @@ gcloud container clusters create loki-gcp \
 ```
 
 Replace `<PROJECT_ID>` with the ID of the project you want to create the cluster in. This should be something like `my-project-123456`.
-
-{{< admonition type="warning" >}}
-Regional clusters in GKE are designed for resilience, and thus by default span three zones within the region. If you set `num_nodes=3`, you would get 9 nodes in total for the region: 3 in *each* zone. In the command above, `num_nodes` is set to `1` for this reason.
-{{< /admonition >}}
 
 ## Create GCS buckets
 
