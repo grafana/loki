@@ -2,6 +2,7 @@ package goldfish
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/go-kit/log"
 )
@@ -13,8 +14,8 @@ func NewStorage(config StorageConfig, logger log.Logger) (Storage, error) {
 		// No storage configured, use no-op storage
 		return NewNoOpStorage(logger), nil
 	case "cloudsql":
-		// TODO: Update CloudSQL implementation and auth/config
-		return NewCloudSQLStorage(config)
+		password := os.Getenv("GOLDFISH_DB_PASSWORD")
+		return NewCloudSQLStorage(config, password)
 	case "bigquery":
 		// TODO: Implement BigQuery storage
 		return nil, fmt.Errorf("BigQuery storage not yet implemented")
