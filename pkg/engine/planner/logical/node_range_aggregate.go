@@ -76,7 +76,7 @@ func (r *RangeAggregation) Schema() *schema.Schema {
 		}
 
 		outputSchema.Columns = append(outputSchema.Columns, schema.ColumnSchema{
-			Name: types.ColumnNameBuiltinMessage,
+			Name: types.ColumnNameBuiltinTimestamp,
 			Type: schema.ValueTypeTimestamp,
 		})
 		// Using int64 since only count_over_time is supported.
