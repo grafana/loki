@@ -136,7 +136,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			pushedLabels = make(model.LabelSet, 30)
 		}
 
-		shouldDiscoverServiceName := len(discoverServiceName) > 0 && !stats.IsAggregatedMetric
+		shouldDiscoverServiceName := len(discoverServiceName) > 0 && !stats.IsInternalStream
 		hasServiceName := false
 		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
 			hasServiceName = true

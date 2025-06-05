@@ -22,12 +22,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/backoff"
 
@@ -157,6 +155,8 @@ func NewPush(
 
 	p.running.Add(1)
 	go p.run(pushPeriod)
+
+	level.Debug(p.logger).Log("msg", "started pushing aggregation entries")
 	return p, nil
 }
 
@@ -207,7 +207,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		serviceLimit = 1000
 	}
 
-	services := make([]string, 0, serviceLimit)
 	for s, entries := range entriesByStream {
 		lbls, err := syntax.ParseLabels(s)
 		if err != nil {
@@ -219,10 +218,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 			Entries: entries,
 			Hash:    lbls.Hash(),
 		})
-
-		if len(services) < serviceLimit {
-			services = append(services, lbls.Get(constants.AggregatedMetricLabel))
-		}
 	}
 
 	if len(streams) == 0 {
@@ -245,10 +240,16 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 	sp.AddEvent("build aggregated metrics payload", trace.WithAttributes(
 		attribute.Int("num_service", len(entriesByStream)),
-		attribute.StringSlice("first_1k_services", services),
 		attribute.Int("num_streams", len(streams)),
 		attribute.Int("num_entries", len(entries)),
 	))
+
+	level.Debug(p.logger).Log(
+		"msg", "built aggregation payload",
+		"num_service", len(entriesByStream),
+		"num_streams", len(streams),
+		"num_entries", len(entries),
+	)
 
 	return payload, nil
 }
@@ -271,6 +272,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 			cancel()
 			return
 		case <-pushTicker.C:
+			pushTicker.Reset(pushPeriod)
 			payload, err := p.buildPayload(ctx)
 			if err != nil {
 				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
@@ -278,6 +280,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 			}
 
 			if len(payload) == 0 {
+				level.Warn(p.logger).Log("msg", "skipping aggregation push, payload is empty")
 				continue
 			}
 
@@ -289,26 +292,23 @@ func (p *Push) run(pushPeriod time.Duration) {
 				status := 0
 				status, err = p.send(ctx, payload)
 				if err == nil {
-					pushTicker.Reset(pushPeriod)
+					level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
 					break
 				}
 
 				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
-					pushTicker.Reset(pushPeriod)
 					break
 				}
 
 				if !backoff.Ongoing() {
 					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
-					pushTicker.Reset(pushPeriod)
 					break
 				}
 				level.Warn(p.logger).
 					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
 				backoff.Wait()
 			}
-
 		}
 	}
 }
@@ -376,18 +376,39 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 func AggregatedMetricEntry(
 	ts model.Time,
 	totalBytes, totalCount uint64,
-	service string,
 	lbls labels.Labels,
 ) string {
 	byteString := util.HumanizeBytes(totalBytes)
 	base := fmt.Sprintf(
-		"ts=%d bytes=%s count=%d %s=\"%s\"",
+		"ts=%d bytes=%s count=%d",
 		ts.UnixNano(),
 		byteString,
 		totalCount,
-		push.LabelServiceName, service,
 	)
 
+	return internalEntry(base, lbls)
+}
+
+func PatternEntry(
+	ts time.Time,
+	count int64,
+	pattern string,
+	lbls labels.Labels,
+) string {
+	base := fmt.Sprintf(
+		`ts=%d count=%d detected_pattern="%s"`,
+		ts.UnixNano(),
+		count,
+		url.QueryEscape(pattern),
+	)
+
+	return internalEntry(base, lbls)
+}
+
+func internalEntry(
+	base string,
+	lbls labels.Labels,
+) string {
 	for _, l := range lbls {
 		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
 	}

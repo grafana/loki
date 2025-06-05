@@ -207,7 +207,7 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 
-	t.Run("ignores __aggregated_metric__ series, when possible, unless explicitly requested", func(t *testing.T) {
+	t.Run("ignores __aggregated_metric__ and __patern__ series, when possible, unless explicitly requested", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
 			return &logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{},
@@ -231,11 +231,19 @@ func TestSeriesHandler(t *testing.T) {
 			},
 			{
 				match:          `{foo="bar"}`,
-				expectedGroups: []string{fmt.Sprintf(`{foo="bar", %s=""}`, constants.AggregatedMetricLabel)},
+				expectedGroups: []string{fmt.Sprintf(`{foo="bar", %s="", %s=""}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
 			},
 			{
 				match:          fmt.Sprintf(`{%s="foo-service"}`, constants.AggregatedMetricLabel),
-				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service"}`, constants.AggregatedMetricLabel)},
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s=""}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service"}`, constants.PatternLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s=""}`, constants.PatternLabel, constants.AggregatedMetricLabel)},
+			},
+			{
+				match:          fmt.Sprintf(`{%s="foo-service", %s="foo-service"}`, constants.AggregatedMetricLabel, constants.PatternLabel),
+				expectedGroups: []string{fmt.Sprintf(`{%s="foo-service", %s="foo-service"}`, constants.AggregatedMetricLabel, constants.PatternLabel)},
 			},
 		} {
 			req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
@@ -322,6 +330,57 @@ func TestLabelsHandler(t *testing.T) {
 		ret := &logproto.LabelResponse{
 			Values: []string{
 				constants.AggregatedMetricLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
+			"?start=0"+
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
+
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
+	})
+
+	t.Run("remove __pattern__ label from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.PatternLabel,
+				"foo",
+				"bar",
+			},
+		}
+		expected := `{"status":"success","data":["foo","bar"]}`
+
+		q := newQuerierMock()
+		q.On("Label", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(t, q, true)
+		handler := buildHandler(api)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/labels"+
+			"?start=0"+
+			"&end=1", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
+
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
+	})
+
+	t.Run("remove both __aggregated_metric__ and __pattern__ labels from response when present", func(t *testing.T) {
+		ret := &logproto.LabelResponse{
+			Values: []string{
+				constants.AggregatedMetricLabel,
+				constants.PatternLabel,
 				"foo",
 				"bar",
 			},
