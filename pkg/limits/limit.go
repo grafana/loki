@@ -2,6 +2,7 @@ package limits
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -29,6 +30,7 @@ type limitsChecker struct {
 
 	// Metrics.
 	tenantIngestedBytesTotal *prometheus.CounterVec
+	streamDiscardedTotal     *prometheus.CounterVec
 
 	// Used in tests.
 	clock quartz.Clock
@@ -46,6 +48,10 @@ func newLimitsChecker(limits Limits, store *usageStore, producer *producer, part
 			Name: "loki_ingest_limits_tenant_ingested_bytes_total",
 			Help: "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
+		streamDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingest_limits_streams_discarded_total",
+			Help: "Total number of times streams were discarded.",
+		}, []string{"partition"}),
 		clock: quartz.NewReal(),
 	}
 }
@@ -58,7 +64,7 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 
 		// TODO(periklis): Do we need to report this as an error to the frontend?
 		if assigned := c.partitionManager.Has(partition); !assigned {
-			level.Warn(c.logger).Log("msg", "stream assigned partition not owned by instance", "stream_hash", stream.StreamHash, "partition", partition)
+			c.streamDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
 			continue
 		}
 

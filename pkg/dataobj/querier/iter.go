@@ -252,7 +252,7 @@ func newSampleIterator(ctx context.Context,
 				timestamp := record.Timestamp.UnixNano()
 
 				statistics.AddDecompressedLines(1)
-				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 				if !ok {
 					continue
 				}

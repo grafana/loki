@@ -234,7 +234,7 @@ func Test_ParserHints(t *testing.T) {
 			require.NoError(t, err)
 
 			for i, ex := range exs {
-				res, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...))
+				res, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
 				require.Equal(t, tt.expectOk, ok)
 
 				for _, sample := range res {
