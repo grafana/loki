@@ -14,7 +14,7 @@ When you want to look for certain logs stored in Loki, you specify a set of [lab
 There are several ways to query Loki, but all of them use LogQL, Loki's query language, under the hood.
 
 Loki does not have a user interface, so most users [install Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) in order to visualize their log data. From Grafana, you can use:
-- [Grafana Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to automatically visualize your log data. Drilldown shows you pre-created dashboards to show you information we think you'll find relevant to help you get started with viewing your logs without having to write queries.
+- [Grafana Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to automatically visualize your log data. Logs Drilldown uses default queries to provide a set of initial dashboards that display information we think you'll find relevant to get you started viewing your logs without having to write queries.
 - [Grafana Explore](https://grafana.com/docs/grafana/latest/explore/) helps you examine your data ad-hoc or build and refine a LogQL query for inclusion within a dashboard.
 
 You can also run queries against Loki using [LogCLI](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/), the command-line interface to Grafana Loki.
