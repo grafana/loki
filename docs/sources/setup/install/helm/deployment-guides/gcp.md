@@ -205,7 +205,7 @@ Create an IAM policy binding on the bucket(s) using the KSA created previously a
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
-  --role=roles/storage.objectViewer \
+ --role=roles/storage.objectAdmin \
   --member=principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/<NAMESPACE>/sa/<KSA_NAME> \
   --condition=None
 ```
