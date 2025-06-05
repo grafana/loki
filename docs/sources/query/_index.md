@@ -63,7 +63,7 @@ The following operators can be used in the log stream selector:
 - `=~` labels that are a regex-match to the log stream selector
 - `!~` labels that are not a regex-match to the log stream selector
 
-where the `˜` character is used for regular expressions.
+where the `~` character is used for regular expressions.
 
 ### Log pipeline
 
