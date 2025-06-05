@@ -132,6 +132,88 @@ The [template-eventbridge.yaml](./template-eventbridge.yaml) CloudFormation temp
 aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template-eventbridge.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=BearerToken,ParameterValue=<bearer-token> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2" ParameterKey=TenantID,ParameterValue=<value> ParameterKey=SkipTlsVerify,ParameterValue="false" ParameterKey=EventSourceS3Bucket,ParameterValue="alb-logs-bucket-name"
 ```
 
+## Subscribing to all Lambdas via Terraform
+
+AWS does not support creating Cloudwatch [log group subscription filters](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/SubscriptionFilters.html) using wildcards, such as `/aws/lambda/*`. You have to subscribe to each log group explicitly. To get around this, you can use a `data` resource to obtain all log groups that start with `/aws/lambda/` like this:
+
+```
+data "aws_cloudwatch_log_groups" "all_lambda_log_groups" {
+  log_group_name_prefix = "/aws/lambda/"
+}
+
+locals {
+  lambda_name = "lambda_promtail"
+  # Avoid an infinite loop of logs by not ingesting logs from lambda-promtail itself
+  all_log_groups = [
+    for log_group in data.aws_cloudwatch_log_groups.all_lambda_log_groups.log_group_names : log_group
+    if log_group != "/aws/lambda/${local.lambda_name}"
+  ]
+}
+
+module "lambda_promtail" {
+  source = "github.com/grafana/loki//tools/lambda-promtail?ref=vX.Y.Z"
+  name = local.lambda_name
+  ...
+  log_group_names = local.all_log_groups
+}
+```
+
+Note that any Lambdas created after running `terraform apply` will not be detected by lambda-promtail. You may need to set up regular automated `terraform apply` runs to detect new ones.
+
+## Account-wide Cloudwatch subscriptions
+
+Some users may want to configure lambda-promtail to ingest all Cloudwatch logs in an entire AWS account. You can use [account-level subscription filters](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/SubscriptionFilters-AccountLevel.html) for this. Here's an example in Terraform:
+
+```hcl
+locals {
+  lambda_name = "lambda_promtail"
+}
+
+module "lambda_promtail" {
+  source = "github.com/grafana/loki//tools/lambda-promtail?ref=vX.Y.Z"
+  name = local.lambda_name
+  ...
+  # Disable individual log group subscriptions
+  log_group_names = []
+}
+
+# This permission gets disabled when you set "log_group_names = []" so we create it manually.
+resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
+  statement_id  = "lambda-promtail-allow-cloudwatch"
+  action        = "lambda:InvokeFunction"
+  function_name = local.lambda_name
+  principal     = "logs.${var.region}.amazonaws.com"
+}
+
+# The module has no outputs, so we have to access the ARN like this
+data "aws_lambda_function" "lambda_promtail" {
+  function_name = local.lambda_name
+  depends_on    = [module.lambda_promtail]
+}
+
+locals {
+  excluded_log_groups = [
+    # Exclude lambda-promtail itself to avoid an inifinite loop of logs
+    "/aws/lambda/${local.lambda_name}"
+    # Add any other exclusions here. You can also use data.aws_cloudwatch_log_groups to create this list dynamically.
+  ]
+}
+
+resource "aws_cloudwatch_log_account_policy" "subscription_filter" {
+  policy_name = "lambda-promtail-subscription-filter"
+  policy_type = "SUBSCRIPTION_FILTER_POLICY"
+  policy_document = jsonencode(
+    {
+      DestinationArn = data.aws_lambda_function.lambda_promtail.arn
+      FilterPattern  = ""
+      Distribution   = "Random"
+    }
+  )
+
+  selection_criteria = "LogGroupName NOT IN [\"${join("\", \"", local.excluded_log_groups)}\"]"
+}
+```
+
 ## Limitations
 - Error handling: If promtail is unresponsive, `lambda-promtail` will drop logs after `retry_count`, which defaults to 2.
 - AWS CloudWatch [quotas](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html) state that the event size is limited to 256kb. `256 KB (maximum). This quota can't be changed.`
