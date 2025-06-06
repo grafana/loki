@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-func TestUsageStore_Iter(t *testing.T) {
+func TestUsageStore_ActiveStreams(t *testing.T) {
 	t.Run("iterates all streams", func(t *testing.T) {
 		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
 		require.NoError(t, err)
@@ -32,9 +32,9 @@ func TestUsageStore_Iter(t *testing.T) {
 		// Assert that we can iterate all stored streams.
 		expected := []uint64{0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9}
 		actual := make([]uint64, 0, len(expected))
-		s.Iter(func(_ string, _ int32, s streamUsage) {
-			actual = append(actual, s.hash)
-		})
+		for _, stream := range s.ActiveStreams() {
+			actual = append(actual, stream.hash)
+		}
 		require.ElementsMatch(t, expected, actual)
 	})
 
@@ -54,12 +54,14 @@ func TestUsageStore_Iter(t *testing.T) {
 		// Advance the clock past the active time window.
 		clock.Advance(15*time.Minute + 1)
 		actual := 0
-		s.Iter(func(_ string, _ int32, _ streamUsage) { actual++ })
+		for range s.ActiveStreams() {
+			actual++
+		}
 		require.Equal(t, 0, actual)
 	})
 }
 
-func TestUsageStore_IterTenant(t *testing.T) {
+func TestUsageStore_TenantActiveStreams(t *testing.T) {
 	t.Run("iterates all streams for tenant", func(t *testing.T) {
 		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
 		require.NoError(t, err)
@@ -83,15 +85,15 @@ func TestUsageStore_IterTenant(t *testing.T) {
 		// Check we can iterate the streams for each tenant.
 		expected1 := []uint64{0x0, 0x1, 0x2, 0x3, 0x4}
 		actual1 := make([]uint64, 0, 5)
-		s.IterTenant("tenant1", func(_ string, _ int32, stream streamUsage) {
+		for _, stream := range s.TenantActiveStreams("tenant1") {
 			actual1 = append(actual1, stream.hash)
-		})
+		}
 		require.ElementsMatch(t, expected1, actual1)
 		expected2 := []uint64{0x5, 0x6, 0x7, 0x8, 0x9}
 		actual2 := make([]uint64, 0, 5)
-		s.IterTenant("tenant2", func(_ string, _ int32, stream streamUsage) {
+		for _, stream := range s.TenantActiveStreams("tenant2") {
 			actual2 = append(actual2, stream.hash)
-		})
+		}
 		require.ElementsMatch(t, expected2, actual2)
 	})
 
@@ -111,7 +113,9 @@ func TestUsageStore_IterTenant(t *testing.T) {
 		// Advance the clock past the active time window.
 		clock.Advance(15*time.Minute + 1)
 		actual := 0
-		s.IterTenant("tenant1", func(_ string, _ int32, _ streamUsage) { actual++ })
+		for range s.TenantActiveStreams("tenant1") {
+			actual++
+		}
 		require.Equal(t, 0, actual)
 	})
 }
@@ -334,18 +338,18 @@ func TestUsageStore_Evict(t *testing.T) {
 	clock.Advance(15*time.Minute + 1)
 	s.Evict()
 	actual1 := 0
-	s.IterTenant("tenant1", func(_ string, _ int32, _ streamUsage) {
+	for range s.TenantActiveStreams("tenant1") {
 		actual1++
-	})
+	}
 	require.Equal(t, 0, actual1)
 	actual2 := 0
-	s.IterTenant("tenant2", func(_ string, _ int32, _ streamUsage) {
+	for range s.TenantActiveStreams("tenant2") {
 		actual2++
-	})
+	}
 	require.Equal(t, 2, actual2)
 }
 
-func TestUsageStore_EvictPartitions(t *testing.T) {
+func TestStatsStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
 	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -358,12 +362,12 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	}
 	// Evict the first 5 partitions.
 	s.EvictPartitions([]int32{0, 1, 2, 3, 4})
-	// The last 5 partitions should still have data.
-	expected := []int32{5, 6, 7, 8, 9}
-	actual := make([]int32, 0, len(expected))
-	s.Iter(func(_ string, partition int32, _ streamUsage) {
-		actual = append(actual, partition)
-	})
+	// The streams for the last 5 partitions should still be present.
+	expected := []uint64{5, 6, 7, 8, 9}
+	actual := make([]uint64, 0, len(expected))
+	for _, stream := range s.ActiveStreams() {
+		actual = append(actual, stream.hash)
+	}
 	require.ElementsMatch(t, expected, actual)
 }
 
