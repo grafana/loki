@@ -36,7 +36,7 @@ func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg
 
 	var ms metastore.Metastore
 	if bucket != nil {
-		ms = metastore.NewObjectMetastore(bucket)
+		ms = metastore.NewObjectMetastore(bucket, logger)
 	}
 
 	return &QueryEngine{
