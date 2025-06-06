@@ -102,6 +102,10 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		if n.Clients[id].HTTPClientConfig.BasicAuth != nil {
 			n.Clients[id].HTTPClientConfig.BasicAuth.Password = c.Clients[id].HTTPClientConfig.BasicAuth.Password
 		}
+
+		if n.Clients[id].HTTPClientConfig.Authorization != nil {
+			n.Clients[id].HTTPClientConfig.Authorization.Credentials = c.Clients[id].HTTPClientConfig.Authorization.Credentials
+		}
 	}
 
 	return n, nil
