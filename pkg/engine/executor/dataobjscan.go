@@ -131,7 +131,7 @@ func (s *dataobjScan) initStreams() error {
 	// below.
 	s.streams = make(map[int64]labels.Labels, len(s.opts.StreamIDs))
 	for _, id := range s.opts.StreamIDs {
-		s.streams[id] = nil
+		s.streams[id] = labels.EmptyLabels()
 	}
 
 	for _, section := range s.opts.Object.Sections() {
@@ -175,7 +175,7 @@ func (s *dataobjScan) initStreams() error {
 	// Check that all streams were populated.
 	var errs []error
 	for id, labels := range s.streams {
-		if labels == nil {
+		if labels.IsEmpty() {
 			errs = append(errs, fmt.Errorf("requested stream ID %d not found in any stream section", id))
 		}
 	}
@@ -342,15 +342,15 @@ func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physica
 		}
 
 		if _, addedStream := foundStreams[rec.StreamID]; !addedStream {
-			for _, label := range stream {
+			stream.Range(func(label labels.Label) {
 				addColumn(label.Name, types.ColumnTypeLabel)
-			}
+			})
 			foundStreams[rec.StreamID] = struct{}{}
 		}
 
-		for _, md := range rec.Metadata {
-			addColumn(md.Name, types.ColumnTypeMetadata)
-		}
+		rec.Metadata.Range(func(label labels.Label) {
+			addColumn(label.Name, types.ColumnTypeMetadata)
+		})
 	}
 
 	// Sort existing columns by type (preferring labels) then name.

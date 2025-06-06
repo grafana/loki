@@ -185,9 +185,9 @@ func NewSampleStream(s promql.Series) model.SampleStream {
 func NewMetric(l labels.Labels) model.Metric {
 	ret := make(map[model.LabelName]model.LabelValue)
 
-	for _, label := range l {
+	l.Range(func(label labels.Label) {
 		ret[model.LabelName(label.Name)] = model.LabelValue(label.Value)
-	}
+	})
 
 	return ret
 }
@@ -508,14 +508,16 @@ func encodeValue(T int64, V float64, s *jsoniter.Stream) {
 
 func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
 	s.WriteObjectStart()
-	for i, label := range l {
+	i := 0
+	l.Range(func(label labels.Label) {
 		if i > 0 {
 			s.WriteMore()
 		}
 
 		s.WriteObjectField(label.Name)
 		s.WriteString(label.Value)
-	}
+		i++
+	})
 	s.WriteObjectEnd()
 }
 
