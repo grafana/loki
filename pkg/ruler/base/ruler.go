@@ -909,24 +909,26 @@ func (r *Ruler) getLocalRules(userID string, req *RulesRequest) ([]*GroupStateDe
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
-						State:       a.State.String(),
-						Labels:      logproto.FromLabelsToLabelAdapters(a.Labels),
-						Annotations: logproto.FromLabelsToLabelAdapters(a.Annotations),
-						Value:       a.Value,
-						ActiveAt:    a.ActiveAt,
-						FiredAt:     a.FiredAt,
-						ResolvedAt:  a.ResolvedAt,
-						LastSentAt:  a.LastSentAt,
-						ValidUntil:  a.ValidUntil,
+						State:           a.State.String(),
+						Labels:          logproto.FromLabelsToLabelAdapters(a.Labels),
+						Annotations:     logproto.FromLabelsToLabelAdapters(a.Annotations),
+						Value:           a.Value,
+						ActiveAt:        a.ActiveAt,
+						FiredAt:         a.FiredAt,
+						ResolvedAt:      a.ResolvedAt,
+						LastSentAt:      a.LastSentAt,
+						ValidUntil:      a.ValidUntil,
+						KeepFiringSince: a.KeepFiringSince,
 					})
 				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
-						Expr:        rule.Query().String(),
-						Alert:       rule.Name(),
-						For:         rule.HoldDuration(),
-						Labels:      logproto.FromLabelsToLabelAdapters(rule.Labels()),
-						Annotations: logproto.FromLabelsToLabelAdapters(rule.Annotations()),
+						Expr:          rule.Query().String(),
+						Alert:         rule.Name(),
+						For:           rule.HoldDuration(),
+						KeepFiringFor: rule.KeepFiringFor(),
+						Labels:        logproto.FromLabelsToLabelAdapters(rule.Labels()),
+						Annotations:   logproto.FromLabelsToLabelAdapters(rule.Annotations()),
 					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),

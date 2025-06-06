@@ -47,11 +47,12 @@ type AlertDiscovery struct {
 
 // Alert has info for an alert.
 type Alert struct {
-	Labels      labels.Labels `json:"labels"`
-	Annotations labels.Labels `json:"annotations"`
-	State       string        `json:"state"`
-	ActiveAt    *time.Time    `json:"activeAt"`
-	Value       string        `json:"value"`
+	Labels          labels.Labels `json:"labels"`
+	Annotations     labels.Labels `json:"annotations"`
+	State           string        `json:"state"`
+	ActiveAt        *time.Time    `json:"activeAt"`
+	KeepFiringSince *time.Time    `json:"keepFiringSince,omitempty"`
+	Value           string        `json:"value"`
 }
 
 // RuleDiscovery has info for all rules
@@ -81,6 +82,7 @@ type alertingRule struct {
 	Name           string        `json:"name"`
 	Query          string        `json:"query"`
 	Duration       float64       `json:"duration"`
+	KeepFiringFor  float64       `json:"keepFiringFor"`
 	Labels         labels.Labels `json:"labels"`
 	Annotations    labels.Labels `json:"annotations"`
 	Alerts         []*Alert      `json:"alerts"`
@@ -222,6 +224,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 					Name:           rl.Rule.GetAlert(),
 					Query:          rl.Rule.GetExpr(),
 					Duration:       rl.Rule.For.Seconds(),
+					KeepFiringFor:  rl.Rule.KeepFiringFor.Seconds(),
 					Labels:         logproto.FromLabelAdaptersToLabels(rl.Rule.Labels),
 					Annotations:    logproto.FromLabelAdaptersToLabels(rl.Rule.Annotations),
 					Alerts:         alerts,
@@ -301,13 +304,20 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 		for _, rl := range g.ActiveRules {
 			if rl.Rule.Alert != "" {
 				for _, a := range rl.Alerts {
-					alerts = append(alerts, &Alert{
+
+					alert := &Alert{
 						Labels:      logproto.FromLabelAdaptersToLabels(a.Labels),
 						Annotations: logproto.FromLabelAdaptersToLabels(a.Annotations),
 						State:       a.GetState(),
 						ActiveAt:    &a.ActiveAt,
 						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
-					})
+					}
+
+					if !a.KeepFiringSince.IsZero() {
+						alert.KeepFiringSince = &a.KeepFiringSince
+					}
+
+					alerts = append(alerts, alert)
 				}
 			}
 		}
