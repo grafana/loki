@@ -40,6 +40,12 @@ variable "lambda_promtail_image" {
   default     = ""
 }
 
+variable "lambda_code_version" {
+  type        = string
+  description = "A version string used to determine if the lambda-promtail binary needs to be rebuilt. If not provided, the binary will be rebuilt on every plan/apply run."
+  default     = ""
+}
+
 variable "username" {
   type        = string
   description = "The basic auth username, necessary if writing directly to Grafana Cloud Loki."
