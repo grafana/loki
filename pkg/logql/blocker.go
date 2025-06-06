@@ -49,7 +49,7 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 				return qb.block(b, typ, logger)
 			}
 
-			return false
+			continue
 		}
 
 		// if no pattern is given, assume we want to match all queries
