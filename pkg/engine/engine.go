@@ -90,6 +90,12 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
 	durLogicalPlanning := time.Since(t)
 
+	level.Info(logger).Log(
+		"msg", "finished logical planning",
+		"plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"duration", durLogicalPlanning.Seconds(),
+	)
+
 	t = time.Now() // start stopwatch for physical planning
 	executionContext := physical.NewContext(ctx, e.metastore, params.Start(), params.End())
 	planner := physical.NewPlanner(executionContext)
@@ -109,9 +115,13 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	durPhysicalPlanning := time.Since(t)
 
 	level.Info(logger).Log(
-		"msg", "execute query with new engine",
-		"logical_plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
-		"physical_plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+		"msg", "finished physical planning",
+		"plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+		"duration", durLogicalPlanning.Seconds(),
+	)
+
+	level.Info(logger).Log(
+		"msg", "start executing query with new engine",
 	)
 
 	t = time.Now() // start stopwatch for execution
@@ -135,10 +145,10 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	durExecution := time.Since(t)
 
 	level.Debug(logger).Log(
-		"msg", "subquery execution durations",
-		"logical_planning", durLogicalPlanning,
-		"physical_planning", durPhysicalPlanning,
-		"execution", durExecution,
+		"msg", "finished executing with new engine",
+		"duration_logical_planning", durLogicalPlanning,
+		"duration_physical_planning", durPhysicalPlanning,
+		"duration_execution", durExecution,
 	)
 
 	return builder.build(), nil
