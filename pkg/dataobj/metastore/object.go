@@ -10,9 +10,12 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -30,6 +33,7 @@ const (
 type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
+	logger      log.Logger
 }
 
 func metastorePath(tenantID string, window time.Time) string {
@@ -49,11 +53,25 @@ func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
 	}
 }
 
-func NewObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
+func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger) *ObjectMetastore {
 	return &ObjectMetastore{
 		bucket:      bucket,
 		parallelism: 64,
+		logger:      logger,
 	}
+}
+
+func matchersToString(matchers []*labels.Matcher) string {
+	var s strings.Builder
+	s.WriteString("{")
+	for i, m := range matchers {
+		if i > 0 {
+			s.WriteString(",")
+		}
+		s.WriteString(m.String())
+	}
+	s.WriteString("}")
+	return s.String()
 }
 
 func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
@@ -61,6 +79,8 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	if err != nil {
 		return nil, err
 	}
+	level.Debug(m.logger).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
+
 	// Get all metastore paths for the time range
 	var storePaths []string
 	for path := range iterStorePaths(tenantID, start, end) {
@@ -83,15 +103,18 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	level.Debug(m.logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
 	var storePaths []string
 	for path := range iterStorePaths(tenantID, start, end) {
 		storePaths = append(storePaths, path)
 	}
+	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
 
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","), "err", err)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -99,13 +122,16 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := predicateFromMatchers(start, end, matchers...)
 	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
+	level.Debug(m.logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
 	}
 
 	// Remove objects that do not contain any matching streams
+	level.Debug(m.logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(paths), "streams", len(streamIDs), "sections", len(sections))
 	for i := 0; i < len(paths); i++ {
 		if len(streamIDs[i]) == 0 {
+			level.Debug(m.logger).Log("msg", "remove object", "path", paths[i])
 			paths = slices.Delete(paths, i, i+1)
 			streamIDs = slices.Delete(streamIDs, i, i+1)
 			sections = slices.Delete(sections, i, i+1)
@@ -121,6 +147,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	if err != nil {
 		return nil, err
 	}
+	level.Debug(m.logger).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
 
 	// Get all metastore paths for the time range
 	var storePaths []string
@@ -310,6 +337,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 					return fmt.Errorf("getting object from bucket: %w", err)
 				}
 				sections[idx] = object.Sections().Count(logs.CheckSection)
+				streamIDs[idx] = make([]int64, 0, 8)
 
 				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
 					streamIDs[idx] = append(streamIDs[idx], stream.ID)
