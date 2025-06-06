@@ -2890,6 +2890,8 @@ patternIngester:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
           topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
   # -- Labels for pattern ingester service
   serviceLabels: {}
   # -- Annotations for pattern ingester service
