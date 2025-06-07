@@ -28,8 +28,8 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 	case *physical.ColumnExpr:
 		schema := input.Schema()
 		for i := range input.NumCols() {
-			md := schema.Field(int(i)).Metadata
 			if input.ColumnName(int(i)) == expr.Ref.Column {
+				md := schema.Field(int(i)).Metadata
 				dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
 				if !ok {
 					continue
