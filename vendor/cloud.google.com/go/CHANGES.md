@@ -2,6 +2,20 @@
 
 
 
+## [0.121.0](https://github.com/googleapis/google-cloud-go/compare/v0.120.1...v0.121.0) (2025-04-28)
+
+
+### Features
+
+* **debugger:** Remove debugger/apiv2 client ([#12050](https://github.com/googleapis/google-cloud-go/issues/12050)) ([af8641e](https://github.com/googleapis/google-cloud-go/commit/af8641e7d011349afa774b668b30a95b007fd076))
+
+## [0.120.1](https://github.com/googleapis/google-cloud-go/compare/v0.120.0...v0.120.1) (2025-04-14)
+
+
+### Bug Fixes
+
+* **readme:** Update authentication section ([#11918](https://github.com/googleapis/google-cloud-go/issues/11918)) ([2fda860](https://github.com/googleapis/google-cloud-go/commit/2fda86031820ad7d29322f03ad6f34871ad5ff59))
+
 ## [0.120.0](https://github.com/googleapis/google-cloud-go/compare/v0.119.0...v0.120.0) (2025-03-20)
 
 

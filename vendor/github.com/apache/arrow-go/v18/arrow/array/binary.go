@@ -45,7 +45,7 @@ type Binary struct {
 // NewBinaryData constructs a new Binary array from data.
 func NewBinaryData(data arrow.ArrayData) *Binary {
 	a := &Binary{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -189,7 +189,7 @@ type LargeBinary struct {
 
 func NewLargeBinaryData(data arrow.ArrayData) *LargeBinary {
 	a := &LargeBinary{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -208,6 +208,7 @@ func (a *LargeBinary) ValueStr(i int) string {
 	}
 	return base64.StdEncoding.EncodeToString(a.Value(i))
 }
+
 func (a *LargeBinary) ValueString(i int) string {
 	b := a.Value(i)
 	return *(*string)(unsafe.Pointer(&b))
@@ -333,7 +334,7 @@ type BinaryView struct {
 
 func NewBinaryViewData(data arrow.ArrayData) *BinaryView {
 	a := &BinaryView{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -450,4 +451,8 @@ var (
 
 	_ BinaryLike = (*Binary)(nil)
 	_ BinaryLike = (*LargeBinary)(nil)
+
+	_ arrow.TypedArray[[]byte] = (*Binary)(nil)
+	_ arrow.TypedArray[[]byte] = (*LargeBinary)(nil)
+	_ arrow.TypedArray[[]byte] = (*BinaryView)(nil)
 )
