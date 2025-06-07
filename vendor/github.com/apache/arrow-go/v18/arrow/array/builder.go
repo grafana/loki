@@ -102,7 +102,7 @@ type Builder interface {
 
 // builder provides common functionality for managing the validity bitmap (nulls) when building arrays.
 type builder struct {
-	refCount   int64
+	refCount   atomic.Int64
 	mem        memory.Allocator
 	nullBitmap *memory.Buffer
 	nulls      int
@@ -113,7 +113,7 @@ type builder struct {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (b *builder) Retain() {
-	atomic.AddInt64(&b.refCount, 1)
+	b.refCount.Add(1)
 }
 
 // Len returns the number of elements in the array builder.
@@ -176,12 +176,12 @@ func (b *builder) resize(newBits int, init func(int)) {
 }
 
 func (b *builder) reserve(elements int, resize func(int)) {
-	if b.nullBitmap == nil {
-		b.nullBitmap = memory.NewResizableBuffer(b.mem)
-	}
 	if b.length+elements > b.capacity {
 		newCap := bitutil.NextPowerOf2(b.length + elements)
 		resize(newCap)
+	}
+	if b.nullBitmap == nil {
+		b.nullBitmap = memory.NewResizableBuffer(b.mem)
 	}
 }
 
