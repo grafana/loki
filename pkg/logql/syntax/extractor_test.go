@@ -150,9 +150,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				require.Len(t, extractors, 1, "should return a single consolidated extractor")
 
 				// Test that the extractor actually works with a mock stream
-				lbls := labels.Labels{
-					{Name: "app", Value: "foo"},
-				}
+				lbls := labels.FromStrings("app", "foo")
 
 				streamExtractor := extractors[0].ForStream(lbls)
 				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
@@ -183,14 +181,14 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				mvSeen := make(map[string]float64, len(mvSamples))
 				for _, s := range mvSamples {
 					lbls := s.Labels.Labels()
-					newLbls := make(labels.Labels, 0, len(lbls))
-					for _, lbl := range lbls {
+					newLbls := labels.NewScratchBuilder(lbls.Len())
+					lbls.Range(func(lbl labels.Label) {
 						if lbl.Name == "__variant__" {
-							continue
+							return
 						}
-						newLbls = append(newLbls, lbl)
-					}
-					mvSeen[newLbls.String()] = s.Value
+						newLbls.Add(lbl.Name, lbl.Value)
+					})
+					mvSeen[newLbls.Labels().String()] = s.Value
 				}
 
 				require.Equal(t, seen, mvSeen)
@@ -405,9 +403,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 				require.Len(t, extractors, 1, "should return a single consolidated extractor")
 
 				// Test that the extractor actually works with a mock stream
-				lbls := labels.Labels{
-					{Name: "app", Value: "foo"},
-				}
+				lbls := labels.FromStrings("app", "foo")
 
 				streamExtractor := extractors[0].ForStream(lbls)
 				require.NotNil(t, streamExtractor, "stream extractor should not be nil")
