@@ -84,6 +84,7 @@ func NewListenerWrapper(params ListenerWrapperParams) net.Listener {
 		Listener:          params.Listener,
 		name:              params.ListenerResourceName,
 		xdsC:              params.XDSClient,
+		xdsNodeID:         params.XDSClient.BootstrapConfig().Node().GetId(),
 		modeCallback:      params.ModeCallback,
 		isUnspecifiedAddr: params.Listener.Addr().(*net.TCPAddr).IP.IsUnspecified(),
 		conns:             make(map[*connWrapper]bool),
@@ -116,6 +117,7 @@ type listenerWrapper struct {
 
 	name         string
 	xdsC         XDSClient
+	xdsNodeID    string
 	cancelWatch  func()
 	modeCallback ServingModeCallback
 
@@ -155,35 +157,6 @@ type listenerWrapper struct {
 	// rdsHandler is used for any dynamic RDS resources specified in a LDS
 	// update.
 	rdsHandler *rdsHandler
-}
-
-func (l *listenerWrapper) handleLDSUpdate(update xdsresource.ListenerUpdate) {
-	ilc := update.InboundListenerCfg
-	// Make sure that the socket address on the received Listener resource
-	// matches the address of the net.Listener passed to us by the user. This
-	// check is done here instead of at the XDSClient layer because of the
-	// following couple of reasons:
-	// - XDSClient cannot know the listening address of every listener in the
-	//   system, and hence cannot perform this check.
-	// - this is a very context-dependent check and only the server has the
-	//   appropriate context to perform this check.
-	//
-	// What this means is that the XDSClient has ACKed a resource which can push
-	// the server into a "not serving" mode. This is not ideal, but this is
-	// what we have decided to do.
-	if ilc.Address != l.addr || ilc.Port != l.port {
-		l.mu.Lock()
-		l.switchModeLocked(connectivity.ServingModeNotServing, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
-		l.mu.Unlock()
-		return
-	}
-
-	l.pendingFilterChainManager = ilc.FilterChains
-	l.rdsHandler.updateRouteNamesToWatch(ilc.FilterChains.RouteConfigNames)
-
-	if l.rdsHandler.determineRouteConfigurationReady() {
-		l.maybeUpdateFilterChains()
-	}
 }
 
 // maybeUpdateFilterChains swaps in the pending filter chain manager to the
@@ -228,12 +201,14 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 				continue
 			}
 			if rcu.err != nil && rcu.data == nil { // Either NACK before update, or resource not found triggers this conditional.
-				fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{
-					Err: rcu.err,
-				})
+				urc := &xdsresource.UsableRouteConfiguration{Err: rcu.err}
+				urc.NodeID = l.xdsNodeID
+				fc.UsableRouteConfiguration.Store(urc)
 				continue
 			}
-			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data))
+			urc := fc.ConstructUsableRouteConfiguration(*rcu.data)
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc)
 		}
 	}
 	if l.rdsHandler.determineRouteConfigurationReady() {
@@ -248,15 +223,21 @@ func (l *listenerWrapper) handleRDSUpdate(routeName string, rcu rdsWatcherUpdate
 func (l *listenerWrapper) instantiateFilterChainRoutingConfigurationsLocked() {
 	for _, fc := range l.activeFilterChainManager.FilterChains() {
 		if fc.InlineRouteConfig != nil {
-			fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*fc.InlineRouteConfig)) // Can't race with an RPC coming in but no harm making atomic.
+			urc := fc.ConstructUsableRouteConfiguration(*fc.InlineRouteConfig)
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
 			continue
 		} // Inline configuration constructed once here, will remain for lifetime of filter chain.
 		rcu := l.rdsHandler.updates[fc.RouteConfigName]
 		if rcu.err != nil && rcu.data == nil {
-			fc.UsableRouteConfiguration.Store(&xdsresource.UsableRouteConfiguration{Err: rcu.err})
+			urc := &xdsresource.UsableRouteConfiguration{Err: rcu.err}
+			urc.NodeID = l.xdsNodeID
+			fc.UsableRouteConfiguration.Store(urc)
 			continue
 		}
-		fc.UsableRouteConfiguration.Store(fc.ConstructUsableRouteConfiguration(*rcu.data)) // Can't race with an RPC coming in but no harm making atomic.
+		urc := fc.ConstructUsableRouteConfiguration(*rcu.data)
+		urc.NodeID = l.xdsNodeID
+		fc.UsableRouteConfiguration.Store(urc) // Can't race with an RPC coming in but no harm making atomic.
 	}
 }
 
@@ -397,15 +378,6 @@ func (l *listenerWrapper) switchModeLocked(newMode connectivity.ServingMode, err
 	}
 }
 
-func (l *listenerWrapper) onLDSResourceDoesNotExist(err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.switchModeLocked(connectivity.ServingModeNotServing, err)
-	l.activeFilterChainManager = nil
-	l.pendingFilterChainManager = nil
-	l.rdsHandler.updateRouteNamesToWatch(make(map[string]bool))
-}
-
 // ldsWatcher implements the xdsresource.ListenerWatcher interface and is
 // passed to the WatchListener API.
 type ldsWatcher struct {
@@ -414,7 +386,7 @@ type ldsWatcher struct {
 	name   string
 }
 
-func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData, onDone xdsresource.OnDoneFunc) {
+func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerResourceData, onDone func()) {
 	defer onDone()
 	if lw.parent.closed.HasFired() {
 		lw.logger.Warningf("Resource %q received update: %#v after listener was closed", lw.name, update)
@@ -423,32 +395,64 @@ func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData, onDone 
 	if lw.logger.V(2) {
 		lw.logger.Infof("LDS watch for resource %q received update: %#v", lw.name, update.Resource)
 	}
-	lw.parent.handleLDSUpdate(update.Resource)
+	l := lw.parent
+	ilc := update.Resource.InboundListenerCfg
+	// Make sure that the socket address on the received Listener resource
+	// matches the address of the net.Listener passed to us by the user. This
+	// check is done here instead of at the XDSClient layer because of the
+	// following couple of reasons:
+	// - XDSClient cannot know the listening address of every listener in the
+	//   system, and hence cannot perform this check.
+	// - this is a very context-dependent check and only the server has the
+	//   appropriate context to perform this check.
+	//
+	// What this means is that the XDSClient has ACKed a resource which can push
+	// the server into a "not serving" mode. This is not ideal, but this is
+	// what we have decided to do.
+	if ilc.Address != l.addr || ilc.Port != l.port {
+		// TODO(purnesh42h): Are there any other cases where this can be
+		// treated as an ambient error?
+		l.mu.Lock()
+		err := fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		l.switchModeLocked(connectivity.ServingModeNotServing, err)
+		l.mu.Unlock()
+		return
+	}
+
+	l.pendingFilterChainManager = ilc.FilterChains
+	l.rdsHandler.updateRouteNamesToWatch(ilc.FilterChains.RouteConfigNames)
+
+	if l.rdsHandler.determineRouteConfigurationReady() {
+		l.maybeUpdateFilterChains()
+	}
 }
 
-func (lw *ldsWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+func (lw *ldsWatcher) ResourceError(err error, onDone func()) {
 	defer onDone()
 	if lw.parent.closed.HasFired() {
-		lw.logger.Warningf("Resource %q received error: %v after listener was closed", lw.name, err)
+		lw.logger.Warningf("Resource %q received resource error: %v after listener was closed", lw.name, err)
 		return
 	}
 	if lw.logger.V(2) {
-		lw.logger.Infof("LDS watch for resource %q reported error: %v", lw.name, err)
+		lw.logger.Infof("LDS watch for resource %q reported resource error: %v", lw.name, err)
 	}
-	// For errors which are anything other than "resource-not-found", we
-	// continue to use the old configuration.
+
+	l := lw.parent
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.switchModeLocked(connectivity.ServingModeNotServing, err)
+	l.activeFilterChainManager = nil
+	l.pendingFilterChainManager = nil
+	l.rdsHandler.updateRouteNamesToWatch(make(map[string]bool))
 }
 
-func (lw *ldsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
+func (lw *ldsWatcher) AmbientError(err error, onDone func()) {
 	defer onDone()
 	if lw.parent.closed.HasFired() {
-		lw.logger.Warningf("Resource %q received resource-does-not-exist error after listener was closed", lw.name)
+		lw.logger.Warningf("Resource %q received ambient error: %v after listener was closed", lw.name, err)
 		return
 	}
 	if lw.logger.V(2) {
-		lw.logger.Infof("LDS watch for resource %q reported resource-does-not-exist error", lw.name)
+		lw.logger.Infof("LDS watch for resource %q reported ambient error: %v", lw.name, err)
 	}
-
-	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type Listener not found in received response", lw.name)
-	lw.parent.onLDSResourceDoesNotExist(err)
 }

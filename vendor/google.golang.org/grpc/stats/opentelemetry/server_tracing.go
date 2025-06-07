@@ -18,12 +18,32 @@ package opentelemetry
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 	otelinternaltracing "google.golang.org/grpc/stats/opentelemetry/internal/tracing"
 )
+
+type serverTracingHandler struct {
+	options Options
+}
+
+func (h *serverTracingHandler) initializeTraces() {
+	if h.options.TraceOptions.TracerProvider == nil {
+		log.Printf("TracerProvider is not provided in server TraceOptions")
+		return
+	}
+}
+
+// TagRPC implements per RPC attempt context management for traces.
+func (h *serverTracingHandler) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context {
+	ctx, ai := getOrCreateRPCAttemptInfo(ctx)
+	ctx, ai = h.traceTagRPC(ctx, ai)
+	return setRPCInfo(ctx, &rpcInfo{ai: ai})
+}
 
 // traceTagRPC populates context with new span data using the TextMapPropagator
 // supplied in trace options and internal itracing.Carrier. It creates a new
@@ -32,8 +52,8 @@ import (
 // is set as parent of the new span otherwise new span remains the root span.
 // If TextMapPropagator is not provided in the trace options, it returns context
 // as is.
-func (h *serverStatsHandler) traceTagRPC(ctx context.Context, ai *attemptInfo) (context.Context, *attemptInfo) {
-	mn := strings.Replace(ai.method, "/", ".", -1)
+func (h *serverTracingHandler) traceTagRPC(ctx context.Context, ai *attemptInfo) (context.Context, *attemptInfo) {
+	mn := "Recv." + strings.Replace(ai.method, "/", ".", -1)
 	var span trace.Span
 	tracer := h.options.TraceOptions.TracerProvider.Tracer(tracerName, trace.WithInstrumentationVersion(grpc.Version))
 	ctx = h.options.TraceOptions.TextMapPropagator.Extract(ctx, otelinternaltracing.NewIncomingCarrier(ctx))
@@ -44,3 +64,21 @@ func (h *serverStatsHandler) traceTagRPC(ctx context.Context, ai *attemptInfo) (
 	ai.traceSpan = span
 	return ctx, ai
 }
+
+// HandleRPC handles per RPC tracing implementation.
+func (h *serverTracingHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
+	ri := getRPCInfo(ctx)
+	if ri == nil {
+		logger.Error("ctx passed into server side tracing handler trace event handling has no server call data present")
+		return
+	}
+	populateSpan(rs, ri.ai)
+}
+
+// TagConn exists to satisfy stats.Handler for tracing.
+func (h *serverTracingHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
+	return ctx
+}
+
+// HandleConn exists to satisfy stats.Handler for tracing.
+func (h *serverTracingHandler) HandleConn(context.Context, stats.ConnStats) {}

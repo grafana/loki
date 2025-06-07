@@ -206,7 +206,7 @@ func (sc *ServerConfig) ServerFeatures() []string {
 //
 // This feature controls the behavior of the xDS client when the server deletes
 // a previously sent Listener or Cluster resource. If set, the xDS client will
-// not invoke the watchers' OnResourceDoesNotExist() method when a resource is
+// not invoke the watchers' ResourceError() method when a resource is
 // deleted, nor will it remove the existing resource value from its cache.
 func (sc *ServerConfig) ServerFeaturesIgnoreResourceDeletion() bool {
 	for _, sf := range sc.serverFeatures {
