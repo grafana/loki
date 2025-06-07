@@ -6925,6 +6925,23 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "tcpSocket": {
+    "port": 11211
+  },
+  "timeoutSeconds": 3
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
