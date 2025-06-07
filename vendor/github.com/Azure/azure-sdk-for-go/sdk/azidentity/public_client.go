@@ -243,7 +243,7 @@ func (p *publicClient) token(ar public.AuthResult, err error) (azcore.AccessToke
 	} else {
 		err = newAuthenticationFailedErrorFromMSAL(p.name, err)
 	}
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC(), RefreshOn: ar.Metadata.RefreshOn.UTC()}, err
 }
 
 // resolveTenant returns the correct WithTenantID() argument for a token request given the client's

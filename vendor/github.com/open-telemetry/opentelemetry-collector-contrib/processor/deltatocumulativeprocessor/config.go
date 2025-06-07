@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 
 	telemetry "github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/telemetry"
 )
 
-var _ component.ConfigValidator = (*Config)(nil)
+var _ xconfmap.Validator = (*Config)(nil)
 
 type Config struct {
 	MaxStale   time.Duration `mapstructure:"max_stale"`
