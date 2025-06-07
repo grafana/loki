@@ -38,14 +38,18 @@ type {{.Name}}Builder struct {
 
 {{if .Opt.Parametric}}
 func New{{.Name}}Builder(mem memory.Allocator, dtype *arrow.{{.Name}}Type) *{{.Name}}Builder {
-	return &{{.Name}}Builder{builder: builder{refCount:1, mem: mem}, dtype: dtype}
+	b := &{{.Name}}Builder{builder: builder{mem: mem}, dtype: dtype}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *{{.Name}}Builder) Type() arrow.DataType { return b.dtype }
 
 {{else}}
 func New{{.Name}}Builder(mem memory.Allocator) *{{.Name}}Builder {
-	return &{{.Name}}Builder{builder: builder{refCount:1, mem: mem}}
+	b := &{{.Name}}Builder{builder: builder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 func (b *{{.Name}}Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.{{.Name}} }
@@ -54,9 +58,9 @@ func (b *{{.Name}}Builder) Type() arrow.DataType { return arrow.PrimitiveTypes.{
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *{{.Name}}Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil

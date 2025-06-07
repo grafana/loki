@@ -1,6 +1,27 @@
 # Changes
 
 
+## [1.53.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.52.0...storage/v1.53.0) (2025-05-02)
+
+
+### Features
+
+* **storage/control:** Add Anywhere cache control APIs ([83ae06c](https://github.com/googleapis/google-cloud-go/commit/83ae06c3ec7d190e38856ba4cfd8a13f08356b4d))
+
+
+### Bug Fixes
+
+* **storage:** Fix append edge cases ([#12074](https://github.com/googleapis/google-cloud-go/issues/12074)) ([0eee1f9](https://github.com/googleapis/google-cloud-go/commit/0eee1f99a7dc0d1bfc36fa43d78933cae47962ee))
+* **storage:** Fix retries for redirection errors. ([#12093](https://github.com/googleapis/google-cloud-go/issues/12093)) ([3e177e7](https://github.com/googleapis/google-cloud-go/commit/3e177e755f5bf6aa96e8712cc4adcba7eb6f04f6))
+* **storage:** Handle gRPC deadlines in tests. ([#12092](https://github.com/googleapis/google-cloud-go/issues/12092)) ([30b7cd2](https://github.com/googleapis/google-cloud-go/commit/30b7cd27771ccbd49b70ee106da36362ba8f1e87))
+* **storage:** Update offset on resumable upload retry ([#12086](https://github.com/googleapis/google-cloud-go/issues/12086)) ([6ce8fe5](https://github.com/googleapis/google-cloud-go/commit/6ce8fe5aec0ec7916eda4d1405cab5f5f65a5de8))
+* **storage:** Validate Bidi option for MRD ([#12033](https://github.com/googleapis/google-cloud-go/issues/12033)) ([d9018cf](https://github.com/googleapis/google-cloud-go/commit/d9018cf640a9ac25e2b23b75b3bcfa734379ab09))
+
+
+### Documentation
+
+* **storage/control:** Added comments for Anywhere cache messages ([83ae06c](https://github.com/googleapis/google-cloud-go/commit/83ae06c3ec7d190e38856ba4cfd8a13f08356b4d))
+
 ## [1.52.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.51.0...storage/v1.52.0) (2025-04-22)
 
 
