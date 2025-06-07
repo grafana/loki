@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -115,6 +116,7 @@ type (
 	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
+	SuccessWriter        func(w http.ResponseWriter, r *http.Request, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
@@ -448,6 +450,55 @@ func RetentionPeriodToString(retentionPeriod time.Duration) string {
 	return strconv.FormatInt(int64(retentionPeriod/time.Hour), 10)
 }
 
+
+// OTLPFullSuccess writes an OTLP-compliant success response to the given http.ResponseWriter.
+// According to the OTLP spec: https://opentelemetry.io/docs/specs/otlp/#full-success-1
+func OTLPFullSuccess(w http.ResponseWriter, r *http.Request, logger log.Logger) {
+	res := plogotlp.NewExportResponse()
+
+	var buf []byte; var err error
+	switch r.Header.Get(contentType) {
+	case pbContentType:
+		buf, err = res.MarshalProto()
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to marshal proto success response", "error", err)
+			writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
+				codes.Internal,
+				fmt.Sprintf("failed to marshal success response: %s", err.Error()),
+			).Proto())
+			_, _ = w.Write(writeResponseFailedBody)
+			return
+		}
+
+		// As per the OTLP spec, we send the status code on the http header.
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set(contentType, "application/x-protobuf")
+		w.Write(buf)
+		return
+	case applicationJSON:
+		buf, err = res.MarshalJSON()
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to marshal json success response", "error", err)
+			writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
+				codes.Internal,
+				fmt.Sprintf("failed to marshal success response: %s", err.Error()),
+			).Proto())
+			_, _ = w.Write(writeResponseFailedBody)
+		}
+
+		// As per the OTLP spec, we send the status code on the http header.
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set(contentType, "application/json")
+		w.Write(buf);
+		return
+	default:
+		level.Error(logger).Log("msg", "failed to marshal success response", "error", fmt.Sprintf("unsupported content type %s", r.Header.Get(contentType)))
+		return
+	}
+}
+
+var _ SuccessWriter = OTLPFullSuccess
+
 // OTLPError writes an OTLP-compliant error response to the given http.ResponseWriter.
 //
 // According to the OTLP spec: https://opentelemetry.io/docs/specs/otlp/#failures-1
@@ -500,6 +551,12 @@ func OTLPError(w http.ResponseWriter, errorStr string, code int, logger log.Logg
 }
 
 var _ ErrorWriter = OTLPError
+
+func HTTPSuccess(w http.ResponseWriter, r *http.Request, logger log.Logger) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+var _ SuccessWriter = HTTPSuccess
 
 func HTTPError(w http.ResponseWriter, errorStr string, code int, _ log.Logger) {
 	http.Error(w, errorStr, code)

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
@@ -810,6 +811,49 @@ type fakeRetention struct{}
 
 func (f fakeRetention) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
 	return time.Hour
+}
+
+func TestOtlpFullSuccess(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		msg          string
+		expectedCode int
+		contentType string
+	}{
+		{
+			name:         "200 ok",
+			expectedCode: http.StatusOK,
+			contentType:  "application/x-protobuf",
+		},
+		{
+			name:         "200 ok",
+			expectedCode: http.StatusOK,
+			contentType:  "application/json",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
+			
+			req := httptest.NewRequest("POST", "/loki/api/v1/push", nil)
+			req.Header.Set("Content-Type", tc.contentType)
+
+			res := httptest.NewRecorder()
+			OTLPFullSuccess(res, req, logger)
+
+			require.Equal(t, tc.expectedCode, res.Code)
+			require.Equal(t, tc.contentType, res.Header().Get("Content-Type"))
+
+			resp := plogotlp.NewExportResponse()
+			switch tc.contentType {
+			case "application/x-protobuf":
+				require.NoError(t, resp.UnmarshalProto(res.Body.Bytes()))
+			case "application/json":
+				require.NoError(t, resp.UnmarshalJSON(res.Body.Bytes()))
+			}
+
+			require.EqualValues(t, 0, resp.PartialSuccess().RejectedLogRecords())
+		})
+	}
 }
 
 func TestOtlpError(t *testing.T) {
