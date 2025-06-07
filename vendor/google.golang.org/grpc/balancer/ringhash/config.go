@@ -21,18 +21,12 @@ package ringhash
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/internal/envconfig"
-	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/internal/metadata"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 )
-
-// LBConfig is the balancer config for ring_hash balancer.
-type LBConfig struct {
-	serviceconfig.LoadBalancingConfig `json:"-"`
-
-	MinRingSize uint64 `json:"minRingSize,omitempty"`
-	MaxRingSize uint64 `json:"maxRingSize,omitempty"`
-}
 
 const (
 	defaultMinSize         = 1024
@@ -40,8 +34,8 @@ const (
 	ringHashSizeUpperBound = 8 * 1024 * 1024 // 8M
 )
 
-func parseConfig(c json.RawMessage) (*LBConfig, error) {
-	var cfg LBConfig
+func parseConfig(c json.RawMessage) (*iringhash.LBConfig, error) {
+	var cfg iringhash.LBConfig
 	if err := json.Unmarshal(c, &cfg); err != nil {
 		return nil, err
 	}
@@ -65,6 +59,19 @@ func parseConfig(c json.RawMessage) (*LBConfig, error) {
 	}
 	if cfg.MaxRingSize > envconfig.RingHashCap {
 		cfg.MaxRingSize = envconfig.RingHashCap
+	}
+	if !envconfig.RingHashSetRequestHashKey {
+		cfg.RequestHashHeader = ""
+	}
+	if cfg.RequestHashHeader != "" {
+		cfg.RequestHashHeader = strings.ToLower(cfg.RequestHashHeader)
+		// See rules in https://github.com/grpc/proposal/blob/master/A76-ring-hash-improvements.md#explicitly-setting-the-request-hash-key
+		if err := metadata.ValidateKey(cfg.RequestHashHeader); err != nil {
+			return nil, fmt.Errorf("invalid requestHashHeader %q: %v", cfg.RequestHashHeader, err)
+		}
+		if strings.HasSuffix(cfg.RequestHashHeader, "-bin") {
+			return nil, fmt.Errorf("invalid requestHashHeader %q: key must not end with \"-bin\"", cfg.RequestHashHeader)
+		}
 	}
 	return &cfg, nil
 }

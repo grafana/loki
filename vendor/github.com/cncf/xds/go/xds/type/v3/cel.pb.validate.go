@@ -115,6 +115,8 @@ func (m *CelExpression) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for CelExprString
+
 	switch v := m.ExprSpecifier.(type) {
 	case *CelExpression_ParsedExpr:
 		if v == nil {

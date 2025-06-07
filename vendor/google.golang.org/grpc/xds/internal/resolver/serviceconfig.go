@@ -32,12 +32,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	"google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/internal/wrr"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/balancer/clustermanager"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/httpfilter"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -71,10 +71,10 @@ type xdsClusterManagerConfig struct {
 	Children map[string]xdsChildConfig `json:"children"`
 }
 
-// serviceConfigJSON produces a service config in JSON format representing all
-// the clusters referenced in activeClusters.  This includes clusters with zero
-// references, so they must be pruned first.
-func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
+// serviceConfigJSON produces a service config in JSON format that contains LB
+// policy config for the "xds_cluster_manager" LB policy, with entries in the
+// children map for all active clusters.
+func serviceConfigJSON(activeClusters map[string]*clusterInfo) []byte {
 	// Generate children (all entries in activeClusters).
 	children := make(map[string]xdsChildConfig)
 	for cluster, ci := range activeClusters {
@@ -87,11 +87,13 @@ func serviceConfigJSON(activeClusters map[string]*clusterInfo) ([]byte, error) {
 		),
 	}
 
+	// This is not expected to fail as we have constructed the service config by
+	// hand right above, and therefore ok to panic.
 	bs, err := json.Marshal(sc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal json: %v", err)
+		panic(fmt.Sprintf("failed to marshal service config %+v: %v", sc, err))
 	}
-	return bs, nil
+	return bs
 }
 
 type virtualHost struct {
@@ -123,8 +125,34 @@ func (r route) String() string {
 	return fmt.Sprintf("%s -> { clusters: %v, maxStreamDuration: %v }", r.m.String(), r.clusters, r.maxStreamDuration)
 }
 
+// stoppableConfigSelector extends the iresolver.ConfigSelector interface with a
+// stop() method. This makes it possible to swap the current config selector
+// with an erroring config selector when the LDS or RDS resource is not found on
+// the management server.
+type stoppableConfigSelector interface {
+	iresolver.ConfigSelector
+	stop()
+}
+
+// erroringConfigSelector always returns an error, with the xDS node ID included
+// in the error message. It is used to swap out the current config selector
+// when the LDS or RDS resource is not found on the management server.
+type erroringConfigSelector struct {
+	err error
+}
+
+func newErroringConfigSelector(err error, xdsNodeID string) *erroringConfigSelector {
+	return &erroringConfigSelector{err: annotateErrorWithNodeID(status.Error(codes.Unavailable, err.Error()), xdsNodeID)}
+}
+
+func (cs *erroringConfigSelector) SelectConfig(iresolver.RPCInfo) (*iresolver.RPCConfig, error) {
+	return nil, cs.err
+}
+func (cs *erroringConfigSelector) stop() {}
+
 type configSelector struct {
 	r                *xdsResolver
+	xdsNodeID        string
 	virtualHost      virtualHost
 	routes           []route
 	clusters         map[string]*clusterInfo
@@ -134,10 +162,14 @@ type configSelector struct {
 var errNoMatchedRouteFound = status.Errorf(codes.Unavailable, "no matched route was found")
 var errUnsupportedClientRouteAction = status.Errorf(codes.Unavailable, "matched route does not have a supported route action type")
 
+// annotateErrorWithNodeID annotates the given error with the provided xDS node
+// ID. This is used by the real config selector when it runs into errors, and
+// also by the erroring config selector.
+func annotateErrorWithNodeID(err error, nodeID string) error {
+	return fmt.Errorf("[xDS node id: %s]: %w", nodeID, err)
+}
+
 func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RPCConfig, error) {
-	if cs == nil {
-		return nil, status.Errorf(codes.Unavailable, "no valid clusters")
-	}
 	var rt *route
 	// Loop through routes in order and select first match.
 	for _, r := range cs.routes {
@@ -148,16 +180,16 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	}
 
 	if rt == nil || rt.clusters == nil {
-		return nil, errNoMatchedRouteFound
+		return nil, annotateErrorWithNodeID(errNoMatchedRouteFound, cs.xdsNodeID)
 	}
 
 	if rt.actionType != xdsresource.RouteActionRoute {
-		return nil, errUnsupportedClientRouteAction
+		return nil, annotateErrorWithNodeID(errUnsupportedClientRouteAction, cs.xdsNodeID)
 	}
 
 	cluster, ok := rt.clusters.Next().(*routeCluster)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster)
+		return nil, annotateErrorWithNodeID(status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster), cs.xdsNodeID)
 	}
 
 	// Add a ref to the selected cluster, as this RPC needs this cluster until
@@ -167,11 +199,11 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 
 	interceptor, err := cs.newInterceptor(rt, cluster)
 	if err != nil {
-		return nil, err
+		return nil, annotateErrorWithNodeID(err, cs.xdsNodeID)
 	}
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
-	lbCtx = ringhash.SetRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
+	lbCtx = iringhash.SetXDSRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
 
 	config := &iresolver.RPCConfig{
 		// Communicate to the LB policy the chosen cluster and request hash, if Ring Hash LB policy.

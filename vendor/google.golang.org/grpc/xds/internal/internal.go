@@ -20,7 +20,6 @@
 package internal
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"google.golang.org/grpc/resolver"
@@ -36,14 +35,10 @@ type LocalityID struct {
 	SubZone string `json:"subZone,omitempty"`
 }
 
-// ToString generates a string representation of LocalityID by marshalling it into
-// json. Not calling it String() so printf won't call it.
-func (l LocalityID) ToString() (string, error) {
-	b, err := json.Marshal(l)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+// ToString generates a string representation of LocalityID in the format
+// specified in gRFC A76. Not calling it String() so printf won't call it.
+func (l LocalityID) ToString() string {
+	return fmt.Sprintf("{region=%q, zone=%q, sub_zone=%q}", l.Region, l.Zone, l.SubZone)
 }
 
 // Equal allows the values to be compared by Attributes.Equal.
@@ -60,10 +55,10 @@ func (l LocalityID) Empty() bool {
 	return l.Region == "" && l.Zone == "" && l.SubZone == ""
 }
 
-// LocalityIDFromString converts a json representation of locality, into a
-// LocalityID struct.
+// LocalityIDFromString converts a string representation of locality as
+// specified in gRFC A76, into a LocalityID struct.
 func LocalityIDFromString(s string) (ret LocalityID, _ error) {
-	err := json.Unmarshal([]byte(s), &ret)
+	_, err := fmt.Sscanf(s, "{region=%q, zone=%q, sub_zone=%q}", &ret.Region, &ret.Zone, &ret.SubZone)
 	if err != nil {
 		return LocalityID{}, fmt.Errorf("%s is not a well formatted locality ID, error: %v", s, err)
 	}
