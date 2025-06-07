@@ -603,3 +603,51 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 	}
 	require.Equal(t, l.maxQueryParallelism, ct)
 }
+
+func TestDownstreamer_EnforcesMaxQuerySeriesLimit(t *testing.T) {
+	// Set up a fakeLimits with a low maxSeries
+	l := fakeLimits{maxSeries: 2}
+
+	params, err := logql.NewLiteralParams(
+		`{foo="bar"}`,
+		time.Now(),
+		time.Now(),
+		0,
+		0,
+		logproto.BACKWARD,
+		1000,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	// Create 2 queries, each will return 2 series, so total = 4 > limit
+	queries := []logql.DownstreamQuery{
+		{Params: params},
+		{Params: params},
+	}
+
+	// Handler returns a matrix with 2 series for each query
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Data: queryrangebase.PrometheusData{
+					Result: []queryrangebase.SampleStream{
+						{Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar1"}}, Samples: []logproto.LegacySample{{Value: 1, TimestampMs: 1}}},
+						{Labels: []logproto.LabelAdapter{{Name: "foo", Value: "bar2"}}, Samples: []logproto.LegacySample{{Value: 2, TimestampMs: 2}}},
+					},
+				},
+			},
+		}, nil
+	})
+
+	dh := DownstreamHandler{
+		limits: l,
+		next:   handler,
+	}
+	ds := dh.Downstreamer(context.Background())
+	acc := logql.NewBufferedAccumulator(len(queries))
+	_, err = ds.Downstream(context.Background(), queries, acc)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, logqlmodel.ErrLimit), "expected ErrLimit, got: %v", err)
+}

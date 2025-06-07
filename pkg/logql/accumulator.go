@@ -9,6 +9,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
@@ -502,4 +504,44 @@ func (acc *AccumulatedStreams) Accumulate(_ context.Context, x logqlmodel.Result
 		return fmt.Errorf("unexpected response type during response result accumulation. Got (%T), wanted %s", got, logqlmodel.ValueTypeStreams)
 	}
 	return nil
+}
+
+// LimitingAccumulator wraps another Accumulator and enforces a total series/stream limit.
+type LimitingAccumulator struct {
+	inner Accumulator
+	limit int
+	count int
+}
+
+func NewLimitingAccumulator(inner Accumulator, limit int) *LimitingAccumulator {
+	return &LimitingAccumulator{
+		inner: inner,
+		limit: limit,
+	}
+}
+
+func (a *LimitingAccumulator) Accumulate(ctx context.Context, res logqlmodel.Result, idx int) error {
+	// If the result contains a matrix or vector, count the number of series/streams.
+	// We do a simple series/stream count here because our sharding dispatches unique streams to each shard,
+	// while this doesn't actually guarantee the results from each shard will have unique streams I believe
+	// this to be good enough for approximation and enforcing the stream limit per query sooner to avoid
+	// allocationg all the memory for a query only then to find out it exceeds the limit.
+	var n int
+	switch data := res.Data.(type) {
+	case promql.Matrix:
+		n = len(data)
+	case promql.Vector:
+		n = len(data)
+	default:
+		n = 0
+	}
+	a.count += n
+	if a.limit > 0 && a.count > a.limit {
+		return logqlmodel.NewSeriesLimitError(a.limit)
+	}
+	return a.inner.Accumulate(ctx, res, idx)
+}
+
+func (a *LimitingAccumulator) Result() []logqlmodel.Result {
+	return a.inner.Result()
 }
