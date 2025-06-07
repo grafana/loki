@@ -36,8 +36,8 @@ func TestRowReader(t *testing.T) {
 		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
 	}
 
-	dec := buildStreamsDecoder(t, 1) // Many pages
-	r := streams.NewRowReader(dec)
+	sec := buildStreamsSection(t, 1) // Many pages
+	r := streams.NewRowReader(sec)
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, expect, actual)
@@ -48,8 +48,8 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2},
 	}
 
-	dec := buildStreamsDecoder(t, 1) // Many pages
-	r := streams.NewRowReader(dec)
+	sec := buildStreamsSection(t, 1) // Many pages
+	r := streams.NewRowReader(sec)
 	require.NoError(t, r.SetPredicate(streams.LabelMatcherRowPredicate{Name: "app", Value: "bar"}))
 
 	actual, err := readAllStreams(context.Background(), r)
@@ -63,8 +63,8 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2},
 	}
 
-	dec := buildStreamsDecoder(t, 1) // Many pages
-	r := streams.NewRowReader(dec)
+	sec := buildStreamsSection(t, 1) // Many pages
+	r := streams.NewRowReader(sec)
 	err := r.SetPredicate(streams.LabelFilterRowPredicate{
 		Name: "app",
 		Keep: func(name, value string) bool {
@@ -81,7 +81,7 @@ func TestRowReader_AddLabelFilter(t *testing.T) {
 
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
-func buildStreamsDecoder(t *testing.T, pageSize int) *streams.Section {
+func buildStreamsSection(t *testing.T, pageSize int) *streams.Section {
 	t.Helper()
 
 	s := streams.NewBuilder(nil, pageSize)

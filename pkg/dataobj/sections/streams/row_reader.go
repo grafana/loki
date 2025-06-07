@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
@@ -97,11 +96,11 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := wrapDataset(dec)
-	columns, err := result.Collect(dset.ListColumns(ctx))
+	dset, err := newColumnsDataset(r.sec.Columns())
 	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+		return fmt.Errorf("creating section dataset: %w", err)
 	}
+	columns := dset.Columns()
 
 	var predicates []dataset.Predicate
 	if p := translateStreamsPredicate(r.predicate, columns, columnDescs); p != nil {
