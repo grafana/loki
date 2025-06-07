@@ -129,8 +129,13 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 
 		limit := t.TenantLimits.TenantLimits(user)
 		if limit == nil {
-			http.Error(w, "Tenant limits not found", http.StatusNotFound)
-			return
+			// There is no limit for this tenant, so we default to the default limits.
+			limit = t.Overrides.DefaultLimits()
+			if limit == nil {
+				// This should not happen, but we handle it gracefully.
+				http.Error(w, "No default limits configured", http.StatusNotFound)
+				return
+			}
 		}
 
 		writeYAMLResponse(w, limit)

@@ -26,8 +26,8 @@ type Frontend struct {
 	services.Service
 	cfg                     Config
 	logger                  log.Logger
-	gatherer                ExceedsLimitsGatherer
-	assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
+	gatherer                exceedsLimitsGatherer
+	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
 	lifecycler              *ring.Lifecycler
@@ -48,14 +48,14 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	)
 
 	// Set up the assigned partitions cache.
-	var assignedPartitionsCache Cache[string, *proto.GetAssignedPartitionsResponse]
+	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	if cfg.AssignedPartitionsCacheTTL == 0 {
 		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = NewNopCache[string, *proto.GetAssignedPartitionsResponse]()
+		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
 	} else {
-		assignedPartitionsCache = NewTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
-	gatherer := NewRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
+	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
 
 	f := &Frontend{
 		cfg:                     cfg,

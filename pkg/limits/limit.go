@@ -1,27 +1,17 @@
 package limits
 
-type Reason int
+import (
+	"context"
+	"strconv"
 
-const (
-	// ReasonExceedsMaxStreams is returned when a tenant exceeds the maximum
-	// number of active streams as per their per-tenant limit.
-	ReasonExceedsMaxStreams Reason = iota
+	"github.com/coder/quartz"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	// ReasonExceedsRateLimit is returned when a tenant exceeds their maximum
-	// rate limit as per their per-tenant limit.
-	ReasonExceedsRateLimit
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
-
-func (r Reason) String() string {
-	switch r {
-	case ReasonExceedsMaxStreams:
-		return "max streams exceeded"
-	case ReasonExceedsRateLimit:
-		return "rate limit exceeded"
-	default:
-		return "unknown reason"
-	}
-}
 
 // Limits contains all limits enforced by the limits frontend.
 type Limits interface {
@@ -30,22 +20,83 @@ type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
 }
 
-// RateLimitsAdapter implements the dskit.RateLimiterStrategy interface. We use
-// it to load per-tenant rate limits into dskit.RateLimiter.
-type RateLimitsAdapter struct {
-	limits Limits
+type limitsChecker struct {
+	limits           Limits
+	store            *usageStore
+	producer         *producer
+	partitionManager *partitionManager
+	numPartitions    int
+	logger           log.Logger
+
+	// Metrics.
+	tenantIngestedBytesTotal *prometheus.CounterVec
+	streamDiscardedTotal     *prometheus.CounterVec
+
+	// Used in tests.
+	clock quartz.Clock
 }
 
-func NewRateLimitsAdapter(limits Limits) *RateLimitsAdapter {
-	return &RateLimitsAdapter{limits: limits}
+func newLimitsChecker(limits Limits, store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
+	return &limitsChecker{
+		limits:           limits,
+		store:            store,
+		producer:         producer,
+		partitionManager: partitionManager,
+		numPartitions:    numPartitions,
+		logger:           logger,
+		tenantIngestedBytesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingest_limits_tenant_ingested_bytes_total",
+			Help: "Total number of bytes ingested per tenant within the active window. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		streamDiscardedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingest_limits_streams_discarded_total",
+			Help: "Total number of times streams were discarded.",
+		}, []string{"partition"}),
+		clock: quartz.NewReal(),
+	}
 }
 
-// Limit implements dskit.RateLimiterStrategy.
-func (s *RateLimitsAdapter) Limit(tenantID string) float64 {
-	return s.limits.IngestionRateBytes(tenantID)
-}
+func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+	streams := req.Streams
+	valid := 0
+	for _, stream := range streams {
+		partition := int32(stream.StreamHash % uint64(c.numPartitions))
 
-// Burst implements dskit.RateLimiterStrategy.
-func (s *RateLimitsAdapter) Burst(tenantID string) int {
-	return s.limits.IngestionBurstSizeBytes(tenantID)
+		// TODO(periklis): Do we need to report this as an error to the frontend?
+		if assigned := c.partitionManager.Has(partition); !assigned {
+			c.streamDiscardedTotal.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+			continue
+		}
+
+		streams[valid] = stream
+		valid++
+	}
+	streams = streams[:valid]
+
+	accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now(), c.limits)
+	if err != nil {
+		return nil, err
+	}
+
+	var ingestedBytes uint64
+	for _, stream := range accepted {
+		ingestedBytes += stream.TotalSize
+
+		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+		if err != nil {
+			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
+		}
+	}
+
+	c.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
+
+	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
+	for _, stream := range rejected {
+		results = append(results, &proto.ExceedsLimitsResult{
+			StreamHash: stream.StreamHash,
+			Reason:     uint32(ReasonExceedsMaxStreams),
+		})
+	}
+
+	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }

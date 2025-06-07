@@ -1386,3 +1386,19 @@ func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
 	return 0
 }
+
+// int clock_gettime(clockid_t clk_id, struct timespec *tp);
+func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	var ts unix.Timespec
+	if err := unix.ClockGettime(clk_id, &ts); err != nil {
+		t.setErrno(err)
+		trc("FAIL: %v", err)
+		return -1
+	}
+
+	*(*unix.Timespec)(unsafe.Pointer(tp)) = ts
+	return 0
+}

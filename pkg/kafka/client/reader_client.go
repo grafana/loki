@@ -25,7 +25,18 @@ func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger,
 	const fetchMaxBytes = 100_000_000
 
 	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
-	opts = append(opts,
+
+	address := kafkaCfg.Address
+	clientID := kafkaCfg.ClientID
+	if kafkaCfg.ReaderConfig.Address != "" {
+		address = kafkaCfg.ReaderConfig.Address
+		clientID = kafkaCfg.ReaderConfig.ClientID
+	}
+
+	opts = append(
+		opts,
+		kgo.ClientID(clientID),
+		kgo.SeedBrokers(address),
 		kgo.FetchMinBytes(1),
 		kgo.FetchMaxBytes(fetchMaxBytes),
 		kgo.FetchMaxWait(5*time.Second),

@@ -8,6 +8,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -68,7 +69,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(errors.New("no object store bucket configured"))
 	}
 
-	predicates := make([]dataobj.LogsPredicate, 0, len(node.Predicates))
+	predicates := make([]logs.RowPredicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
 		conv, err := buildLogsPredicate(p)
@@ -78,8 +79,13 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		predicates = append(predicates, conv)
 	}
 
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	if err != nil {
+		return errorPipeline(fmt.Errorf("creating data object: %w", err))
+	}
+
 	return newDataobjScanPipeline(ctx, dataobjScanOptions{
-		Object:      dataobj.FromBucket(c.bucket, string(node.Location)),
+		Object:      obj,
 		StreamIDs:   node.StreamIDs,
 		Predicates:  predicates,
 		Projections: node.Projections,

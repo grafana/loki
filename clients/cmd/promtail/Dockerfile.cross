@@ -1,9 +1,9 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.34.0
+ARG BUILD_IMAGE=grafana/loki-build-image:0.34.6
 ARG GO_VERSION=1.24
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile .
-FROM golang:${GO_VERSION}-alpine as goenv
+FROM golang:${GO_VERSION}-alpine AS goenv
 RUN go env GOARCH > /goarch && \
   go env GOARM > /goarm
 

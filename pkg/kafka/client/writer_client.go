@@ -41,8 +41,17 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
+	address := kafkaCfg.Address
+	clientID := kafkaCfg.ClientID
+	if kafkaCfg.WriterConfig.Address != "" {
+		address = kafkaCfg.WriterConfig.Address
+		clientID = kafkaCfg.WriterConfig.ClientID
+	}
+
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),
+		kgo.ClientID(clientID),
+		kgo.SeedBrokers(address),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.DefaultProduceTopic(kafkaCfg.Topic),
 
@@ -155,8 +164,6 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 
 func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
 	opts := []kgo.Opt{
-		kgo.ClientID(cfg.ClientID),
-		kgo.SeedBrokers(cfg.Address),
 		kgo.DialTimeout(cfg.DialTimeout),
 
 		// A cluster metadata update is a request sent to a broker and getting back the map of partitions and

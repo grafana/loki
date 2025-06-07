@@ -444,7 +444,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
 
-	ingestLimits, err := limits.NewIngestLimits(
+	ingestLimits, err := limits.New(
 		t.Cfg.IngestLimits,
 		t.Overrides,
 		util_log.Logger,
@@ -563,6 +563,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+
+	// Use Pattern ingester RetainFor value to determine when to query pattern ingesters
+	t.Cfg.Querier.QueryPatternIngestersWithin = t.Cfg.Pattern.RetainFor
+
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
