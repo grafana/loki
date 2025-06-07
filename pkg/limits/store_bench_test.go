@@ -62,7 +62,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				_, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
 				require.NoError(b, err)
 			}
 		})
@@ -82,7 +82,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				_, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
 				require.NoError(b, err)
 			}
 		})
@@ -106,7 +106,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					_, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
 					require.NoError(b, err)
 					i++
 				}
@@ -128,7 +128,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					_, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
 					require.NoError(b, err)
 					i++
 				}

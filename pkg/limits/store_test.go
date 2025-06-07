@@ -201,10 +201,11 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 		maxGlobalStreams int
 		// seed contains the (optional) streams that should be seeded before
 		// the test.
-		seed             []*proto.StreamMetadata
-		streams          []*proto.StreamMetadata
-		expectedAccepted []*proto.StreamMetadata
-		expectedRejected []*proto.StreamMetadata
+		seed              []*proto.StreamMetadata
+		streams           []*proto.StreamMetadata
+		expectedToProduce []*proto.StreamMetadata
+		expectedAccepted  []*proto.StreamMetadata
+		expectedRejected  []*proto.StreamMetadata
 	}{{
 		name:             "no streams",
 		numPartitions:    1,
@@ -214,6 +215,10 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 		numPartitions:    1,
 		maxGlobalStreams: 2,
 		streams: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
+		},
+		expectedToProduce: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
 			{StreamHash: 0x1, TotalSize: 1000},
 		},
@@ -228,6 +233,9 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 		streams: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
 			{StreamHash: 0x1, TotalSize: 1000},
+		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
 		},
 		expectedAccepted: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
@@ -244,6 +252,10 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 			{StreamHash: 0x1, TotalSize: 1000}, // partition 1
 			{StreamHash: 0x3, TotalSize: 1000}, // partition 1
 			{StreamHash: 0x5, TotalSize: 1000}, // partition 1
+		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
 		},
 		expectedAccepted: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
@@ -262,6 +274,10 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 			{StreamHash: 0x1, TotalSize: 1000}, // partition 1
 			{StreamHash: 0x2, TotalSize: 1000}, // partition 0
 			{StreamHash: 0x3, TotalSize: 1000}, // partition 1
+		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
 		},
 		expectedAccepted: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
@@ -285,6 +301,11 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 			{StreamHash: 0x2, TotalSize: 1000}, // existing, partition 0
 			{StreamHash: 0x4, TotalSize: 1000}, // new, partition 0
 		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
+			{StreamHash: 0x2, TotalSize: 1000},
+		},
 		expectedAccepted: []*proto.StreamMetadata{
 			{StreamHash: 0x0, TotalSize: 1000},
 			{StreamHash: 0x1, TotalSize: 1000},
@@ -305,12 +326,55 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 				require.NoError(t, s.Update("tenant", stream, clock.Now()))
 			}
 			limits := mockLimits{MaxGlobalStreams: test.maxGlobalStreams}
-			accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
+			toProduce, accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
 			require.NoError(t, err)
+			require.ElementsMatch(t, test.expectedToProduce, toProduce)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
 	}
+}
+
+func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+	limits := mockLimits{MaxGlobalStreams: 10}
+	metadata1 := []*proto.StreamMetadata{{
+		StreamHash: 0x1,
+		TotalSize:  100,
+	}}
+	toProduce, accepted, rejected, err := s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	require.NoError(t, err)
+	require.Empty(t, rejected)
+	require.Len(t, accepted, 1)
+	require.Equal(t, metadata1, toProduce)
+	// Another update for the same stream in the same minute should not produce
+	// a new record.
+	clock.Advance(time.Second)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	require.NoError(t, err)
+	require.Empty(t, rejected)
+	require.Empty(t, toProduce)
+	require.Len(t, accepted, 1)
+	// A different record in the same minute should be produced.
+	metadata2 := []*proto.StreamMetadata{{
+		StreamHash: 0x2,
+		TotalSize:  100,
+	}}
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata2, clock.Now(), &limits)
+	require.NoError(t, err)
+	require.Empty(t, rejected)
+	require.Len(t, accepted, 1)
+	require.Equal(t, metadata2, toProduce)
+	// Move the clock forward and metadata1 should be produced again.
+	clock.Advance(time.Minute)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	require.NoError(t, err)
+	require.Empty(t, rejected)
+	require.Len(t, accepted, 1)
+	require.Equal(t, metadata1, toProduce)
 }
 
 func TestUsageStore_Evict(t *testing.T) {
