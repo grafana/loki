@@ -123,7 +123,7 @@ require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.5
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/coder/quartz v0.1.3
+	github.com/coder/quartz v0.2.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.3
