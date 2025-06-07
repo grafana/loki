@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -38,7 +37,9 @@ type BooleanBuilder struct {
 }
 
 func NewBooleanBuilder(mem memory.Allocator) *BooleanBuilder {
-	return &BooleanBuilder{builder: builder{refCount: 1, mem: mem}}
+	bb := &BooleanBuilder{builder: builder{mem: mem}}
+	bb.builder.refCount.Add(1)
+	return bb
 }
 
 func (b *BooleanBuilder) Type() arrow.DataType { return arrow.FixedWidthTypes.Boolean }
@@ -47,9 +48,9 @@ func (b *BooleanBuilder) Type() arrow.DataType { return arrow.FixedWidthTypes.Bo
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (b *BooleanBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -258,6 +259,4 @@ func (b *BooleanBuilder) Value(i int) bool {
 	return bitutil.BitIsSet(b.rawData, i)
 }
 
-var (
-	_ Builder = (*BooleanBuilder)(nil)
-)
+var _ Builder = (*BooleanBuilder)(nil)
