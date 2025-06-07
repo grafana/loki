@@ -1505,6 +1505,13 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/oracle/oci-go-sdk/v65 v65.41.1
+## explicit; go 1.13
+github.com/oracle/oci-go-sdk/v65/common
+github.com/oracle/oci-go-sdk/v65/common/auth
+github.com/oracle/oci-go-sdk/v65/common/utils
+github.com/oracle/oci-go-sdk/v65/objectstorage
+github.com/oracle/oci-go-sdk/v65/objectstorage/transfer
 # github.com/oschwald/geoip2-golang v1.11.0
 ## explicit; go 1.21
 github.com/oschwald/geoip2-golang
@@ -1763,6 +1770,9 @@ github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/sony/gobreaker v0.5.0
+## explicit; go 1.12
+github.com/sony/gobreaker
 # github.com/sony/gobreaker/v2 v2.1.0
 ## explicit; go 1.22.0
 github.com/sony/gobreaker/v2
@@ -1796,6 +1806,7 @@ github.com/thanos-io/objstore/providers/azure
 github.com/thanos-io/objstore/providers/bos
 github.com/thanos-io/objstore/providers/filesystem
 github.com/thanos-io/objstore/providers/gcs
+github.com/thanos-io/objstore/providers/oci
 github.com/thanos-io/objstore/providers/oss
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
