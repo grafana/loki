@@ -5,7 +5,7 @@ networks:
 services:
   read:
     image: grafana/loki:latest
-    command: "-config.file=/etc/loki/config.yaml -target=read"
+    command: "-config.file=/etc/loki/config.yaml -target=read -query-scheduler.use-scheduler-ring=false"
     ports:
       - 3101:3100
       - 7946
@@ -26,7 +26,7 @@ services:
 
   write:
     image: grafana/loki:latest
-    command: "-config.file=/etc/loki/config.yaml -target=write"
+    command: "-config.file=/etc/loki/config.yaml -target=write -query-scheduler.use-scheduler-ring=false"
     ports:
       - 3102:3100
       - 7946
