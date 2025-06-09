@@ -1457,7 +1457,7 @@ github.com/ncruces/go-strftime
 # github.com/ncw/swift v1.0.53
 ## explicit
 github.com/ncw/swift
-# github.com/ncw/swift/v2 v2.0.3
+# github.com/ncw/swift/v2 v2.0.4
 ## explicit; go 1.16
 github.com/ncw/swift/v2
 # github.com/oklog/run v1.1.0
