@@ -23,10 +23,16 @@ local releaseLibStep = common.releaseLibStep;
         platform: platform,
       },
     })
+    + job.withPermissions({
+      contents: 'write',
+      'id-token': 'write',
+      'pull-requests': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.fetchGcsCredentials,
       common.googleAuth,
 
       step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
@@ -185,9 +191,13 @@ local releaseLibStep = common.releaseLibStep;
 
   dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.cleanUpBuildCache,
       common.fetchReleaseRepo,
+      common.fetchGcsCredentials,
       common.googleAuth,
       common.setupGoogleCloudSdk,
       step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25')  // main

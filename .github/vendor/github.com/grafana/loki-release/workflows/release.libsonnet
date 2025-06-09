@@ -94,6 +94,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    common.fetchReleaseRepo,
                    common.fetchReleaseLib,
                    common.setupNode,
+                   common.fetchGcsCredentials,
                    common.googleAuth,
                    common.setupGoogleCloudSdk,
                    common.fetchAppCredentials,
@@ -186,6 +187,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
     + job.withSteps(
       [
         common.fetchReleaseLib,
+        common.fetchGcsCredentials,
         common.googleAuth,
         common.setupGoogleCloudSdk,
         step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
@@ -193,10 +195,15 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       ] + (if getDockerCredsFromVault then [
              step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),
            ] else [
+             step.new('fetch docker credentials from vault', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')
+             + step.withId('fetch_docker_credentials')
+             + step.with({
+               repo_secrets: 'DOCKER_PASSWORD=docker:password',
+             }),
              step.new('Login to DockerHub (from secrets)', 'docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772')  // v3
              + step.with({
                username: dockerUsername,
-               password: '${{ secrets.DOCKER_PASSWORD }}',
+               password: '${{ env.DOCKER_PASSWORD }}',
              }),
            ]) +
       [
