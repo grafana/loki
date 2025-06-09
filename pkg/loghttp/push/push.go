@@ -64,6 +64,12 @@ var (
 		Help:      "The total number of streams with exporter=OTLP label",
 	}, []string{"tenant"})
 
+	distributorLagByUserAgent = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_most_recent_lag_ms",
+		Help:      "The difference in time in millis between an ingested log and the timestamp of the log grouped by userAgent",
+	}, []string{"tenant", "userAgent"})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
@@ -221,6 +227,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		totalNumLines += numLines
 	}
 	linesReceivedStats.Inc(totalNumLines)
+	mostRecentLagMs := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
 
 	logValues := []interface{}{
 		"msg", "push request parsed",
@@ -234,7 +241,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
-		"mostRecentLagMs", time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds(),
+		"mostRecentLagMs", mostRecentLagMs,
 	}
 
 	if presumedAgentIP != "" {
@@ -244,6 +251,19 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	userAgent := r.Header.Get("User-Agent")
 	if userAgent != "" {
 		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
+	}
+	// Since we're using a counter (so we can do things w/rate, irate, deriv, etc.) on the lag metrics,
+	// dispatch a warning if we ever get a negative value.  This could occur if we start getting logs
+	// whose timestamps are in the future (e.g. agents sending logs w/missing or invalid NTP configs).
+	// Negative values can't give us much insight into whether-or-not a customer's ingestion is falling
+	// behind, so we won't include it in the metrics, and instead will capture the occurrence in the
+	// distributor logs.
+	// We capture this metric even when the user agent is empty; we want insight into the tenant's
+	// ingestion lag no matter what.
+	if mostRecentLagMs >= 0 {
+		distributorLagByUserAgent.WithLabelValues(userID, userAgent).Add(float64(mostRecentLagMs))
+	} else {
+		level.Warn(logger).Log("msg", "mostRecentLagMs has a negative value")
 	}
 
 	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
