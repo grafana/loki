@@ -26,7 +26,9 @@ local runner = import 'runner.libsonnet',
       },
     })
     + job.withPermissions({
+      contents: 'write',
       'id-token': 'write',
+      'pull-requests': 'write',
     })
     + job.withSteps([
       common.fetchReleaseLib,
