@@ -67,7 +67,7 @@ var (
 	distributorLagByUserAgent = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_most_recent_lag_ms",
-		Help:      "The difference in time in millis between an ingested log and the timestamp of the log grouped by userAgent",
+		Help:      "The difference in time (in millis) between a push request's ingestion time and the most recent log timestamp in the request",
 	}, []string{"tenant", "userAgent"})
 
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
