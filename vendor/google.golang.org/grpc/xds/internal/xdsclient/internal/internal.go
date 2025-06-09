@@ -20,6 +20,14 @@ package internal
 
 // The following vars can be overridden by tests.
 var (
-	// NewADSStream is a function that returns a new ADS stream.
+	// GRPCNewClient returns a new gRPC Client.
+	GRPCNewClient any // func(string, ...grpc.DialOption) (*grpc.ClientConn, error)
+
+	// NewADSStream returns a new ADS stream.
 	NewADSStream any // func(context.Context, *grpc.ClientConn) (v3adsgrpc.AggregatedDiscoveryService_StreamAggregatedResourcesClient, error)
+
+	// ResourceWatchStateForTesting gets the watch state for the resource
+	// identified by the given resource type and resource name. Returns a
+	// non-nil error if there is no such resource being watched.
+	ResourceWatchStateForTesting any // func(xdsclient.XDSClient, xdsresource.Type, string) error
 )

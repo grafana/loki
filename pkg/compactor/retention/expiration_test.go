@@ -13,8 +13,9 @@ import (
 )
 
 type retentionLimit struct {
-	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	retentionPeriod     time.Duration
+	streamRetention     []validation.StreamRetention
+	policyStreamMapping validation.PolicyStreamMapping
 }
 
 func (r retentionLimit) convertToValidationLimit() *validation.Limits {
@@ -31,6 +32,10 @@ type fakeLimits struct {
 
 func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.perTenant[userID].retentionPeriod
+}
+
+func (f fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
+	return f.perTenant["user0"].policyStreamMapping
 }
 
 func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
@@ -103,24 +108,63 @@ func Test_expirationChecker_Expired(t *testing.T) {
 
 	e := NewExpirationChecker(o)
 	tests := []struct {
-		name string
-		ref  ChunkEntry
-		want bool
+		name   string
+		userID string
+		labels string
+		chunk  Chunk
+		want   bool
 	}{
-		{"expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), true},
-		{"just expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-1*time.Hour+(10*time.Millisecond))), false},
-		{"not expired tenant", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-30*time.Minute)), false},
-		{"not expired tenant by far", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-72*time.Hour), model.Now().Add(-3*time.Hour)), false},
-		{"expired stream override", newChunkEntry("2", `{foo="bar"}`, model.Now().Add(-12*time.Hour), model.Now().Add(-10*time.Hour)), true},
-		{"non expired stream override", newChunkEntry("1", `{foo="bar"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-90*time.Minute)), false},
+		{"expired tenant", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-2 * time.Hour)}, true},
+		{"just expired tenant", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-1*time.Hour + (10 * time.Millisecond))}, false},
+		{"not expired tenant", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-30 * time.Minute)}, false},
+		{"not expired tenant by far", "2", `{foo="buzz"}`, Chunk{From: model.Now().Add(-72 * time.Hour), Through: model.Now().Add(-3 * time.Hour)}, false},
+		{"expired stream override", "2", `{foo="bar"}`, Chunk{From: model.Now().Add(-12 * time.Hour), Through: model.Now().Add(-10 * time.Hour)}, true},
+		{"non expired stream override", "1", `{foo="bar"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-90 * time.Minute)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
 	}
+}
+
+func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
+	sevenDays, err := model.ParseDuration("720h")
+	require.NoError(t, err)
+	oneDay, err := model.ParseDuration("24h")
+	require.NoError(t, err)
+
+	tr := NewTenantsRetention(fakeLimits{
+		defaultLimit: retentionLimit{
+			retentionPeriod: time.Duration(sevenDays),
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: oneDay,
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+					},
+				},
+			},
+		},
+		perTenant: map[string]retentionLimit{
+			"1": {
+				retentionPeriod: time.Duration(sevenDays),
+				streamRetention: []validation.StreamRetention{
+					{
+						Period: oneDay,
+						Matchers: []*labels.Matcher{
+							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	require.Equal(t, time.Duration(sevenDays), tr.RetentionPeriodFor("1", labels.EmptyLabels()))
+	require.Equal(t, time.Duration(oneDay), tr.RetentionPeriodFor("1", labels.FromStrings("foo", "bar")))
 }
 
 func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
@@ -141,18 +185,20 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	require.NoError(t, err)
 	e := NewExpirationChecker(o)
 	tests := []struct {
-		name string
-		ref  ChunkEntry
-		want bool
+		name   string
+		userID string
+		labels string
+		chunk  Chunk
+		want   bool
 	}{
-		{"tenant with no override should not delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), false},
-		{"tenant with no override, REALLY old chunk should not delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-10000*time.Hour+(1*time.Hour)), model.Now().Add(-10000*time.Hour)), false},
-		{"tenant with override chunk less than retention should not delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-3*time.Hour), model.Now().Add(-2*time.Hour)), false},
-		{"tenant with override should delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), true},
+		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-2 * time.Hour)}, false},
+		{"tenant with no override, REALLY old chunk should not delete", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-10000*time.Hour + (1 * time.Hour)), Through: model.Now().Add(-10000 * time.Hour)}, false},
+		{"tenant with override chunk less than retention should not delete", "2", `{foo="buzz"}`, Chunk{From: model.Now().Add(-3 * time.Hour), Through: model.Now().Add(-2 * time.Hour)}, false},
+		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: model.Now().Add(-31 * time.Hour), Through: model.Now().Add(-30 * time.Hour)}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
@@ -187,17 +233,19 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 
 	e := NewExpirationChecker(o)
 	tests := []struct {
-		name string
-		ref  ChunkEntry
-		want bool
+		name   string
+		userID string
+		labels string
+		chunk  Chunk
+		want   bool
 	}{
-		{"tenant with no override should delete", newChunkEntry("1", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), true},
-		{"tenant with override should not delete", newChunkEntry("2", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), false},
-		{"tenant with zero value without unit should not delete", newChunkEntry("3", `{foo="buzz"}`, model.Now().Add(-31*time.Hour), model.Now().Add(-30*time.Hour)), false},
+		{"tenant with no override should delete", "1", `{foo="buzz"}`, Chunk{From: model.Now().Add(-31 * time.Hour), Through: model.Now().Add(-30 * time.Hour)}, true},
+		{"tenant with override should not delete", "2", `{foo="buzz"}`, Chunk{From: model.Now().Add(-31 * time.Hour), Through: model.Now().Add(-30 * time.Hour)}, false},
+		{"tenant with zero value without unit should not delete", "3", `{foo="buzz"}`, Chunk{From: model.Now().Add(-31 * time.Hour), Through: model.Now().Add(-30 * time.Hour)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
+			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
@@ -225,17 +273,55 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	chunkThrough := model.Now().Add(-2 * time.Hour)
 	tests := []struct {
 		name         string
-		ref          ChunkEntry
+		userID       string
+		labels       string
+		chunk        Chunk
 		tableEndTime model.Time
 		want         bool
 	}{
-		{"tenant with no override should not delete", newChunkEntry("1", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-48 * time.Hour), false},
-		{"tenant with override tableEndTime within retention period should not delete", newChunkEntry("2", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-1 * time.Hour), false},
-		{"tenant with override should delete", newChunkEntry("2", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-48 * time.Hour), true},
+		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), false},
+		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-1 * time.Hour), false},
+		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := e.DropFromIndex(tt.ref, tt.tableEndTime, model.Now())
+			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, model.Now())
+			require.Equal(t, tt.want, actual)
+		})
+	}
+}
+
+func Test_expirationChecker_CanSkipSeries(t *testing.T) {
+	// Default retention should be zero
+	d := defaultLimitsTestConfig()
+
+	// Override tenant 2 to have 24 hour retention
+	tl := defaultLimitsTestConfig()
+	oneDay, _ := model.ParseDuration("24h")
+	tl.RetentionPeriod = oneDay
+	f := fakeOverrides{
+		tenantLimits: map[string]*validation.Limits{
+			"2": &tl,
+		},
+	}
+	o, err := overridesTestConfig(d, f)
+	require.NoError(t, err)
+	e := NewExpirationChecker(o)
+
+	tests := []struct {
+		name        string
+		userID      string
+		labels      string
+		seriesStart model.Time
+		want        bool
+	}{
+		{"tenant with no override should skip series", "1", `{foo="buzz"}`, model.Now().Add(-48 * time.Hour), true},
+		{"tenant with override, seriesStart within retention period should skip series", "2", `{foo="buzz"}`, model.Now().Add(-1 * time.Hour), true},
+		{"tenant with override, seriesStart outside retention period should not skip series", "2", `{foo="buzz"}`, model.Now().Add(-48 * time.Hour), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := e.CanSkipSeries([]byte(tt.userID), mustParseLabels(tt.labels), nil, tt.seriesStart, "", model.Now())
 			require.Equal(t, tt.want, actual)
 		})
 	}

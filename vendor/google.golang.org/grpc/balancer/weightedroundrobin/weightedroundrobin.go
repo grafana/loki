@@ -34,7 +34,8 @@ import (
 )
 
 // attributeKey is the type used as the key to store AddrInfo in the
-// BalancerAttributes field of resolver.Address.
+// BalancerAttributes field of resolver.Address or Attributes field of
+// resolver.Endpoint.
 type attributeKey struct{}
 
 // AddrInfo will be stored in the BalancerAttributes field of Address in order
@@ -56,10 +57,25 @@ func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 	return addr
 }
 
+// SetAddrInfoInEndpoint returns a copy of endpoint in which the Attributes
+// field is updated with addrInfo.
+func SetAddrInfoInEndpoint(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(attributeKey{}, addrInfo)
+	return endpoint
+}
+
 // GetAddrInfo returns the AddrInfo stored in the BalancerAttributes field of
 // addr.
 func GetAddrInfo(addr resolver.Address) AddrInfo {
 	v := addr.BalancerAttributes.Value(attributeKey{})
+	ai, _ := v.(AddrInfo)
+	return ai
+}
+
+// AddrInfoFromEndpoint returns the AddrInfo stored in the Attributes field of
+// endpoint.
+func AddrInfoFromEndpoint(endpoint resolver.Endpoint) AddrInfo {
+	v := endpoint.Attributes.Value(attributeKey{})
 	ai, _ := v.(AddrInfo)
 	return ai
 }

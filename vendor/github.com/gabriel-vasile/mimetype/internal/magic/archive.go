@@ -52,10 +52,15 @@ func InstallShieldCab(raw []byte, _ uint32) bool {
 }
 
 // Zstd matches a Zstandard archive file.
+// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md
 func Zstd(raw []byte, limit uint32) bool {
-	return len(raw) >= 4 &&
-		(0x22 <= raw[0] && raw[0] <= 0x28 || raw[0] == 0x1E) && // Different Zstandard versions.
-		bytes.HasPrefix(raw[1:], []byte{0xB5, 0x2F, 0xFD})
+	if len(raw) < 4 {
+		return false
+	}
+	sig := binary.LittleEndian.Uint32(raw)
+	// Check for Zstandard frames and skippable frames.
+	return (sig >= 0xFD2FB522 && sig <= 0xFD2FB528) ||
+		(sig >= 0x184D2A50 && sig <= 0x184D2A5F)
 }
 
 // CRX matches a Chrome extension file: a zip archive prepended by a package header.
@@ -74,51 +79,85 @@ func CRX(raw []byte, limit uint32) bool {
 }
 
 // Tar matches a (t)ape (ar)chive file.
+// Tar files are divided into 512 bytes records. First record contains a 257
+// bytes header padded with NUL.
 func Tar(raw []byte, _ uint32) bool {
-	// The "magic" header field for files in in UStar (POSIX IEEE P1003.1) archives
-	// has the prefix "ustar". The values of the remaining bytes in this field vary
-	// by archiver implementation.
-	if len(raw) >= 512 && bytes.HasPrefix(raw[257:], []byte{0x75, 0x73, 0x74, 0x61, 0x72}) {
-		return true
-	}
+	const sizeRecord = 512
 
-	if len(raw) < 256 {
+	// The structure of a tar header:
+	// type TarHeader struct {
+	// 	Name     [100]byte
+	// 	Mode     [8]byte
+	// 	Uid      [8]byte
+	// 	Gid      [8]byte
+	// 	Size     [12]byte
+	// 	Mtime    [12]byte
+	// 	Chksum   [8]byte
+	// 	Linkflag byte
+	// 	Linkname [100]byte
+	// 	Magic    [8]byte
+	// 	Uname    [32]byte
+	// 	Gname    [32]byte
+	// 	Devmajor [8]byte
+	// 	Devminor [8]byte
+	// }
+
+	if len(raw) < sizeRecord {
+		return false
+	}
+	raw = raw[:sizeRecord]
+
+	// First 100 bytes of the header represent the file name.
+	// Check if file looks like Gentoo GLEP binary package.
+	if bytes.Contains(raw[:100], []byte("/gpkg-1\x00")) {
 		return false
 	}
 
-	// The older v7 format has no "magic" field, and therefore must be identified
-	// with heuristics based on legal ranges of values for other header fields:
-	// https://www.nationalarchives.gov.uk/PRONOM/Format/proFormatSearch.aspx?status=detailReport&id=385&strPageToDisplay=signatures
-	rules := []struct {
-		min, max uint8
-		i        int
-	}{
-		{0x21, 0xEF, 0},
-		{0x30, 0x37, 105},
-		{0x20, 0x37, 106},
-		{0x00, 0x00, 107},
-		{0x30, 0x37, 113},
-		{0x20, 0x37, 114},
-		{0x00, 0x00, 115},
-		{0x30, 0x37, 121},
-		{0x20, 0x37, 122},
-		{0x00, 0x00, 123},
-		{0x30, 0x37, 134},
-		{0x30, 0x37, 146},
-		{0x30, 0x37, 153},
-		{0x00, 0x37, 154},
+	// Get the checksum recorded into the file.
+	recsum := tarParseOctal(raw[148:156])
+	if recsum == -1 {
+		return false
 	}
-	for _, r := range rules {
-		if raw[r.i] < r.min || raw[r.i] > r.max {
-			return false
-		}
-	}
+	sum1, sum2 := tarChksum(raw)
+	return recsum == sum1 || recsum == sum2
+}
 
-	for _, i := range []uint8{135, 147, 155} {
-		if raw[i] != 0x00 && raw[i] != 0x20 {
-			return false
-		}
-	}
+// tarParseOctal converts octal string to decimal int.
+func tarParseOctal(b []byte) int64 {
+	// Because unused fields are filled with NULs, we need to skip leading NULs.
+	// Fields may also be padded with spaces or NULs.
+	// So we remove leading and trailing NULs and spaces to be sure.
+	b = bytes.Trim(b, " \x00")
 
-	return true
+	if len(b) == 0 {
+		return -1
+	}
+	ret := int64(0)
+	for _, b := range b {
+		if b == 0 {
+			break
+		}
+		if !(b >= '0' && b <= '7') {
+			return -1
+		}
+		ret = (ret << 3) | int64(b-'0')
+	}
+	return ret
+}
+
+// tarChksum computes the checksum for the header block b.
+// The actual checksum is written to same b block after it has been calculated.
+// Before calculation the bytes from b reserved for checksum have placeholder
+// value of ASCII space 0x20.
+// POSIX specifies a sum of the unsigned byte values, but the Sun tar used
+// signed byte values. We compute and return both.
+func tarChksum(b []byte) (unsigned, signed int64) {
+	for i, c := range b {
+		if 148 <= i && i < 156 {
+			c = ' ' // Treat the checksum field itself as all spaces.
+		}
+		unsigned += int64(c)
+		signed += int64(int8(c))
+	}
+	return unsigned, signed
 }

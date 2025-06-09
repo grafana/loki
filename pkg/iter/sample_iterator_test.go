@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -490,4 +490,54 @@ func TestDedupeMergeSampleIterator(t *testing.T) {
 	require.Equal(t, time.Unix(2, 0).UnixNano(), it.At().Timestamp)
 	require.Equal(t, 1., it.At().Value)
 	require.Equal(t, xxhash.Sum64String("3"), it.At().Hash)
+}
+
+func TestMergeSampleIteratorZeroHash(t *testing.T) {
+	// Create series with samples that have zero hashes but same timestamps
+	series1 := logproto.Series{
+		Labels:     `{foo="bar"}`,
+		StreamHash: hashLabels(`{foo="bar"}`),
+		Samples: []logproto.Sample{
+			{Timestamp: 1, Value: 1.0, Hash: 0},  // Zero hash
+			{Timestamp: 1, Value: 2.0, Hash: 0},  // Zero hash, same timestamp
+			{Timestamp: 2, Value: 3.0, Hash: 42}, // Non-zero hash
+		},
+	}
+
+	series2 := logproto.Series{
+		Labels:     `{foo="bar"}`,
+		StreamHash: hashLabels(`{foo="bar"}`),
+		Samples: []logproto.Sample{
+			{Timestamp: 1, Value: 4.0, Hash: 0},  // Zero hash, same timestamp
+			{Timestamp: 2, Value: 3.0, Hash: 42}, // Non-zero hash, should be deduplicated
+		},
+	}
+
+	it := NewMergeSampleIterator(context.Background(), []SampleIterator{
+		NewSeriesIterator(series1),
+		NewSeriesIterator(series2),
+	})
+
+	// Should get all samples with zero hash at timestamp 1
+	require.True(t, it.Next())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+	require.Equal(t, logproto.Sample{Timestamp: 1, Value: 1.0, Hash: 0}, it.At())
+
+	require.True(t, it.Next())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+	require.Equal(t, logproto.Sample{Timestamp: 1, Value: 2.0, Hash: 0}, it.At())
+
+	require.True(t, it.Next())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+	require.Equal(t, logproto.Sample{Timestamp: 1, Value: 4.0, Hash: 0}, it.At())
+
+	// Should get only one sample with non-zero hash at timestamp 2 (deduplicated)
+	require.True(t, it.Next())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+	require.Equal(t, logproto.Sample{Timestamp: 2, Value: 3.0, Hash: 42}, it.At())
+
+	// No more samples
+	require.False(t, it.Next())
+	require.NoError(t, it.Err())
+	require.NoError(t, it.Close())
 }

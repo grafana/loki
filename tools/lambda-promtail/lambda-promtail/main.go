@@ -13,6 +13,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
+	prommodel "github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -38,6 +40,7 @@ var (
 	dropLabels                                                               []model.LabelName
 	skipTlsVerify                                                            bool
 	printLogLine                                                             bool
+	relabelConfigs                                                           []*relabel.Config
 )
 
 func setupArguments() {
@@ -100,12 +103,17 @@ func setupArguments() {
 		batchSize, _ = strconv.Atoi(batch)
 	}
 
-	print := os.Getenv("PRINT_LOG_LINE")
 	printLogLine = true
-	if strings.EqualFold(print, "false") {
+	if strings.EqualFold(os.Getenv("PRINT_LOG_LINE"), "false") {
 		printLogLine = false
 	}
 	s3Clients = make(map[string]*s3.Client)
+
+	promConfigs, err := parseRelabelConfigs(os.Getenv("RELABEL_CONFIGS"))
+	if err != nil {
+		panic(err)
+	}
+	relabelConfigs = promConfigs
 }
 
 func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
@@ -113,7 +121,7 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	if omitPrefix {
 		prefix = ""
 	}
-	var extractedLabels = model.LabelSet{}
+	extractedLabels := model.LabelSet{}
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
 	if len(extraLabelsRaw) < 1 {
@@ -121,14 +129,18 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	}
 
 	if len(extraLabelsSplit)%2 != 0 {
-		return nil, fmt.Errorf(invalidExtraLabelsError)
+		return nil, errors.New(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
-	}
-	err := extractedLabels.Validate()
-	if err != nil {
-		return nil, err
+		labelName := model.LabelName(prefix + extraLabelsSplit[i])
+		if !labelName.IsValidLegacy() {
+			return nil, fmt.Errorf("invalid name %q", labelName)
+		}
+		labelValue := model.LabelValue(extraLabelsSplit[i+1])
+		if !labelValue.IsValid() {
+			return nil, fmt.Errorf("invalid value %q", labelValue)
+		}
+		extractedLabels[labelName] = labelValue
 	}
 	fmt.Println("extra labels:", extractedLabels)
 	return extractedLabels, nil
@@ -141,7 +153,7 @@ func getDropLabels() ([]model.LabelName, error) {
 		dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
 		for _, dropLabelRaw := range dropLabelsRawSplit {
 			dropLabel := model.LabelName(dropLabelRaw)
-			if !dropLabel.IsValid() {
+			if !dropLabel.IsValidLegacy() {
 				return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
 			}
 			result = append(result, dropLabel)
@@ -151,11 +163,51 @@ func getDropLabels() ([]model.LabelName, error) {
 	return result, nil
 }
 
+func applyRelabelConfigs(labels model.LabelSet) model.LabelSet {
+	if len(relabelConfigs) == 0 {
+		return labels
+	}
+
+	// Convert model.LabelSet to prommodel.Labels
+	promLabels := make([]prommodel.Label, 0, len(labels))
+	for name, value := range labels {
+		promLabels = append(promLabels, prommodel.Label{
+			Name:  string(name),
+			Value: string(value),
+		})
+	}
+
+	// Sort labels as required by Process
+	promLabels = prommodel.New(promLabels...)
+
+	// Apply relabeling
+	processedLabels, keep := relabel.Process(promLabels, relabelConfigs...)
+	if !keep {
+		return model.LabelSet{}
+	}
+
+	// Convert back to model.LabelSet
+	result := make(model.LabelSet)
+	for _, l := range processedLabels {
+		result[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+
+	return result
+}
+
 func applyLabels(labels model.LabelSet) model.LabelSet {
 	finalLabels := labels.Merge(extraLabels)
 
 	for _, dropLabel := range dropLabels {
 		delete(finalLabels, dropLabel)
+	}
+
+	// Apply relabeling after merging extra labels and dropping labels
+	finalLabels = applyRelabelConfigs(finalLabels)
+
+	// Skip entries with no labels after relabeling
+	if len(finalLabels) == 0 {
+		return nil
 	}
 
 	return finalLabels

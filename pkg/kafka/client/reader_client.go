@@ -9,21 +9,34 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // NewReaderClient returns the kgo.Client that should be used by the Reader.
-func NewReaderClient(kafkaCfg kafka.Config, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*kgo.Client, error) {
+//
+// The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
+// `MetricsPrefix`
+func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
+	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 	const fetchMaxBytes = 100_000_000
 
 	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
-	opts = append(opts,
+
+	address := kafkaCfg.Address
+	clientID := kafkaCfg.ClientID
+	if kafkaCfg.ReaderConfig.Address != "" {
+		address = kafkaCfg.ReaderConfig.Address
+		clientID = kafkaCfg.ReaderConfig.ClientID
+	}
+
+	opts = append(
+		opts,
+		kgo.ClientID(clientID),
+		kgo.SeedBrokers(address),
 		kgo.FetchMinBytes(1),
 		kgo.FetchMaxBytes(fetchMaxBytes),
 		kgo.FetchMaxWait(5*time.Second),
@@ -36,19 +49,12 @@ func NewReaderClient(kafkaCfg kafka.Config, metrics *kprom.Metrics, logger log.L
 	)
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
-		return nil, errors.Wrap(err, "creating kafka client")
+		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 	if kafkaCfg.AutoCreateTopicEnabled {
 		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)
 	}
 	return client, nil
-}
-
-func NewReaderClientMetrics(component string, reg prometheus.Registerer) *kprom.Metrics {
-	return kprom.NewMetrics("loki_ingest_storage_reader",
-		kprom.Registerer(prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)),
-		// Do not export the client ID, because we use it to specify options to the backend.
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 }
 
 // setDefaultNumberOfPartitionsForAutocreatedTopics tries to set num.partitions config option on brokers.

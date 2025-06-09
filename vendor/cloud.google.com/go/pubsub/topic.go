@@ -282,6 +282,10 @@ type TopicConfig struct {
 	// IngestionDataSourceSettings are settings for ingestion from a
 	// data source into this topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// MessageTransforms are the transforms to be applied to messages published to the topic.
+	// Transforms are applied in the order specified.
+	MessageTransforms []MessageTransform
 }
 
 // String returns the printable globally unique name for the topic config.
@@ -316,6 +320,7 @@ func (tc *TopicConfig) toProto() *pb.Topic {
 		SchemaSettings:              schemaSettingsToProto(tc.SchemaSettings),
 		MessageRetentionDuration:    retDur,
 		IngestionDataSourceSettings: tc.IngestionDataSourceSettings.toProto(),
+		MessageTransforms:           messageTransformsToProto(tc.MessageTransforms),
 	}
 	return pbt
 }
@@ -356,6 +361,9 @@ type TopicConfigToUpdate struct {
 	//
 	// Use the zero value &IngestionDataSourceSettings{} to remove the ingestion settings from the topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// If non-nil, the entire list of message transforms is replaced with the following.
+	MessageTransforms []MessageTransform
 }
 
 func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
@@ -367,6 +375,7 @@ func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
 		SchemaSettings:              protoToSchemaSettings(pbt.SchemaSettings),
 		State:                       TopicState(pbt.State),
 		IngestionDataSourceSettings: protoToIngestionDataSourceSettings(pbt.IngestionDataSourceSettings),
+		MessageTransforms:           protoToMessageTransforms(pbt.MessageTransforms),
 	}
 	if pbt.GetMessageRetentionDuration() != nil {
 		tc.RetentionDuration = pbt.GetMessageRetentionDuration().AsDuration()
@@ -592,6 +601,189 @@ func (i *IngestionDataSourceCloudStoragePubSubAvroFormat) isCloudStorageIngestio
 	return true
 }
 
+// EventHubsState denotes the possible states for ingestion from Event Hubs.
+type EventHubsState int
+
+const (
+	// EventHubsStateUnspecified is the default value. This value is unused.
+	EventHubsStateUnspecified = iota
+
+	// EventHubsStateActive means the state is active.
+	EventHubsStateActive
+
+	// EventHubsStatePermissionDenied indicates encountered permission denied error
+	// while consuming data from Event Hubs.
+	// This can happen when `client_id`, or `tenant_id` are invalid. Or the
+	// right permissions haven't been granted.
+	EventHubsStatePermissionDenied
+
+	// EventHubsStatePublishPermissionDenied indicates permission denied encountered
+	// while publishing to the topic.
+	EventHubsStatePublishPermissionDenied
+
+	// EventHubsStateNamespaceNotFound indicates the provided Event Hubs namespace couldn't be found.
+	EventHubsStateNamespaceNotFound
+
+	// EventHubsStateNotFound indicates the provided Event Hub couldn't be found.
+	EventHubsStateNotFound
+
+	// EventHubsStateSubscriptionNotFound indicates the provided Event Hubs subscription couldn't be found.
+	EventHubsStateSubscriptionNotFound
+
+	// EventHubsStateResourceGroupNotFound indicates the provided Event Hubs resource group couldn't be found.
+	EventHubsStateResourceGroupNotFound
+)
+
+// IngestionDataSourceAzureEventHubs are ingestion settings for Azure Event Hubs.
+type IngestionDataSourceAzureEventHubs struct {
+	// Output only field that indicates the state of the Event Hubs ingestion source.
+	State EventHubsState
+
+	// Name of the resource group within the Azure subscription
+	ResourceGroup string
+
+	// Name of the Event Hubs namespace
+	Namespace string
+
+	// Rame of the Event Hub.
+	EventHub string
+
+	// Client ID of the Azure application that is being used to authenticate Pub/Sub.
+	ClientID string
+
+	// Tenant ID of the Azure application that is being used to authenticate Pub/Sub.
+	TenantID string
+
+	// The Azure subscription ID
+	SubscriptionID string
+
+	// GCPServiceAccount is the GCP service account to be used for Federated Identity
+	// authentication.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceAzureEventHubs)(nil)
+
+func (i *IngestionDataSourceAzureEventHubs) isIngestionDataSource() bool {
+	return true
+}
+
+// AmazonMSKState denotes the possible states for ingestion from Amazon MSK.
+type AmazonMSKState int
+
+const (
+	// AmazonMSKStateUnspecified is the default value. This value is unused.
+	AmazonMSKStateUnspecified = iota
+
+	// AmazonMSKActive indicates MSK topic is active.
+	AmazonMSKActive
+
+	// AmazonMSKPermissionDenied indicates permission denied encountered while consuming data from Amazon MSK.
+	AmazonMSKPermissionDenied
+
+	// AmazonMSKPublishPermissionDenied indicates permission denied encountered while publishing to the topic.
+	AmazonMSKPublishPermissionDenied
+
+	// AmazonMSKClusterNotFound indicates the provided Msk cluster wasn't found.
+	AmazonMSKClusterNotFound
+
+	// AmazonMSKTopicNotFound indicates the provided topic wasn't found.
+	AmazonMSKTopicNotFound
+)
+
+// IngestionDataSourceAmazonMSK are ingestion settings for Amazon MSK.
+type IngestionDataSourceAmazonMSK struct {
+	// An output-only field that indicates the state of the Amazon
+	// MSK ingestion source.
+	State AmazonMSKState
+
+	// The Amazon Resource Name (ARN) that uniquely identifies the
+	// cluster.
+	ClusterARN string
+
+	// The name of the topic in the Amazon MSK cluster that Pub/Sub
+	// will import from.
+	Topic string
+
+	// AWS role ARN to be used for Federated Identity authentication
+	// with Amazon MSK. Check the Pub/Sub docs for how to set up this role and
+	// the required permissions that need to be attached to it.
+	AWSRoleARN string
+
+	// The GCP service account to be used for Federated Identity
+	// authentication with Amazon MSK (via a `AssumeRoleWithWebIdentity` call
+	// for the provided role). The `aws_role_arn` must be set up with
+	// `accounts.google.com:sub` equals to this service account number.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceAmazonMSK)(nil)
+
+func (i *IngestionDataSourceAmazonMSK) isIngestionDataSource() bool {
+	return true
+}
+
+// ConfluentCloudState denotes state of ingestion topic with confluent cloud
+type ConfluentCloudState int
+
+const (
+	// ConfluentCloudStateUnspecified is the default value. This value is unused.
+	ConfluentCloudStateUnspecified = iota
+
+	// ConfluentCloudActive indicates the state is active.
+	ConfluentCloudActive = 1
+
+	// ConfluentCloudPermissionDenied indicates permission denied encountered
+	// while consuming data from Confluent Cloud.
+	ConfluentCloudPermissionDenied = 2
+
+	// ConfluentCloudPublishPermissionDenied indicates permission denied encountered
+	// while publishing to the topic.
+	ConfluentCloudPublishPermissionDenied = 3
+
+	// ConfluentCloudUnreachableBootstrapServer indicates the provided bootstrap
+	// server address is unreachable.
+	ConfluentCloudUnreachableBootstrapServer = 4
+
+	// ConfluentCloudClusterNotFound indicates the provided cluster wasn't found.
+	ConfluentCloudClusterNotFound = 5
+
+	// ConfluentCloudTopicNotFound indicates the provided topic wasn't found.
+	ConfluentCloudTopicNotFound = 6
+)
+
+// IngestionDataSourceConfluentCloud are ingestion settings for confluent cloud.
+type IngestionDataSourceConfluentCloud struct {
+	// An output-only field that indicates the state of the
+	// Confluent Cloud ingestion source.
+	State ConfluentCloudState
+
+	// The address of the bootstrap server. The format is url:port.
+	BootstrapServer string
+
+	// The id of the cluster.
+	ClusterID string
+
+	// The name of the topic in the Confluent Cloud cluster that
+	// Pub/Sub will import from.
+	Topic string
+
+	// The id of the identity pool to be used for Federated Identity
+	// authentication with Confluent Cloud. See
+	// https://docs.confluent.io/cloud/current/security/authenticate/workload-identities/identity-providers/oauth/identity-pools.html#add-oauth-identity-pools.
+	IdentityPoolID string
+
+	// The GCP service account to be used for Federated Identity
+	// authentication with `identity_pool_id`.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceConfluentCloud)(nil)
+
+func (i *IngestionDataSourceConfluentCloud) isIngestionDataSource() bool {
+	return true
+}
+
 func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *IngestionDataSourceSettings {
 	if pbs == nil {
 		return nil
@@ -624,6 +816,34 @@ func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *In
 			InputFormat:             format,
 			MinimumObjectCreateTime: cs.GetMinimumObjectCreateTime().AsTime(),
 			MatchGlob:               cs.GetMatchGlob(),
+		}
+	} else if e := pbs.GetAzureEventHubs(); e != nil {
+		s.Source = &IngestionDataSourceAzureEventHubs{
+			State:             EventHubsState(e.GetState()),
+			ResourceGroup:     e.GetResourceGroup(),
+			Namespace:         e.GetNamespace(),
+			EventHub:          e.GetEventHub(),
+			ClientID:          e.GetClientId(),
+			TenantID:          e.GetTenantId(),
+			SubscriptionID:    e.GetSubscriptionId(),
+			GCPServiceAccount: e.GetGcpServiceAccount(),
+		}
+	} else if m := pbs.GetAwsMsk(); m != nil {
+		s.Source = &IngestionDataSourceAmazonMSK{
+			State:             AmazonMSKState(m.GetState()),
+			ClusterARN:        m.GetClusterArn(),
+			Topic:             m.GetTopic(),
+			AWSRoleARN:        m.GetAwsRoleArn(),
+			GCPServiceAccount: m.GetGcpServiceAccount(),
+		}
+	} else if c := pbs.GetConfluentCloud(); c != nil {
+		s.Source = &IngestionDataSourceConfluentCloud{
+			State:             ConfluentCloudState(c.GetState()),
+			BootstrapServer:   c.GetBootstrapServer(),
+			ClusterID:         c.GetClusterId(),
+			Topic:             c.GetTopic(),
+			IdentityPoolID:    c.GetIdentityPoolId(),
+			GCPServiceAccount: c.GetGcpServiceAccount(),
 		}
 	}
 
@@ -681,7 +901,6 @@ func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings 
 			case *IngestionDataSourceCloudStorageAvroFormat:
 				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
 					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
-						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
 						Bucket: cs.Bucket,
 						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat_{
 							AvroFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat{},
@@ -702,6 +921,40 @@ func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings 
 						MatchGlob:               cs.MatchGlob,
 					},
 				}
+			}
+		}
+		if e, ok := out.(*IngestionDataSourceAzureEventHubs); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_AzureEventHubs_{
+				AzureEventHubs: &pb.IngestionDataSourceSettings_AzureEventHubs{
+					ResourceGroup:     e.ResourceGroup,
+					Namespace:         e.Namespace,
+					EventHub:          e.EventHub,
+					ClientId:          e.ClientID,
+					TenantId:          e.TenantID,
+					SubscriptionId:    e.SubscriptionID,
+					GcpServiceAccount: e.GCPServiceAccount,
+				},
+			}
+		}
+		if m, ok := out.(*IngestionDataSourceAmazonMSK); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_AwsMsk_{
+				AwsMsk: &pb.IngestionDataSourceSettings_AwsMsk{
+					ClusterArn:        m.ClusterARN,
+					Topic:             m.Topic,
+					AwsRoleArn:        m.AWSRoleARN,
+					GcpServiceAccount: m.GCPServiceAccount,
+				},
+			}
+		}
+		if c, ok := out.(*IngestionDataSourceConfluentCloud); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_ConfluentCloud_{
+				ConfluentCloud: &pb.IngestionDataSourceSettings_ConfluentCloud{
+					BootstrapServer:   c.BootstrapServer,
+					ClusterId:         c.ClusterID,
+					Topic:             c.Topic,
+					IdentityPoolId:    c.IdentityPoolID,
+					GcpServiceAccount: c.GCPServiceAccount,
+				},
 			}
 		}
 	}
@@ -808,6 +1061,10 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 	if cfg.IngestionDataSourceSettings != nil {
 		pt.IngestionDataSourceSettings = cfg.IngestionDataSourceSettings.toProto()
 		paths = append(paths, "ingestion_data_source_settings")
+	}
+	if cfg.MessageTransforms != nil {
+		pt.MessageTransforms = messageTransformsToProto(cfg.MessageTransforms)
+		paths = append(paths, "message_transforms")
 	}
 	return &pb.UpdateTopicRequest{
 		Topic:      pt,
@@ -993,8 +1250,6 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 		fcSpan.End()
 	}
 
-	_, batcherSpan = startSpan(ctx, batcherSpanName, "")
-
 	bmsg := &bundledMessage{
 		msg:        msg,
 		res:        r,
@@ -1003,6 +1258,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	}
 
 	if t.enableTracing {
+		_, batcherSpan = startSpan(ctx, batcherSpanName, "")
 		bmsg.batcherSpan = batcherSpan
 
 		// Inject the context from the first publish span rather than from flow control / batching.
@@ -1087,11 +1343,15 @@ func (t *Topic) initBundler() {
 			for _, m := range bmsgs {
 				m.batcherSpan.End()
 				m.createSpan.AddEvent(eventPublishStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(bmsgs))))
-				defer m.createSpan.End()
-				defer m.createSpan.AddEvent(eventPublishEnd)
 			}
 		}
 		t.publishMessageBundle(ctx, bmsgs)
+		if t.enableTracing {
+			for _, m := range bmsgs {
+				m.createSpan.AddEvent(eventPublishEnd)
+				m.createSpan.End()
+			}
+		}
 	})
 	t.scheduler.DelayThreshold = t.PublishSettings.DelayThreshold
 	t.scheduler.BundleCountThreshold = t.PublishSettings.CountThreshold

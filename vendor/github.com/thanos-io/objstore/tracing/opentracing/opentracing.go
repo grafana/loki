@@ -44,6 +44,8 @@ func WrapWithTraces(bkt objstore.Bucket) objstore.InstrumentedBucket {
 	return TracingBucket{bkt: bkt}
 }
 
+func (t TracingBucket) Provider() objstore.ObjProvider { return t.bkt.Provider() }
+
 func (t TracingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) (err error) {
 	doWithSpan(ctx, "bucket_iter", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("dir", dir)
@@ -112,6 +114,14 @@ func (t TracingBucket) Upload(ctx context.Context, name string, r io.Reader) (er
 	doWithSpan(ctx, "bucket_upload", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("name", name)
 		err = t.bkt.Upload(spanCtx, name, r)
+	})
+	return
+}
+
+func (t TracingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) (err error) {
+	doWithSpan(ctx, "bucket_get_and_replace", func(spanCtx context.Context, span opentracing.Span) {
+		span.LogKV("name", name)
+		err = t.bkt.GetAndReplace(spanCtx, name, f)
 	})
 	return
 }

@@ -4,6 +4,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
     {{- with .Values.indexGateway.serviceLabels }}

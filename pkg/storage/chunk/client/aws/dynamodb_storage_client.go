@@ -18,14 +18,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
-	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -35,7 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -303,15 +301,15 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 
 	retryer := newRetryer(ctx, a.cfg.BackoffConfig)
 	err := instrument.CollectedRequest(ctx, "DynamoDB.QueryPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(innerCtx context.Context) error {
-		if sp := ot.SpanFromContext(innerCtx); sp != nil {
-			sp.SetTag("tableName", query.TableName)
-			sp.SetTag("hashValue", query.HashValue)
-		}
+		span := trace.SpanFromContext(innerCtx)
+		span.SetAttributes(
+			attribute.String("tableName", query.TableName),
+			attribute.String("hashValue", query.HashValue),
+		)
 		return a.DynamoDB.QueryPagesWithContext(innerCtx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 			pageCount++
-			if sp := ot.SpanFromContext(innerCtx); sp != nil {
-				sp.LogFields(otlog.Int("page", pageCount))
-			}
+
+			span.SetAttributes(attribute.Int("page", pageCount))
 
 			if cc := output.ConsumedCapacity; cc != nil {
 				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
@@ -324,7 +322,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
 	}
-	return err
+	return nil
 }
 
 type dynamoDBRequest interface {
@@ -373,8 +371,10 @@ type chunksPlusError struct {
 
 // GetChunks implements chunk.Client.
 func (a dynamoDBStorageClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "GetChunks.DynamoDB", ot.Tag{Key: "numChunks", Value: len(chunks)})
-	defer log.Span.Finish()
+	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "GetChunks.DynamoDB",
+		"numChunks", len(chunks),
+	)
+	defer log.Finish()
 	level.Debug(log).Log("chunks requested", len(chunks))
 
 	dynamoDBChunks := chunks
@@ -422,8 +422,10 @@ var placeholder = []byte{'c'}
 // Structure is identical to BatchWrite(), but operating on different datatypes
 // so cannot share implementation.  If you fix a bug here fix it there too.
 func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	log, ctx := spanlogger.New(ctx, "getDynamoDBChunks", ot.Tag{Key: "numChunks", Value: len(chunks)})
-	defer log.Span.Finish()
+	log, ctx := spanlogger.NewOTel(ctx, log.Logger, tracer, "getDynamoDBChunks",
+		"numChunks", len(chunks),
+	)
+	defer log.Finish()
 	outstanding := dynamoDBReadRequest{}
 	chunksByKey := map[string]chunk.Chunk{}
 	for _, chunk := range chunks {
@@ -692,16 +694,16 @@ func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byt
 	})
 }
 
-// Fill 'b' with WriteRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
+// Fill 'b' with WriteRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs), toFill)
+			taken := min(len(fromReqs), toFill)
 			if taken > 0 {
 				b[tableName] = append(b[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]
@@ -739,16 +741,16 @@ func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte)
 	})
 }
 
-// Fill 'b' with ReadRequests from 'from' until 'b' has at most max requests. Remove those requests from 'from'.
-func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
+// Fill 'b' with ReadRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
+func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, maxVal int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
-	if max > 0 {
-		toFill = math.Min(inLen, max-outLen)
+	if maxVal > 0 {
+		toFill = min(inLen, maxVal-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := math.Min(len(fromReqs.Keys), toFill)
+			taken := min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
 					b[tableName] = &dynamodb.KeysAndAttributes{
@@ -803,7 +805,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	if len(path) > 0 {
 		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
-	config, err := awscommon.ConfigFromURL(awsURL)
+	config, err := ConfigFromURL(awsURL)
 	if err != nil {
 		return nil, err
 	}

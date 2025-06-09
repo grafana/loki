@@ -13,7 +13,11 @@ import (
 
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
+}
+
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func copyFile(src, dst string) (int64, error) {

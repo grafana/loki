@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"golang.org/x/exp/slices"
 
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )

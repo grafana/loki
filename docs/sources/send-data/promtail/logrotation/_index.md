@@ -9,6 +9,8 @@ weight:  500
 
 # Promtail and Log Rotation
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 ## Why does log rotation matter?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
@@ -94,7 +96,7 @@ Here, the `create` mode works as explained in (2) above. The `create` mode is op
 
 ### Kubernetes
 
-[Kubernetes Service Discovery in Promtail]({{< relref "../scraping#kubernetes-discovery" >}}) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
+[Kubernetes Service Discovery in Promtail](../scraping/#kubernetes-discovery) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
 
 You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configuration settings.
 
@@ -158,4 +160,4 @@ We recommend using kubelet for log rotation.
 
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this topic, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
-Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{< relref "../configuration#clients" >}}) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
+Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config](../configuration/#clients) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.

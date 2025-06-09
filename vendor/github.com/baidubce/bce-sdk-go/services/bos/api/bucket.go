@@ -19,6 +19,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -99,6 +100,51 @@ func ListObjects(cli bce.Client, bucket string,
 	return result, nil
 }
 
+func ListObjectsVersions(cli bce.Client, bucket string,
+	args *ListObjectsArgs, ctx *BosContext) (*ListObjectsResult, error) {
+	req := &bce.BceRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("versions", "")
+	ctx.Bucket = bucket
+	// Optional arguments settings
+	if args != nil {
+		if len(args.Delimiter) != 0 {
+			req.SetParam("delimiter", args.Delimiter)
+		}
+		if len(args.Marker) != 0 {
+			req.SetParam("marker", args.Marker)
+		}
+		if args.MaxKeys != 0 {
+			req.SetParam("maxKeys", strconv.Itoa(args.MaxKeys))
+		}
+		if len(args.Prefix) != 0 {
+			req.SetParam("prefix", args.Prefix)
+		}
+		if len(args.VersionIdMarker) != 0 {
+			req.SetParam("versionIdMarker", args.VersionIdMarker)
+		}
+	}
+	if args == nil || args.MaxKeys == 0 {
+		req.SetParam("maxKeys", "1000")
+	}
+
+	// Send the request and get result
+	resp := &bce.BceResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &ListObjectsResult{}
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	defer func() { resp.Body().Close() }()
+	return result, nil
+}
+
 // HeadBucket - test the given bucket existed and access authority
 //
 // PARAMS:
@@ -139,6 +185,15 @@ func PutBucket(cli bce.Client, bucket string, args *PutBucketArgs, ctx *BosConte
 		if len(args.TagList) != 0 {
 			req.SetHeader(http.BCE_TAG, args.TagList)
 		}
+		jsonBytes, jsonErr := json.Marshal(args)
+		if jsonErr != nil {
+			return "", jsonErr
+		}
+		body, err := bce.NewBodyFromBytes(jsonBytes)
+		if err != nil {
+			return "", err
+		}
+		req.SetBody(body)
 	}
 	resp := &bce.BceResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -1241,4 +1296,92 @@ func DeleteBucketTag(cli bce.Client, bucket string, ctx *BosContext) error {
 	}
 	defer func() { resp.Body().Close() }()
 	return nil
+}
+
+func GetBosShareLink(cli bce.Client, bucket, prefix, shareCode string, duration int) (string, error) {
+	req := &bce.BceRequest{}
+	req.SetEndpoint(BOS_SHARE_ENDPOINT)
+	req.SetParam("action", "")
+	req.SetMethod(http.POST)
+	if len(shareCode) != 0 && len(shareCode) != 6 {
+		return "", fmt.Errorf("shareCode length must be 0 or 6")
+	}
+	if duration < 60 || duration > 64800 {
+		return "", fmt.Errorf("duration must between 1 minute and 18 hours")
+	}
+	bosShareReqBody := &BosShareLinkArgs{
+		Bucket:          bucket,
+		Endpoint:        cli.GetBceClientConfig().Endpoint,
+		Prefix:          prefix,
+		ShareCode:       shareCode,
+		DurationSeconds: int64(duration),
+	}
+	jsonBytes, jsonErr := json.Marshal(bosShareReqBody)
+	if jsonErr != nil {
+		return "", jsonErr
+	}
+	body, err := bce.NewBodyFromBytes(jsonBytes)
+	if err != nil {
+		return "", err
+	}
+	req.SetBody(body)
+	resp := &bce.BceResponse{}
+	if err = cli.SendRequest(req, resp); err != nil {
+		return "", err
+	}
+	if resp.IsFail() {
+		return "", resp.ServiceError()
+	}
+	bosShareResBody := &BosShareResBody{}
+	if err := resp.ParseJsonBody(bosShareResBody); err != nil {
+		return "", err
+	}
+	jsonData, err := json.Marshal(bosShareResBody)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
+func PutBucketVersioning(cli bce.Client, bucket string, putBucketVersioningArgs *BucketVersioningArgs, ctx *BosContext) error {
+	req := &bce.BceRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.PUT)
+	req.SetParam("versioning", "")
+	ctx.Bucket = bucket
+	reqByte, _ := json.Marshal(putBucketVersioningArgs)
+	body, err := bce.NewBodyFromString(string(reqByte))
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &bce.BceResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+func GetBucketVersioning(cli bce.Client, bucket string, ctx *BosContext) (*BucketVersioningArgs, error) {
+	req := &bce.BceRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("versioning", "")
+	ctx.Bucket = bucket
+	resp := &bce.BceResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	result := &BucketVersioningArgs{}
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

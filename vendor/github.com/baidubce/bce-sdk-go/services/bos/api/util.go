@@ -34,10 +34,12 @@ const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
 
-	STORAGE_CLASS_STANDARD    = "STANDARD"
-	STORAGE_CLASS_STANDARD_IA = "STANDARD_IA"
-	STORAGE_CLASS_COLD        = "COLD"
-	STORAGE_CLASS_ARCHIVE     = "ARCHIVE"
+	STORAGE_CLASS_STANDARD        = "STANDARD"
+	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
+	STORAGE_CLASS_COLD            = "COLD"
+	STORAGE_CLASS_ARCHIVE         = "ARCHIVE"
+	STORAGE_CLASS_MAZ_STANDARD    = "MAZ_STANDARD"
+	STORAGE_CLASS_MAZ_STANDARD_IA = "MAZ_STANDARD_IA"
 
 	FETCH_MODE_SYNC  = "sync"
 	FETCH_MODE_ASYNC = "async"
@@ -64,8 +66,9 @@ const (
 	FORBID_OVERWRITE_FALSE = "false"
 	FORBID_OVERWRITE_TRUE  = "true"
 
-	NAMESPACE_BUCKET  = "namespace"
-	BOS_CONFIG_PREFIX = "bos://"
+	NAMESPACE_BUCKET   = "namespace"
+	BOS_CONFIG_PREFIX  = "bos://"
+	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -73,10 +76,12 @@ var DEFAULT_CNAME_LIKE_LIST = []string{
 }
 
 var VALID_STORAGE_CLASS_TYPE = map[string]int{
-	STORAGE_CLASS_STANDARD:    0,
-	STORAGE_CLASS_STANDARD_IA: 1,
-	STORAGE_CLASS_COLD:        2,
-	STORAGE_CLASS_ARCHIVE:     3,
+	STORAGE_CLASS_STANDARD:        0,
+	STORAGE_CLASS_STANDARD_IA:     1,
+	STORAGE_CLASS_COLD:            2,
+	STORAGE_CLASS_ARCHIVE:         3,
+	STORAGE_CLASS_MAZ_STANDARD:    4,
+	STORAGE_CLASS_MAZ_STANDARD_IA: 5,
 }
 
 var VALID_RESTORE_TIER = map[string]int{
@@ -229,6 +234,13 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 			fallthrough
 		case http.BCE_CONTENT_CRC32:
 			fallthrough
+		case http.BCE_CONTENT_CRC32C:
+			fallthrough
+		case http.BCE_CONTENT_CRC32C_FLAG:
+			if v == "false" {
+				continue
+			}
+			fallthrough
 		case http.BCE_COPY_SOURCE_RANGE:
 			fallthrough
 		case http.BCE_COPY_SOURCE_IF_MATCH:
@@ -277,6 +289,7 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	req.SetContext(ctx.Ctx)
 	if err = cli.SendRequest(req, resp); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
@@ -422,6 +435,9 @@ func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, end
 		} else {
 			req.SetEndpoint(endpoint)
 		}
+	} else {
+		// user define custom endpoint
+		req.SetEndpoint(endpoint)
 	}
 	req.SetProtocol(protocol)
 }

@@ -38,18 +38,30 @@ type AuthenticationFailedError struct {
 	// RawResponse is the HTTP response motivating the error, if available.
 	RawResponse *http.Response
 
-	credType string
-	message  string
-	err      error
+	credType, message string
+	omitResponse      bool
 }
 
-func newAuthenticationFailedError(credType string, message string, resp *http.Response, err error) error {
-	return &AuthenticationFailedError{credType: credType, message: message, RawResponse: resp, err: err}
+func newAuthenticationFailedError(credType, message string, resp *http.Response) error {
+	return &AuthenticationFailedError{credType: credType, message: message, RawResponse: resp}
+}
+
+// newAuthenticationFailedErrorFromMSAL creates an AuthenticationFailedError from an MSAL error.
+// If the error is an MSAL CallErr, the new error includes an HTTP response and not the MSAL error
+// message, because that message is redundant given the response. If the original error isn't a
+// CallErr, the returned error incorporates its message.
+func newAuthenticationFailedErrorFromMSAL(credType string, err error) error {
+	msg := ""
+	res := getResponseFromError(err)
+	if res == nil {
+		msg = err.Error()
+	}
+	return newAuthenticationFailedError(credType, msg, res)
 }
 
 // Error implements the error interface. Note that the message contents are not contractual and can change over time.
 func (e *AuthenticationFailedError) Error() string {
-	if e.RawResponse == nil {
+	if e.RawResponse == nil || e.omitResponse {
 		return e.credType + ": " + e.message
 	}
 	msg := &bytes.Buffer{}
@@ -62,7 +74,7 @@ func (e *AuthenticationFailedError) Error() string {
 		fmt.Fprintln(msg, "Request information not available")
 	}
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
-	fmt.Fprintf(msg, "RESPONSE %s\n", e.RawResponse.Status)
+	fmt.Fprintf(msg, "RESPONSE %d: %s\n", e.RawResponse.StatusCode, e.RawResponse.Status)
 	fmt.Fprintln(msg, "--------------------------------------------------------------------------------")
 	body, err := runtime.Payload(e.RawResponse)
 	switch {
@@ -109,17 +121,17 @@ func (*AuthenticationFailedError) NonRetriable() {
 
 var _ errorinfo.NonRetriable = (*AuthenticationFailedError)(nil)
 
-// authenticationRequiredError indicates a credential's Authenticate method must be called to acquire a token
+// AuthenticationRequiredError indicates a credential's Authenticate method must be called to acquire a token
 // because the credential requires user interaction and is configured not to request it automatically.
-type authenticationRequiredError struct {
+type AuthenticationRequiredError struct {
 	credentialUnavailableError
 
 	// TokenRequestOptions for the required token. Pass this to the credential's Authenticate method.
 	TokenRequestOptions policy.TokenRequestOptions
 }
 
-func newauthenticationRequiredError(credType string, tro policy.TokenRequestOptions) error {
-	return &authenticationRequiredError{
+func newAuthenticationRequiredError(credType string, tro policy.TokenRequestOptions) error {
+	return &AuthenticationRequiredError{
 		credentialUnavailableError: credentialUnavailableError{
 			credType + " can't acquire a token without user interaction. Call Authenticate to authenticate a user interactively",
 		},
@@ -128,8 +140,8 @@ func newauthenticationRequiredError(credType string, tro policy.TokenRequestOpti
 }
 
 var (
-	_ credentialUnavailable  = (*authenticationRequiredError)(nil)
-	_ errorinfo.NonRetriable = (*authenticationRequiredError)(nil)
+	_ credentialUnavailable  = (*AuthenticationRequiredError)(nil)
+	_ errorinfo.NonRetriable = (*AuthenticationRequiredError)(nil)
 )
 
 type credentialUnavailable interface {

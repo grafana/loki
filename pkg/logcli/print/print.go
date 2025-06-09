@@ -19,20 +19,22 @@ import (
 )
 
 type QueryResultPrinter struct {
-	ShowLabelsKey   []string
-	IgnoreLabelsKey []string
-	Quiet           bool
-	FixedLabelsLen  int
-	Forward         bool
+	ShowLabelsKey       []string
+	IgnoreLabelsKey     []string
+	Quiet               bool
+	FixedLabelsLen      int
+	Forward             bool
+	IncludeCommonLabels bool
 }
 
-func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, quiet bool, fixedLabelsLen int, forward bool) *QueryResultPrinter {
+func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, quiet bool, fixedLabelsLen int, forward bool, includeCommonLabels bool) *QueryResultPrinter {
 	return &QueryResultPrinter{
-		ShowLabelsKey:   showLabelsKey,
-		IgnoreLabelsKey: ignoreLabelsKey,
-		Quiet:           quiet,
-		FixedLabelsLen:  fixedLabelsLen,
-		Forward:         forward,
+		ShowLabelsKey:       showLabelsKey,
+		IgnoreLabelsKey:     ignoreLabelsKey,
+		Quiet:               quiet,
+		FixedLabelsLen:      fixedLabelsLen,
+		Forward:             forward,
+		IncludeCommonLabels: includeCommonLabels,
 	}
 }
 
@@ -83,8 +85,11 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	// calculate the max labels length
 	maxLabelsLen := r.FixedLabelsLen
 	for i, s := range streams {
+		ls := s.Labels
 		// Remove common labels
-		ls := subtract(s.Labels, common)
+		if !r.IncludeCommonLabels {
+			ls = subtract(s.Labels, common)
+		}
 
 		if len(r.ShowLabelsKey) > 0 {
 			ls = matchLabels(true, ls, r.ShowLabelsKey)

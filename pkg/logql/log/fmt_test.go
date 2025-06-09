@@ -479,6 +479,33 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "hello"),
 			[]byte("1"),
 		},
+		{
+			"simple key template",
+			newMustLineFormatter("{{.foo}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar"),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with space",
+			newMustLineFormatter("{{.foo}}  "),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar  "),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with missing key",
+			newMustLineFormatter("{{.missing}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte{},
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -684,47 +711,47 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		{
 			"unixToTime days",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
-			labels.Labels{
-				{Name: "bar", Value: "19503"},
-				{Name: "foo", Value: epochDay19503.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "19503"),
+			labels.FromStrings(
+				"bar", "19503",
+				"foo", epochDay19503.String(),
+			),
 		},
 		{
 			"unixToTime seconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
-			labels.Labels{
-				{Name: "bar", Value: "1679577215"},
-				{Name: "foo", Value: epochSeconds1679577215.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1679577215"),
+			labels.FromStrings(
+				"bar", "1679577215",
+				"foo", epochSeconds1679577215.String(),
+			),
 		},
 		{
 			"unixToTime milliseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1257894000000"},
-				{Name: "foo", Value: epochMilliseconds1257894000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1257894000000"),
+			labels.FromStrings(
+				"bar", "1257894000000",
+				"foo", epochMilliseconds1257894000000.String(),
+			),
 		},
 		{
 			"unixToTime microseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1673798889902000"},
-				{Name: "foo", Value: epochMicroseconds1673798889902000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1673798889902000"),
+			labels.FromStrings(
+				"bar", "1673798889902000",
+				"foo", epochMicroseconds1673798889902000.String(),
+			),
 		},
 		{
 			"unixToTime nanoseconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
-			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
-			labels.Labels{
-				{Name: "bar", Value: "1000000000000000000"},
-				{Name: "foo", Value: epochNanoseconds1000000000000000000.String()},
-			},
+			labels.FromStrings("foo", "", "bar", "1000000000000000000"),
+			labels.FromStrings(
+				"bar", "1000000000000000000",
+				"foo", epochNanoseconds1000000000000000000.String(),
+			),
 		},
 	}
 
@@ -916,7 +943,7 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 }
 
 func TestDecolorizer(t *testing.T) {
-	var decolorizer, _ = NewDecolorizer()
+	decolorizer, _ := NewDecolorizer()
 	tests := []struct {
 		name     string
 		src      []byte
@@ -927,7 +954,7 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var result, _ = decolorizer.Process(0, tt.src, nil)
+			result, _ := decolorizer.Process(0, tt.src, nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -979,7 +1006,6 @@ func TestMapPoolPanic(_ *testing.T) {
 			}
 			smp.Put(m)
 			wgFinished.Done()
-
 		}()
 	}
 	wg.Done()

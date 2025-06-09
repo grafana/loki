@@ -26,14 +26,27 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg Config, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+	var (
+		storeType = backend
+		storeCfg  = cfg.Config
+	)
+
+	if st, ok := cfg.NamedStores.LookupStoreType(backend); ok {
+		storeType = st
+		// override config with values from named store config
+		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend); err != nil {
+			return nil, err
+		}
+	}
+
 	if disableRetries {
-		if err := cfg.disableRetries(backend); err != nil {
+		if err := storeCfg.disableRetries(storeType); err != nil {
 			return nil, fmt.Errorf("create bucket: %w", err)
 		}
 	}
 
-	bucket, err := NewClient(ctx, backend, cfg, component, logger)
+	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
@@ -45,11 +58,11 @@ func NewObjectClient(ctx context.Context, backend string, cfg Config, component 
 			return nil, fmt.Errorf("create hedged transport: %w", err)
 		}
 
-		if err := cfg.configureTransport(backend, hedgedTrasport); err != nil {
+		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 
-		hedgedBucket, err = NewClient(ctx, backend, cfg, component, logger)
+		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger)
 		if err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
@@ -66,7 +79,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg Config, component 
 		},
 	}
 
-	switch backend {
+	switch storeType {
 	case GCS:
 		o.isRetryableErr = gcp.IsRetryableErr
 	case S3:

@@ -7,7 +7,6 @@ import (
 	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -45,7 +44,7 @@ func DoParallelQueries(ctx context.Context, queryIndex QueryIndexFunc, queries [
 	}
 	callback = NewSyncCallbackDeduper(callback, len(queries))
 	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrency, func(ctx context.Context, idx int) error {
-		return queryIndex(ctx, queries[idx*maxQueriesBatch:util_math.Min((idx+1)*maxQueriesBatch, len(queries))], callback)
+		return queryIndex(ctx, queries[idx*maxQueriesBatch:min((idx+1)*maxQueriesBatch, len(queries))], callback)
 	})
 }
 

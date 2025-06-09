@@ -4,18 +4,10 @@
 
 Go packages for [Google Cloud Platform](https://cloud.google.com) services.
 
-``` go
-import "cloud.google.com/go"
-```
-
-To install the packages on your system, *do not clone the repo*. Instead:
-
-1. Change to your project directory: `cd /my/cloud/project`
-1. Get the package you want to use. Some products have their own module, so it's
-   best to `go get` the package(s) you want to use:
+## Installation
 
 ```bash
-go get cloud.google.com/go/firestore # Replace with the package you want to use.
+go get cloud.google.com/go/firestore@latest # Replace firestore with the package you want to use.
 ```
 
 **NOTE:** Some of these packages are under development, and may occasionally
@@ -28,16 +20,12 @@ For an updated list of all of our released APIs please see our
 
 ## [Go Versions Supported](#supported-versions)
 
-**Note:** As of Jan 1, 2025 the Cloud Client Libraries for Go will support the
-two most-recent major Go releases -- the same [policy](https://go.dev/doc/devel/release#policy)
-the Go programming language follows.
-
-Our libraries are compatible with at least the three most recent, major Go
-releases. They are currently compatible with:
+Our libraries are compatible with the two most recent major Go
+releases, the same [policy](https://go.dev/doc/devel/release#policy) the Go
+programming language follows. This means the currently supported versions are:
 
 - Go 1.23
-- Go 1.22
-- Go 1.21
+- Go 1.24
 
 ## Authorization
 

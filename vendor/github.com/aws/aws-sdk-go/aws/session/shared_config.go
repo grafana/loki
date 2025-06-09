@@ -349,7 +349,7 @@ func (cfg *sharedConfig) setFromIniFiles(profiles map[string]struct{}, profile s
 	if cfg.hasSSOTokenProviderConfiguration() {
 		skippedFiles = 0
 		for _, f := range files {
-			section, ok := f.IniData.GetSection(fmt.Sprintf(ssoSectionPrefix + strings.TrimSpace(cfg.SSOSessionName)))
+			section, ok := f.IniData.GetSection(ssoSectionPrefix + strings.TrimSpace(cfg.SSOSessionName))
 			if ok {
 				var ssoSession ssoSession
 				ssoSession.setFromIniSection(section)

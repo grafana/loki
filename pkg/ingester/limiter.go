@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -33,6 +34,8 @@ type Limits interface {
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
+
+	retention.Limits
 }
 
 // Limiter implements primitives to get the maximum number of streams

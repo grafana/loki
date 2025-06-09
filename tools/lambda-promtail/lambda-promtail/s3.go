@@ -290,12 +290,11 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 		}
 		obj, err := s3Client.GetObject(ctx,
 			&s3.GetObjectInput{
-				Bucket:              aws.String(labels["bucket"]),
-				Key:                 aws.String(labels["key"]),
-				ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
+				Bucket: aws.String(labels["bucket"]),
+				Key:    aws.String(labels["key"]),
 			})
 		if err != nil {
-			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s, %s", labels["key"], labels["bucket"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {

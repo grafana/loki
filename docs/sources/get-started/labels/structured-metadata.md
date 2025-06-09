@@ -23,8 +23,21 @@ You should only use structured metadata in the following situations:
 
 - If you are ingesting data in OpenTelemetry format, using Grafana Alloy or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
 - If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
- 
-It is an antipattern to extract information that already exists in your log lines and put it into structured metadata.
+- If you are using [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to visualize and explore your Loki logs.  You must set `discover_log_levels` and `allow_structured_metadata` to `true` in your Loki configuration.
+- If you are a large-scale customer, who is ingesting more than 75TB of logs a month and are using [Bloom filters](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/) (Experimental), starting in [Loki 3.3](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-3/) Bloom filters now utilize structured metadata.
+
+## Enable or disable structured metadata
+
+You enable structured metadata in the Loki config.yaml file.
+
+```yaml
+limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+```
+
+You can disable Structured Metadata by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`. Note structured metadata is required to support ingesting OTLP data.
 
 ## Attaching structured metadata to log lines
 
@@ -37,9 +50,10 @@ See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOK
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 
 {{< admonition type="warning" >}}
-Structured metadata size is taken into account while asserting ingestion rate limiting. 
+Structured metadata size is taken into account while asserting ingestion rate limiting.
 Along with that, there are separate limits on how much structured metadata can be attached per log line.
-```
+
+```yaml
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
 [max_structured_metadata_size: <int> | default = 64KB]
@@ -48,6 +62,7 @@ Along with that, there are separate limits on how much structured metadata can b
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
 ```
+
 {{< /admonition >}}
 
 ## Querying structured metadata

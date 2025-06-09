@@ -109,7 +109,7 @@ func (e *LogfmtParserExpr) Pretty(level int) string {
 // `| regexp`
 // `| pattern`
 // `| unpack`
-func (e *LabelParserExpr) Pretty(level int) string {
+func (e *LineParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
@@ -142,12 +142,12 @@ func (e *LabelFmtExpr) Pretty(level int) string {
 }
 
 // e.g: | json label="expression", another="expression"
-func (e *JSONExpressionParser) Pretty(level int) string {
+func (e *JSONExpressionParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
 // e.g: | logfmt label="expression", another="expression"
-func (e *LogfmtExpressionParser) Pretty(level int) string {
+func (e *LogfmtExpressionParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
@@ -168,7 +168,7 @@ func (e *UnwrapExpr) Pretty(level int) string {
 
 // e.g: `{foo="bar"}|logfmt[5m]`
 // TODO(kavi): Rename `LogRange` -> `LogRangeExpr` (to be consistent with other expressions?)
-func (e *LogRange) Pretty(level int) string {
+func (e *LogRangeExpr) Pretty(level int) string {
 	s := e.Left.Pretty(level)
 
 	if e.Unwrap != nil {

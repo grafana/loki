@@ -2,9 +2,13 @@ package logql
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/axiomhq/hyperloglog"
+	"github.com/cespare/xxhash/v2"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -157,8 +161,13 @@ type HeapCountMinSketchVector struct {
 	CountMinSketchVector
 
 	// internal set of observed events
-	observed  map[string]struct{}
+	observed  map[uint64]struct{}
 	maxLabels int
+
+	// The buffers are used by `labels.Bytes` similar to `series.Hash` in `codec.MergeResponse`. They are alloccated
+	// outside of the method in order to reuse them for the next `Add` call. This saves a lot of allocations.
+	// 1KB is used for `b` after some experimentation. Reusing the buffer is not thread safe.
+	buffer []byte
 }
 
 func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCountMinSketchVector {
@@ -172,31 +181,40 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 		CountMinSketchVector: CountMinSketchVector{
 			T:       ts,
 			F:       f,
-			Metrics: make([]labels.Labels, 0, metricsLength),
+			Metrics: make([]labels.Labels, 0, metricsLength+1),
 		},
-		observed:  make(map[string]struct{}),
+		observed:  make(map[uint64]struct{}),
 		maxLabels: maxLabels,
+		buffer:    make([]byte, 0, 1024),
 	}
 }
 
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
-	// TODO: we save a lot of allocations by reusing the buffer inside metric.String
-	metricString := metric.String()
-	v.F.Add(metricString, value)
+	slices.SortFunc(metric, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+	v.buffer = metric.Bytes(v.buffer)
+
+	v.F.Add(v.buffer, value)
+
+	// TODO(karsten): There is a chance that the ids match but not the labels due to hash collision. Ideally there's
+	// an else block the compares the series labels. However, that's not trivial. Besides, instance.Series has the
+	// same issue in its deduping logic.
+	id := xxhash.Sum64(v.buffer)
 
 	// Add our metric if we haven't seen it
-	if _, ok := v.observed[metricString]; !ok {
+	if _, ok := v.observed[id]; !ok {
 		heap.Push(v, metric)
-		v.observed[metricString] = struct{}{}
-	} else if v.Metrics[0].String() == metricString {
-		// The smalles element has been updated to fix the heap.
+		v.observed[id] = struct{}{}
+	} else if labels.Equal(v.Metrics[0], metric) {
+		// The smallest element has been updated to fix the heap.
 		heap.Fix(v, 0)
 	}
 
 	// The maximum number of labels has been reached, so drop the smallest element.
 	if len(v.Metrics) > v.maxLabels {
 		metric := heap.Pop(v).(labels.Labels)
-		delete(v.observed, metric.String())
+		v.buffer = metric.Bytes(v.buffer)
+		id := xxhash.Sum64(v.buffer)
+		delete(v.observed, id)
 	}
 }
 
@@ -205,8 +223,11 @@ func (v HeapCountMinSketchVector) Len() int {
 }
 
 func (v HeapCountMinSketchVector) Less(i, j int) bool {
-	left := v.F.Count(v.Metrics[i].String())
-	right := v.F.Count(v.Metrics[j].String())
+	v.buffer = v.Metrics[i].Bytes(v.buffer)
+	left := v.F.Count(v.buffer)
+
+	v.buffer = v.Metrics[j].Bytes(v.buffer)
+	right := v.F.Count(v.buffer)
 	return left < right
 }
 
@@ -295,14 +316,20 @@ func (e *countMinSketchVectorAggEvaluator) Error() error {
 type CountMinSketchVectorStepEvaluator struct {
 	exhausted bool
 	vec       *CountMinSketchVector
+
+	// The buffers are used by `labels.Bytes` similar to `series.Hash` in `codec.MergeResponse`. They are alloccated
+	// outside of the method in order to reuse them for the next `Next` call. This saves a lot of allocations.
+	// 1KB is used for `b` after some experimentation. Reusing the buffer is not thread safe.
+	buffer []byte
 }
 
-var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewCountMinSketchVectorStepEvaluator(nil)
 
 func NewCountMinSketchVectorStepEvaluator(vec *CountMinSketchVector) *CountMinSketchVectorStepEvaluator {
 	return &CountMinSketchVectorStepEvaluator{
 		exhausted: false,
 		vec:       vec,
+		buffer:    make([]byte, 0, 1024),
 	}
 }
 
@@ -315,7 +342,8 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 
 	for i, labels := range e.vec.Metrics {
 
-		f := e.vec.F.Count(labels.String())
+		e.buffer = labels.Bytes(e.buffer)
+		f := e.vec.F.Count(e.buffer)
 
 		vec[i] = promql.Sample{
 			T:      e.vec.T,
@@ -330,3 +358,45 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
+
+var _ StepEvaluator = (*CountMinSketchEvalStepEvaluator)(nil)
+
+// CountMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
+type CountMinSketchEvalStepEvaluator struct {
+	ctx           context.Context
+	nextEvFactory SampleEvaluatorFactory
+	expr          *CountMinSketchEvalExpr
+	params        Params
+}
+
+func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
+	return &CountMinSketchEvalStepEvaluator{
+		ctx:           ctx,
+		nextEvFactory: nextEvFactory,
+		expr:          expr,
+		params:        params,
+	}, nil
+}
+
+func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
+	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
+	if err != nil {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	ok, _, results := nextEv.Next()
+	if !ok {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	data := results.CountMinSketchVec()
+	handler := NewCountMinSketchVectorStepEvaluator(&data)
+
+	return handler.Next()
+}
+
+func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
+
+func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
+
+func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}

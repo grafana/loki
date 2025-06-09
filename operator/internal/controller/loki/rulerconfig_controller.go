@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/operator/internal/controller/loki/internal/lokistack"
 )
 
+const ControllerNameRulerConfig = "rulerconfig"
+
 // RulerConfigReconciler reconciles a RulerConfig object
 type RulerConfigReconciler struct {
 	client.Client
@@ -56,5 +58,6 @@ func (r *RulerConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *RulerConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.RulerConfig{}).
+		Named(ControllerNameRulerConfig).
 		Complete(r)
 }

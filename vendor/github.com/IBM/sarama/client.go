@@ -113,6 +113,9 @@ type Client interface {
 	// LeastLoadedBroker retrieves broker that has the least responses pending
 	LeastLoadedBroker() *Broker
 
+	// check if partition is readable
+	PartitionNotReadable(topic string, partition int32) bool
+
 	// Close shuts down all broker connections managed by this client. It is required
 	// to call this function before a client object passes out of scope, as it will
 	// otherwise leak memory. You must close any Producers or Consumers using a client
@@ -363,34 +366,19 @@ func (client *client) MetadataTopics() ([]string, error) {
 }
 
 func (client *client) Partitions(topic string) ([]int32, error) {
-	if client.Closed() {
-		return nil, ErrClosedClient
-	}
-
-	partitions := client.cachedPartitions(topic, allPartitions)
-
-	if len(partitions) == 0 {
-		err := client.RefreshMetadata(topic)
-		if err != nil {
-			return nil, err
-		}
-		partitions = client.cachedPartitions(topic, allPartitions)
-	}
-
-	// no partitions found after refresh metadata
-	if len(partitions) == 0 {
-		return nil, ErrUnknownTopicOrPartition
-	}
-
-	return partitions, nil
+	return client.getPartitions(topic, allPartitions)
 }
 
 func (client *client) WritablePartitions(topic string) ([]int32, error) {
+	return client.getPartitions(topic, writablePartitions)
+}
+
+func (client *client) getPartitions(topic string, pt partitionType) ([]int32, error) {
 	if client.Closed() {
 		return nil, ErrClosedClient
 	}
 
-	partitions := client.cachedPartitions(topic, writablePartitions)
+	partitions := client.cachedPartitions(topic, pt)
 
 	// len==0 catches when it's nil (no such topic) and the odd case when every single
 	// partition is undergoing leader election simultaneously. Callers have to be able to handle
@@ -403,7 +391,7 @@ func (client *client) WritablePartitions(topic string) ([]int32, error) {
 		if err != nil {
 			return nil, err
 		}
-		partitions = client.cachedPartitions(topic, writablePartitions)
+		partitions = client.cachedPartitions(topic, pt)
 	}
 
 	if partitions == nil {
@@ -414,56 +402,24 @@ func (client *client) WritablePartitions(topic string) ([]int32, error) {
 }
 
 func (client *client) Replicas(topic string, partitionID int32) ([]int32, error) {
-	if client.Closed() {
-		return nil, ErrClosedClient
-	}
-
-	metadata := client.cachedMetadata(topic, partitionID)
-
-	if metadata == nil {
-		err := client.RefreshMetadata(topic)
-		if err != nil {
-			return nil, err
-		}
-		metadata = client.cachedMetadata(topic, partitionID)
-	}
-
-	if metadata == nil {
-		return nil, ErrUnknownTopicOrPartition
-	}
-
-	if errors.Is(metadata.Err, ErrReplicaNotAvailable) {
-		return dupInt32Slice(metadata.Replicas), metadata.Err
-	}
-	return dupInt32Slice(metadata.Replicas), nil
+	return client.getReplicas(topic, partitionID, func(metadata *PartitionMetadata) []int32 {
+		return metadata.Replicas
+	})
 }
 
 func (client *client) InSyncReplicas(topic string, partitionID int32) ([]int32, error) {
-	if client.Closed() {
-		return nil, ErrClosedClient
-	}
-
-	metadata := client.cachedMetadata(topic, partitionID)
-
-	if metadata == nil {
-		err := client.RefreshMetadata(topic)
-		if err != nil {
-			return nil, err
-		}
-		metadata = client.cachedMetadata(topic, partitionID)
-	}
-
-	if metadata == nil {
-		return nil, ErrUnknownTopicOrPartition
-	}
-
-	if errors.Is(metadata.Err, ErrReplicaNotAvailable) {
-		return dupInt32Slice(metadata.Isr), metadata.Err
-	}
-	return dupInt32Slice(metadata.Isr), nil
+	return client.getReplicas(topic, partitionID, func(metadata *PartitionMetadata) []int32 {
+		return metadata.Isr
+	})
 }
 
 func (client *client) OfflineReplicas(topic string, partitionID int32) ([]int32, error) {
+	return client.getReplicas(topic, partitionID, func(metadata *PartitionMetadata) []int32 {
+		return metadata.OfflineReplicas
+	})
+}
+
+func (client *client) getReplicas(topic string, partitionID int32, extractor func(metadata *PartitionMetadata) []int32) ([]int32, error) {
 	if client.Closed() {
 		return nil, ErrClosedClient
 	}
@@ -482,10 +438,11 @@ func (client *client) OfflineReplicas(topic string, partitionID int32) ([]int32,
 		return nil, ErrUnknownTopicOrPartition
 	}
 
+	replicas := extractor(metadata)
 	if errors.Is(metadata.Err, ErrReplicaNotAvailable) {
-		return dupInt32Slice(metadata.OfflineReplicas), metadata.Err
+		return dupInt32Slice(replicas), metadata.Err
 	}
-	return dupInt32Slice(metadata.OfflineReplicas), nil
+	return dupInt32Slice(replicas), nil
 }
 
 func (client *client) Leader(topic string, partitionID int32) (*Broker, error) {
@@ -1328,4 +1285,15 @@ type nopCloserClient struct {
 // client's Close() method.
 func (ncc *nopCloserClient) Close() error {
 	return nil
+}
+
+func (client *client) PartitionNotReadable(topic string, partition int32) bool {
+	client.lock.RLock()
+	defer client.lock.RUnlock()
+
+	pm := client.metadata[topic][partition]
+	if pm == nil {
+		return true
+	}
+	return pm.Leader == -1
 }

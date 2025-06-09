@@ -6,6 +6,7 @@ package dns
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/grafana/dskit/dns/godns"
 	"github.com/grafana/dskit/dns/miekgdns"
+	"github.com/grafana/dskit/dns/miekgdns2"
 	"github.com/grafana/dskit/multierror"
 )
 
@@ -36,17 +38,35 @@ type Provider struct {
 type ResolverType string
 
 const (
-	GolangResolverType   ResolverType = "golang"
-	MiekgdnsResolverType ResolverType = "miekgdns"
+	GolangResolverType    ResolverType = "golang"
+	MiekgdnsResolverType  ResolverType = "miekgdns"
+	MiekgdnsResolverType2 ResolverType = "miekgdns2"
 )
 
-func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
+func (t ResolverType) String() string {
+	return string(t)
+}
+
+func (t *ResolverType) Set(v string) error {
+	switch ResolverType(v) {
+	case GolangResolverType, MiekgdnsResolverType, MiekgdnsResolverType2:
+		*t = ResolverType(v)
+		return nil
+	default:
+		return fmt.Errorf("unsupported resolver type %s", v)
+	}
+}
+
+func (t ResolverType) toResolver(logger log.Logger) ipLookupResolver {
 	var r ipLookupResolver
 	switch t {
 	case GolangResolverType:
 		r = &godns.Resolver{Resolver: net.DefaultResolver}
 	case MiekgdnsResolverType:
 		r = &miekgdns.Resolver{ResolvConf: miekgdns.DefaultResolvConfPath}
+	case MiekgdnsResolverType2:
+		level.Info(logger).Log("msg", "using experimental DNS resolver type", "type", t)
+		r = miekgdns2.NewResolver(miekgdns2.DefaultResolvConfPath, logger)
 	default:
 		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", t)
 		r = &godns.Resolver{Resolver: net.DefaultResolver}
@@ -58,7 +78,7 @@ func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
 // If empty resolver type is net.DefaultResolver.
 func NewProvider(logger log.Logger, reg prometheus.Registerer, resolverType ResolverType) *Provider {
 	p := &Provider{
-		resolver: NewResolver(resolverType.ToResolver(logger), logger),
+		resolver: NewResolver(resolverType.toResolver(logger), logger),
 		resolved: make(map[string][]string),
 		logger:   logger,
 		resolverAddrsDesc: prometheus.NewDesc(

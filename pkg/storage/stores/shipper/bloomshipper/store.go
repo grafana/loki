@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
@@ -139,7 +140,7 @@ func FilterMetasOverlappingBounds(metas []Meta, bounds v1.FingerprintBounds) []M
 
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	logger := spanlogger.FromContext(ctx)
+	logger := spanlogger.FromContext(ctx, util_log.Logger)
 
 	resolverStart := time.Now()
 	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)

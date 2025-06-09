@@ -4,6 +4,8 @@
 package pcommon // import "go.opentelemetry.io/collector/pdata/pcommon"
 
 import (
+	"iter"
+
 	"go.uber.org/multierr"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -225,6 +227,31 @@ func (m Map) Range(f func(k string, v Value) bool) {
 	}
 }
 
+// All returns an iterator over key-value pairs in the Map.
+//
+//	for k, v := range es.All() {
+//	    ... // Do something with key-value pair
+//	}
+func (m Map) All() iter.Seq2[string, Value] {
+	return func(yield func(string, Value) bool) {
+		for i := range *m.getOrig() {
+			kv := &(*m.getOrig())[i]
+			if !yield(kv.Key, Value(internal.NewValue(&kv.Value, m.getState()))) {
+				return
+			}
+		}
+	}
+}
+
+// MoveTo moves all key/values from the current map overriding the destination and
+// resetting the current instance to its zero value
+func (m Map) MoveTo(dest Map) {
+	m.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	*dest.getOrig() = *m.getOrig()
+	*m.getOrig() = nil
+}
+
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
 	dest.getState().AssertMutable()
@@ -254,7 +281,7 @@ func (m Map) CopyTo(dest Map) {
 
 // AsRaw returns a standard go map representation of this Map.
 func (m Map) AsRaw() map[string]any {
-	rawMap := make(map[string]any)
+	rawMap := make(map[string]any, m.Len())
 	m.Range(func(k string, v Value) bool {
 		rawMap[k] = v.AsRaw()
 		return true
@@ -280,4 +307,27 @@ func (m Map) FromRaw(rawMap map[string]any) error {
 	}
 	*m.getOrig() = origs
 	return errs
+}
+
+// Equal checks equality with another Map
+func (m Map) Equal(val Map) bool {
+	if m.Len() != val.Len() {
+		return false
+	}
+
+	fullEqual := true
+
+	m.Range(func(k string, v Value) bool {
+		vv, ok := val.Get(k)
+		if !ok {
+			fullEqual = false
+			return fullEqual
+		}
+
+		if !v.Equal(vv) {
+			fullEqual = false
+		}
+		return fullEqual
+	})
+	return fullEqual
 }

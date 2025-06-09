@@ -33,6 +33,9 @@ const (
 	ModeReadOnly = Mode("RO")
 	// ModeWriteOnly is to allow only write operations
 	ModeWriteOnly = Mode("WO")
+	// ModeDisabled is a no-op implementation which does nothing & does not error.
+	// It's used by the blockbuilder which handles index operations independently.
+	ModeDisabled = Mode("NO")
 
 	// FilesystemObjectStoreType holds the periodic config type for the filesystem store
 	FilesystemObjectStoreType = "filesystem"
@@ -109,7 +112,7 @@ func (cfg *Config) GetUniqueUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 			return "", err
 		}
 	} else {
@@ -142,6 +145,8 @@ type indexShipper struct {
 func NewIndexShipper(prefix string, cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
 	switch cfg.Mode {
+	case ModeDisabled:
+		return Noop{}, nil
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
 		return nil, fmt.Errorf("invalid mode: %v", cfg.Mode)

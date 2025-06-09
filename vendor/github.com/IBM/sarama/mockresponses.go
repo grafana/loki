@@ -778,6 +778,28 @@ func (mr *MockListPartitionReassignmentsResponse) For(reqBody versionedDecoder) 
 	return res
 }
 
+type MockElectLeadersResponse struct {
+	t TestReporter
+}
+
+func NewMockElectLeadersResponse(t TestReporter) *MockElectLeadersResponse {
+	return &MockElectLeadersResponse{t: t}
+}
+
+func (mr *MockElectLeadersResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*ElectLeadersRequest)
+	res := &ElectLeadersResponse{Version: req.version(), ReplicaElectionResults: map[string]map[int32]*PartitionResult{}}
+
+	for topic, partitions := range req.TopicPartitions {
+		for _, partition := range partitions {
+			res.ReplicaElectionResults[topic] = map[int32]*PartitionResult{
+				partition: {ErrorCode: ErrNoError},
+			}
+		}
+	}
+	return res
+}
+
 type MockDeleteRecordsResponse struct {
 	t TestReporter
 }

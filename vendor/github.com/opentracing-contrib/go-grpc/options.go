@@ -32,7 +32,7 @@ type SpanInclusionFunc func(
 	method string,
 	req, resp interface{}) bool
 
-// IncludingSpans binds a IncludeSpanFunc to the options
+// IncludingSpans binds a IncludeSpanFunc to the options.
 func IncludingSpans(inclusionFunc SpanInclusionFunc) Option {
 	return func(o *options) {
 		o.inclusionFunc = inclusionFunc
@@ -60,10 +60,9 @@ func SpanDecorator(decorator SpanDecoratorFunc) Option {
 // scale well as production use dictates other configuration and tuning
 // parameters.
 type options struct {
-	logPayloads bool
-	decorator   SpanDecoratorFunc
-	// May be nil.
+	decorator     SpanDecoratorFunc
 	inclusionFunc SpanInclusionFunc
+	logPayloads   bool
 }
 
 // newOptions returns the default options.

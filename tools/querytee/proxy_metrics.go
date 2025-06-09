@@ -8,6 +8,7 @@ import (
 const (
 	comparisonSuccess = "success"
 	comparisonFailed  = "fail"
+	comparisonSkipped = "skipped"
 
 	unknownIssuer = "unknown"
 	canaryIssuer  = "loki-canary"

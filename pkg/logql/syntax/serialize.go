@@ -77,6 +77,8 @@ const (
 	VectorAgg           = "vector_agg"
 	VectorMatchingField = "vector_matching"
 	Without             = "without"
+	Variants            = "variants"
+	Of                  = "of"
 )
 
 func DecodeJSON(raw string) (Expr, error) {
@@ -98,6 +100,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeLabelReplace(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
+	case Variants:
+		return decodeVariants(iter)
 	default:
 		return nil, fmt.Errorf("unknown expression type: %s", key)
 	}
@@ -204,7 +208,7 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 	v.Flush()
 }
 
-func (v *JSONSerializer) VisitLogRange(e *LogRange) {
+func (v *JSONSerializer) VisitLogRange(e *LogRangeExpr) {
 	v.WriteObjectStart()
 
 	v.WriteObjectField(IntervalNanos)
@@ -304,19 +308,46 @@ func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 	v.Flush()
 }
 
+func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Variants)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(LogSelector)
+
+	// Serialize log range as string.
+	v.VisitLogRange(e.LogRange())
+	v.WriteMore()
+
+	v.WriteObjectField(Variants)
+	v.WriteArrayStart()
+	for i, variant := range e.Variants() {
+		if i > 0 {
+			v.WriteMore()
+		}
+		variant.Accept(v)
+	}
+	v.WriteArrayEnd()
+
+	v.WriteObjectEnd()
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
 // Below are StageExpr visitors that we are skipping since a pipeline is
 // serialized as a string.
-func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                     {}
-func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                     {}
-func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParser)     {}
-func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                      {}
-func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                   {}
-func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                         {}
-func (*JSONSerializer) VisitLabelParser(*LabelParserExpr)                   {}
-func (*JSONSerializer) VisitLineFilter(*LineFilterExpr)                     {}
-func (*JSONSerializer) VisitLineFmt(*LineFmtExpr)                           {}
-func (*JSONSerializer) VisitLogfmtExpressionParser(*LogfmtExpressionParser) {}
-func (*JSONSerializer) VisitLogfmtParser(*LogfmtParserExpr)                 {}
+func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                         {}
+func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                         {}
+func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParserExpr)     {}
+func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                          {}
+func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                       {}
+func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                             {}
+func (*JSONSerializer) VisitLabelParser(*LineParserExpr)                        {}
+func (*JSONSerializer) VisitLineFilter(*LineFilterExpr)                         {}
+func (*JSONSerializer) VisitLineFmt(*LineFmtExpr)                               {}
+func (*JSONSerializer) VisitLogfmtExpressionParser(*LogfmtExpressionParserExpr) {}
+func (*JSONSerializer) VisitLogfmtParser(*LogfmtParserExpr)                     {}
 
 func encodeGrouping(s *jsoniter.Stream, g *Grouping) {
 	s.WriteObjectStart()
@@ -858,8 +889,8 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 	return expr, err
 }
 
-func decodeLogRange(iter *jsoniter.Iterator) (*LogRange, error) {
-	expr := &LogRange{}
+func decodeLogRange(iter *jsoniter.Iterator) (*LogRangeExpr, error) {
+	expr := &LogRangeExpr{}
 	var err error
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
@@ -936,4 +967,31 @@ func decodeMatchers(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 
 func decodePipeline(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 	return decodeLogSelector(iter)
+}
+
+func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
+	var e MultiVariantExpr
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Variants:
+			for iter.ReadArray() {
+				expr, err := decodeSample(iter)
+				if err != nil {
+					return nil, err
+				}
+
+				e.AddVariant(expr)
+			}
+		case LogSelector:
+			logRange, err := decodeLogRange(iter)
+			if err != nil {
+				return nil, err
+			}
+
+			e.SetLogSelector(logRange)
+		}
+	}
+
+	return &e, nil
 }

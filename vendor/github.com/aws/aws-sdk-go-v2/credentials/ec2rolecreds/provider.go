@@ -33,9 +33,9 @@ type GetMetadataAPIClient interface {
 //
 // The New function must be used to create the with a custom EC2 IMDS client.
 //
-//     p := &ec2rolecreds.New(func(o *ec2rolecreds.Options{
-//          o.Client = imds.New(imds.Options{/* custom options */})
-//     })
+//	p := &ec2rolecreds.New(func(o *ec2rolecreds.Options{
+//	     o.Client = imds.New(imds.Options{/* custom options */})
+//	})
 type Provider struct {
 	options Options
 }

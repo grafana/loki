@@ -1,6 +1,8 @@
 package logql
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -57,8 +59,9 @@ func TestCountMinSketchSerialization(t *testing.T) {
 			T: 42,
 			F: cms,
 		},
-		observed:  make(map[string]struct{}, 0),
+		observed:  make(map[uint64]struct{}, 0),
 		maxLabels: 10_000,
+		buffer:    make([]byte, 0, 1024),
 	}
 	vec.Add(metric, 42.0)
 
@@ -68,7 +71,7 @@ func TestCountMinSketchSerialization(t *testing.T) {
 		Sketch: &logproto.CountMinSketch{
 			Depth:       2,
 			Width:       4,
-			Counters:    []float64{0, 0, 0, 42, 0, 42, 0, 0},
+			Counters:    []float64{0, 42, 0, 0, 0, 42, 0, 0},
 			Hyperloglog: hllBytes,
 		},
 		Metrics: []*logproto.Labels{
@@ -85,4 +88,31 @@ func TestCountMinSketchSerialization(t *testing.T) {
 
 	// The HeapCountMinSketchVector is serialized to a CountMinSketchVector.
 	require.Equal(t, round, vec.CountMinSketchVector)
+}
+
+func BenchmarkHeapCountMinSketchVectorAdd(b *testing.B) {
+	maxLabels := 10_000
+	v := NewHeapCountMinSketchVector(0, maxLabels, maxLabels)
+	if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {
+		b.Errorf("Length or capcity of metrics is too high: len=%d cap=%d", len(v.Metrics), cap(v.Metrics))
+	}
+
+	eventsCount := 100_000
+	uniqueEventsCount := 20_000
+	events := make([]labels.Labels, eventsCount)
+	for i := range events {
+		events[i] = labels.Labels{{Name: "event", Value: fmt.Sprintf("%d", i%uniqueEventsCount)}}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		for _, event := range events {
+			v.Add(event, rand.Float64())
+			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {
+				b.Errorf("Length or capcity of metrics is too high: len=%d cap=%d", len(v.Metrics), cap(v.Metrics))
+			}
+		}
+	}
 }

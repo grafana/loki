@@ -4,7 +4,7 @@
 # options for analysis running
 run:
   # define go version
-  go: "1.23"
+  go: "1.24"
 
   # default concurrency is a available CPU number
   concurrency: 16
@@ -76,6 +76,7 @@ issues:
     - Error return value of .*log\.Logger\)\.Log\x60 is not checked
     - Error return value of .*.Log.* is not checked
     - Error return value of `` is not checked
+    - Error return value of `.*WriteString` is not checked
   exclude-rules:
     - path: pkg/scheduler/scheduler.go
       text: 'SA1019: msg.GetHttpRequest is deprecated: Do not use'

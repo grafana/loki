@@ -314,51 +314,33 @@ deploymentMode: Distributed
 
 ingester:
  replicas: 3
- persistence:
-   storageClass: gp3
-   accessModes:
-     - ReadWriteOnce
-   size: 10Gi
+ zoneAwareReplication:
+  enabled: false
 
 querier:
  replicas: 3
  maxUnavailable: 2
- persistence:
-   storageClass: gp3
-   accessModes:
-     - ReadWriteOnce
-   size: 10Gi
+
 queryFrontend:
  replicas: 2
  maxUnavailable: 1
+
 queryScheduler:
  replicas: 2
+
 distributor:
  replicas: 3
  maxUnavailable: 2
 compactor:
  replicas: 1
- persistence:
-   storageClass: gp3
-   accessModes:
-     - ReadWriteOnce
-   size: 10Gi
+
 indexGateway:
  replicas: 2
  maxUnavailable: 1
- persistence:
-   storageClass: gp3
-   accessModes:
-     - ReadWriteOnce
-   size: 10Gi
+
 ruler:
  replicas: 1
  maxUnavailable: 1
- persistence:
-   storageClass: gp3
-   accessModes:
-     - ReadWriteOnce
-   size: 10Gi
 
 
 # This exposes the Loki gateway so it can be written to and queried externaly
@@ -549,9 +531,6 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
       iterations: 10,
     };
 
-    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
-    * "main" function for each VU iteration
-    */
     export default () => {
       // Push request with 10 streams and uncompressed logs between 800KB and 2MB
       var res = client.pushParameterized(10, 800 * KB, 2 * MB);

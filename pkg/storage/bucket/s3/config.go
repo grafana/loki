@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	s3_service "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/grafana/dskit/flagext"
@@ -15,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -55,52 +54,6 @@ func thanosS3BucketLookupTypesValues() (list []string) {
 	return list
 }
 
-// HTTPConfig stores the http.Transport configuration for the s3 minio client.
-type HTTPConfig struct {
-	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout" category:"advanced"`
-	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout" category:"advanced"`
-	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify" category:"advanced"`
-	TLSHandshakeTimeout   time.Duration `yaml:"tls_handshake_timeout" category:"advanced"`
-	ExpectContinueTimeout time.Duration `yaml:"expect_continue_timeout" category:"advanced"`
-	MaxIdleConns          int           `yaml:"max_idle_connections" category:"advanced"`
-	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host" category:"advanced"`
-	MaxConnsPerHost       int           `yaml:"max_connections_per_host" category:"advanced"`
-
-	// Allow upstream callers to inject a round tripper
-	Transport http.RoundTripper `yaml:"-"`
-
-	TLSConfig TLSConfig `yaml:",inline"`
-}
-
-// TLSConfig configures the options for TLS connections.
-type TLSConfig struct {
-	CAPath     string `yaml:"tls_ca_path" category:"advanced"`
-	CertPath   string `yaml:"tls_cert_path" category:"advanced"`
-	KeyPath    string `yaml:"tls_key_path" category:"advanced"`
-	ServerName string `yaml:"tls_server_name" category:"advanced"`
-}
-
-// RegisterFlagsWithPrefix registers the flags for s3 storage with the provided prefix
-func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The time an idle connection will remain idle before closing.")
-	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 2*time.Minute, "The amount of time the client will wait for a servers response headers.")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "If the client connects to S3 via HTTPS and this option is enabled, the client will accept any certificate and hostname.")
-	f.DurationVar(&cfg.TLSHandshakeTimeout, prefix+"s3.tls-handshake-timeout", 10*time.Second, "Maximum time to wait for a TLS handshake. 0 means no limit.")
-	f.DurationVar(&cfg.ExpectContinueTimeout, prefix+"s3.expect-continue-timeout", 1*time.Second, "The time to wait for a server's first response headers after fully writing the request headers if the request has an Expect header. 0 to send the request body immediately.")
-	f.IntVar(&cfg.MaxIdleConns, prefix+"s3.max-idle-connections", 100, "Maximum number of idle (keep-alive) connections across all hosts. 0 means no limit.")
-	f.IntVar(&cfg.MaxIdleConnsPerHost, prefix+"s3.max-idle-connections-per-host", 100, "Maximum number of idle (keep-alive) connections to keep per-host. If 0, a built-in default value is used.")
-	f.IntVar(&cfg.MaxConnsPerHost, prefix+"s3.max-connections-per-host", 0, "Maximum number of connections per host. 0 means no limit.")
-	cfg.TLSConfig.RegisterFlagsWithPrefix(prefix, f)
-}
-
-// RegisterFlagsWithPrefix registers the flags for s3 storage with the provided prefix.
-func (cfg *TLSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.CAPath, prefix+"s3.http.tls-ca-path", "", "Path to the CA certificates to validate server certificate against. If not set, the host's root CA certificates are used.")
-	f.StringVar(&cfg.CertPath, prefix+"s3.http.tls-cert-path", "", "Path to the client certificate, which will be used for authenticating with the server. Also requires the key path to be configured.")
-	f.StringVar(&cfg.KeyPath, prefix+"s3.http.tls-key-path", "", "Path to the key for the client certificate. Also requires the client certificate to be configured.")
-	f.StringVar(&cfg.ServerName, prefix+"s3.http.tls-server-name", "", "Override the expected name on the server certificate.")
-}
-
 // Config holds the config options for an S3 backend
 type Config struct {
 	Endpoint             string              `yaml:"endpoint"`
@@ -121,7 +74,7 @@ type Config struct {
 	MaxRetries           int                 `yaml:"max_retries"`
 
 	SSE         SSEConfig   `yaml:"sse"`
-	HTTP        HTTPConfig  `yaml:"http"`
+	HTTP        http.Config `yaml:"http"`
 	TraceConfig TraceConfig `yaml:"trace"`
 }
 
@@ -149,7 +102,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.STSEndpoint, prefix+"s3.sts-endpoint", "", "Accessing S3 resources using temporary, secure credentials provided by AWS Security Token Service.")
 	f.IntVar(&cfg.MaxRetries, prefix+"s3.max-retries", 10, "The maximum number of retries for S3 requests that are retryable. Default is 10, set this to 1 to disable retries.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
-	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
+	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"s3.", f)
 	cfg.TraceConfig.RegisterFlagsWithPrefix(prefix+"s3.trace.", f)
 }
 

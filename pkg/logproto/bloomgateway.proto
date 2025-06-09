@@ -50,6 +50,13 @@ message GroupedChunkRefs {
   IndexSeries labels = 4;
 }
 
+message PrefetchBloomBlocksRequest {
+  repeated string blocks = 1;
+}
+
+message PrefetchBloomBlocksResponse {}
+
 service BloomGateway {
   rpc FilterChunkRefs(FilterChunkRefRequest) returns (FilterChunkRefResponse) {}
+  rpc PrefetchBloomBlocks(PrefetchBloomBlocksRequest) returns (PrefetchBloomBlocksResponse) {}
 }

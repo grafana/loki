@@ -21,9 +21,9 @@ import (
 const ruleName = "testrule"
 
 func labelsToMatchers(ls labels.Labels) (res []*labels.Matcher) {
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		res = append(res, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 	return res
 }
 

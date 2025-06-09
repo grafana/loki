@@ -60,6 +60,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeNSEC3:      func() RR { return new(NSEC3) },
 	TypeNSEC3PARAM: func() RR { return new(NSEC3PARAM) },
 	TypeNULL:       func() RR { return new(NULL) },
+	TypeNXNAME:     func() RR { return new(NXNAME) },
 	TypeNXT:        func() RR { return new(NXT) },
 	TypeOPENPGPKEY: func() RR { return new(OPENPGPKEY) },
 	TypeOPT:        func() RR { return new(OPT) },
@@ -146,6 +147,7 @@ var TypeToString = map[uint16]string{
 	TypeNSEC3:      "NSEC3",
 	TypeNSEC3PARAM: "NSEC3PARAM",
 	TypeNULL:       "NULL",
+	TypeNXNAME:     "NXNAME",
 	TypeNXT:        "NXT",
 	TypeNone:       "None",
 	TypeOPENPGPKEY: "OPENPGPKEY",
@@ -230,6 +232,7 @@ func (rr *NSEC) Header() *RR_Header       { return &rr.Hdr }
 func (rr *NSEC3) Header() *RR_Header      { return &rr.Hdr }
 func (rr *NSEC3PARAM) Header() *RR_Header { return &rr.Hdr }
 func (rr *NULL) Header() *RR_Header       { return &rr.Hdr }
+func (rr *NXNAME) Header() *RR_Header     { return &rr.Hdr }
 func (rr *NXT) Header() *RR_Header        { return &rr.Hdr }
 func (rr *OPENPGPKEY) Header() *RR_Header { return &rr.Hdr }
 func (rr *OPT) Header() *RR_Header        { return &rr.Hdr }
@@ -591,6 +594,11 @@ func (rr *NSEC3PARAM) len(off int, compression map[string]struct{}) int {
 func (rr *NULL) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
 	l += len(rr.Data)
+	return l
+}
+
+func (rr *NXNAME) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
 	return l
 }
 
@@ -1105,6 +1113,10 @@ func (rr *NSEC3PARAM) copy() RR {
 
 func (rr *NULL) copy() RR {
 	return &NULL{rr.Hdr, rr.Data}
+}
+
+func (rr *NXNAME) copy() RR {
+	return &NXNAME{rr.Hdr}
 }
 
 func (rr *NXT) copy() RR {

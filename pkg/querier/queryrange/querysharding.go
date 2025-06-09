@@ -152,7 +152,7 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, ast.logger)
-	spLogger := spanlogger.FromContextWithFallback(
+	spLogger := spanlogger.FromContext(
 		ctx,
 		logger,
 	)
@@ -162,11 +162,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
-	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
-	}
+	maxRVDuration, maxOffset := maxRangeVectorAndOffsetDuration(params.GetExpression())
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
@@ -204,18 +200,24 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	v := ast.limits.TSDBShardingStrategy(tenants[0])
-	version, err := logql.ParseShardVersion(v)
-	if err != nil {
-		level.Warn(spLogger).Log(
-			"msg", "failed to parse shard version",
-			"fallback", version.String(),
-			"err", err.Error(),
-			"user", tenants[0],
-			"query", r.GetQuery(),
-		)
+	var strategy logql.ShardingStrategy
+
+	if conf.IndexType == types.TSDBType {
+		v := ast.limits.TSDBShardingStrategy(tenants[0])
+		version, err := logql.ParseShardVersion(v)
+		if err != nil {
+			level.Warn(spLogger).Log(
+				"msg", "failed to parse shard version",
+				"fallback", version.String(),
+				"err", err.Error(),
+				"user", tenants[0],
+				"query", r.GetQuery(),
+			)
+		}
+		strategy = version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+	} else {
+		strategy = logql.NewPowerOfTwoStrategy(resolver)
 	}
-	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
 
 	// Merge global shard aggregations and tenant overrides.
 	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {

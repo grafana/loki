@@ -96,6 +96,7 @@ func (h *serverStatsHandler) unaryInterceptor(ctx context.Context, req any, _ *g
 		metadataExchangeLabels = h.options.MetricsOptions.pluginOption.GetMetadata()
 	}
 
+	// - Server-side: The first stats event after the RPC request is received.
 	sts := grpc.ServerTransportStreamFromContext(ctx)
 
 	alts := &attachLabelsTransportStream{
@@ -201,10 +202,12 @@ func (h *serverStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo)
 		startTime: time.Now(),
 		method:    removeLeadingSlash(method),
 	}
-	ri := &rpcInfo{
-		ai: ai,
+	if h.options.isTracingEnabled() {
+		ctx, ai = h.traceTagRPC(ctx, ai)
 	}
-	return setRPCInfo(ctx, ri)
+	return setRPCInfo(ctx, &rpcInfo{
+		ai: ai,
+	})
 }
 
 // HandleRPC implements per RPC tracing and stats implementation.
@@ -214,7 +217,12 @@ func (h *serverStatsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		logger.Error("ctx passed into server side stats handler metrics event handling has no server call data present")
 		return
 	}
-	h.processRPCData(ctx, rs, ri.ai)
+	if h.options.isTracingEnabled() {
+		populateSpan(rs, ri.ai)
+	}
+	if h.options.isMetricsEnabled() {
+		h.processRPCData(ctx, rs, ri.ai)
+	}
 }
 
 func (h *serverStatsHandler) processRPCData(ctx context.Context, s stats.RPCStats, ai *attemptInfo) {
@@ -264,15 +272,15 @@ func (h *serverStatsHandler) processRPCEnd(ctx context.Context, ai *attemptInfo,
 }
 
 const (
-	// ServerCallStarted is the number of server calls started.
-	ServerCallStarted estats.Metric = "grpc.server.call.started"
-	// ServerCallSentCompressedTotalMessageSize is the compressed message bytes
-	// sent per server call.
-	ServerCallSentCompressedTotalMessageSize estats.Metric = "grpc.server.call.sent_total_compressed_message_size"
-	// ServerCallRcvdCompressedTotalMessageSize is the compressed message bytes
-	// received per server call.
-	ServerCallRcvdCompressedTotalMessageSize estats.Metric = "grpc.server.call.rcvd_total_compressed_message_size"
-	// ServerCallDuration is the end-to-end time taken to complete a call from
-	// server transport's perspective.
-	ServerCallDuration estats.Metric = "grpc.server.call.duration"
+	// ServerCallStartedMetricName is the number of server calls started.
+	ServerCallStartedMetricName string = "grpc.server.call.started"
+	// ServerCallSentCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes sent per server call.
+	ServerCallSentCompressedTotalMessageSizeMetricName string = "grpc.server.call.sent_total_compressed_message_size"
+	// ServerCallRcvdCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes received per server call.
+	ServerCallRcvdCompressedTotalMessageSizeMetricName string = "grpc.server.call.rcvd_total_compressed_message_size"
+	// ServerCallDurationMetricName is the end-to-end time taken to complete a
+	// call from server transport's perspective.
+	ServerCallDurationMetricName string = "grpc.server.call.duration"
 )

@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-var downloadQueueCapacity = 10000
+var downloadQueueCapacity = 100000
 
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
@@ -31,6 +31,8 @@ type options struct {
 	// NB(owen-d): this can only be safely used when blooms are not captured outside
 	// of iteration or it can introduce use-after-free bugs
 	usePool mempool.Allocator
+
+	CacheGetOptions []CacheGetOption
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -56,6 +58,12 @@ func WithFetchAsync(v bool) FetchOption {
 func WithPool(v mempool.Allocator) FetchOption {
 	return func(opts *options) {
 		opts.usePool = v
+	}
+}
+
+func WithCacheGetOptions(cacheOpts ...CacheGetOption) FetchOption {
+	return func(opts *options) {
+		opts.CacheGetOptions = cacheOpts
 	}
 }
 
@@ -120,7 +128,7 @@ func (f *Fetcher) Close() {
 
 // FetchMetas implements fetcher
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	logger := spanlogger.FromContextWithFallback(ctx, f.logger)
+	logger := spanlogger.FromContext(ctx, f.logger)
 
 	if ctx.Err() != nil {
 		return nil, errors.Wrap(ctx.Err(), "fetch Metas")
@@ -244,7 +252,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
 		key := cacheKey(refs[i])
-		dir, isFound, err := f.fromCache(ctx, key)
+		dir, isFound, err := f.fromCache(ctx, key, cfg.CacheGetOptions...)
 		if err != nil {
 			return results, err
 		}
@@ -376,14 +384,14 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	}
 }
 
-func (f *Fetcher) fromCache(ctx context.Context, key string) (BlockDirectory, bool, error) {
+func (f *Fetcher) fromCache(ctx context.Context, key string, opts ...CacheGetOption) (BlockDirectory, bool, error) {
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
 		return zero, false, errors.Wrap(ctx.Err(), "from cache")
 	}
 
-	item, found := f.blocksCache.Get(ctx, key)
+	item, found := f.blocksCache.Get(ctx, key, opts...)
 
 	// item wasn't found
 	if !found {

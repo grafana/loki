@@ -1,7 +1,7 @@
 package analysis
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/go-openapi/spec"
 	"github.com/go-openapi/strfmt"
@@ -19,7 +19,7 @@ type SchemaOpts struct {
 // patterns.
 func Schema(opts SchemaOpts) (*AnalyzedSchema, error) {
 	if opts.Schema == nil {
-		return nil, fmt.Errorf("no schema to analyze")
+		return nil, errors.New("no schema to analyze")
 	}
 
 	a := &AnalyzedSchema{

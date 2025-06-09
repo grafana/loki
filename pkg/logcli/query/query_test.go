@@ -406,7 +406,7 @@ func Test_batch(t *testing.T) {
 }
 
 type testQueryClient struct {
-	engine          *logql.Engine
+	engine          *logql.QueryEngine
 	queryRangeCalls int
 }
 

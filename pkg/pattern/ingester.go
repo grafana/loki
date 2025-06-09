@@ -41,9 +41,11 @@ type Config struct {
 	MaxClusters          int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
 	MaxEvictionRatio     float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
 	MetricAggregation    aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	PatternPersistence   PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
 	TeeConfig            TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
 	ConnectionTimeout    time.Duration         `yaml:"connection_timeout"`
 	MaxAllowedLineLength int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	RetainFor            time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -53,7 +55,8 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
-	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.metric-aggregation.")
+	cfg.PatternPersistence.RegisterFlagsWithPrefix(fs, "pattern-ingester.pattern-persistence.")
 	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
 
 	fs.BoolVar(
@@ -97,6 +100,12 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		"pattern-ingester.max-allowed-line-length",
 		drain.DefaultConfig().MaxAllowedLineLength,
 		"The maximum length of log lines that can be used for pattern detection.",
+	)
+	fs.DurationVar(
+		&cfg.RetainFor,
+		"pattern-ingester.retain-for",
+		3*time.Hour,
+		"How long to retain patterns in the pattern ingester after they are pushed.",
 	)
 }
 
@@ -150,7 +159,8 @@ func (cfg *Config) Validate() error {
 
 type Limits interface {
 	drain.Limits
-	aggregation.Limits
+	MetricAggregationEnabled(userID string) bool
+	PatternPersistenceEnabled(userID string) bool
 }
 
 type Ingester struct {
@@ -275,7 +285,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -295,14 +305,14 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.SamplePeriod)
 	defer downsampleTicker.Stop()
 	for {
 		select {
 		case <-flushTicker.C:
 			i.sweepUsers(false, true)
 		case t := <-downsampleTicker.C:
-			downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
+			downsampleTicker.Reset(i.cfg.MetricAggregation.SamplePeriod)
 			now := model.TimeFromUnixNano(t.UnixNano())
 			i.downsampleMetrics(now)
 		case <-i.loopQuit:
@@ -392,6 +402,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 
 		aggCfg := i.cfg.MetricAggregation
 		if i.limits.MetricAggregationEnabled(instanceID) {
+			metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
 			writer, err = aggregation.NewPush(
 				aggCfg.LokiAddr,
 				instanceID,
@@ -403,6 +414,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				aggCfg.UseTLS,
 				&aggCfg.BackoffConfig,
 				i.logger,
+				metricAggregationMetrics,
 			)
 			if err != nil {
 				return nil, err

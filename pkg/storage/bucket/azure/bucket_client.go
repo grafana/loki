@@ -8,11 +8,18 @@ import (
 	"github.com/thanos-io/objstore/providers/azure"
 )
 
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
-	return newBucketClient(cfg, name, logger, azure.NewBucketWithConfig)
+func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
+	bucket, err := newBucketClient(cfg, name, logger, wrapRT, azure.NewBucketWithConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &keyRewriteBucket{
+		Bucket:    bucket,
+		delimiter: cfg.ChunkDelimiter,
+	}, nil
 }
 
-func newBucketClient(cfg Config, name string, logger log.Logger, factory func(log.Logger, azure.Config, string, func(http.RoundTripper) http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
+func newBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper, factory func(log.Logger, azure.Config, string, func(http.RoundTripper) http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
 	// Start with default config to make sure that all parameters are set to sensible values, especially
 	// HTTP Config field.
 	bucketConfig := azure.DefaultConfig
@@ -29,5 +36,5 @@ func newBucketClient(cfg Config, name string, logger log.Logger, factory func(lo
 		bucketConfig.Endpoint = cfg.Endpoint
 	}
 
-	return factory(logger, bucketConfig, name, nil)
+	return factory(logger, bucketConfig, name, wrapRT)
 }

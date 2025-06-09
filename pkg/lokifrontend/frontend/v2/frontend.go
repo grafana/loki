@@ -19,10 +19,10 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
@@ -154,7 +154,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
 	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
 	// This isn't perfect, but better than nothing.
-	f.lastQueryID.Store(rand.Uint64())
+	f.lastQueryID.Store(rand.Uint64()) //#nosec G404 -- See above comment, this can't leak data or otherwise result in a vuln, simply very rarely cause confusing behavior. A CSPRNG would not help.
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
@@ -222,13 +222,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	tenantID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
-	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
-	if tracer != nil && span != nil {
-		carrier := (*lokigrpc.HeadersCarrier)(req)
-		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
-			return nil, err
-		}
-	}
+	otel.GetTextMapPropagator().Inject(ctx, (*lokigrpc.HeadersCarrier)(req))
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

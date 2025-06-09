@@ -349,6 +349,7 @@ func (m *Mock) AdvanceNext() (time.Duration, AdvanceWaiter) {
 		defer close(w.ch)
 		defer m.mu.Unlock()
 		m.tb.Error("cannot AdvanceNext because there are no timers or tickers running")
+		return 0, w
 	}
 	d := m.nextTime.Sub(m.cur)
 	m.cur = m.nextTime

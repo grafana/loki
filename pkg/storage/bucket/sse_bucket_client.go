@@ -59,6 +59,10 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 	return b.bucket.Upload(ctx, name, r)
 }
 
+func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+	return b.bucket.GetAndReplace(ctx, name, fn)
+}
+
 // Delete implements objstore.Bucket.
 func (b *SSEBucketClient) Delete(ctx context.Context, name string) error {
 	return b.bucket.Delete(ctx, name)
@@ -146,6 +150,11 @@ func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpected
 // IsAccessDeniedErr returns true if access to object is denied.
 func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
+}
+
+// Provider returns the provider of the bucket.
+func (b *SSEBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
 }
 
 // WithExpectedErrs implements objstore.Bucket.

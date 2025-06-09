@@ -1,6 +1,126 @@
 # Changes
 
 
+## [1.52.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.51.0...storage/v1.52.0) (2025-04-22)
+
+
+### Features
+
+* **storage/control:** Add Anywhere cache control APIs ([#11807](https://github.com/googleapis/google-cloud-go/issues/11807)) ([12bfa98](https://github.com/googleapis/google-cloud-go/commit/12bfa984f87099dbfbd5abf3436e440e62b04bad))
+* **storage:** Add CurrentState function to determine state of stream in MRD ([#11688](https://github.com/googleapis/google-cloud-go/issues/11688)) ([14e8e13](https://github.com/googleapis/google-cloud-go/commit/14e8e132d9d5808d1ca789792e7e39f0857991da))
+* **storage:** Add OwnerEntity to bucketAttrs ([#11857](https://github.com/googleapis/google-cloud-go/issues/11857)) ([4cd4a0c](https://github.com/googleapis/google-cloud-go/commit/4cd4a0ca1f6132ea6ed9df7b27310a3238a9c3fd))
+* **storage:** Takeover appendable object ([#11977](https://github.com/googleapis/google-cloud-go/issues/11977)) ([513b937](https://github.com/googleapis/google-cloud-go/commit/513b937420b945c4a76e20711f305c6ad8a77812))
+* **storage:** Unfinalized appendable objects. ([#11647](https://github.com/googleapis/google-cloud-go/issues/11647)) ([52c0218](https://github.com/googleapis/google-cloud-go/commit/52c02183fabf43fcba3893f493140ac28a7836d1))
+
+
+### Bug Fixes
+
+* **storage:** Fix Attrs for append takeover ([#11989](https://github.com/googleapis/google-cloud-go/issues/11989)) ([6db35b1](https://github.com/googleapis/google-cloud-go/commit/6db35b10567b7f1463bfef722b0fd72257190ee7))
+* **storage:** Fix panic when Flush called early ([#11934](https://github.com/googleapis/google-cloud-go/issues/11934)) ([7d0b8a7](https://github.com/googleapis/google-cloud-go/commit/7d0b8a75ae55731ae765c01f24920f9f11038f44))
+* **storage:** Fix unfinalized write size ([#12016](https://github.com/googleapis/google-cloud-go/issues/12016)) ([6217f8f](https://github.com/googleapis/google-cloud-go/commit/6217f8fd3cd8680a7e6b7b46fc9b7bda6ee6292e))
+* **storage:** Force first message on next sendBuffer when nothing sent on current ([#11871](https://github.com/googleapis/google-cloud-go/issues/11871)) ([a1a2292](https://github.com/googleapis/google-cloud-go/commit/a1a22927d6a4399e7392787bccb9707bc9e8f149))
+* **storage:** Populate Writer.Attrs after Flush() ([#12021](https://github.com/googleapis/google-cloud-go/issues/12021)) ([8e56f74](https://github.com/googleapis/google-cloud-go/commit/8e56f745e7f2175660838f96c1a12a46841cac40))
+* **storage:** Remove check for FinalizeOnClose ([#11992](https://github.com/googleapis/google-cloud-go/issues/11992)) ([2664b8c](https://github.com/googleapis/google-cloud-go/commit/2664b8cec00a606001184cb17c074fd0e79e66b8))
+* **storage:** Wrap read response parsing errors ([#11951](https://github.com/googleapis/google-cloud-go/issues/11951)) ([d2e6583](https://github.com/googleapis/google-cloud-go/commit/d2e658387b80ec8a3e41e048a9d520b8dd13dd00))
+
+
+## [1.51.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.50.0...storage/v1.51.0) (2025-03-07)
+
+
+### Features
+
+* **storage/append:** Support appends in w1r3. ([#11483](https://github.com/googleapis/google-cloud-go/issues/11483)) ([48bb391](https://github.com/googleapis/google-cloud-go/commit/48bb39154479a2cf2d379316e0915f39d7b7a518))
+* **storage:** Benchmark with experimental MRD. ([#11501](https://github.com/googleapis/google-cloud-go/issues/11501)) ([7b49152](https://github.com/googleapis/google-cloud-go/commit/7b491520a693d258d3370a19c43c9dff6c8558c7))
+* **storage:** Implement RetryChunkDeadline for grpc writes ([#11476](https://github.com/googleapis/google-cloud-go/issues/11476)) ([03575d7](https://github.com/googleapis/google-cloud-go/commit/03575d74f5241cc714e4d3ac63635569a34f5633))
+* **storage:** Specify benchmark integrity check. ([#11465](https://github.com/googleapis/google-cloud-go/issues/11465)) ([da18845](https://github.com/googleapis/google-cloud-go/commit/da188453e0254c49a01d28788d0849a2d0e98e0c))
+* **storage:** Use ReadHandle for faster re-connect ([#11510](https://github.com/googleapis/google-cloud-go/issues/11510)) ([cac52f7](https://github.com/googleapis/google-cloud-go/commit/cac52f79a73d46774d33d76e3075c0a5b3e0b9f3))
+* **storage:** Wrap NotFound errors for buckets and objects ([#11519](https://github.com/googleapis/google-cloud-go/issues/11519)) ([0dd7d3d](https://github.com/googleapis/google-cloud-go/commit/0dd7d3d62e54c6c3bca395fcca8450ad3347a5a0))
+
+
+### Bug Fixes
+
+* **storage/append:** Report progress for appends. ([#11503](https://github.com/googleapis/google-cloud-go/issues/11503)) ([96dbb6c](https://github.com/googleapis/google-cloud-go/commit/96dbb6c12398fb3cbffab2bf61836bef2f704f66))
+* **storage:** Add a safety check for readhandle ([#11549](https://github.com/googleapis/google-cloud-go/issues/11549)) ([c9edb37](https://github.com/googleapis/google-cloud-go/commit/c9edb379ece70f065650702c9240ee540ca2f610))
+* **storage:** Add universe domain to defaultSignBytesFunc ([#11521](https://github.com/googleapis/google-cloud-go/issues/11521)) ([511608b](https://github.com/googleapis/google-cloud-go/commit/511608b8e8554aa06f9fe2e2e4f51ead0f484031))
+* **storage:** Clone the defaultRetry to avoid modifying it directly ([#11533](https://github.com/googleapis/google-cloud-go/issues/11533)) ([7f8d69d](https://github.com/googleapis/google-cloud-go/commit/7f8d69dcd6a7b1ad6c1df8d9fe8dfb5fe0947479))
+* **storage:** Fix adding multiple range on stream with same read id ([#11584](https://github.com/googleapis/google-cloud-go/issues/11584)) ([0bb3434](https://github.com/googleapis/google-cloud-go/commit/0bb3434e0e12563ff21ef72ad2e52ad7eb61d66e))
+* **storage:** Modify the callback of mrd to return length of data read instead of limit. ([#11687](https://github.com/googleapis/google-cloud-go/issues/11687)) ([9e359f0](https://github.com/googleapis/google-cloud-go/commit/9e359f0089f744c32d12bf77889d69a4db155357))
+* **storage:** Propagate ctx from invoke to grpc upload reqs ([#11475](https://github.com/googleapis/google-cloud-go/issues/11475)) ([9ad9d76](https://github.com/googleapis/google-cloud-go/commit/9ad9d7665ca2f4cfdcee75f5e683084ac49536a6))
+* **storage:** Remove duplicate routing header ([#11534](https://github.com/googleapis/google-cloud-go/issues/11534)) ([8eeb59c](https://github.com/googleapis/google-cloud-go/commit/8eeb59cbfb16d8f379f7aa4c6f11e53cebbd38a6))
+* **storage:** Return sentinel ErrObjectNotExist for copy and compose ([#11369](https://github.com/googleapis/google-cloud-go/issues/11369)) ([74d0c10](https://github.com/googleapis/google-cloud-go/commit/74d0c1096f897ca3c15646f3049ea540bed0a6a0)), refs [#10760](https://github.com/googleapis/google-cloud-go/issues/10760)
+* **storage:** Wait for XML read req to finish to avoid data races ([#11527](https://github.com/googleapis/google-cloud-go/issues/11527)) ([782e12a](https://github.com/googleapis/google-cloud-go/commit/782e12a11c1dfe6d831f5d0b9b5f4409993e4d9e))
+
+## [1.50.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.49.0...storage/v1.50.0) (2025-01-09)
+
+
+### Features
+
+* **storage/internal:** Add new appendable Object to BidiWrite API ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage/internal:** Add new preview BidiReadObject API ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage:** Add support for gRPC bi-directional multi-range reads. This API is in private preview and not generally and is not yet available for general use. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Add support for ReadHandle, a gRPC feature that allows for accelerated resumption of streams when one is interrupted. ReadHandle requires the bi-directional read API, which is in private preview and is not yet available for general use. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Support appendable semantics for writes in gRPC. This API is in preview. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Refactor gRPC writer flow ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+
+
+### Bug Fixes
+
+* **storage:** Add mutex around uses of mrd variables ([#11405](https://github.com/googleapis/google-cloud-go/issues/11405)) ([54bfc32](https://github.com/googleapis/google-cloud-go/commit/54bfc32db7a0ff40a493de4d466f21ad624de04e))
+* **storage:** Return the appropriate error for method not supported ([#11416](https://github.com/googleapis/google-cloud-go/issues/11416)) ([56d704e](https://github.com/googleapis/google-cloud-go/commit/56d704e3037840aeb87b22cc83f2b6088c79bcee))
+
+
+### Documentation
+
+* **storage/internal:** Add IAM information to RPC comments for reference documentation ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage:** Add preview comment to NewMultiRangeDownloader ([#11420](https://github.com/googleapis/google-cloud-go/issues/11420)) ([4ec1d66](https://github.com/googleapis/google-cloud-go/commit/4ec1d66ee180e800606568e8693a282645ec7369))
+
+## [1.49.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.48.0...storage/v1.49.0) (2024-12-21)
+
+
+### Features
+
+* **storage/internal:** Add finalize_time field in Object metadata ([46fc993](https://github.com/googleapis/google-cloud-go/commit/46fc993a3195203a230e2831bee456baaa9f7b1c))
+* **storage/internal:** Add MoveObject RPC ([46fc993](https://github.com/googleapis/google-cloud-go/commit/46fc993a3195203a230e2831bee456baaa9f7b1c))
+* **storage:** Add ObjectHandle.Move method ([#11302](https://github.com/googleapis/google-cloud-go/issues/11302)) ([a3cb8c4](https://github.com/googleapis/google-cloud-go/commit/a3cb8c4fc48883b54d4e830ae5f5ef4f1a3b8ca3))
+* **storage:** Return file metadata on read ([#11212](https://github.com/googleapis/google-cloud-go/issues/11212)) ([d49263b](https://github.com/googleapis/google-cloud-go/commit/d49263b2ab614cad801e26b4a169eafe08d4a2a0))
+
+
+### Bug Fixes
+
+* **storage/dataflux:** Address deadlock when reading from ranges ([#11303](https://github.com/googleapis/google-cloud-go/issues/11303)) ([32cbf56](https://github.com/googleapis/google-cloud-go/commit/32cbf561590541eb0387787bf729be6ddf68e4ee))
+* **storage:** Disable allow non-default credentials flag ([#11337](https://github.com/googleapis/google-cloud-go/issues/11337)) ([145ddf4](https://github.com/googleapis/google-cloud-go/commit/145ddf4f6123d9561856d2b6adeefdfae462b3f7))
+* **storage:** Monitored resource detection ([#11197](https://github.com/googleapis/google-cloud-go/issues/11197)) ([911bcd8](https://github.com/googleapis/google-cloud-go/commit/911bcd8b1816256482bd52e85da7eaf00c315293))
+* **storage:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
+## [1.48.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.47.0...storage/v1.48.0) (2024-12-05)
+
+
+### Features
+
+* **storage/dataflux:** Run worksteal listing parallel to sequential listing ([#10966](https://github.com/googleapis/google-cloud-go/issues/10966)) ([3005f5a](https://github.com/googleapis/google-cloud-go/commit/3005f5a86c18254e569b8b1782bf014aa62f33cc))
+* **storage:** Add Writer.ChunkTransferTimeout ([#11111](https://github.com/googleapis/google-cloud-go/issues/11111)) ([fd1db20](https://github.com/googleapis/google-cloud-go/commit/fd1db203d0de898891b9920aacb141ea39228609))
+* **storage:** Allow non default service account ([#11137](https://github.com/googleapis/google-cloud-go/issues/11137)) ([19f01c3](https://github.com/googleapis/google-cloud-go/commit/19f01c3c48ed1272c8fc0af9e5f69646cb662808))
+
+
+### Bug Fixes
+
+* **storage:** Add backoff to gRPC write retries ([#11200](https://github.com/googleapis/google-cloud-go/issues/11200)) ([a7db927](https://github.com/googleapis/google-cloud-go/commit/a7db927da9cf4c6cf242a5db83e44a16d75a8291))
+* **storage:** Correct direct connectivity check ([#11152](https://github.com/googleapis/google-cloud-go/issues/11152)) ([a75c8b0](https://github.com/googleapis/google-cloud-go/commit/a75c8b0f72c38d9a85c908715c3e37eb5cffb131))
+* **storage:** Disable soft delete policy using 0 retentionDurationSeconds ([#11226](https://github.com/googleapis/google-cloud-go/issues/11226)) ([f087721](https://github.com/googleapis/google-cloud-go/commit/f087721b7b20ad28ded1d0a84756a8bbaa2bb95a))
+* **storage:** Retry SignBlob call for URL signing ([#11154](https://github.com/googleapis/google-cloud-go/issues/11154)) ([f198452](https://github.com/googleapis/google-cloud-go/commit/f198452fd2b29e779e9080ba79d7e873eb0c32ef))
+
+## [1.47.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.46.0...storage/v1.47.0) (2024-11-14)
+
+
+### Features
+
+* **storage:** Introduce dp detector based on grpc metrics ([#11100](https://github.com/googleapis/google-cloud-go/issues/11100)) ([60c2323](https://github.com/googleapis/google-cloud-go/commit/60c2323102b623e042fc508e2b1bb830a03f9577))
+
+
+### Bug Fixes
+
+* **storage:** Bump auth dep ([#11135](https://github.com/googleapis/google-cloud-go/issues/11135)) ([9620a51](https://github.com/googleapis/google-cloud-go/commit/9620a51b2c6904d8d93e124494bc297fb98553d2))
+
 ## [1.46.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.45.0...storage/v1.46.0) (2024-10-31) 
 
 ### Features

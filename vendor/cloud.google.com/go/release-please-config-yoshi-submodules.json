@@ -12,6 +12,12 @@
         "advisorynotifications": {
             "component": "advisorynotifications"
         },
+        "ai": {
+            "component": "ai"
+        },
+        "aiplatform": {
+            "component": "aiplatform"
+        },
         "alloydb": {
             "component": "alloydb"
         },
@@ -189,6 +195,9 @@
         "filestore": {
             "component": "filestore"
         },
+        "financialservices": {
+            "component": "financialservices"
+        },
         "functions": {
             "component": "functions"
         },
@@ -252,11 +261,17 @@
         "memcache": {
             "component": "memcache"
         },
+        "memorystore": {
+            "component": "memorystore"
+        },
         "metastore": {
             "component": "metastore"
         },
         "migrationcenter": {
             "component": "migrationcenter"
+        },
+        "modelarmor": {
+            "component": "modelarmor"
         },
         "monitoring": {
             "component": "monitoring"
@@ -282,6 +297,9 @@
         "optimization": {
             "component": "optimization"
         },
+        "oracledatabase": {
+            "component": "oracledatabase"
+        },
         "orchestration": {
             "component": "orchestration"
         },
@@ -296,6 +314,9 @@
         },
         "parallelstore": {
             "component": "parallelstore"
+        },
+        "parametermanager": {
+            "component": "parametermanager"
         },
         "phishingprotection": {
             "component": "phishingprotection"
@@ -329,9 +350,6 @@
         },
         "resourcemanager": {
             "component": "resourcemanager"
-        },
-        "resourcesettings": {
-            "component": "resourcesettings"
         },
         "retail": {
             "component": "retail"

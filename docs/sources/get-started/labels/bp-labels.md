@@ -21,7 +21,7 @@ Too many label value combinations leads to too many streams. The penalties for t
 To avoid those issues, don't add a label for something until you know you need it! Use filter expressions (`|= "text"`, `|~ "regex"`, …) and brute force those logs. It works -- and it's fast.
 
 If you often parse a label from a log line at query time, the label has a high cardinality, and extracting that label is expensive in terms of performance; consider extracting the label on the client side
-attaching it as [structured metadata]({{< relref "./structured-metadata" >}}) to log lines .
+attaching it as [structured metadata](../structured-metadata/) to log lines .
 
 From early on, we have set a label dynamically using Promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
 
@@ -54,7 +54,7 @@ Loki has several client options: [Grafana Alloy](https://grafana.com/docs/alloy/
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
-Series information can be queried through the [Series API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/), or you can use [logcli]({{< relref "../../query" >}}).
+Series information can be queried through the [Series API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/), or you can use [logcli](../../../query/).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 

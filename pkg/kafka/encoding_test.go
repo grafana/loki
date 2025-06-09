@@ -53,7 +53,7 @@ func TestEncoderDecoder(t *testing.T) {
 				stream, ls, err := decoder.Decode(record.Value)
 				require.NoError(t, err)
 				decodedEntries = append(decodedEntries, stream.Entries...)
-				if decodedLabels == nil {
+				if decodedLabels.IsEmpty() {
 					decodedLabels = ls
 				} else {
 					require.Equal(t, decodedLabels, ls)
