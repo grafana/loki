@@ -260,13 +260,9 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	// distributor logs.
 	// We capture this metric even when the user agent is empty; we want insight into the tenant's
 	// ingestion lag no matter what.
-	if mostRecentLagMs >= 0 {
+	if mostRecentLagMs >= 0 && mostRecentLagMs < 1_000_000_000 {
 		// we're filtering out anything over 1B -- the OTLP endpoints often really mess with this metric...
-		if mostRecentLagMs < 1_000_000_000 {
-			distributorLagByUserAgent.WithLabelValues(userID, userAgent).Add(float64(mostRecentLagMs))
-		}
-	} else {
-		level.Warn(logger).Log("msg", "mostRecentLagMs has a negative value")
+		distributorLagByUserAgent.WithLabelValues(userID, userAgent).Add(float64(mostRecentLagMs))
 	}
 
 	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
