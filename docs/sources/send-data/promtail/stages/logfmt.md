@@ -54,7 +54,7 @@ For the given pipeline:
 Given the following log line:
 
 ```
-time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo""
+time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo"
 ```
 
 The following key-value pairs would be created in the set of extracted data:
