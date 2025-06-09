@@ -33,6 +33,8 @@ This is specially useful when writing a regular expression which contains multip
 
 ## Log stream selector
 
+{{< shared id="log-stream-selector" >}}
+
 The stream selector determines which log streams to include in a query's results.
 A log stream is a unique source of log content, such as a file.
 A more granular log stream selector then reduces the number of searched streams to a manageable volume.
@@ -40,6 +42,8 @@ This means that the labels passed to the log stream selector will affect the rel
 
 The log stream selector is specified by one or more comma-separated key-value pairs. Each key is a log label and each value is that label's value.
 Curly braces (`{` and `}`) delimit the stream selector.
+
+{{< /shared >}}
 
 Consider this stream selector:
 

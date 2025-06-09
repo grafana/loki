@@ -135,7 +135,7 @@ require (
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.4
-	github.com/parquet-go/parquet-go v0.25.0
+	github.com/parquet-go/parquet-go v0.25.1
 	github.com/prometheus/alertmanager v0.28.1
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/prometheus/otlptranslator v0.0.0-20250414121140-35db323fe9fb
@@ -217,7 +217,6 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
-	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.116.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.116.0 // indirect
