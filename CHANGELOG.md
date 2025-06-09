@@ -6,6 +6,14 @@
 * Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 
+## [2.9.15](https://github.com/grafana/loki/compare/v2.9.14...v2.9.15) (2025-06-09)
+
+
+### Bug Fixes
+
+* **ci:** Pull in latest 2.9-specific release code ([#18019](https://github.com/grafana/loki/issues/18019)) ([7b805ba](https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684))
+* **deps:** update module golang.org/x/net to v0.38.0 [security] (release-2.9.x) ([#17275](https://github.com/grafana/loki/issues/17275)) ([6297508](https://github.com/grafana/loki/commit/62975089e9626846673335ff5607d183a2685222))
+
 ## [2.9.14](https://github.com/grafana/loki/compare/v2.9.13...v2.9.14) (2025-04-10)
 
 
