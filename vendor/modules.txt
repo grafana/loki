@@ -1466,9 +1466,6 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/olekukonko/tablewriter v0.0.5
-## explicit; go 1.12
-github.com/olekukonko/tablewriter
 # github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0
 ## explicit; go 1.22.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
@@ -1511,7 +1508,7 @@ github.com/oschwald/geoip2-golang
 # github.com/oschwald/maxminddb-golang v1.13.0
 ## explicit; go 1.21
 github.com/oschwald/maxminddb-golang
-# github.com/parquet-go/parquet-go v0.25.0
+# github.com/parquet-go/parquet-go v0.25.1
 ## explicit; go 1.22
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
