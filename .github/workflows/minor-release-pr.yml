@@ -198,7 +198,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -269,7 +271,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -340,7 +344,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -417,7 +423,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -488,7 +496,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -565,7 +575,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -642,7 +654,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -812,7 +826,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -889,7 +905,9 @@ jobs:
     needs:
     - "version"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
