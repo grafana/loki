@@ -248,7 +248,7 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				vectors[i][j] = ProbabilisticQuantileSample{
 					T:      int64(i),
 					F:      newRandomSketch(),
-					Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+					Metric: labels.FromStrings("foo", fmt.Sprintf("bar-%d", j)),
 				}
 			}
 		}
