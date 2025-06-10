@@ -93,10 +93,11 @@ For line filters, the following operators can be used:
 #### Parser expressions
 
 Parser expressions are used to filter logs that are in a standardized format, such as:
-- JSON
-- logfmt
-- Regular Expressions
-- unpack
+- [JSON](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries#json)
+- [logfmt](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries#logfmt)
+- [pattern](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries#pattern)
+- [regexp](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries#regular-expression)
+- [unpack](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries#unpack)
 
 In this example, the `json` parser is used to get the parameters `request_method` and `request_uri` and use them to filter log lines:
 
