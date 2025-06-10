@@ -18,7 +18,7 @@ import (
 const arrowTimestampFormat = "2006-01-02T15:04:05.000000000Z"
 
 func TestRangeAggregationPipeline(t *testing.T) {
-	// Create test schema with timestamp, label columns, and non-partition columns
+	// input schema with timestamp, partition-by columns and non-partition columns
 	fields := []arrow.Field{
 		{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
 		{Name: "env", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
@@ -103,10 +103,8 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		"dev,":      1,
 	}
 
-	// Compare results
 	require.Equal(t, int64(len(expected)), record.NumRows(), "number of records should match")
 
-	// Create a map of actual results
 	actual := make(map[string]int64)
 	for i := range int(record.NumRows()) {
 		require.Equal(t, record.Column(0).(*array.Timestamp).Value(i).ToTime(arrow.Nanosecond), now)

@@ -16,35 +16,43 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-type partitionEntry struct {
-	values []string
-	count  int64
-}
-
 type partitionAggregator struct {
 	entries map[uint64]*partitionEntry
 }
 
-func (a *partitionAggregator) add(key uint64, partitionValues []string) {
+type partitionEntry struct {
+	count       int64
+	labelValues []string
+}
+
+func (a *partitionAggregator) Add(key uint64, partitionLabelValues []string) {
 	if entry, ok := a.entries[key]; ok {
 		// TODO: handle hash collisions
 		entry.count++
 	} else {
-		// create a new slice since partitionValues is reused on each row read.
-		values := make([]string, len(partitionValues))
-		for i, v := range partitionValues {
+		// create a new slice since partitionLabelValues is reused by the calling code
+		labelValues := make([]string, len(partitionLabelValues))
+		for i, v := range partitionLabelValues {
 			// copy the value as this is backed by the arrow array data buffer.
 			// We could retain the record to avoid this copy, but that would hold
 			// all other columns in memory for as long as the query is evaluated.
-			values[i] = strings.Clone(v)
+			labelValues[i] = strings.Clone(v)
 		}
 
 		// TODO: add limits on number of partitions
 		a.entries[key] = &partitionEntry{
-			values: values,
-			count:  1,
+			labelValues: labelValues,
+			count:       1,
 		}
 	}
+}
+
+func (a *partitionAggregator) Reset() {
+	clear(a.entries)
+}
+
+func (a *partitionAggregator) NumOfPartitions() int {
+	return len(a.entries)
 }
 
 type rangeAggregationOptions struct {
@@ -60,24 +68,23 @@ type rangeAggregationOptions struct {
 // RangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 // - It reads from the input pipelines
 // - Partitions the data by the specified columns
-// - And counts the number of rows seen by each partition
-// It is used to implement the `count_over_time` function in Loki queries.
-// This version only support instant queries.
+// - Applies the aggregation function on each partition
+// Current version only supports counting for instant queries.
 type RangeAggregationPipeline struct {
-	state       state
-	accumulator *partitionAggregator
+	state  state
+	inputs []Pipeline
 
-	inputs    []Pipeline
-	evaluator *expressionEvaluator
-	opts      rangeAggregationOptions
+	aggregator *partitionAggregator
+	evaluator  *expressionEvaluator // used to evaluate column expressions
+	opts       rangeAggregationOptions
 }
 
 func NewRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
 	return &RangeAggregationPipeline{
-		inputs:      inputs,
-		evaluator:   evaluator,
-		accumulator: &partitionAggregator{entries: make(map[uint64]*partitionEntry)}, // TODO: estimate size during planning
-		opts:        opts,
+		inputs:     inputs,
+		evaluator:  evaluator,
+		aggregator: &partitionAggregator{entries: make(map[uint64]*partitionEntry)}, // TODO: estimate size during planning
+		opts:       opts,
 	}, nil
 }
 
@@ -90,46 +97,49 @@ func (r *RangeAggregationPipeline) Read() error {
 		return r.state.err
 	}
 
+	if r.state.batch != nil {
+		r.state.batch.Release()
+	}
+
 	record, err := r.read()
 	r.state = newState(record, err)
 
 	if err != nil {
-		return fmt.Errorf("read and aggregate inputs: %w", err)
+		return fmt.Errorf("run range aggregation: %w", err)
 	}
 	return nil
 }
 
 // TODOs:
 // - Support implicit partitioning by all labels when partitionBy is empty
-// - Use columnar access pattern. Current approach is row-based which does not benefit from the columnar storage format.
-// - Add toggle to return partial results on Read() call instead of doing it only after exhausing all inputs.
+// - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
+// - Add toggle to return partial results on Read() call instead of returning only after exhausing all inputs.
 func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
-	var isEntryInRange func(t time.Time) bool
-	{
-		evalTs := r.opts.endTs
-		earliestTs := r.opts.endTs.Add(-r.opts.rangeInterval)
-		isEntryInRange = func(t time.Time) bool {
-			// Aggregate entries that belong in [earliestTs, evalTs)
-			return t.Compare(earliestTs) >= 0 && t.Compare(evalTs) < 0
-		}
-	}
-
 	var (
-		// expr to extract the timestamp column from the input records
+		isTSInRange  func(t time.Time) bool
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
 				Type:   types.ColumnTypeBuiltin,
 			},
-		}
+		} // timestamp column expression
 
 		// reused on each row read
-		h         = xxhash.New()
-		lblValues = make([]string, len(r.opts.partitionBy))
+		h           = xxhash.New()
+		labelValues = make([]string, len(r.opts.partitionBy))
 	)
 
+	{
+		evalTs := r.opts.endTs
+		earliestTs := r.opts.endTs.Add(-r.opts.rangeInterval)
+		isTSInRange = func(t time.Time) bool {
+			// Aggregate entries that belong in [earliestTs, evalTs)
+			return t.Compare(earliestTs) >= 0 && t.Compare(evalTs) < 0
+		}
+	}
+
+	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
-	r.accumulator.entries = make(map[uint64]*partitionEntry) // reset accumulator for each read
 	for !inputsExhausted {
 		inputsExhausted = true
 
@@ -141,12 +151,9 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 
 				return nil, err
 			}
-			inputsExhausted = false
 
+			inputsExhausted = false
 			record, _ := input.Value()
-			// We own this record for the duration of this loop iteration
-			// and must release it when we're done processing it
-			defer record.Release()
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
@@ -168,15 +175,15 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 			if err != nil {
 				return nil, err
 			}
-
 			tsCol := vec.ToArray().(*array.Timestamp)
+
 			for row := range int(record.NumRows()) {
-				if !isEntryInRange(tsCol.Value(row).ToTime(arrow.Nanosecond)) {
+				if !isTSInRange(tsCol.Value(row).ToTime(arrow.Nanosecond)) {
 					continue
 				}
 
 				// reset label values and hash for each row
-				clear(lblValues)
+				clear(labelValues)
 				h.Reset()
 
 				for col, arr := range arrays {
@@ -186,19 +193,19 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 
 					v := arr.Value(row)
 					_, _ = h.WriteString(v)
-					lblValues[col] = v
+					labelValues[col] = v
 				}
 
-				r.accumulator.add(h.Sum64(), lblValues)
+				r.aggregator.Add(h.Sum64(), labelValues)
 			}
 		}
 	}
 
-	if len(r.accumulator.entries) == 0 {
-		return nil, EOF // exhausted all inputs and no entries found
+	if r.aggregator.NumOfPartitions() == 0 {
+		return nil, EOF // no values to aggregate & reached EOF
 	}
 
-	// TODO: Schema is static when partitionBy is defined, we can create once and reuse it.
+	// TODO: schema is same for each read call when partitionBy is defined, we can create it once and reuse.
 	fields := make([]arrow.Field, 0, len(r.opts.partitionBy)+2)
 	fields = append(fields,
 		arrow.Field{
@@ -228,17 +235,17 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 			Metadata: datatype.ColumnMetadata(columnExpr.Ref.Type, datatype.String),
 		})
 	}
-	schema := arrow.NewSchema(fields, nil)
 
+	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 	defer rb.Release()
 
 	ts, _ := arrow.TimestampFromTime(r.opts.endTs, arrow.Nanosecond)
-	for _, entry := range r.accumulator.entries {
+	for _, entry := range r.aggregator.entries {
 		rb.Field(0).(*array.TimestampBuilder).Append(ts)
 		rb.Field(1).(*array.Int64Builder).Append(entry.count)
 
-		for col, val := range entry.values {
+		for col, val := range entry.labelValues {
 			builder := rb.Field(col + 2) // offset by 2 as the first 2 fields are timestamp and value
 			if val == "" {
 				builder.(*array.StringBuilder).AppendNull()
