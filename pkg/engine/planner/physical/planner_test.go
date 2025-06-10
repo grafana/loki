@@ -265,6 +265,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 				Right: logical.NewLiteral("users"),
 				Op:    types.BinaryOpEq,
 			},
+			Shard: logical.NewShard(0, 1), // no sharding
 		},
 	).Select(
 		&logical.BinOp{
