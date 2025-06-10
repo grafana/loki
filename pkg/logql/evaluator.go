@@ -1522,27 +1522,26 @@ func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
 		it.err = err
 		return -1
 	}
-
-	var val int
-	metric.Range(func(lbl labels.Label) {
-		if val != -1 {
-			return
-		}
+	for _, lbl := range metric {
 		// TODO: make constant
 		if lbl.Name == constants.VariantLabel {
-			val, err = strconv.Atoi(lbl.Value)
+			val, err := strconv.Atoi(lbl.Value)
 			if err != nil {
-				val = -1
-				return
+				it.err = err
+				return -1
 			}
-		}
-	})
 
-	if val != -1 {
+			return val
+		}
+	}
+
+	if variant := metric.Get(constants.VariantLabel); variant != "" {
+		val, err := strconv.Atoi(variant)
+		if err != nil {
+			it.err = err
+			return -1
+		}
 		return val
-	} else if err != nil {
-		it.err = err
-		return -1
 	}
 
 	it.err = fmt.Errorf("variant label not found in %s", lbls)
