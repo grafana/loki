@@ -3736,3 +3736,11 @@ func TestParseSampleExpr_String(t *testing.T) {
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
 	})
 }
+
+func TestPoyzansQuery(t *testing.T) {
+	t.Run("it parses weird queries", func(t *testing.T) {
+		query := "sum by (cluster, container)(count_over_time({cluster=\"cherre\", container=\"spark-kubernetes-driver\"} | logfmt !~ `(?i)Unable to measure the metadata of` or `(?i)Lost executor` or `(?i)\"errors\": [` | detected_level = `error` | __error__=`` [5m]))"
+		_, err := ParseExpr(query)
+		require.NoError(t, err)
+	})
+}
