@@ -43,6 +43,7 @@ type ringGatherer struct {
 	// Metrics.
 	streams           prometheus.Counter
 	streamsFailed     prometheus.Counter
+	streamsRejected   prometheus.Counter
 	partitionsMissing *prometheus.CounterVec
 }
 
@@ -72,6 +73,12 @@ func newRingGatherer(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_streams_failed_total",
 				Help: "The total number of received streams that could not be checked.",
+			},
+		),
+		streamsRejected: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_rejected_total",
+				Help: "The total number of rejected streams.",
 			},
 		),
 		partitionsMissing: promauto.With(reg).NewCounterVec(
@@ -142,6 +149,9 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 		if len(streams) == 0 {
 			break
 		}
+	}
+	for _, resp := range responses {
+		g.streamsRejected.Add(float64(len(resp.Results)))
 	}
 	g.streamsFailed.Add(float64(len(streams)))
 	return responses, nil
