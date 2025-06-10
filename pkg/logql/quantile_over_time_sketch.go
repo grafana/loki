@@ -238,8 +238,8 @@ func probabilisticQuantileSampleFromProto(proto *logproto.QuantileSketchSample) 
 		return ProbabilisticQuantileSample{}, err
 	}
 	out := ProbabilisticQuantileSample{
-		T:      proto.TimestampMs,
-		F:      s,
+		T: proto.TimestampMs,
+		F: s,
 	}
 
 	b := labels.NewScratchBuilder(len(proto.Metric))

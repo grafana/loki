@@ -3505,9 +3505,13 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 							}
 
 							// Add variant label
-							b := labels.NewBuilder(lbls)
-							b.Set(constants.VariantLabel, fmt.Sprintf("%d", vi))
-							lbls = b.Labels()
+							//b := labels.NewBuilder(lbls)
+							//b.Set(constants.VariantLabel, fmt.Sprintf("%d", vi))
+							//lbls = b.Labels()
+							lbls = append(
+								lbls,
+								labels.Label{Name: constants.VariantLabel, Value: fmt.Sprintf("%d", vi)},
+							)
 
 							// Copy series with new labels
 							idx := vi*len(curSeries) + si

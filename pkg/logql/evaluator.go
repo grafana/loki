@@ -1231,7 +1231,7 @@ func (r *VectorIterator) Next() (bool, int64, StepResult) {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
-	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
+	vectorPoint := promql.Sample{T: r.currentMs, F: r.val, Metric: labels.EmptyLabels()}
 	results = append(results, vectorPoint)
 	return true, r.currentMs, SampleVector(results)
 }
