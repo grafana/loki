@@ -51,7 +51,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 		request: httpExceedsLimitsRequest{
@@ -64,7 +64,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 		expected: httpExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}}
