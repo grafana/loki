@@ -18,7 +18,7 @@ There are two methods for authenticating and connecting Loki to GCP GCS. We will
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **29th of April, 2025**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [GCP GCS documentation](https://cloud.google.com/storage/docs/introduction) before creating your buckets and assigning roles.
+This guide was accurate at the time it was last updated on **10th of June, 2025**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [GCP GCS documentation](https://cloud.google.com/storage/docs/introduction) before creating your buckets and assigning roles.
 {{< /admonition >}}
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the GCS bucket. You may wish to add more granular permissions based on your requirements.
