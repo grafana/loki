@@ -125,7 +125,7 @@ to this much more readable line in the results:
 There are two types of LogQL queries:
 
 - [Log queries]({{< relref "./log_queries" >}}) return the contents of log lines.
-- [Metric queries]({{< relref "./metric_queries" >}}) return number or vectors of numbers.
+- [Metric queries]({{< relref "./metric_queries" >}}) let you create metrics from logs.
 
 Log queries are queries whose output remains strings, structured or otherwise. They use the log stream selector and log pipeline construction and can be chained together to create longer log queries.
 
