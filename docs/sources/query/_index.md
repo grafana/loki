@@ -53,7 +53,7 @@ The log stream selector, also called label selector, is a string containing key-
 The unique combination of all these pairs is called a *stream*. The goal of the log stream selector is to narrow down the data set to be processed and filtered in the log pipeline by using either predetermined (in the Loki config) or automatically detected labels.
 
 {{< admonition type="tip" >}}
-`service_name` is a default label that Loki creates and tries to populate with something in the log line that looks like a service name. This is to enforce the good practice of having standardization in log labels. However, the default can be changed in Loki configuration.
+`service_name` is a [default label](https://grafana.com/docs/loki/latest/get-started/labels/#default-labels-for-all-users) that Loki creates and tries to populate with something in the log line that looks like a service name. The service name label is used to find and explore logs in [Logs Drilldown](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/). However, the default can be changed in [Loki configuration](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/).
 {{< /admonition >}}
 
 The following operators can be used in the log stream selector:
