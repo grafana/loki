@@ -64,8 +64,10 @@ type streamUsage struct {
 	// TODO(grobinson): This is a quick fix to allow us to keep testing
 	// correctness.
 	lastProducedAt int64
-	totalSize      uint64
-	rateBuckets    []rateBucket
+	// TODO(grobinson): Rate buckets are not used as we have decided to defer
+	// implementing rate limits to a later date in the future.
+	totalSize   uint64
+	rateBuckets []rateBucket
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -336,7 +338,7 @@ func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint6
 
 func (s *usageStore) update(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition)
-	streamHash, totalSize := metadata.StreamHash, metadata.TotalSize
+	streamHash, _ := metadata.StreamHash, metadata.TotalSize
 	// Get the stats for the stream.
 	stream, ok := s.stripes[i][tenant][partition][streamHash]
 	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
@@ -344,28 +346,30 @@ func (s *usageStore) update(i int, tenant string, partition int32, metadata *pro
 	if !ok || stream.lastSeenAt < cutoff {
 		stream.hash = streamHash
 		stream.totalSize = 0
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano
 	}
-	stream.totalSize += totalSize
+	// TODO(grobinson): As mentioned above, we will come back and implement
+	// rate limits at a later date in the future.
+	// stream.totalSize += totalSize
 	// rate buckets are implemented as a circular list. To update a rate
 	// bucket we must first calculate the bucket index.
-	bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	bucketIdx := int(bucketNum % int64(s.numBuckets))
-	bucket := stream.rateBuckets[bucketIdx]
+	// bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	// bucketIdx := int(bucketNum % int64(s.numBuckets))
+	// bucket := stream.rateBuckets[bucketIdx]
 	// Once we have found the bucket, we then need to check if it is an old
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
-	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	if bucket.timestamp < bucketStart {
-		bucket.timestamp = bucketStart
-		bucket.size = 0
-	}
-	bucket.size += totalSize
-	stream.rateBuckets[bucketIdx] = bucket
+	// bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	// if bucket.timestamp < bucketStart {
+	// bucket.timestamp = bucketStart
+	// bucket.size = 0
+	// }
+	// bucket.size += totalSize
+	// stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][streamHash] = stream
 }
 
