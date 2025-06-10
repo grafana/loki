@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"iter"
 	"sync"
 	"time"
 
@@ -99,86 +100,97 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s, nil
 }
 
-// Iter iterates all active streams and calls f for each iterated stream.
-// As this method acquires a read lock, f must not block.
-func (s *usageStore) Iter(f iterateFunc) {
+// ActiveStreams returns an iterator over all active streams. As this method
+// acquires a read lock, the iterator must not block.
+func (s *usageStore) ActiveStreams() iter.Seq2[string, streamUsage] {
 	// To prevent time moving forward while iterating, use the current time
 	// to check the active and rate window.
 	var (
-		now                = s.clock.Now()
-		withinActiveWindow = s.newActiveWindowFunc(now)
-		withinRateWindow   = s.newRateWindowFunc(now)
+		now            = s.clock.Now()
+		inActiveWindow = newActiveWindowFunc(s.activeWindow, now)
+		inRateWindow   = newRateWindowFunc(s.rateWindow, now)
 	)
-	s.forEachRLock(func(i int) {
-		for tenant, partitions := range s.stripes[i] {
-			for partition, streams := range partitions {
-				for _, stream := range streams {
-					if withinActiveWindow(stream.lastSeenAt) {
-						stream.rateBuckets = getActiveRateBuckets(
-							stream.rateBuckets,
-							withinRateWindow,
-						)
-						f(tenant, partition, stream)
+	return func(yield func(string, streamUsage) bool) {
+		s.forEachRLock(func(i int) {
+			for tenant, partitions := range s.stripes[i] {
+				for _, streams := range partitions {
+					for _, stream := range streams {
+						if inActiveWindow(stream.lastSeenAt) {
+							stream.rateBuckets = rateBucketsInWindow(
+								stream.rateBuckets,
+								inRateWindow,
+							)
+							if !yield(tenant, stream) {
+								return
+							}
+						}
 					}
 				}
 			}
-		}
-	})
+		})
+	}
 }
 
-// IterTenant iterates all active streams for the tenant and calls f for
-// each iterated stream. As this method acquires a read lock, f must not
-// block.
-func (s *usageStore) IterTenant(tenant string, f iterateFunc) {
+// TenantActiveStreams returns an iterator over all active streams for the
+// tenant. As this method acquires a read lock, the iterator must not block.
+func (s *usageStore) TenantActiveStreams(tenant string) iter.Seq2[string, streamUsage] {
 	// To prevent time moving forward while iterating, use the current time
 	// to check the active and rate window.
 	var (
-		now                = s.clock.Now()
-		withinActiveWindow = s.newActiveWindowFunc(now)
-		withinRateWindow   = s.newRateWindowFunc(now)
+		now            = s.clock.Now()
+		inActiveWindow = newActiveWindowFunc(s.activeWindow, now)
+		inRateWindow   = newRateWindowFunc(s.rateWindow, now)
 	)
-	s.withRLock(tenant, func(i int) {
-		for partition, streams := range s.stripes[i][tenant] {
-			for _, stream := range streams {
-				if withinActiveWindow(stream.lastSeenAt) {
-					stream.rateBuckets = getActiveRateBuckets(
-						stream.rateBuckets,
-						withinRateWindow,
-					)
-					f(tenant, partition, stream)
+	return func(yield func(string, streamUsage) bool) {
+		s.withRLock(tenant, func(i int) {
+			for _, streams := range s.stripes[i][tenant] {
+				for _, stream := range streams {
+					if inActiveWindow(stream.lastSeenAt) {
+						stream.rateBuckets = rateBucketsInWindow(
+							stream.rateBuckets,
+							inRateWindow,
+						)
+						if !yield(tenant, stream) {
+							return
+						}
+					}
 				}
 			}
-		}
-	})
+		})
+	}
 }
 
 // Get returns the stream for the tenant. It returns false if the stream has
 // expired or does not exist.
 func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
 	var (
-		now                = s.clock.Now()
-		withinActiveWindow = s.newActiveWindowFunc(now)
-		withinRateWindow   = s.newRateWindowFunc(now)
-		partition          = s.getPartitionForHash(streamHash)
-		stream             streamUsage
-		ok                 bool
+		now            = s.clock.Now()
+		inActiveWindow = newActiveWindowFunc(s.activeWindow, now)
+		inRateWindow   = newRateWindowFunc(s.rateWindow, now)
+		partition      = s.getPartitionForHash(streamHash)
+		stream         streamUsage
+		ok             bool
 	)
 	s.withRLock(tenant, func(i int) {
 		stream, ok = s.get(i, tenant, partition, streamHash)
 		if !ok {
 			return
 		}
-		if !withinActiveWindow(stream.lastSeenAt) {
+		if !inActiveWindow(stream.lastSeenAt) {
 			ok = false
 			return
 		}
-		stream.rateBuckets = getActiveRateBuckets(stream.rateBuckets, withinRateWindow)
+		stream.rateBuckets = rateBucketsInWindow(stream.rateBuckets, inRateWindow)
 	})
 	return stream, ok
 }
 
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
-	if !s.withinActiveWindow(seenAt.UnixNano()) {
+	var (
+		now            = s.clock.Now()
+		inActiveWindow = newActiveWindowFunc(s.activeWindow, now)
+	)
+	if !inActiveWindow(seenAt.UnixNano()) {
 		return errOutsideActiveWindow
 	}
 	partition := s.getPartitionForHash(metadata.StreamHash)
@@ -189,7 +201,11 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 }
 
 func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
-	if !s.withinActiveWindow(seenAt.UnixNano()) {
+	var (
+		now            = s.clock.Now()
+		inActiveWindow = newActiveWindowFunc(s.activeWindow, now)
+	)
+	if !inActiveWindow(seenAt.UnixNano()) {
 		return nil, nil, errOutsideActiveWindow
 	}
 	var (
@@ -404,34 +420,6 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 	return int32(hash % uint64(s.numPartitions))
 }
 
-// withinActiveWindow returns true if t is within the active window.
-func (s *usageStore) withinActiveWindow(t int64) bool {
-	return s.clock.Now().Add(-s.activeWindow).UnixNano() <= t
-}
-
-// newActiveWindowFunc returns a func that returns true if t is within
-// the active window. It memoizes the start of the active time window.
-func (s *usageStore) newActiveWindowFunc(now time.Time) func(t int64) bool {
-	activeWindowStart := now.Add(-s.activeWindow).UnixNano()
-	return func(t int64) bool {
-		return activeWindowStart <= t
-	}
-}
-
-// withinRateWindow returns true if t is within the rate window.
-func (s *usageStore) withinRateWindow(t int64) bool {
-	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
-}
-
-// newRateWindowFunc returns a func that returns true if t is within
-// the rate window. It memoizes the start of the rate time window.
-func (s *usageStore) newRateWindowFunc(now time.Time) func(t int64) bool {
-	rateWindowStart := now.Add(-s.rateWindow).UnixNano()
-	return func(t int64) bool {
-		return rateWindowStart <= t
-	}
-}
-
 // checkInitMap checks if the maps for the tenant and partition are
 // initialized, and if not, initializes them. It must not be called without
 // the stripe lock for i.
@@ -460,8 +448,8 @@ func (s *usageStore) setForTests(tenant string, stream streamUsage) {
 	})
 }
 
-// getActiveRateBuckets returns the buckets within the active window.
-func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) bool) []rateBucket {
+// rateBucketsInWindow returns the buckets within the rate window.
+func rateBucketsInWindow(buckets []rateBucket, withinRateWindow func(int64) bool) []rateBucket {
 	result := make([]rateBucket, 0, len(buckets))
 	for _, bucket := range buckets {
 		if withinRateWindow(bucket.timestamp) {
@@ -469,4 +457,32 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
+}
+
+// newActiveWindowFunc returns a func that returns true if t is within
+// the active window. It memoizes the start of the active time window.
+func newActiveWindowFunc(activeWindow time.Duration, now time.Time) func(t int64) bool {
+	activeWindowStart := now.Add(-activeWindow).UnixNano()
+	return func(t int64) bool {
+		return activeWindowStart <= t
+	}
+}
+
+// inActiveWindow returns true if t is within the active window.
+func inActiveWindow(now time.Time, activeWindow time.Duration, t int64) bool {
+	return now.Add(-activeWindow).UnixNano() <= t
+}
+
+// newRateWindowFunc returns a func that returns true if t is within
+// the rate window. It memoizes the start of the rate time window.
+func newRateWindowFunc(rateWindow time.Duration, now time.Time) func(t int64) bool {
+	rateWindowStart := now.Add(-rateWindow).UnixNano()
+	return func(t int64) bool {
+		return rateWindowStart <= t
+	}
+}
+
+// inRateWindow returns true if t is within the rate window.
+func inRateWindow(now time.Time, rateWindow time.Duration, t int64) bool {
+	return now.Add(-rateWindow).UnixNano() <= t
 }
