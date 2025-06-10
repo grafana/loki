@@ -7,7 +7,7 @@ keywords:
 
 # Deploy the Loki Helm chart on GCP
 
-This guide shows how to deploy a minimally viable Loki in **microservice** mode on Google Cloud Platform (GCP) using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on GCP, such as:
+This guide shows how to deploy a minimally viable Loki in **microservices** mode on Google Cloud Platform (GCP) using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on GCP, such as:
 
 - Full access to Google Kubernetes Engine (GKE)
 - Full access to Google Cloud Storage (GCS)
