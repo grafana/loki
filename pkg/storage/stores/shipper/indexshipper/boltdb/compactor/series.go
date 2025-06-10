@@ -95,17 +95,16 @@ Outer:
 			k := newUserSeries(ref.SeriesID, ref.UserID)
 			lbs = &seriesLabels{
 				userSeries: k,
-				lbs:        make(labels.Labels, 0, 15),
+				lbs:        labels.EmptyLabels(), // Buffer 15
 			}
 			sm.mapping[k.Key()] = lbs
 		}
 		// add the labels if it doesn't exist.
-		for _, l := range lbs.lbs {
-			if l.Name == unsafeGetString(ref.Name) {
-				continue Outer
-			}
+		if lbs.lbs.Has(unsafeGetString(ref.Name)) {
+			continue Outer
 		}
-		lbs.lbs = append(lbs.lbs, labels.Label{Name: string(ref.Name), Value: string(v)})
+		// TODO: Slow. Use scratch builder per series.
+		lbs.lbs = labels.NewBuilder(lbs.lbs).Set(string(ref.Name), string(v)).Labels()
 	}
 	return nil
 }
