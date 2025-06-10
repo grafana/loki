@@ -59,10 +59,13 @@ type tenantUsage map[int32]map[uint64]streamUsage
 // It contains the minimal information to count per tenant active streams and
 // rate limits.
 type streamUsage struct {
-	hash        uint64
-	lastSeenAt  int64
-	totalSize   uint64
-	rateBuckets []rateBucket
+	hash       uint64
+	lastSeenAt int64
+	// TODO(grobinson): This is a quick fix to allow us to keep testing
+	// correctness.
+	lastProducedAt int64
+	totalSize      uint64
+	rateBuckets    []rateBucket
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -188,11 +191,13 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
+func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, []*proto.StreamMetadata, error) {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
-		return nil, nil, errOutsideActiveWindow
+		return nil, nil, nil, errOutsideActiveWindow
 	}
 	var (
+		now        = s.clock.Now()
+		toProduce  = make([]*proto.StreamMetadata, 0, len(metadata))
 		accepted   = make([]*proto.StreamMetadata, 0, len(metadata))
 		rejected   = make([]*proto.StreamMetadata, 0, len(metadata))
 		cutoff     = seenAt.Add(-s.activeWindow).UnixNano()
@@ -226,10 +231,16 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				}
 			}
 			s.update(i, tenant, partition, m, seenAt)
+			// Hard-coded produce cutoff of 1 minute.
+			produceCutoff := now.Add(-time.Minute).UnixNano()
+			if stream.lastProducedAt < produceCutoff {
+				s.setLastProducedAt(i, tenant, partition, m.StreamHash, now)
+				toProduce = append(toProduce, m)
+			}
 			accepted = append(accepted, m)
 		}
 	})
-	return accepted, rejected, nil
+	return toProduce, accepted, rejected, nil
 }
 
 // Evict evicts all streams that have not been seen within the window.
@@ -355,6 +366,12 @@ func (s *usageStore) update(i int, tenant string, partition int32, metadata *pro
 	}
 	bucket.size += totalSize
 	stream.rateBuckets[bucketIdx] = bucket
+	s.stripes[i][tenant][partition][streamHash] = stream
+}
+
+func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, streamHash uint64, now time.Time) {
+	stream := s.stripes[i][tenant][partition][streamHash]
+	stream.lastProducedAt = now.UnixNano()
 	s.stripes[i][tenant][partition][streamHash] = stream
 }
 

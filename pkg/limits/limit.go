@@ -73,21 +73,22 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	}
 	streams = streams[:valid]
 
-	accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now(), c.limits)
+	toProduce, accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now(), c.limits)
 	if err != nil {
 		return nil, err
 	}
 
-	var ingestedBytes uint64
-	for _, stream := range accepted {
-		ingestedBytes += stream.TotalSize
-
+	for _, stream := range toProduce {
 		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
 		}
 	}
 
+	var ingestedBytes uint64
+	for _, stream := range accepted {
+		ingestedBytes += stream.TotalSize
+	}
 	c.tenantIngestedBytesTotal.WithLabelValues(req.Tenant).Add(float64(ingestedBytes))
 
 	results := make([]*proto.ExceedsLimitsResult, 0, len(rejected))
