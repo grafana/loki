@@ -535,8 +535,8 @@ kubectl get svc -n loki
 You should see the Loki Gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console
-  NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)              AGE
-loki-gateway                   LoadBalancer   34.118.239.140   34.91.203.240   80:30566/TCP                 25m
+NAME           TYPE           CLUSTER-IP       EXTERNAL-IP     PORT(S)        AGE
+loki-gateway   LoadBalancer   34.118.239.140   34.91.203.240   80:30566/TCP   25m
 ```
 
 In this case, the external IP address is `34.91.203.240`.
