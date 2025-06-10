@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.4.4](https://github.com/grafana/loki/compare/v3.4.3...v3.4.4) (2025-06-09)
+
+
+### Features
+
+* LID for query splitting (backport release-3.4.x) ([#17378](https://github.com/grafana/loki/issues/17378)) ([2cb5ad7](https://github.com/grafana/loki/commit/2cb5ad7c7cc18f423473ce670ad66a6c4e33f49a))
+
+
+### Bug Fixes
+
+* **ci:** Update release code 3.4 ([#18015](https://github.com/grafana/loki/issues/18015)) ([4108c5d](https://github.com/grafana/loki/commit/4108c5d6f23d8daf54376ab9a3bb126a597af933))
+* **deps:** Move to Go 1.23.8 ([#17806](https://github.com/grafana/loki/issues/17806)) ([2e18686](https://github.com/grafana/loki/commit/2e186867b34af5d34fe79b4e2909611ea6c17c73))
+* **deps:** update module golang.org/x/net to v0.38.0 [security] (release-3.4.x) ([#17273](https://github.com/grafana/loki/issues/17273)) ([57cd6ce](https://github.com/grafana/loki/commit/57cd6ce4d14439aab277944502851cfccc5e7f06))
+* **docs:** Update configuration.md (backport release-3.4.x) ([#17298](https://github.com/grafana/loki/issues/17298)) ([cc8db57](https://github.com/grafana/loki/commit/cc8db57f1576a7444b001fe466cb06a3698ffa67))
+
 ## [3.4.3](https://github.com/grafana/loki/compare/v3.4.2...v3.4.3) (2025-04-03)
 
 
