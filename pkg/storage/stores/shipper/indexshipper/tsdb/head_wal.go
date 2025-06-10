@@ -229,7 +229,7 @@ func (w *headWAL) Log(record *WALRecord) error {
 	var buf []byte
 
 	// Always write series before chunks
-	if len(record.Series.Labels) > 0 {
+	if !record.Series.Labels.IsEmpty() {
 		buf = record.encodeSeriesWithFingerprint(buf[:0])
 		if err := w.wal.Log(buf); err != nil {
 			return err

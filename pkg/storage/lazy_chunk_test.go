@@ -76,7 +76,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.FromStrings("foo", "bar")), nil)
 				require.Nil(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				require.Nil(t, err)

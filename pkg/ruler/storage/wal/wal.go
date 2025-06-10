@@ -565,7 +565,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 		// Ensure no empty or duplicate labels have gotten through. This mirrors the
 		// equivalent validation code in the TSDB's headAppender.
 		l = l.WithoutEmpty()
-		if len(l) == 0 {
+		if l.IsEmpty() {
 			return 0, errors.Wrap(tsdb.ErrInvalidSample, "empty labelset")
 		}
 
@@ -632,13 +632,22 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 	// Exemplar label length does not include chars involved in text rendering such as quotes
 	// equals sign, or commas. See definition of const ExemplarMaxLabelLength.
 	labelSetLen := 0
-	for _, l := range e.Labels {
+	var err error
+	e.Labels.Range(func(l labels.Label) {
+		if err != nil {
+			return
+		}
+
 		labelSetLen += utf8.RuneCountInString(l.Name)
 		labelSetLen += utf8.RuneCountInString(l.Value)
 
 		if labelSetLen > exemplar.ExemplarMaxLabelSetLength {
-			return 0, storage.ErrExemplarLabelLength
+			err = storage.ErrExemplarLabelLength
 		}
+	})
+
+	if err != nil {
+		return 0, err
 	}
 
 	a.exemplars = append(a.exemplars, record.RefExemplar{

@@ -1117,11 +1117,11 @@ const (
 )
 
 var (
-	labelsForDummyChunks = labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	}
+	labelsForDummyChunks = labels.FromStrings(
+		labels.MetricName, "foo",
+		"bar", "baz",
+		"toms", "code",
+	)
 )
 
 func TestChunkKeys(t *testing.T) {

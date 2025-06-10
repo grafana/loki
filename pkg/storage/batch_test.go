@@ -1658,7 +1658,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				ctx:      ctx,
 				pipeline: log.NewNoopPipeline(),
 			}
-			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.FromStrings("foo", "bar")), nil)
 			if err != nil {
 				t.Errorf("buildMergeIterator error = %v", err)
 				return

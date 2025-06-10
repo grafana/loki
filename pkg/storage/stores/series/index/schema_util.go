@@ -19,7 +19,7 @@ import (
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
 	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && len(ls) == 1 {
+	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
 	var b strings.Builder
@@ -28,9 +28,9 @@ func labelsString(ls labels.Labels) string {
 	b.WriteString(metricName)
 	b.WriteByte('{')
 	i := 0
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			continue
+			return
 		}
 		if i > 0 {
 			b.WriteByte(',')
@@ -41,7 +41,7 @@ func labelsString(ls labels.Labels) string {
 		var buf [1000]byte
 		b.Write(strconv.AppendQuote(buf[:0], l.Value))
 		i++
-	}
+	})
 	b.WriteByte('}')
 
 	return b.String()
