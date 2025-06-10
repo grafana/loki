@@ -1522,18 +1522,6 @@ func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
 		it.err = err
 		return -1
 	}
-	for _, lbl := range metric {
-		// TODO: make constant
-		if lbl.Name == constants.VariantLabel {
-			val, err := strconv.Atoi(lbl.Value)
-			if err != nil {
-				it.err = err
-				return -1
-			}
-
-			return val
-		}
-	}
 
 	if variant := metric.Get(constants.VariantLabel); variant != "" {
 		val, err := strconv.Atoi(variant)
