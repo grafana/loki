@@ -26,9 +26,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 			Timestamp:          time.Unix(0, exp[i].t),
 			Line:               exp[i].s,
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
-		}
-		if exp[i].structuredMetadata.IsEmpty() {
-			expected.StructuredMetadata = nil
+			Parsed:             logproto.EmptyLabelAdapters(),
 		}
 		require.Equal(t, expected, got.At())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
@@ -297,7 +295,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 }
 
 func TestHeadBlockInterop(t *testing.T) {
-	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil), &headBlock{}
+	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
 		metaLabels := labels.FromStrings("foo", fmt.Sprint(99-i))
@@ -326,29 +324,31 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Equal(t, ordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt, newSymbolizer())
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock with structured metadata
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
+	symbolizer := newSymbolizer()
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, symbolizer)
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
-		format: UnorderedWithStructuredMetadataHeadBlockFmt,
-		rt:     unordered.rt,
-		lines:  unordered.lines,
-		size:   unordered.size,
-		mint:   unordered.mint,
-		maxt:   unordered.maxt,
+		format:     UnorderedWithStructuredMetadataHeadBlockFmt,
+		rt:         unordered.rt,
+		lines:      unordered.lines,
+		size:       unordered.size,
+		mint:       unordered.mint,
+		maxt:       unordered.maxt,
+		symbolizer: symbolizer,
 	}, recovered)
 
 	// Ensure we can recover unordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, newSymbolizer())
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
 	// Ensure trying to recover unordered checkpoint into unordered with structured metadata keeps it in unordered format
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	require.NoError(t, err)
 	require.Equal(t, unordered, recovered)
 
@@ -480,6 +480,10 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(t, err)
+	countExtractor := extractors[0]
+
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),
@@ -525,6 +529,10 @@ func BenchmarkUnorderedRead(b *testing.B) {
 			c:    unordered,
 		},
 	}
+
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(b, err)
+	countExtractor := extractors[0]
 
 	b.Run("itr", func(b *testing.B) {
 		for _, tc := range tcs {
@@ -590,6 +598,10 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
+
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(t, err)
+	countExtractor := extractors[0]
 	smpl := c.SampleIterator(
 		context.Background(),
 		time.Unix(0, 0),
@@ -715,20 +727,24 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 	exp := []entry{
 		{
-			t: time.Unix(1, 0).UnixNano(),
-			s: "1",
+			t:                  time.Unix(1, 0).UnixNano(),
+			s:                  "1",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(3, 0).UnixNano(),
-			s: "3",
+			t:                  time.Unix(3, 0).UnixNano(),
+			s:                  "3",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(5, 0).UnixNano(),
-			s: "5",
+			t:                  time.Unix(5, 0).UnixNano(),
+			s:                  "5",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 		{
-			t: time.Unix(7, 0).UnixNano(),
-			s: "7",
+			t:                  time.Unix(7, 0).UnixNano(),
+			s:                  "7",
+			structuredMetadata: labels.EmptyLabels(),
 		},
 	}
 	iterEq(t, exp, itr)
@@ -742,7 +758,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 	require.NoError(t, err)
 
 	for name, b := range map[string]HeadBlock{
-		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
+		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()),
 		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
 		"ordered":                            &headBlock{},
 	} {

@@ -296,6 +296,13 @@ func (pr *pageReader) Close() error {
 		pr.closer = nil
 		return err
 	}
+
+	// After closing the reader, we reset the valuesReader to make sure it isn't
+	// holding onto the reference to pr.closer.
+	if pr.valuesReader != nil {
+		pr.valuesReader.Reset(nil)
+	}
+
 	return nil
 }
 

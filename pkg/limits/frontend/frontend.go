@@ -55,7 +55,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	} else {
 		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
 	}
-	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger)
+	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
 
 	f := &Frontend{
 		cfg:                     cfg,
@@ -89,7 +89,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	resps, err := f.gatherer.exceedsLimits(ctx, req)
+	resps, err := f.gatherer.ExceedsLimits(ctx, req)
 	if err != nil {
 		return nil, err
 	}

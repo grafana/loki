@@ -8,12 +8,13 @@ import (
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
 type nodeCollectVisitor struct {
-	visited            []string
-	onVisitDataObjScan func(*DataObjScan) error
-	onVisitFilter      func(*Filter) error
-	onVisitLimit       func(*Limit) error
-	onVisitSortMerge   func(*SortMerge) error
-	onVisitProjection  func(*Projection) error
+	visited                 []string
+	onVisitDataObjScan      func(*DataObjScan) error
+	onVisitFilter           func(*Filter) error
+	onVisitLimit            func(*Limit) error
+	onVisitSortMerge        func(*SortMerge) error
+	onVisitProjection       func(*Projection) error
+	onVisitRangeAggregation func(*RangeAggregation) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
@@ -52,6 +53,15 @@ func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
 	if v.onVisitSortMerge != nil {
 		return v.onVisitSortMerge(n)
 	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitRangeAggregation(n *RangeAggregation) error {
+	if v.onVisitRangeAggregation != nil {
+		return v.onVisitRangeAggregation(n)
+	}
+
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }

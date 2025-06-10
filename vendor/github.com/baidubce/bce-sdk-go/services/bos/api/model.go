@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"io"
 )
 
@@ -686,6 +687,7 @@ type BucketTag struct {
 type BosContext struct {
 	Bucket          string
 	PathStyleEnable bool
+	Ctx             context.Context
 }
 
 type PutObjectTagArgs struct {

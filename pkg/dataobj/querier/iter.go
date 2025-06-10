@@ -251,11 +251,8 @@ func newSampleIterator(ctx context.Context,
 				// Process the record
 				timestamp := record.Timestamp.UnixNano()
 
-				// TODO(twhitney): when iterating over multiple extractors, we need a way to pre-process as much of the line as possible
-				// In the case of multi-variant expressions, the only difference between the multiple extractors should be the final value, with all
-				// other filters and processing already done.
 				statistics.AddDecompressedLines(1)
-				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata...)
+				samples, ok := streamExtractor.Process(timestamp, record.Line, record.Metadata)
 				if !ok {
 					continue
 				}

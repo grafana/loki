@@ -58,7 +58,7 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 
 		for _, extractor := range e.extractors {
-			samples, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+			samples, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 			if !ok || len(samples) == 0 {
 				continue
 			}
@@ -85,16 +85,6 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 	}
 
 	return false
-}
-
-func (e *multiExtractorSampleBufferedIterator) Close() error {
-	for _, extractor := range e.extractors {
-		if extractor.ReferencedStructuredMetadata() {
-			e.stats.SetQueryReferencedStructuredMetadata()
-		}
-	}
-
-	return e.bufferedIterator.Close()
 }
 
 func (e *multiExtractorSampleBufferedIterator) Labels() string { return e.currLabels[0].String() }

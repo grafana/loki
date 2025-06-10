@@ -10,9 +10,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
@@ -193,10 +194,8 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	}()
 
 	start := time.Now()
-	span := opentracing.SpanFromContext(ctx)
-	if span != nil {
-		span.LogKV("msg", "processing streams", "total_readers", len(readers))
-	}
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent("processing streams", trace.WithAttributes(attribute.Int("total_readers", len(readers))))
 	level.Debug(sp.logger).Log("msg", "processing streams", "total_readers", len(readers))
 
 	// set predicate on all readers
@@ -210,8 +209,9 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	var processedStreams atomic.Int64
 	for _, reader := range readers {
 		g.Go(func() error {
-			span, ctx := opentracing.StartSpanFromContext(ctx, "streamProcessor.processSingleReader")
-			defer span.Finish()
+			ctx, span := tracer.Start(ctx, "streamProcessor.processSingleReader")
+			defer span.End()
+
 			n, err := sp.processSingleReader(ctx, reader, onNewStream)
 			if err != nil {
 				return err
@@ -230,9 +230,11 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 		"total_streams_processed", processedStreams.Load(),
 		"duration", time.Since(start),
 	)
-	if span != nil {
-		span.LogKV("msg", "streamProcessor.ProcessParallel done", "total_readers", len(readers), "total_streams_processed", processedStreams.Load(), "duration", time.Since(start))
-	}
+	span.AddEvent("streamProcessor.ProcessParallel done", trace.WithAttributes(
+		attribute.Int("total_readers", len(readers)),
+		attribute.Int64("total_streams_processed", processedStreams.Load()),
+		attribute.String("duration", time.Since(start).String()),
+	))
 
 	return nil
 }
@@ -284,10 +286,10 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 
 // shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
 func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard) ([]*streams.RowReader, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "shardStreamReaders")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "shardStreamReaders")
+	defer span.End()
 
-	span.SetTag("objects", len(objects))
+	span.SetAttributes(attribute.Int("objects", len(objects)))
 
 	var (
 		// sectionIndex tracks the global section number across all objects to ensure consistent sharding
@@ -329,6 +331,8 @@ func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard
 		sectionIndex++
 	}
 
-	span.LogKV("msg", "shardStreamReaders done", "readers", len(readers))
+	span.AddEvent("shardStreamReaders done", trace.WithAttributes(
+		attribute.Int("readers", len(readers)),
+	))
 	return readers, nil
 }
