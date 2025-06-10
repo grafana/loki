@@ -291,9 +291,9 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	require.NoError(t, err)
 
 	catalog := &catalog{
-		streamsByObject: map[string][]int64{
-			"obj1": {1, 2},
-			"obj2": {3, 4},
+		streamsByObject: map[string]objectMeta{
+			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
+			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
 		},
 	}
 	planner := NewPlanner(catalog)
