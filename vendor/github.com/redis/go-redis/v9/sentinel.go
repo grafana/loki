@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -220,6 +222,146 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 	}
 }
 
+// ParseFailoverURL parses a URL into FailoverOptions that can be used to connect to Redis.
+// The URL must be in the form:
+//
+//	redis://<user>:<password>@<host>:<port>/<db_number>
+//	or
+//	rediss://<user>:<password>@<host>:<port>/<db_number>
+//
+// To add additional addresses, specify the query parameter, "addr" one or more times. e.g:
+//
+//	redis://<user>:<password>@<host>:<port>/<db_number>?addr=<host2>:<port2>&addr=<host3>:<port3>
+//	or
+//	rediss://<user>:<password>@<host>:<port>/<db_number>?addr=<host2>:<port2>&addr=<host3>:<port3>
+//
+// Most Option fields can be set using query parameters, with the following restrictions:
+//   - field names are mapped using snake-case conversion: to set MaxRetries, use max_retries
+//   - only scalar type fields are supported (bool, int, time.Duration)
+//   - for time.Duration fields, values must be a valid input for time.ParseDuration();
+//     additionally a plain integer as value (i.e. without unit) is interpreted as seconds
+//   - to disable a duration field, use value less than or equal to 0; to use the default
+//     value, leave the value blank or remove the parameter
+//   - only the last value is interpreted if a parameter is given multiple times
+//   - fields "network", "addr", "sentinel_username" and "sentinel_password" can only be set using other
+//     URL attributes (scheme, host, userinfo, resp.), query parameters using these
+//     names will be treated as unknown parameters
+//   - unknown parameter names will result in an error
+//
+// Example:
+//
+//	redis://user:password@localhost:6789?master_name=mymaster&dial_timeout=3&read_timeout=6s&addr=localhost:6790&addr=localhost:6791
+//	is equivalent to:
+//	&FailoverOptions{
+//		MasterName:  "mymaster",
+//		Addr:        ["localhost:6789", "localhost:6790", "localhost:6791"]
+//		DialTimeout: 3 * time.Second, // no time unit = seconds
+//		ReadTimeout: 6 * time.Second,
+//	}
+func ParseFailoverURL(redisURL string) (*FailoverOptions, error) {
+	u, err := url.Parse(redisURL)
+	if err != nil {
+		return nil, err
+	}
+	return setupFailoverConn(u)
+}
+
+func setupFailoverConn(u *url.URL) (*FailoverOptions, error) {
+	o := &FailoverOptions{}
+
+	o.SentinelUsername, o.SentinelPassword = getUserPassword(u)
+
+	h, p := getHostPortWithDefaults(u)
+	o.SentinelAddrs = append(o.SentinelAddrs, net.JoinHostPort(h, p))
+
+	switch u.Scheme {
+	case "rediss":
+		o.TLSConfig = &tls.Config{ServerName: h, MinVersion: tls.VersionTLS12}
+	case "redis":
+		o.TLSConfig = nil
+	default:
+		return nil, fmt.Errorf("redis: invalid URL scheme: %s", u.Scheme)
+	}
+
+	f := strings.FieldsFunc(u.Path, func(r rune) bool {
+		return r == '/'
+	})
+	switch len(f) {
+	case 0:
+		o.DB = 0
+	case 1:
+		var err error
+		if o.DB, err = strconv.Atoi(f[0]); err != nil {
+			return nil, fmt.Errorf("redis: invalid database number: %q", f[0])
+		}
+	default:
+		return nil, fmt.Errorf("redis: invalid URL path: %s", u.Path)
+	}
+
+	return setupFailoverConnParams(u, o)
+}
+
+func setupFailoverConnParams(u *url.URL, o *FailoverOptions) (*FailoverOptions, error) {
+	q := queryOptions{q: u.Query()}
+
+	o.MasterName = q.string("master_name")
+	o.ClientName = q.string("client_name")
+	o.RouteByLatency = q.bool("route_by_latency")
+	o.RouteRandomly = q.bool("route_randomly")
+	o.ReplicaOnly = q.bool("replica_only")
+	o.UseDisconnectedReplicas = q.bool("use_disconnected_replicas")
+	o.Protocol = q.int("protocol")
+	o.Username = q.string("username")
+	o.Password = q.string("password")
+	o.MaxRetries = q.int("max_retries")
+	o.MinRetryBackoff = q.duration("min_retry_backoff")
+	o.MaxRetryBackoff = q.duration("max_retry_backoff")
+	o.DialTimeout = q.duration("dial_timeout")
+	o.ReadTimeout = q.duration("read_timeout")
+	o.WriteTimeout = q.duration("write_timeout")
+	o.ContextTimeoutEnabled = q.bool("context_timeout_enabled")
+	o.PoolFIFO = q.bool("pool_fifo")
+	o.PoolSize = q.int("pool_size")
+	o.MinIdleConns = q.int("min_idle_conns")
+	o.MaxIdleConns = q.int("max_idle_conns")
+	o.MaxActiveConns = q.int("max_active_conns")
+	o.ConnMaxLifetime = q.duration("conn_max_lifetime")
+	o.ConnMaxIdleTime = q.duration("conn_max_idle_time")
+	o.PoolTimeout = q.duration("pool_timeout")
+	o.DisableIdentity = q.bool("disableIdentity")
+	o.IdentitySuffix = q.string("identitySuffix")
+	o.UnstableResp3 = q.bool("unstable_resp3")
+
+	if q.err != nil {
+		return nil, q.err
+	}
+
+	if tmp := q.string("db"); tmp != "" {
+		db, err := strconv.Atoi(tmp)
+		if err != nil {
+			return nil, fmt.Errorf("redis: invalid database number: %w", err)
+		}
+		o.DB = db
+	}
+
+	addrs := q.strings("addr")
+	for _, addr := range addrs {
+		h, p, err := net.SplitHostPort(addr)
+		if err != nil || h == "" || p == "" {
+			return nil, fmt.Errorf("redis: unable to parse addr param: %s", addr)
+		}
+
+		o.SentinelAddrs = append(o.SentinelAddrs, net.JoinHostPort(h, p))
+	}
+
+	// any parameters left?
+	if r := q.remaining(); len(r) > 0 {
+		return nil, fmt.Errorf("redis: unexpected option: %s", strings.Join(r, ", "))
+	}
+
+	return o, nil
+}
+
 // NewFailoverClient returns a Redis client that uses Redis Sentinel
 // for automatic failover. It's safe for concurrent use by multiple
 // goroutines.
@@ -262,7 +404,7 @@ func NewFailoverClient(failoverOpt *FailoverOptions) *Client {
 
 	connPool = newConnPool(opt, rdb.dialHook)
 	rdb.connPool = connPool
-	rdb.onClose = failover.Close
+	rdb.onClose = rdb.wrappedOnClose(failover.Close)
 
 	failover.mu.Lock()
 	failover.onFailover = func(ctx context.Context, addr string) {
@@ -313,7 +455,6 @@ func masterReplicaDialer(
 // SentinelClient is a client for a Redis Sentinel.
 type SentinelClient struct {
 	*baseClient
-	hooksMixin
 }
 
 func NewSentinelClient(opt *Options) *SentinelClient {
