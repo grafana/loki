@@ -27,16 +27,6 @@ func TestNewReaderClient(t *testing.T) {
 		{
 			name: "valid config",
 			config: kafka.Config{
-				Address:      addr,
-				Topic:        "abcd",
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("password"),
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid config with reader config",
-			config: kafka.Config{
 				Topic:        "abcd",
 				SASLUsername: "user",
 				SASLPassword: flagext.SecretWithValue("password"),
@@ -50,7 +40,10 @@ func TestNewReaderClient(t *testing.T) {
 		{
 			name: "wrong password",
 			config: kafka.Config{
-				Address:      addr,
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
 				Topic:        "abcd",
 				SASLUsername: "user",
 				SASLPassword: flagext.SecretWithValue("wrong wrong wrong"),
@@ -60,7 +53,10 @@ func TestNewReaderClient(t *testing.T) {
 		{
 			name: "wrong username",
 			config: kafka.Config{
-				Address:      addr,
+				ReaderConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "reader",
+				},
 				Topic:        "abcd",
 				SASLUsername: "wrong wrong wrong",
 				SASLPassword: flagext.SecretWithValue("password"),
@@ -92,7 +88,10 @@ func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
 	require.Len(t, addrs, 1)
 
 	cfg := kafka.Config{
-		Address:                          addrs[0],
+		ReaderConfig: kafka.ClientConfig{
+			Address:  addrs[0],
+			ClientID: "reader",
+		},
 		AutoCreateTopicDefaultPartitions: 100,
 	}
 

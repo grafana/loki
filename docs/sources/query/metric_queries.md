@@ -9,6 +9,8 @@ weight: 400
 
 # Metric queries
 
+{{< shared id="metric-queries" >}}
+
 Metric queries extend log queries by applying a function to log query results.
 This powerful feature creates metrics from logs.
 
@@ -16,6 +18,8 @@ Metric queries can be used to calculate the rate of error messages or the top N 
 
 Combined with parsers, metric queries can also be used to calculate metrics from a sample value within the log line, such as latency or request size.
 All labels, including extracted ones, will be available for aggregations and generation of new series.
+
+{{< /shared >}}
 
 ## Range Vector aggregation
 

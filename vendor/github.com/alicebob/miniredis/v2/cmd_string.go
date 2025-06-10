@@ -160,7 +160,7 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 			}
 		}
 		if opts.get {
-			if t, ok := db.keys[opts.key]; ok && t != "string" {
+			if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 				c.WriteError(msgWrongType)
 				return
 			}
@@ -403,7 +403,7 @@ func (m *Miniredis) cmdGet(c *server.Peer, cmd string, args []string) {
 			c.WriteNull()
 			return
 		}
-		if db.t(key) != "string" {
+		if db.t(key) != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -490,7 +490,7 @@ func (m *Miniredis) cmdGetex(c *server.Peer, cmd string, args []string) {
 			db.ttl[opts.key] = opts.ttl
 		}
 
-		if db.t(opts.key) != "string" {
+		if db.t(opts.key) != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -518,7 +518,7 @@ func (m *Miniredis) cmdGetset(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -560,7 +560,7 @@ func (m *Miniredis) cmdGetdel(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "string" {
+		if db.t(key) != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -590,7 +590,7 @@ func (m *Miniredis) cmdMget(c *server.Peer, cmd string, args []string) {
 
 		c.WriteLen(len(args))
 		for _, k := range args {
-			if t, ok := db.keys[k]; !ok || t != "string" {
+			if t, ok := db.keys[k]; !ok || t != keyTypeString {
 				c.WriteNull()
 				continue
 			}
@@ -623,7 +623,7 @@ func (m *Miniredis) cmdIncr(c *server.Peer, cmd string, args []string) {
 		db := m.db(ctx.selectedDB)
 
 		key := args[0]
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -663,7 +663,7 @@ func (m *Miniredis) cmdIncrby(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -703,7 +703,7 @@ func (m *Miniredis) cmdIncrbyfloat(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -736,7 +736,7 @@ func (m *Miniredis) cmdDecr(c *server.Peer, cmd string, args []string) {
 		db := m.db(ctx.selectedDB)
 
 		key := args[0]
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -776,7 +776,7 @@ func (m *Miniredis) cmdDecrby(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -810,7 +810,7 @@ func (m *Miniredis) cmdStrlen(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -838,7 +838,7 @@ func (m *Miniredis) cmdAppend(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "string" {
+		if t, ok := db.keys[key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -880,7 +880,7 @@ func (m *Miniredis) cmdGetrange(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -923,7 +923,7 @@ func (m *Miniredis) cmdSetrange(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -980,7 +980,7 @@ func (m *Miniredis) cmdBitcount(c *server.Peer, cmd string, args []string) {
 			c.WriteInt(0)
 			return
 		}
-		if db.t(opts.key) != "string" {
+		if db.t(opts.key) != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -1030,13 +1030,13 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 		switch opts.op {
 		case "AND", "OR", "XOR":
 			first := opts.input[0]
-			if t, ok := db.keys[first]; ok && t != "string" {
+			if t, ok := db.keys[first]; ok && t != keyTypeString {
 				c.WriteError(msgWrongType)
 				return
 			}
 			res := []byte(db.stringKeys[first])
 			for _, vk := range opts.input[1:] {
-				if t, ok := db.keys[vk]; ok && t != "string" {
+				if t, ok := db.keys[vk]; ok && t != keyTypeString {
 					c.WriteError(msgWrongType)
 					return
 				}
@@ -1062,7 +1062,7 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 				return
 			}
 			key := opts.input[0]
-			if t, ok := db.keys[key]; ok && t != "string" {
+			if t, ok := db.keys[key]; ok && t != keyTypeString {
 				c.WriteError(msgWrongType)
 				return
 			}
@@ -1124,7 +1124,7 @@ func (m *Miniredis) cmdBitpos(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.Key]; ok && t != "string" {
+		if t, ok := db.keys[opts.Key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		} else if !ok {
@@ -1215,7 +1215,7 @@ func (m *Miniredis) cmdGetbit(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -1276,7 +1276,7 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "string" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
 		}

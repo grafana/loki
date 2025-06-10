@@ -662,10 +662,6 @@ pattern_ingester:
 
   # Configures how detected patterns are pushed back to Loki for persistence.
   pattern_persistence:
-    # Whether pattern persistence is enabled.
-    # CLI flag: -pattern-ingester.pattern-persistence.enabled
-    [enabled: <boolean> | default = false]
-
     # The address of the Loki instance to push patterns to.
     # CLI flag: -pattern-ingester.pattern-persistence.loki-address
     [loki_address: <string> | default = ""]
@@ -940,7 +936,7 @@ kafka_config:
   reader_config:
     # The Kafka backend address.
     # CLI flag: -kafka.reader.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.reader.client-id
@@ -949,7 +945,7 @@ kafka_config:
   writer_config:
     # The Kafka backend address.
     # CLI flag: -kafka.writer.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.writer.client-id
@@ -4346,13 +4342,16 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
-# Enable metric and pattern aggregation. When enabled, pushed streams will be
-# sampled for bytes, line count, and patterns. These metrics will be written
-# back into Loki as a special __aggregated_metric__ stream.
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and line counts. These metrics will be written back into Loki as a
+# special __aggregated_metric__ stream.
 # CLI flag: -limits.aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
 
-[pattern_persistence_enabled: <boolean>]
+# Enable persistence of patterns detected at ingest. When enabled, patterns for
+# pushed streams will be written back into Loki as a special __pattern__ stream.
+# CLI flag: -limits.pattern-persistence-enabled
+[pattern_persistence_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
