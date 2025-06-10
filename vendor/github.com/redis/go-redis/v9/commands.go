@@ -234,6 +234,7 @@ type Cmdable interface {
 	StreamCmdable
 	TimeseriesCmdable
 	JSONCmdable
+	VectorSetCmdable
 }
 
 type StatefulCmdable interface {

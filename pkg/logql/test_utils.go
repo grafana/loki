@@ -271,15 +271,15 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		ls := []labels.Label{{Name: "index", Value: fmt.Sprintf("%d", i)}}
 
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := append(ls, labels.Label{
+			shard := labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			}).Hash() % uint64(nShards)
+			})...).Hash() % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -298,8 +298,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			})
 		}
 
-		stream.Labels = ls.String()
-		stream.Hash = ls.Hash()
+		r := labels.New(ls...)
+		stream.Labels = r.String()
+		stream.Hash = r.Hash()
 		streams = append(streams, stream)
 	}
 	return streams

@@ -28,7 +28,7 @@ func (m *Miniredis) cmdPfadd(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "hll" {
+		if db.exists(key) && db.t(key) != keyTypeHll {
 			c.WriteError(ErrNotValidHllValue.Error())
 			return
 		}
