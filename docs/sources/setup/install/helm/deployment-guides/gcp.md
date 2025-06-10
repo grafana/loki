@@ -201,7 +201,7 @@ You should get this in response:
 serviceaccount/loki-gcp-ksa created
 ```
 
-### Add IAM Policy to Bucket(s)
+### Add IAM Policy to Buckets
 
 {{< admonition type="note" >}}
 The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki to
