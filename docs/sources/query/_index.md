@@ -92,7 +92,7 @@ For line filters, the following operators can be used:
 
 #### Parser expressions
 
-Parser expressions are used to easily filter logs that are in a standardized format, such as:
+Parser expressions are used to filter logs that are in a standardized format, such as:
 - JSON
 - logfmt
 - Regular Expressions
