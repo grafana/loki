@@ -218,7 +218,7 @@ gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
   --condition=None
 ```
 
-Replace `<PROJECT_ID>` with the GCP project ID (ex. project-name), `<PROJECT_NUMBER>` with the project number (ex. 1234567890),
+Replace `<PROJECT_ID>` with the GCP project ID (for example, project-name), `<PROJECT_NUMBER>` with the project number (for example, 1234567890),
 `<NAMESPACE>` with the namespace where Loki is installed, and `<KSA_NAME>` with the name of the KSA you created above.
 
 Then do the same thing for the other bucket.
