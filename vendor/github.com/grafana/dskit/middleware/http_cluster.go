@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/dskit/clusterutil"
+	"github.com/grafana/dskit/user"
 )
 
 type clusterValidationError struct {
@@ -124,6 +125,18 @@ func checkClusterFromRequest(
 		return nil
 	}
 
+	logger = log.With(
+		logger,
+		"path", r.URL.Path,
+		"method", r.Method,
+		"cluster_validation_label", expectedCluster,
+		"soft_validation", softValidationEnabled,
+		"tenant", r.Header.Get(user.OrgIDHeaderName),
+		"user_agent", r.Header.Get("User-Agent"),
+		"host", r.Host,
+		"client_address", r.RemoteAddr,
+	)
+
 	reqCluster, err := clusterutil.GetClusterFromRequest(r)
 	if err == nil {
 		if reqCluster == expectedCluster {
@@ -136,7 +149,7 @@ func checkClusterFromRequest(
 		}
 
 		invalidClusterRequests.WithLabelValues("http", r.URL.Path, expectedCluster, reqCluster).Inc()
-		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "path", r.URL.Path, "cluster_validation_label", expectedCluster, "request_cluster_validation_label", reqCluster, "soft_validation", softValidationEnabled)
+		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "request_cluster_validation_label", reqCluster)
 		return wrongClusterErr
 	}
 
@@ -147,7 +160,7 @@ func checkClusterFromRequest(
 		}
 
 		invalidClusterRequests.WithLabelValues("http", r.URL.Path, expectedCluster, "").Inc()
-		level.Warn(logger).Log("msg", "request with no cluster validation label", "path", r.URL.Path, "cluster_validation_label", expectedCluster, "soft_validation", softValidationEnabled)
+		level.Warn(logger).Log("msg", "request with no cluster validation label")
 		return emptyClusterErr
 	}
 
@@ -157,6 +170,6 @@ func checkClusterFromRequest(
 	}
 
 	invalidClusterRequests.WithLabelValues("http", r.URL.Path, expectedCluster, "").Inc()
-	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "path", r.URL.Path, "cluster_validation_label", expectedCluster, "soft_validation", softValidationEnabled, "err", err)
+	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "err", err)
 	return rejectedRequestErr
 }
