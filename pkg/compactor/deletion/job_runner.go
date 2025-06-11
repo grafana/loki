@@ -78,6 +78,7 @@ func (jr *JobRunner) Run(ctx context.Context, job jobqueue.Job) (*JobResult, err
 	var filterFuncs []filter.Func
 
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
+	// ToDo(Sandeep): Make chunk processing concurrent with a reasonable concurrency.
 	for _, chunkID := range deletionJob.ChunkIDs {
 		chk, err := chunk.ParseExternalKey(deletionJob.UserID, chunkID)
 		if err != nil {
@@ -85,7 +86,7 @@ func (jr *JobRunner) Run(ctx context.Context, job jobqueue.Job) (*JobResult, err
 		}
 
 		// get the chunk from storage
-		chks, err := chunkClient.GetChunks(context.Background(), []chunk.Chunk{chk})
+		chks, err := chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
 		if err != nil {
 			return nil, err
 		}
