@@ -163,7 +163,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
-	var ls labels.Labels
+	b := labels.NewScratchBuilder(10)
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
 
@@ -174,10 +174,11 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &b, &chks)
 			if err != nil {
 				return err
 			}
+			ls := b.Labels()
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
@@ -297,7 +298,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
-		var ls []labels.Label
+		b := labels.NewScratchBuilder(10)
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
@@ -310,7 +311,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &b, by)
 			if err != nil {
 				return err
 			}
@@ -320,7 +321,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 				continue
 			}
 
-			if filterer != nil && filterer.ShouldFilter(ls) {
+			if filterer != nil && filterer.ShouldFilter(b.Labels()) {
 				continue
 			}
 
@@ -371,7 +372,7 @@ func (i *TSDBIndex) Volume(
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch))) // TODO: needs to be a builder
+	seriesLabels := labels.NewScratchBuilder(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -394,9 +395,9 @@ func (i *TSDBIndex) Volume(
 	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
-		var ls []labels.Label
+		b := labels.NewScratchBuilder(10)
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &b, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
@@ -406,6 +407,7 @@ func (i *TSDBIndex) Volume(
 				continue
 			}
 
+			ls := b.Labels() // TODO: This is a new allocation. We should avoid it
 			if filterer != nil && filterer.ShouldFilter(ls) {
 				continue
 			}
@@ -414,12 +416,12 @@ func (i *TSDBIndex) Volume(
 				var labelVolumes map[string]uint64
 
 				if aggregateBySeries {
-					seriesLabels = seriesLabels[:0]
-					for _, l := range ls {
+					b.Reset()
+					ls.Range(func(l labels.Label) {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							seriesLabels = append(seriesLabels, l)
+							b.Add(l.Name, l.Value)
 						}
-					}
+					})
 				} else {
 					// when aggregating by labels, capture sizes for target labels if provided,
 					// otherwise for all intersecting labels

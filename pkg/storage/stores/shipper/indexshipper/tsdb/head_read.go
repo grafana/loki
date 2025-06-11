@@ -110,14 +110,17 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lb *labels.ScratchBuilder, chks *[]index.ChunkMeta) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, storage.ErrNotFound
 	}
-	*lbls = append((*lbls)[:0], s.ls...)
+	lb.Reset()
+	s.ls.Range(func(l labels.Label) {
+		lb.Add(l.Name, l.Value)
+	})
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -134,7 +137,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lb *labels.ScratchBuilder, by map[string]struct{}) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -142,14 +145,17 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
 	if len(by) == 0 {
-		*lbls = append((*lbls)[:0], s.ls...)
+		lb.Reset()
+		s.ls.Range(func(l labels.Label) {
+			lb.Add(l.Name, l.Value)
+		})
 	} else {
-		*lbls = (*lbls)[:0]
-		for _, l := range s.ls {
+		lb.Reset()
+		s.ls.Range(func(l labels.Label) {
 			if _, ok := by[l.Name]; ok {
-				*lbls = append(*lbls, l)
+				lb.Add(l.Name, l.Value)
 			}
-		}
+		})
 	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
@@ -191,9 +197,9 @@ func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, err
 		if memSeries == nil {
 			return nil, storage.ErrNotFound
 		}
-		for _, lbl := range memSeries.ls {
-			namesMap[lbl.Name] = struct{}{}
-		}
+		memSeries.ls.Range(func(l labels.Label) {
+			namesMap[l.Name] = struct{}{}
+		})
 	}
 	names := make([]string, 0, len(namesMap))
 	for name := range namesMap {

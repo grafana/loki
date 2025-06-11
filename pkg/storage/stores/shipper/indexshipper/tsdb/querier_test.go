@@ -112,15 +112,19 @@ func TestQueryIndex(t *testing.T) {
 		chks []index.ChunkMeta
 		ls   labels.Labels
 	)
+	lb := labels.NewScratchBuilder(10)
 
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, &lb, &chks)
 	require.Nil(t, err)
+	ls = lb.Labels()
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
+
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, &lb, &chks)
 	require.Nil(t, err)
+	ls = lb.Labels()
 	require.Equal(t, cases[1].labels.String(), ls.String())
 	require.Equal(t, cases[1].chunks, chks)
 	require.False(t, p.Next())

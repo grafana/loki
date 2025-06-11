@@ -827,7 +827,9 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				b := labels.NewScratchBuilder(10)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &b, &chks)
+				ls = b.Labels()
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
