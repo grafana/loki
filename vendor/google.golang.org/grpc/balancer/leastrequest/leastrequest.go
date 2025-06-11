@@ -97,11 +97,8 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 }
 
 type leastRequestBalancer struct {
-	// Embeds balancer.Balancer because needs to intercept UpdateClientConnState
-	// to learn about choiceCount.
-	balancer.Balancer
-	// Embeds balancer.ClientConn because needs to intercept UpdateState calls
-	// from the child balancer.
+	// Embeds balancer.ClientConn because we need to intercept UpdateState
+	// calls from the child balancer.
 	balancer.ClientConn
 	child  balancer.Balancer
 	logger *internalgrpclog.PrefixLogger
@@ -116,6 +113,21 @@ type leastRequestBalancer struct {
 func (lrb *leastRequestBalancer) Close() {
 	lrb.child.Close()
 	lrb.endpointRPCCounts = nil
+}
+
+func (lrb *leastRequestBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	lrb.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
+}
+
+func (lrb *leastRequestBalancer) ResolverError(err error) {
+	// Will cause inline picker update from endpoint sharding.
+	lrb.child.ResolverError(err)
+}
+
+func (lrb *leastRequestBalancer) ExitIdle() {
+	if ei, ok := lrb.child.(balancer.ExitIdler); ok { // Should always be ok, as child is endpoint sharding.
+		ei.ExitIdle()
+	}
 }
 
 func (lrb *leastRequestBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error {
