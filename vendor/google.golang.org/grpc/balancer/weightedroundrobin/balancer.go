@@ -497,7 +497,6 @@ func (p *picker) start(stopPicker *grpcsync.Event) {
 // that listener.
 type endpointWeight struct {
 	// The following fields are immutable.
-	balancer.SubConn
 	logger          *grpclog.PrefixLogger
 	target          string
 	metricsRecorder estats.MetricsRecorder
@@ -527,7 +526,7 @@ type endpointWeight struct {
 
 func (w *endpointWeight) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	if w.logger.V(2) {
-		w.logger.Infof("Received load report for subchannel %v: %v", w.SubConn, load)
+		w.logger.Infof("Received load report for subchannel %v: %v", w.pickedSC, load)
 	}
 	// Update weights of this endpoint according to the reported load.
 	utilization := load.ApplicationUtilization
@@ -536,7 +535,7 @@ func (w *endpointWeight) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	}
 	if utilization == 0 || load.RpsFractional == 0 {
 		if w.logger.V(2) {
-			w.logger.Infof("Ignoring empty load report for subchannel %v", w.SubConn)
+			w.logger.Infof("Ignoring empty load report for subchannel %v", w.pickedSC)
 		}
 		return
 	}
@@ -547,7 +546,7 @@ func (w *endpointWeight) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	errorRate := load.Eps / load.RpsFractional
 	w.weightVal = load.RpsFractional / (utilization + errorRate*w.cfg.ErrorUtilizationPenalty)
 	if w.logger.V(2) {
-		w.logger.Infof("New weight for subchannel %v: %v", w.SubConn, w.weightVal)
+		w.logger.Infof("New weight for subchannel %v: %v", w.pickedSC, w.weightVal)
 	}
 
 	w.lastUpdated = internal.TimeNow()

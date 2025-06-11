@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021 gRPC authors.
+ * Copyright 2025 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,28 @@
  *
  */
 
+// Package ringhash (internal) contains functions and types that need to be
+// shared by the ring hash balancer and other gRPC code (such as xDS)
+// without being exported.
 package ringhash
 
 import (
 	"context"
+
+	"google.golang.org/grpc/serviceconfig"
 )
 
+// LBConfig is the balancer config for ring_hash balancer.
+type LBConfig struct {
+	serviceconfig.LoadBalancingConfig `json:"-"`
+
+	MinRingSize       uint64 `json:"minRingSize,omitempty"`
+	MaxRingSize       uint64 `json:"maxRingSize,omitempty"`
+	RequestHashHeader string `json:"requestHashHeader,omitempty"`
+}
+
+// xdsHashKey is the type used as the key to store request hash in the context
+// used when combining the Ring Hash load balancing policy with xDS.
 type xdsHashKey struct{}
 
 // XDSRequestHash returns the request hash in the context and true if it was set

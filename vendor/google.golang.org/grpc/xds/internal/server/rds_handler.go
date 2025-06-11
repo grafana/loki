@@ -19,7 +19,6 @@
 package server
 
 import (
-	"fmt"
 	"sync"
 
 	igrpclog "google.golang.org/grpc/internal/grpclog"
@@ -109,21 +108,6 @@ func (rh *rdsHandler) determineRouteConfigurationReady() bool {
 	return len(rh.updates) == len(rh.cancels)
 }
 
-// Must be called from an xDS Client Callback.
-func (rh *rdsHandler) handleRouteUpdate(routeName string, update rdsWatcherUpdate) {
-	rwu := rh.updates[routeName]
-
-	// Accept the new update if any of the following are true:
-	// 1. we had no valid update data.
-	// 2. the update is valid.
-	// 3. the update error is ResourceNotFound.
-	if rwu.data == nil || update.err == nil || xdsresource.ErrType(update.err) == xdsresource.ErrorTypeResourceNotFound {
-		rwu = update
-	}
-	rh.updates[routeName] = rwu
-	rh.callback(routeName, rwu)
-}
-
 // close() is meant to be called by wrapped listener when the wrapped listener
 // is closed, and it cleans up resources by canceling all the active RDS
 // watches.
@@ -151,7 +135,7 @@ type rdsWatcher struct {
 	canceled bool // eats callbacks if true
 }
 
-func (rw *rdsWatcher) OnUpdate(update *xdsresource.RouteConfigResourceData, onDone xdsresource.OnDoneFunc) {
+func (rw *rdsWatcher) ResourceChanged(update *xdsresource.RouteConfigResourceData, onDone func()) {
 	defer onDone()
 	rw.mu.Lock()
 	if rw.canceled {
@@ -162,10 +146,14 @@ func (rw *rdsWatcher) OnUpdate(update *xdsresource.RouteConfigResourceData, onDo
 	if rw.logger.V(2) {
 		rw.logger.Infof("RDS watch for resource %q received update: %#v", rw.routeName, update.Resource)
 	}
-	rw.parent.handleRouteUpdate(rw.routeName, rdsWatcherUpdate{data: &update.Resource})
+
+	routeName := rw.routeName
+	rwu := rdsWatcherUpdate{data: &update.Resource}
+	rw.parent.updates[routeName] = rwu
+	rw.parent.callback(routeName, rwu)
 }
 
-func (rw *rdsWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+func (rw *rdsWatcher) ResourceError(err error, onDone func()) {
 	defer onDone()
 	rw.mu.Lock()
 	if rw.canceled {
@@ -174,12 +162,16 @@ func (rw *rdsWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
 	}
 	rw.mu.Unlock()
 	if rw.logger.V(2) {
-		rw.logger.Infof("RDS watch for resource %q reported error: %v", rw.routeName, err)
+		rw.logger.Infof("RDS watch for resource %q reported resource error", rw.routeName)
 	}
-	rw.parent.handleRouteUpdate(rw.routeName, rdsWatcherUpdate{err: err})
+
+	routeName := rw.routeName
+	rwu := rdsWatcherUpdate{err: err}
+	rw.parent.updates[routeName] = rwu
+	rw.parent.callback(routeName, rwu)
 }
 
-func (rw *rdsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
+func (rw *rdsWatcher) AmbientError(err error, onDone func()) {
 	defer onDone()
 	rw.mu.Lock()
 	if rw.canceled {
@@ -187,8 +179,10 @@ func (rw *rdsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
 		return
 	}
 	rw.mu.Unlock()
-	rw.logger.Warningf("RDS watch for resource %q reported resource-does-not-exist error", rw.routeName)
-	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type RouteConfiguration not found in received response", rw.routeName)
-	err = fmt.Errorf("[xDS node id: %v]: %w", rw.parent.xdsNodeID, err)
-	rw.parent.handleRouteUpdate(rw.routeName, rdsWatcherUpdate{err: err})
+	if rw.logger.V(2) {
+		rw.logger.Infof("RDS watch for resource %q reported ambient error: %v", rw.routeName, err)
+	}
+	routeName := rw.routeName
+	rwu := rw.parent.updates[routeName]
+	rw.parent.callback(routeName, rwu)
 }

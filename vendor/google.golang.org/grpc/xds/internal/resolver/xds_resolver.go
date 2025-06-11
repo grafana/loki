@@ -459,7 +459,10 @@ func (r *xdsResolver) onResolutionComplete() {
 func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdate) {
 	matchVh := xdsresource.FindBestMatchingVirtualHost(r.dataplaneAuthority, update.VirtualHosts)
 	if matchVh == nil {
-		r.onError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
+		// TODO(purnesh42h): Should this be a resource or ambient error? Note
+		// that its being called only from resource update methods when we have
+		// finished removing the previous update.
+		r.onAmbientError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
 		return
 	}
 	r.currentRouteConfig = update
@@ -469,12 +472,12 @@ func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdat
 	r.onResolutionComplete()
 }
 
-// onError propagates the error up to the channel. And since this is invoked
-// only for non resource-not-found errors, we don't have to update resolver
+// onAmbientError propagates the error up to the channel. And since this is
+// invoked only for non resource errors, we don't have to update resolver
 // state and we can keep using the old config.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onError(err error) {
+func (r *xdsResolver) onAmbientError(err error) {
 	r.cc.ReportError(err)
 }
 
@@ -482,7 +485,7 @@ func (r *xdsResolver) onError(err error) {
 // are removed.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onResourceNotFound() {
+func (r *xdsResolver) onResourceError(err error) {
 	// We cannot remove clusters from the service config that have ongoing RPCs.
 	// Instead, what we can do is to send an erroring config selector
 	// along with normal service config. This will ensure that new RPCs will
@@ -491,7 +494,7 @@ func (r *xdsResolver) onResourceNotFound() {
 	// service config with no addresses. This results in the pick-first
 	// LB policy being configured on the channel, and since there are no
 	// address, pick-first will put the channel in TRANSIENT_FAILURE.
-	cs := newErroringConfigSelector(r.xdsClient.BootstrapConfig().Node().GetId())
+	cs := newErroringConfigSelector(err, r.xdsClient.BootstrapConfig().Node().GetId())
 	r.sendNewServiceConfig(cs)
 
 	// Stop and dereference the active config selector, if one exists.
@@ -546,16 +549,18 @@ func (r *xdsResolver) onListenerResourceUpdate(update xdsresource.ListenerUpdate
 	r.routeConfigWatcher = newRouteConfigWatcher(r.rdsResourceName, r)
 }
 
-func (r *xdsResolver) onListenerResourceError(err error) {
+func (r *xdsResolver) onListenerResourceAmbientError(err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received error for Listener resource %q: %v", r.ldsResourceName, err)
+		r.logger.Infof("Received ambient error for Listener resource %q: %v", r.ldsResourceName, err)
 	}
-	r.onError(err)
+	r.onAmbientError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onListenerResourceNotFound() {
-	r.logger.Warningf("Received resource-not-found-error for Listener resource %q", r.ldsResourceName)
+func (r *xdsResolver) onListenerResourceError(err error) {
+	if r.logger.V(2) {
+		r.logger.Infof("Received resource error for Listener resource %q: %v", r.ldsResourceName, err)
+	}
 
 	r.listenerUpdateRecvd = false
 	if r.routeConfigWatcher != nil {
@@ -566,7 +571,7 @@ func (r *xdsResolver) onListenerResourceNotFound() {
 	r.routeConfigUpdateRecvd = false
 	r.routeConfigWatcher = nil
 
-	r.onResourceNotFound()
+	r.onResourceError(err)
 }
 
 // Only executed in the context of a serializer callback.
@@ -584,21 +589,23 @@ func (r *xdsResolver) onRouteConfigResourceUpdate(name string, update xdsresourc
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
+func (r *xdsResolver) onRouteConfigResourceAmbientError(name string, err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received error for RouteConfiguration resource %q: %v", name, err)
+		r.logger.Infof("Received ambient error for RouteConfiguration resource %q: %v", name, err)
 	}
-	r.onError(err)
+	r.onAmbientError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceNotFound(name string) {
-	r.logger.Warningf("Received resource-not-found-error for RouteConfiguration resource %q", name)
+func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
+	if r.logger.V(2) {
+		r.logger.Infof("Received resource error for RouteConfiguration resource %q: %v", name, err)
+	}
 
 	if r.rdsResourceName != name {
 		return
 	}
-	r.onResourceNotFound()
+	r.onResourceError(err)
 }
 
 // Only executed in the context of a serializer callback.

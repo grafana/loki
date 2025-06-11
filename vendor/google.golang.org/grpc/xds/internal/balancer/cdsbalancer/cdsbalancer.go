@@ -542,38 +542,27 @@ func (b *cdsBalancer) onClusterUpdate(name string, update xdsresource.ClusterUpd
 	}
 }
 
-// Handles an error Cluster update from the xDS client. Propagates the error
-// down to the child policy if one exists, or puts the channel in
-// TRANSIENT_FAILURE.
+// Handles an ambient error Cluster update from the xDS client to not stop
+// using the previously seen resource.
 //
 // Only executed in the context of a serializer callback.
-func (b *cdsBalancer) onClusterError(name string, err error) {
-	b.logger.Warningf("Cluster resource %q received error update: %v", name, err)
+func (b *cdsBalancer) onClusterAmbientError(name string, err error) {
+	b.logger.Warningf("Cluster resource %q received ambient error update: %v", name, err)
 
-	if b.childLB != nil {
-		if xdsresource.ErrType(err) != xdsresource.ErrorTypeConnection {
-			// Connection errors will be sent to the child balancers directly.
-			// There's no need to forward them.
-			b.childLB.ResolverError(err)
-		}
-	} else {
-		// If child balancer was never created, fail the RPCs with
-		// errors.
-		b.ccw.UpdateState(balancer.State{
-			ConnectivityState: connectivity.TransientFailure,
-			Picker:            base.NewErrPicker(fmt.Errorf("%q: %v", name, err)),
-		})
+	if xdsresource.ErrType(err) != xdsresource.ErrorTypeConnection && b.childLB != nil {
+		// Connection errors will be sent to the child balancers directly.
+		// There's no need to forward them.
+		b.childLB.ResolverError(err)
 	}
 }
 
-// Handles a resource-not-found error from the xDS client. Propagates the error
-// down to the child policy if one exists, or puts the channel in
-// TRANSIENT_FAILURE.
+// Handles an error Cluster update from the xDS client to stop using the
+// previously seen resource. Propagates the error down to the child policy
+// if one exists, and puts the channel in TRANSIENT_FAILURE.
 //
 // Only executed in the context of a serializer callback.
-func (b *cdsBalancer) onClusterResourceNotFound(name string) {
-	b.logger.Warningf("CDS watch for resource %q reported resource-does-not-exist error", name)
-	err := b.annotateErrorWithNodeID(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "cluster %q not found", name))
+func (b *cdsBalancer) onClusterResourceError(name string, err error) {
+	b.logger.Warningf("CDS watch for resource %q reported resource error", name)
 	b.closeChildPolicyAndReportTF(err)
 }
 
@@ -675,6 +664,14 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 	dm.TelemetryLabels = cluster.TelemetryLabels
 
 	return append(dms, dm), true, nil
+}
+
+func (b *cdsBalancer) onClusterError(name string, err error) {
+	if b.childLB != nil {
+		b.onClusterAmbientError(name, err)
+	} else {
+		b.onClusterResourceError(name, err)
+	}
 }
 
 // ccWrapper wraps the balancer.ClientConn passed to the CDS balancer at
