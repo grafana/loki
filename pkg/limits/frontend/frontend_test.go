@@ -80,7 +80,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		expected: &proto.ExceedsLimitsResponse{
@@ -89,7 +89,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}, {
@@ -112,7 +112,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 		}, {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		}},
 		expected: &proto.ExceedsLimitsResponse{
@@ -121,7 +121,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}, {
 				StreamHash: 0x4,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
+				Reason:     uint32(limits.ReasonExceedsMaxStreams),
 			}},
 		},
 	}}

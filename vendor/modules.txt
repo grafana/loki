@@ -305,14 +305,12 @@ github.com/alecthomas/kingpin/v2
 # github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 ## explicit; go 1.15
 github.com/alecthomas/units
-# github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302
-## explicit
-github.com/alicebob/gopher-json
-# github.com/alicebob/miniredis/v2 v2.34.0
+# github.com/alicebob/miniredis/v2 v2.35.0
 ## explicit; go 1.17
 github.com/alicebob/miniredis/v2
 github.com/alicebob/miniredis/v2/fpconv
 github.com/alicebob/miniredis/v2/geohash
+github.com/alicebob/miniredis/v2/gopher-json
 github.com/alicebob/miniredis/v2/hyperloglog
 github.com/alicebob/miniredis/v2/metro
 github.com/alicebob/miniredis/v2/proto
@@ -342,6 +340,7 @@ github.com/apache/arrow-go/v18/arrow/internal/flatbuf
 github.com/apache/arrow-go/v18/arrow/memory
 github.com/apache/arrow-go/v18/arrow/memory/internal/cgoalloc
 github.com/apache/arrow-go/v18/arrow/memory/mallocator
+github.com/apache/arrow-go/v18/arrow/scalar
 github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
@@ -519,7 +518,7 @@ github.com/axiomhq/hyperloglog
 # github.com/aymanbagabas/go-osc52/v2 v2.0.1
 ## explicit; go 1.16
 github.com/aymanbagabas/go-osc52/v2
-# github.com/baidubce/bce-sdk-go v0.9.229
+# github.com/baidubce/bce-sdk-go v0.9.230
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1457,7 +1456,7 @@ github.com/ncruces/go-strftime
 # github.com/ncw/swift v1.0.53
 ## explicit
 github.com/ncw/swift
-# github.com/ncw/swift/v2 v2.0.3
+# github.com/ncw/swift/v2 v2.0.4
 ## explicit; go 1.16
 github.com/ncw/swift/v2
 # github.com/oklog/run v1.1.0
@@ -1466,9 +1465,6 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/olekukonko/tablewriter v0.0.5
-## explicit; go 1.12
-github.com/olekukonko/tablewriter
 # github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.116.0
 ## explicit; go 1.22.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
@@ -1511,7 +1507,7 @@ github.com/oschwald/geoip2-golang
 # github.com/oschwald/maxminddb-golang v1.13.0
 ## explicit; go 1.21
 github.com/oschwald/maxminddb-golang
-# github.com/parquet-go/parquet-go v0.25.0
+# github.com/parquet-go/parquet-go v0.25.1
 ## explicit; go 1.22
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
@@ -1702,9 +1698,10 @@ github.com/prometheus/sigv4
 # github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 ## explicit
 github.com/rcrowley/go-metrics
-# github.com/redis/go-redis/v9 v9.8.0
+# github.com/redis/go-redis/v9 v9.10.0
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
+github.com/redis/go-redis/v9/auth
 github.com/redis/go-redis/v9/internal
 github.com/redis/go-redis/v9/internal/hashtag
 github.com/redis/go-redis/v9/internal/hscan

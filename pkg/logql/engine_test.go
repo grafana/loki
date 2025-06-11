@@ -1628,7 +1628,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			promql.Matrix{
 				promql.Series{
 					// vector result
-					Metric: labels.Labels(nil),
+					Metric: labels.EmptyLabels(),
 					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}},
 				},
 				promql.Series{
@@ -3505,10 +3505,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 							}
 
 							// Add variant label
-							lbls = append(
-								lbls,
-								labels.Label{Name: constants.VariantLabel, Value: fmt.Sprintf("%d", vi)},
-							)
+							b := labels.NewBuilder(lbls)
+							b.Set(constants.VariantLabel, fmt.Sprintf("%d", vi))
+							lbls = b.Labels()
 
 							// Copy series with new labels
 							idx := vi*len(curSeries) + si

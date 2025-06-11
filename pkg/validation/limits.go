@@ -468,8 +468,15 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		&l.MetricAggregationEnabled,
 		"limits.aggregation-enabled",
 		false,
-		"Enable metric and pattern aggregation. When enabled, pushed streams will be sampled for bytes, line count, and patterns. These metrics will be written back into Loki as a special __aggregated_metric__ stream.",
+		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and line counts. These metrics will be written back into Loki as a special __aggregated_metric__ stream.",
 	)
+	f.BoolVar(
+		&l.PatternPersistenceEnabled,
+		"limits.pattern-persistence-enabled",
+		false,
+		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
+	)
+
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
 	f.BoolVar(
