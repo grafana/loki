@@ -87,6 +87,32 @@ To modify an existing CloudFormation stack, use [update-stack](https://docs.aws.
 
 If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
 
+### Securely providing sensitive configuration values
+
+Instead of providing the username/password or bearer token as plain text values, you can store these using AWS Secrets Manager or SSM Parameter Store and lambda-promtail will automatically fetch the values. Simply set the `USERNAME`/`PASSWORD` or `BEARER_TOKEN` environment variables (or `Username`/`Password`/`BearerToken` parameters for [S3 based logging](#s3-based-logging-and-cloudformation)) to the ARN of the secret or parameter.
+
+You will also need to ensure the lambda has the IAM permissions required to read the secrets and/or parameters; for example:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "<secret arn>"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "<parameter arn>"
+    }
+  ]
+}
+```
+
+If you are using our provided Terraform module then you can provide the username, password and bearer token ARNs using the `<credential>_parameter_arn` or `<credential>_secret_arn` variables (eg, to provide the username as an SSM parameter set the `username_parameter_arn`). This will also automatically add the necessary IAM permissions to the lambda.
+
 ## Uses
 
 ### Ephemeral Jobs
