@@ -169,10 +169,14 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		attribute.String("from", from.Time().String()),
 		attribute.String("through", through.Time().String()),
 		attribute.String("matchers", syntax.MatchersString(matchers)),
-		attribute.String("err", err.Error()),
 		attribute.Int("limit", int(limit)),
 		attribute.String("aggregateBy", aggregateBy),
 	)
+	if err != nil {
+		sp.SetAttributes(
+			attribute.String("err", err.Error()),
+		)
+	}
 
 	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 }
