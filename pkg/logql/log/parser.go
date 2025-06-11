@@ -184,8 +184,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	})
 
 	if j.captureJSONPath {
-		jsonPath := j.buildJSONPathFromPrefixBuffer()
-		j.lbs.SetJSONPath(keyString, jsonPath)
+		if jsonPath := j.buildJSONPathFromPrefixBuffer(); len(jsonPath) > 0 {
+			j.lbs.SetJSONPath(keyString, jsonPath)
+		}
 	}
 
 	// reset the prefix position
@@ -219,10 +220,20 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	return j.sanitizedPrefixBuffer
 }
 
+// buildJSONPathFromPrefixBuffer constructs the JSON path from the accumulated prefix buffer.
+// It returns a slice of strings representing each segment of the JSON path.
+// If the prefix buffer is empty, it returns nil.
+// The function also removes any "_extracted" suffix from "duplicate" fields.
 func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
+	if len(j.prefixBuffer) == 0 {
+		return nil
+	}
+
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
 		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		// Trim _extracted suffix if the extracted field was a duplicate field
+		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}
 
