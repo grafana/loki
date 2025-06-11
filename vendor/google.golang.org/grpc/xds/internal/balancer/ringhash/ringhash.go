@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sort"
 	"sync"
 
@@ -31,11 +32,12 @@ import (
 	"google.golang.org/grpc/balancer/endpointsharding"
 	"google.golang.org/grpc/balancer/lazy"
 	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
-	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/internal/balancer/weight"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/resolver/ringhash"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -55,7 +57,7 @@ type bb struct{}
 func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
 	b := &ringhashBalancer{
 		ClientConn:     cc,
-		endpointStates: resolver.NewEndpointMap(),
+		endpointStates: resolver.NewEndpointMap[*endpointState](),
 	}
 	esOpts := endpointsharding.Options{DisableAutoReconnect: true}
 	b.child = endpointsharding.NewBalancer(b, opts, lazyPickFirstBuilder, esOpts)
@@ -86,12 +88,24 @@ type ringhashBalancer struct {
 	config               *LBConfig
 	inhibitChildUpdates  bool
 	shouldRegenerateRing bool
-	endpointStates       *resolver.EndpointMap // Map from endpoint -> *endpointState
+	endpointStates       *resolver.EndpointMap[*endpointState]
 
 	// ring is always in sync with endpoints. When endpoints change, a new ring
 	// is generated. Note that address weights updates also regenerates the
 	// ring.
 	ring *ring
+}
+
+// hashKey returns the hash key to use for an endpoint. Per gRFC A61, each entry
+// in the ring is a hash of the endpoint's hash key concatenated with a
+// per-entry unique suffix.
+func hashKey(endpoint resolver.Endpoint) string {
+	if hk := ringhash.HashKey(endpoint); hk != "" {
+		return hk
+	}
+	// If no hash key is set, use the endpoint's first address as the hash key.
+	// This is the default behavior when no hash key is set.
+	return endpoint.Addresses[0].Addr
 }
 
 // UpdateState intercepts child balancer state updates. It updates the
@@ -108,37 +122,35 @@ func (b *ringhashBalancer) UpdateState(state balancer.State) {
 	defer b.mu.Unlock()
 	childStates := endpointsharding.ChildStatesFromPicker(state.Picker)
 	// endpointsSet is the set converted from endpoints, used for quick lookup.
-	endpointsSet := resolver.NewEndpointMap()
+	endpointsSet := resolver.NewEndpointMap[bool]()
 
 	for _, childState := range childStates {
 		endpoint := childState.Endpoint
 		endpointsSet.Set(endpoint, true)
 		newWeight := getWeightAttribute(endpoint)
-		if val, ok := b.endpointStates.Get(endpoint); !ok {
+		hk := hashKey(endpoint)
+		es, ok := b.endpointStates.Get(endpoint)
+		if !ok {
 			es := &endpointState{
-				balancer:  childState.Balancer,
-				weight:    newWeight,
-				firstAddr: endpoint.Addresses[0].Addr,
-				state:     childState.State,
+				balancer: childState.Balancer,
+				hashKey:  hk,
+				weight:   newWeight,
+				state:    childState.State,
 			}
 			b.endpointStates.Set(endpoint, es)
 			b.shouldRegenerateRing = true
 		} else {
 			// We have seen this endpoint before and created a `endpointState`
-			// object for it. If the weight or the first address of the endpoint
-			// has changed, update the endpoint state map with the new weight.
-			// This will be used when a new ring is created.
-			es := val.(*endpointState)
+			// object for it. If the weight or the hash key of the endpoint has
+			// changed, update the endpoint state map with the new weight or
+			// hash key. This will be used when a new ring is created.
 			if oldWeight := es.weight; oldWeight != newWeight {
 				b.shouldRegenerateRing = true
 				es.weight = newWeight
 			}
-			if es.firstAddr != endpoint.Addresses[0].Addr {
-				// If the order of the addresses for a given endpoint change,
-				// that will change the position of the endpoint in the ring.
-				// -A61
+			if es.hashKey != hk {
 				b.shouldRegenerateRing = true
-				es.firstAddr = endpoint.Addresses[0].Addr
+				es.hashKey = hk
 			}
 			es.state = childState.State
 		}
@@ -240,11 +252,11 @@ func (b *ringhashBalancer) updatePickerLocked() {
 		// ensure `ExitIdle` is called on the same child, preventing unnecessary
 		// connections.
 		var endpointStates = make([]*endpointState, b.endpointStates.Len())
-		for i, val := range b.endpointStates.Values() {
-			endpointStates[i] = val.(*endpointState)
+		for i, s := range b.endpointStates.Values() {
+			endpointStates[i] = s
 		}
 		sort.Slice(endpointStates, func(i, j int) bool {
-			return endpointStates[i].firstAddr < endpointStates[j].firstAddr
+			return endpointStates[i].hashKey < endpointStates[j].hashKey
 		})
 		var idleBalancer balancer.ExitIdler
 		for _, es := range endpointStates {
@@ -278,7 +290,6 @@ func (b *ringhashBalancer) updatePickerLocked() {
 	} else {
 		newPicker = b.newPickerLocked()
 	}
-	b.logger.Infof("Pushing new state %v and picker %p", state, newPicker)
 	b.ClientConn.UpdateState(balancer.State{
 		ConnectivityState: state,
 		Picker:            newPicker,
@@ -299,12 +310,23 @@ func (b *ringhashBalancer) ExitIdle() {
 // over to avoid locking the mutex at RPC time. The picker should be
 // re-generated every time an endpoint state is updated.
 func (b *ringhashBalancer) newPickerLocked() *picker {
-	states := make(map[string]balancer.State)
-	for _, val := range b.endpointStates.Values() {
-		epState := val.(*endpointState)
-		states[epState.firstAddr] = epState.state
+	states := make(map[string]endpointState)
+	hasEndpointConnecting := false
+	for _, epState := range b.endpointStates.Values() {
+		// Copy the endpoint state to avoid races, since ring hash
+		// mutates the state, weight and hash key in place.
+		states[epState.hashKey] = *epState
+		if epState.state.ConnectivityState == connectivity.Connecting {
+			hasEndpointConnecting = true
+		}
 	}
-	return &picker{ring: b.ring, logger: b.logger, endpointStates: states}
+	return &picker{
+		ring:                         b.ring,
+		endpointStates:               states,
+		requestHashHeader:            b.config.RequestHashHeader,
+		hasEndpointInConnectingState: hasEndpointConnecting,
+		randUint64:                   rand.Uint64,
+	}
 }
 
 // aggregatedStateLocked returns the aggregated child balancers state
@@ -324,8 +346,7 @@ func (b *ringhashBalancer) newPickerLocked() *picker {
 // failure to failover to the lower priority.
 func (b *ringhashBalancer) aggregatedStateLocked() connectivity.State {
 	var nums [5]int
-	for _, val := range b.endpointStates.Values() {
-		es := val.(*endpointState)
+	for _, es := range b.endpointStates.Values() {
 		nums[es.state.ConnectivityState]++
 	}
 
@@ -348,14 +369,13 @@ func (b *ringhashBalancer) aggregatedStateLocked() connectivity.State {
 }
 
 // getWeightAttribute is a convenience function which returns the value of the
-// weight attribute stored in the BalancerAttributes field of addr, using the
-// weightedroundrobin package.
+// weight endpoint Attribute.
 //
 // When used in the xDS context, the weight attribute is guaranteed to be
 // non-zero. But, when used in a non-xDS context, the weight attribute could be
 // unset. A Default of 1 is used in the latter case.
 func getWeightAttribute(e resolver.Endpoint) uint32 {
-	w := weightedroundrobin.AddrInfoFromEndpoint(e).Weight
+	w := weight.FromEndpoint(e).Weight
 	if w == 0 {
 		return 1
 	}
@@ -363,12 +383,13 @@ func getWeightAttribute(e resolver.Endpoint) uint32 {
 }
 
 type endpointState struct {
-	// firstAddr is the first address in the endpoint. Per gRFC A61, each entry
-	// in the ring is an endpoint, positioned based on the hash of the
-	// endpoint's first address.
-	firstAddr string
-	weight    uint32
-	balancer  balancer.ExitIdler
+	// hashKey is the hash key of the endpoint. Per gRFC A61, each entry in the
+	// ring is an endpoint, positioned based on the hash of the endpoint's first
+	// address by default. Per gRFC A76, the hash key of an endpoint may be
+	// overridden, for example based on EDS endpoint metadata.
+	hashKey  string
+	weight   uint32
+	balancer balancer.ExitIdler
 
 	// state is updated by the balancer while receiving resolver updates from
 	// the channel and picker updates from its children. Access to it is guarded

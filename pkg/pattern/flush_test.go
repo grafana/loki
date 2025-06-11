@@ -300,6 +300,15 @@ func (m *mockPoolClient) Check(
 	return args.Get(0).(*grpc_health_v1.HealthCheckResponse), args.Error(1)
 }
 
+func (m *mockPoolClient) List(
+	ctx context.Context,
+	in *grpc_health_v1.HealthListRequest,
+	opts ...grpc.CallOption,
+) (*grpc_health_v1.HealthListResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*grpc_health_v1.HealthListResponse), args.Error(1)
+}
+
 func (m *mockPoolClient) Watch(
 	ctx context.Context,
 	in *grpc_health_v1.HealthCheckRequest,

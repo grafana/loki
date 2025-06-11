@@ -103,6 +103,10 @@ func (m *mockIngestLimitsClient) Check(_ context.Context, _ *grpc_health_v1.Heal
 	}, nil
 }
 
+func (m *mockIngestLimitsClient) List(_ context.Context, _ *grpc_health_v1.HealthListRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{}, nil
+}
+
 func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
 	return nil, nil
 }
