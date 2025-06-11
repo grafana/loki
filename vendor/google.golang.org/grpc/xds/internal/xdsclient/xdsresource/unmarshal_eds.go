@@ -169,7 +169,7 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 			Zone:    l.Zone,
 			SubZone: l.SubZone,
 		}
-		lidStr, _ := lid.ToString()
+		lidStr := lid.ToString()
 
 		// "Since an xDS configuration can place a given locality under multiple
 		// priorities, it is possible to see locality weight attributes with

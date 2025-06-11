@@ -22,6 +22,7 @@
 package spiffe
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 
@@ -60,4 +61,47 @@ func BundleMapFromBytes(bundleMapBytes []byte) (map[string]*spiffebundle.Bundle,
 		bundleMap[td] = bundle
 	}
 	return bundleMap, nil
+}
+
+// GetRootsFromSPIFFEBundleMap returns the root trust certificates from the
+// SPIFFE bundle map for the given trust domain from the leaf certificate.
+func GetRootsFromSPIFFEBundleMap(bundleMap map[string]*spiffebundle.Bundle, leafCert *x509.Certificate) (*x509.CertPool, error) {
+	// 1. Upon receiving a peer certificate, verify that it is a well-formed SPIFFE
+	//    leaf certificate.  In particular, it must have a single URI SAN containing
+	//    a well-formed SPIFFE ID ([SPIFFE ID format]).
+	spiffeID, err := idFromCert(leafCert)
+	if err != nil {
+		return nil, fmt.Errorf("spiffe: could not get spiffe ID from peer leaf cert but verification with spiffe trust map was configured: %v", err)
+	}
+
+	// 2. Use the trust domain in the peer certificate's SPIFFE ID to lookup
+	//    the SPIFFE trust bundle. If the trust domain is not contained in the
+	//    configured trust map, reject the certificate.
+	spiffeBundle, ok := bundleMap[spiffeID.TrustDomain().Name()]
+	if !ok {
+		return nil, fmt.Errorf("spiffe: no bundle found for peer certificates trust domain %q but verification with a SPIFFE trust map was configured", spiffeID.TrustDomain().Name())
+	}
+	roots := spiffeBundle.X509Authorities()
+	rootPool := x509.NewCertPool()
+	for _, root := range roots {
+		rootPool.AddCert(root)
+	}
+	return rootPool, nil
+}
+
+// idFromCert parses the SPIFFE ID from the x509.Certificate. If the certificate
+// does not have a valid SPIFFE ID, returns an error.
+func idFromCert(cert *x509.Certificate) (*spiffeid.ID, error) {
+	if cert == nil {
+		return nil, fmt.Errorf("input cert is nil")
+	}
+	// A valid SPIFFE Certificate should have exactly one URI.
+	if len(cert.URIs) != 1 {
+		return nil, fmt.Errorf("input cert has %v URIs but should have 1", len(cert.URIs))
+	}
+	id, err := spiffeid.FromURI(cert.URIs[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid spiffeid: %v", err)
+	}
+	return &id, nil
 }

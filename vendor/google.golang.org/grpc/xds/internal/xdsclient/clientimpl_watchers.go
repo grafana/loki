@@ -33,8 +33,12 @@ type wrappingWatcher struct {
 	nodeID string
 }
 
-func (w *wrappingWatcher) OnError(err error, done xdsresource.OnDoneFunc) {
-	w.ResourceWatcher.OnError(fmt.Errorf("[xDS node id: %v]: %w", w.nodeID, err), done)
+func (w *wrappingWatcher) ResourceError(err error, done func()) {
+	w.ResourceWatcher.ResourceError(fmt.Errorf("[xDS node id: %v]: %w", w.nodeID, err), done)
+}
+
+func (w *wrappingWatcher) AmbientError(err error, done func()) {
+	w.ResourceWatcher.AmbientError(fmt.Errorf("[xDS node id: %v]: %w", w.nodeID, err), done)
 }
 
 // WatchResource uses xDS to discover the resource associated with the provided
@@ -60,8 +64,8 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	}
 
 	if err := c.resourceTypes.maybeRegister(rType); err != nil {
-		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeName(), resourceName)
-		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, func() {}) })
+		logger.Warningf("Watch registered for type %q, which is already registered", rType.TypeName())
+		c.serializer.TrySchedule(func(context.Context) { watcher.ResourceError(err, func() {}) })
 		return func() {}
 	}
 
@@ -69,7 +73,7 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	a := c.getAuthorityForResource(n)
 	if a == nil {
 		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName(), resourceName, n.Authority)
-		watcher.OnError(fmt.Errorf("authority %q not found in bootstrap config for resource %q", n.Authority, resourceName), func() {})
+		watcher.ResourceError(fmt.Errorf("authority %q not found in bootstrap config for resource %q", n.Authority, resourceName), func() {})
 		return func() {}
 	}
 	// The watchResource method on the authority is invoked with n.String()

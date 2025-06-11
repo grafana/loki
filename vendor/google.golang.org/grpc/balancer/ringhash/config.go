@@ -25,17 +25,8 @@ import (
 
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/metadata"
-	"google.golang.org/grpc/serviceconfig"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 )
-
-// LBConfig is the balancer config for ring_hash balancer.
-type LBConfig struct {
-	serviceconfig.LoadBalancingConfig `json:"-"`
-
-	MinRingSize       uint64 `json:"minRingSize,omitempty"`
-	MaxRingSize       uint64 `json:"maxRingSize,omitempty"`
-	RequestHashHeader string `json:"requestHashHeader,omitempty"`
-}
 
 const (
 	defaultMinSize         = 1024
@@ -43,8 +34,8 @@ const (
 	ringHashSizeUpperBound = 8 * 1024 * 1024 // 8M
 )
 
-func parseConfig(c json.RawMessage) (*LBConfig, error) {
-	var cfg LBConfig
+func parseConfig(c json.RawMessage) (*iringhash.LBConfig, error) {
+	var cfg iringhash.LBConfig
 	if err := json.Unmarshal(c, &cfg); err != nil {
 		return nil, err
 	}

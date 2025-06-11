@@ -16,7 +16,16 @@
  *
  */
 
-// Package ringhash implements the ringhash balancer.
+// Package ringhash implements the ringhash balancer. See the following
+// gRFCs for details:
+// - https://github.com/grpc/proposal/blob/master/A42-xds-ring-hash-lb-policy.md
+// - https://github.com/grpc/proposal/blob/master/A61-IPv4-IPv6-dualstack-backends.md#ring-hash
+// - https://github.com/grpc/proposal/blob/master/A76-ring-hash-improvements.md
+//
+// # Experimental
+//
+// Notice: This package is EXPERIMENTAL and may be changed or removed in a
+// later release.
 package ringhash
 
 import (
@@ -36,6 +45,7 @@ import (
 	"google.golang.org/grpc/internal/balancer/weight"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/ringhash"
 	"google.golang.org/grpc/serviceconfig"
@@ -85,7 +95,7 @@ type ringhashBalancer struct {
 	child  balancer.Balancer
 
 	mu                   sync.Mutex
-	config               *LBConfig
+	config               *iringhash.LBConfig
 	inhibitChildUpdates  bool
 	shouldRegenerateRing bool
 	endpointStates       *resolver.EndpointMap[*endpointState]
@@ -173,7 +183,7 @@ func (b *ringhashBalancer) UpdateClientConnState(ccs balancer.ClientConnState) e
 		b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(ccs.BalancerConfig))
 	}
 
-	newConfig, ok := ccs.BalancerConfig.(*LBConfig)
+	newConfig, ok := ccs.BalancerConfig.(*iringhash.LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", ccs.BalancerConfig)
 	}
