@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.0...auth/v0.16.1) (2025-04-23)
+
+
+### Bug Fixes
+
+* **auth:** Clone detectopts before assigning TokenBindingType ([#11881](https://github.com/googleapis/google-cloud-go/issues/11881)) ([2167b02](https://github.com/googleapis/google-cloud-go/commit/2167b020fdc43b517c2b6ecca264a10e357ea035))
+
 ## [0.16.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.15.0...auth/v0.16.0) (2025-04-14)
 
 
