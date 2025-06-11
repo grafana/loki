@@ -19,8 +19,10 @@ import (
 const maxChunksPerJob = 1000
 
 type deletionJob struct {
-	ChunkIDs        []string `json:"chunk_ids"`
-	DeletionQueries []string `json:"deletion_queries"`
+	TableName      string          `json:"table_name"`
+	UserID         string          `json:"user_id"`
+	ChunkIDs       []string        `json:"chunk_ids"`
+	DeleteRequests []DeleteRequest `json:"delete_requests"`
 }
 
 type manifestJobs struct {
@@ -138,7 +140,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 				return ctx.Err()
 			}
 
-			if err := b.createJobsForChunksGroup(ctx, fmt.Sprintf("%d", i), group, jobsChan); err != nil {
+			if err := b.createJobsForChunksGroup(ctx, segment.TableName, segment.UserID, fmt.Sprintf("%d", i), group, jobsChan); err != nil {
 				return err
 			}
 		}
@@ -230,12 +232,7 @@ func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*ma
 	return &m, nil
 }
 
-func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupID string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
-	deletionQueries := make([]string, 0, len(group.Requests))
-	for _, req := range group.Requests {
-		deletionQueries = append(deletionQueries, req.Query)
-	}
-
+func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, userID, groupID string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
 	// Split chunks into groups of maxChunksPerJob
 	for i := 0; i < len(group.Chunks); i += maxChunksPerJob {
 		end := i + maxChunksPerJob
@@ -244,8 +241,10 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, groupID strin
 		}
 
 		payload, err := json.Marshal(&deletionJob{
-			ChunkIDs:        group.Chunks[i:end],
-			DeletionQueries: deletionQueries,
+			TableName:      tableName,
+			UserID:         userID,
+			ChunkIDs:       group.Chunks[i:end],
+			DeleteRequests: group.Requests,
 		})
 		if err != nil {
 			return err
