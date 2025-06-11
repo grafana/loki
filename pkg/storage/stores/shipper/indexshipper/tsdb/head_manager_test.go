@@ -143,11 +143,11 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 	}{
 		{
 			user: "tenant1",
-			ls: labels.NewBuilder(ls).Set("tenant", "tenant1").Labels(),
+			ls:   labels.NewBuilder(ls).Set("tenant", "tenant1").Labels(),
 		},
 		{
 			user: "tenant2",
-			ls: labels.NewBuilder(ls).Set("tenant", "tenant2").Labels(),
+			ls:   labels.NewBuilder(ls).Set("tenant", "tenant2").Labels(),
 		},
 	}
 

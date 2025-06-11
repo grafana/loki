@@ -436,12 +436,15 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
+			lb.Reset()
 			_, err := ir.Series(ref, 0, math.MaxInt64, &lb, &chks)
 			require.NoError(t, err)
 			lset = lb.Labels()
 
+			lb.Reset()
 			err = mi.Series(expp.At(), &lb, &expchks)
 			require.NoError(t, err)
+			explset = lb.Labels()
 			require.Equal(t, explset, lset)
 			require.Equal(t, expchks, chks)
 		}

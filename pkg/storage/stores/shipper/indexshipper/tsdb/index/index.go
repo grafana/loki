@@ -478,7 +478,7 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	w.buf2.PutHash(w.crc32)
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries = lset.Copy() // TODO: avoid allocation append(w.lastSeries[:0], lset...)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 

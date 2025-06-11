@@ -372,7 +372,8 @@ func (i *TSDBIndex) Volume(
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.NewScratchBuilder(len(labelsToMatch))
+	var seriesLabels labels.Labels
+	b := labels.NewScratchBuilder(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -395,7 +396,6 @@ func (i *TSDBIndex) Volume(
 	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
-		b := labels.NewScratchBuilder(10)
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &b, by)
 			if err != nil {
@@ -422,11 +422,12 @@ func (i *TSDBIndex) Volume(
 							b.Add(l.Name, l.Value)
 						}
 					})
+					seriesLabels = b.Labels() // TODO: avoid this allocation
 				} else {
 					// when aggregating by labels, capture sizes for target labels if provided,
 					// otherwise for all intersecting labels
-					labelVolumes = make(map[string]uint64, len(ls))
-					for _, l := range ls {
+					labelVolumes = make(map[string]uint64, ls.Len())
+					ls.Range(func(l labels.Label) {
 						if len(targetLabels) > 0 {
 							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 								labelVolumes[l.Name] += stats.KB << 10
@@ -436,12 +437,12 @@ func (i *TSDBIndex) Volume(
 								labelVolumes[l.Name] += stats.KB << 10
 							}
 						}
-					}
+					})
 				}
 
 				// If the labels are < 1k, this does not alloc
 				// https://github.com/prometheus/prometheus/pull/8025
-				hash := seriesLabels.Hash()
+				hash := seriesLabels.Hash() // TODO: check what this hash is withouth aggegateBySeries
 				if _, ok := seriesNames[hash]; !ok {
 					seriesNames[hash] = seriesLabels.String()
 				}
