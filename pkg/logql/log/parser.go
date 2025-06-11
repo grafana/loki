@@ -170,7 +170,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	sanitized := j.buildSanitizedPrefixFromBuffer()
 	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
 		if j.lbs.BaseHas(string(sanitized)) {
-			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
+			j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
 		}
 
 		keyPrefix := j.buildSanitizedPrefixFromBuffer()
