@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MIT
+
 //go:build go1.9
 // +build go1.9
 
@@ -10,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 )
@@ -270,10 +273,18 @@ func prometheusLabels(labels []metrics.Label) prometheus.Labels {
 }
 
 func (p *PrometheusSink) SetGauge(parts []string, val float32) {
-	p.SetGaugeWithLabels(parts, val, nil)
+	p.SetPrecisionGauge(parts, float64(val))
 }
 
 func (p *PrometheusSink) SetGaugeWithLabels(parts []string, val float32, labels []metrics.Label) {
+	p.SetPrecisionGaugeWithLabels(parts, float64(val), labels)
+}
+
+func (p *PrometheusSink) SetPrecisionGauge(parts []string, val float64) {
+	p.SetPrecisionGaugeWithLabels(parts, val, nil)
+}
+
+func (p *PrometheusSink) SetPrecisionGaugeWithLabels(parts []string, val float64, labels []metrics.Label) {
 	key, hash := flattenKey(parts, labels)
 	pg, ok := p.gauges.Load(hash)
 
@@ -285,7 +296,7 @@ func (p *PrometheusSink) SetGaugeWithLabels(parts []string, val float32, labels 
 	// value, but since we're always setting it to time.Now(), it doesn't really matter.
 	if ok {
 		localGauge := *pg.(*gauge)
-		localGauge.Set(float64(val))
+		localGauge.Set(val)
 		localGauge.updatedAt = time.Now()
 		p.gauges.Store(hash, &localGauge)
 
@@ -301,7 +312,7 @@ func (p *PrometheusSink) SetGaugeWithLabels(parts []string, val float32, labels 
 			Help:        help,
 			ConstLabels: prometheusLabels(labels),
 		})
-		g.Set(float64(val))
+		g.Set(val)
 		pg = &gauge{
 			Gauge:     g,
 			updatedAt: time.Now(),
@@ -363,6 +374,13 @@ func (p *PrometheusSink) IncrCounter(parts []string, val float32) {
 func (p *PrometheusSink) IncrCounterWithLabels(parts []string, val float32, labels []metrics.Label) {
 	key, hash := flattenKey(parts, labels)
 	pc, ok := p.counters.Load(hash)
+
+	// Prometheus Counter.Add() panics if val < 0. We don't want this to
+	// cause applications to crash, so log an error instead.
+	if val < 0 {
+		log.Printf("[ERR] Attempting to increment Prometheus counter %v with value negative value %v", key, val)
+		return
+	}
 
 	// Does the counter exist?
 	if ok {
