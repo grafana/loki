@@ -203,6 +203,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	)
 
 	g, ctx := errgroup.WithContext(s.ctx)
+	g.SetLimit(1)
 
 	var gotData atomic.Bool
 
