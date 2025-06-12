@@ -7,15 +7,10 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	model.NameValidationScheme = model.LegacyValidation
-}
 
 func Test_GroupLoader(t *testing.T) {
 	for _, tc := range []struct {

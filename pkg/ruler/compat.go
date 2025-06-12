@@ -270,13 +270,13 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record)) {
+		if !model.IsValidLegacyMetricName(r.Record) {
 			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+		if !model.LabelName(k).IsValidLegacy() || k == model.MetricNameLabel {
 			return errors.Errorf("invalid label name: %s", k)
 		}
 
@@ -286,7 +286,7 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValid() {
+		if !model.LabelName(k).IsValidLegacy() {
 			return errors.Errorf("invalid annotation name: %s", k)
 		}
 	}
