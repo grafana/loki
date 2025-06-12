@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,6 +28,9 @@ const (
 	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
+
+	// Readiness check
+	maxAssignmentRetries int32 = 10
 )
 
 // Service is a service that manages stream metadata limits.
@@ -47,6 +53,8 @@ type Service struct {
 	// Metrics.
 	streamEvictionsTotal *prometheus.CounterVec
 
+	assigmentRetries *atomic.Int32
+
 	// Used for tests.
 	clock quartz.Clock
 }
@@ -64,7 +72,8 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		clock: quartz.NewReal(),
+		clock:            quartz.NewReal(),
+		assigmentRetries: atomic.NewInt32(0),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
@@ -177,14 +186,36 @@ func (s *Service) ExceedsLimits(
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
-	if s.State() != services.Running {
-		return fmt.Errorf("service is not running: %v", s.State())
+	serviceReady := func() error {
+		if s.State() != services.Running {
+			return fmt.Errorf("service is not running: %v", s.State())
+		}
+
+		if err := s.lifecycler.CheckReady(ctx); err != nil {
+			return fmt.Errorf("lifecycler not ready: %w", err)
+		}
+
+		return nil
 	}
-	err := s.lifecycler.CheckReady(ctx)
-	if err != nil {
-		return fmt.Errorf("lifecycler not ready: %w", err)
+
+	if len(s.partitionManager.List()) == 0 {
+		if s.assigmentRetries.Load() == maxAssignmentRetries {
+			level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
+			return serviceReady()
+		}
+
+		s.assigmentRetries.Inc()
+		return fmt.Errorf("no partitions assigned, retrying")
 	}
-	return nil
+
+	// reset retries on success
+	s.assigmentRetries.Store(0)
+
+	if !s.partitionManager.CheckReady() {
+		return fmt.Errorf("partitions not ready")
+	}
+
+	return serviceReady()
 }
 
 // starting implements the Service interface's starting method.
