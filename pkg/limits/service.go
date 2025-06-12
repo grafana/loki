@@ -53,7 +53,9 @@ type Service struct {
 	// Metrics.
 	streamEvictionsTotal *prometheus.CounterVec
 
+	// Readiness check
 	assigmentRetries *atomic.Int32
+	initialized      *atomic.Bool
 
 	// Used for tests.
 	clock quartz.Clock
@@ -198,21 +200,33 @@ func (s *Service) CheckReady(ctx context.Context) error {
 		return nil
 	}
 
-	if len(s.partitionManager.List()) == 0 {
-		if s.assigmentRetries.Load() == maxAssignmentRetries {
-			level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
-			return serviceReady()
+	// Check if the partitions assignment and replay
+	// are complete on the service startup only.
+	if !s.initialized.Load() {
+		if len(s.partitionManager.List()) == 0 {
+			if s.assigmentRetries.Load() == maxAssignmentRetries {
+				// If no partition assigment on startup,
+				// declare the service initialized.
+				s.initialized.Store(true)
+
+				level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
+				return serviceReady()
+			}
+
+			s.assigmentRetries.Inc()
+			return fmt.Errorf("no partitions assigned, retrying")
 		}
 
-		s.assigmentRetries.Inc()
-		return fmt.Errorf("no partitions assigned, retrying")
-	}
+		// reset retries on success
+		s.assigmentRetries.Store(0)
 
-	// reset retries on success
-	s.assigmentRetries.Store(0)
+		if !s.partitionManager.CheckReady() {
+			return fmt.Errorf("partitions not ready")
+		}
 
-	if !s.partitionManager.CheckReady() {
-		return fmt.Errorf("partitions not ready")
+		// If the partitions are assigned, and the replay is complete,
+		// declare the service initialized.
+		s.initialized.Store(true)
 	}
 
 	return serviceReady()
