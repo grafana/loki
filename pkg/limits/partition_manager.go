@@ -141,8 +141,8 @@ func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
 
 // CheckReady returns true if all partitions are ready.
 func (m *partitionManager) CheckReady() bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	for _, entry := range m.partitions {
 		if entry.state != partitionReady {
 			return false
