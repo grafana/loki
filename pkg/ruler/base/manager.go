@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -22,6 +21,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/context/ctxhttp"
 	"gopkg.in/yaml.v3"
+
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
 type DefaultMultiTenantManager struct {
