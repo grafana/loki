@@ -40,16 +40,6 @@ func setupRuleSets() {
 	expr := "example_expr"
 	recordUpdated := "example_ruleupdated"
 	exprUpdated := "example_exprupdated"
-	/*
-		recordNode := yaml.Node{}
-		recordNode.SetString("example_rule")
-		exprNode := yaml.Node{}
-		exprNode.SetString("example_expr")
-		recordNodeUpdated := yaml.Node{}
-		recordNodeUpdated.SetString("example_ruleupdated")
-		exprNodeUpdated := yaml.Node{}
-		exprNodeUpdated.SetString("example_exprupdated")
-	*/
 	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
