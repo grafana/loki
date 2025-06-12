@@ -47,7 +47,7 @@ func (s partitionState) String() string {
 // each partition a timestamp of when it was assigned.
 type partitionManager struct {
 	partitions map[int32]partitionEntry
-	mtx        sync.Mutex
+	mtx        sync.RWMutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -87,8 +87,8 @@ func (m *partitionManager) Assign(partitions []int32) {
 // GetState returns the current state of the partition. It returns false
 // if the partition does not exist.
 func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	return entry.state, ok
 }
@@ -96,8 +96,8 @@ func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
 // TargetOffsetReached returns true if the partition is replaying and the
 // target offset has been reached.
 func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	if ok {
 		return entry.state == partitionReplaying && entry.targetOffset <= offset
@@ -107,8 +107,8 @@ func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bo
 
 // Has returns true if the partition is assigned, otherwise false.
 func (m *partitionManager) Has(partition int32) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	_, ok := m.partitions[partition]
 	return ok
 }
@@ -116,8 +116,8 @@ func (m *partitionManager) Has(partition int32) bool {
 // List returns a map of all assigned partitions and the timestamp of when
 // each partition was assigned.
 func (m *partitionManager) List() map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		result[partition] = entry.assignedAt
@@ -128,8 +128,8 @@ func (m *partitionManager) List() map[int32]int64 {
 // ListByState returns all partitions with the specified state and their last
 // updated timestamps.
 func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		if entry.state == state {
@@ -137,6 +137,18 @@ func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
 		}
 	}
 	return result
+}
+
+// CheckReady returns true if all partitions are ready.
+func (m *partitionManager) CheckReady() bool {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	for _, entry := range m.partitions {
+		if entry.state != partitionReady {
+			return false
+		}
+	}
+	return true
 }
 
 // SetReplaying sets the partition as replaying and the offset that must
@@ -184,8 +196,8 @@ func (m *partitionManager) Describe(descs chan<- *prometheus.Desc) {
 
 // Collect implements [prometheus.Collector].
 func (m *partitionManager) Collect(metrics chan<- prometheus.Metric) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	for partition, entry := range m.partitions {
 		metrics <- prometheus.MustNewConstMetric(
 			partitionsDesc,
