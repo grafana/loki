@@ -95,6 +95,10 @@ type ReadRing interface {
 	// the input operation.
 	GetReplicationSetForOperation(op Operation) (ReplicationSet, error)
 
+	// GetSubringForOperationStates returns a subring containing only instances for the given operation.
+	// This method only filters by instance state and does not check heartbeat timeouts.
+	GetSubringForOperationStates(op Operation) ReadRing
+
 	ReplicationFactor() int
 
 	// InstancesCount returns the number of instances in the ring.
@@ -719,6 +723,21 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		MaxUnavailableZones:  maxUnavailableZones,
 		ZoneAwarenessEnabled: r.cfg.ZoneAwarenessEnabled,
 	}, nil
+}
+
+func (r *Ring) GetSubringForOperationStates(op Operation) ReadRing {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	shard := make(map[string]InstanceDesc, len(r.ringDesc.Ingesters))
+
+	for id, inst := range r.ringDesc.Ingesters {
+		if op.IsInstanceInStateHealthy(inst.State) {
+			shard[id] = inst
+		}
+	}
+
+	return r.buildRingForTheShard(shard)
 }
 
 // CountTokens returns the number tokens within the range for each instance.

@@ -52,7 +52,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250519165046-78afbb506eb9
+	github.com/grafana/dskit v0.0.0-20250604075511-ff24856a2b95
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20250318131618-74242eea118d
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -200,7 +200,9 @@ require (
 	github.com/gophercloud/gophercloud/v2 v2.4.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
+	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
+	github.com/jaegertracing/jaeger-idl v0.5.0 // indirect
 	github.com/kamstrup/intmap v0.5.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240226150601-1dcf7310316a // indirect
@@ -248,7 +250,7 @@ require (
 	go.opentelemetry.io/collector/processor v0.118.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.36.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.35.0 // indirect
-	go.opentelemetry.io/contrib/samplers/jaegerremote v0.29.0 // indirect
+	go.opentelemetry.io/contrib/samplers/jaegerremote v0.30.0 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.17.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.36.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
@@ -360,7 +362,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/memberlist v0.5.3 // indirect
-	github.com/hashicorp/serf v0.10.1 // indirect
+	github.com/hashicorp/serf v0.10.2 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect

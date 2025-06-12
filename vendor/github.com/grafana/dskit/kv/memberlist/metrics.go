@@ -3,9 +3,9 @@ package memberlist
 import (
 	"time"
 
-	armonmetrics "github.com/armon/go-metrics"
-	armonprometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/go-kit/log/level"
+	"github.com/hashicorp/go-metrics"
+	metricsprometheus "github.com/hashicorp/go-metrics/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -202,16 +202,15 @@ func (m *KV) createAndRegisterMetrics() {
 
 	m.registerer.MustRegister(m)
 
-	// memberlist uses armonmetrics package for internal usage
-	// here we configure armonmetrics to use prometheus.
-	opts := armonprometheus.PrometheusOpts{
+	// memberlist uses hashicorp/go-metrics module for internal usage
+	// here we configure go-metrics to use prometheus.
+	opts := metricsprometheus.PrometheusOpts{
 		Expiration: 0, // Don't expire metrics.
 		Registerer: m.registerer,
 	}
-
-	sink, err := armonprometheus.NewPrometheusSinkFrom(opts)
+	sink, err := metricsprometheus.NewPrometheusSinkFrom(opts)
 	if err == nil {
-		cfg := armonmetrics.DefaultConfig("")
+		cfg := metrics.DefaultConfig("")
 		cfg.EnableHostname = false         // no need to put hostname into metric
 		cfg.EnableHostnameLabel = false    // no need to put hostname into labels
 		cfg.EnableServiceLabel = false     // Don't put service name into a label. (We don't set service name anyway).
@@ -219,7 +218,7 @@ func (m *KV) createAndRegisterMetrics() {
 		cfg.EnableTypePrefix = true        // to make better sense of internal memberlist metrics
 		cfg.TimerGranularity = time.Second // timers are in seconds in prometheus world
 
-		_, err = armonmetrics.NewGlobal(cfg, sink)
+		_, err = metrics.NewGlobal(cfg, sink)
 	}
 
 	if err != nil {

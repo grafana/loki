@@ -265,6 +265,10 @@ func (f *fakeRing) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Op
 	return args.Get(0).(ring.ReplicationSet), args.Error(1)
 }
 
+func (f *fakeRing) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return f
+}
+
 type mockPoolClient struct {
 	mock.Mock
 	ctx context.Context

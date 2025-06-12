@@ -7,9 +7,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc/peer"
 
 	"github.com/grafana/dskit/clusterutil"
 	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/tracing"
+	"github.com/grafana/dskit/user"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -100,18 +103,35 @@ func checkClusterFromIncomingContext(
 	invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) error {
 	reqCluster, err := clusterutil.GetClusterFromIncomingContext(ctx)
-	if err == nil {
-		if reqCluster == expectedCluster {
-			return nil
-		}
+	if err == nil && reqCluster == expectedCluster {
+		return nil
+	}
 
+	logger = log.With(
+		logger,
+		"method", method,
+		"cluster_validation_label", expectedCluster,
+		"soft_validation", softValidationEnabled,
+	)
+	if tenantID, err := user.ExtractOrgID(ctx); err == nil {
+		logger = log.With(logger, "tenant", tenantID)
+	}
+	if p, ok := peer.FromContext(ctx); ok {
+		logger = log.With(logger, "client_address", p.Addr.String())
+	}
+	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
+		logger = log.With(logger, "trace_id", traceID)
+	}
+
+	if err == nil {
+		// No error, but request's and server's cluster validation labels didn't match.
 		var wrongClusterErr error
 		if !softValidationEnabled {
 			wrongClusterErr = fmt.Errorf("rejected request with wrong cluster validation label %q - it should be %q", reqCluster, expectedCluster)
 		}
 
 		invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, reqCluster).Inc()
-		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "method", method, "cluster_validation_label", expectedCluster, "request_cluster_validation_label", reqCluster, "soft_validation", softValidationEnabled)
+		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "request_cluster_validation_label", reqCluster)
 		return wrongClusterErr
 	}
 
@@ -122,7 +142,7 @@ func checkClusterFromIncomingContext(
 		}
 
 		invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, "").Inc()
-		level.Warn(logger).Log("msg", "request with no cluster validation label", "method", method, "cluster_validation_label", expectedCluster, "soft_validation", softValidationEnabled)
+		level.Warn(logger).Log("msg", "request with no cluster validation label")
 		return emptyClusterErr
 	}
 
@@ -132,6 +152,6 @@ func checkClusterFromIncomingContext(
 	}
 
 	invalidClusterRequests.WithLabelValues("grpc", method, expectedCluster, "").Inc()
-	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "method", method, "cluster_validation_label", expectedCluster, "soft_validation", softValidationEnabled, "err", err)
+	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "err", err)
 	return rejectedRequestErr
 }
