@@ -206,7 +206,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
 
-	level.Debug(log).Log(
+	level.Warn(log).Log(
 		append(
 			combined.LoggingKeyValues(),
 			"msg", "got shard factor",
