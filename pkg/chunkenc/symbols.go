@@ -45,12 +45,14 @@ type symbolizer struct {
 	readOnly       bool
 	// Runtime-only map to track which symbols are label names and have been normalized
 	normalizedNames map[uint32]string
+	normalizer      *otlptranslator.LabelNamer
 }
 
 func newSymbolizer() *symbolizer {
 	return &symbolizer{
 		symbolsMap:      map[string]uint32{},
 		normalizedNames: map[uint32]string{},
+		normalizer:      &otlptranslator.LabelNamer{},
 	}
 }
 
@@ -123,7 +125,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized := otlptranslator.NormalizeLabel(name)
+			normalized := s.normalizer.Build(name)
 			s.mtx.Lock()
 			s.normalizedNames[symbol.Name] = normalized
 			s.mtx.Unlock()
@@ -338,6 +340,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 		// Labels are key-value pairs, preallocate to half the number to store just the keys,
 		// likely less memory than the exponential growth Go will do.
 		normalizedNames: make(map[uint32]string, numLabels/2),
+		normalizer:      &otlptranslator.LabelNamer{},
 	}
 
 	for i := 0; i < numLabels; i++ {
@@ -368,6 +371,7 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 		labels: make([]string, 0, numLabels),
 		// Same as symbolizerFromCheckpoint
 		normalizedNames: make(map[uint32]string, numLabels/2),
+		normalizer:      &otlptranslator.LabelNamer{},
 		compressedSize:  len(b),
 		readOnly:        true,
 	}
