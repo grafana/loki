@@ -45,12 +45,14 @@ type symbolizer struct {
 	readOnly       bool
 	// Runtime-only map to track which symbols are label names and have been normalized
 	normalizedNames map[uint32]string
+	normalizer      *otlptranslator.LabelNamer
 }
 
 func newSymbolizer() *symbolizer {
 	return &symbolizer{
 		symbolsMap:      map[string]uint32{},
 		normalizedNames: map[uint32]string{},
+		normalizer:      &otlptranslator.LabelNamer{},
 	}
 }
 
@@ -123,7 +125,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized := otlptranslator.NormalizeLabel(name)
+			normalized := s.normalizer.Build(name)
 			s.mtx.Lock()
 			s.normalizedNames[symbol.Name] = normalized
 			s.mtx.Unlock()
