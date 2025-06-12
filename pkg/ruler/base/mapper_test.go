@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -36,31 +35,38 @@ var (
 )
 
 func setupRuleSets() {
-	recordNode := yaml.Node{}
-	recordNode.SetString("example_rule")
-	exprNode := yaml.Node{}
-	exprNode.SetString("example_expr")
-	recordNodeUpdated := yaml.Node{}
-	recordNodeUpdated.SetString("example_ruleupdated")
-	exprNodeUpdated := yaml.Node{}
-	exprNodeUpdated.SetString("example_exprupdated")
+
+	record := "example_rule"
+	expr := "example_expr"
+	recordUpdated := "example_ruleupdated"
+	exprUpdated := "example_exprupdated"
+	/*
+		recordNode := yaml.Node{}
+		recordNode.SetString("example_rule")
+		exprNode := yaml.Node{}
+		exprNode.SetString("example_expr")
+		recordNodeUpdated := yaml.Node{}
+		recordNodeUpdated.SetString("example_ruleupdated")
+		exprNodeUpdated := yaml.Node{}
+		exprNodeUpdated.SetString("example_exprupdated")
+	*/
 	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -70,19 +76,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -92,28 +98,28 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_three",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -123,19 +129,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -143,10 +149,10 @@ func setupRuleSets() {
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -156,19 +162,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -176,10 +182,10 @@ func setupRuleSets() {
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNodeUpdated,
-						Expr:   exprNodeUpdated,
+						Record: recordUpdated,
+						Expr:   exprUpdated,
 					},
 				},
 			},
@@ -189,19 +195,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},
@@ -211,10 +217,10 @@ func setupRuleSets() {
 		specialCharFile: {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: record,
+						Expr:   expr,
 					},
 				},
 			},

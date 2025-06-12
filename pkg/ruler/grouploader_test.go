@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -364,8 +363,8 @@ var (
 	ruleGroup1 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-1-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-1-name"},
 				},
 			},
 		},
@@ -373,8 +372,8 @@ var (
 	ruleGroup2 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-2-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-2-name"},
 				},
 			},
 		},

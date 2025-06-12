@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -20,8 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/context/ctxhttp"
-
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"gopkg.in/yaml.v3"
 )
 
 type DefaultMultiTenantManager struct {
@@ -300,12 +300,17 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate() {
+		ruleNode := rulefmt.RuleNode{
+			Record: yaml.Node{Value: r.Record},
+			Alert:  yaml.Node{Value: r.Alert},
+			Expr:   yaml.Node{Value: r.Expr},
+		}
+		for _, err := range r.Validate(ruleNode) {
 			var ruleName string
-			if r.Alert.Value != "" {
-				ruleName = r.Alert.Value
+			if r.Alert != "" {
+				ruleName = r.Alert
 			} else {
-				ruleName = r.Record.Value
+				ruleName = r.Record
 			}
 			errs = append(errs, &rulefmt.Error{
 				Group:    g.Name,

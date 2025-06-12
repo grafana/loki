@@ -374,7 +374,7 @@ func (w *Storage) Truncate(mint int64) error {
 		return nil
 	}
 
-	keep := func(id chunks.HeadSeriesRef) bool {
+	keep := func(id chunks.HeadSeriesRef, _ int) bool {
 		if w.series.getByID(id) != nil {
 			return true
 		}

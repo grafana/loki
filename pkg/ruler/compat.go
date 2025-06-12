@@ -236,7 +236,7 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 		set[g.Name] = struct{}{}
 
 		for _, r := range g.Rules {
-			if err := validateRuleNode(&r, g.Name); err != nil {
+			if err := validateRule(&r, g.Name); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -245,33 +245,33 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	return errs
 }
 
-func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
-	if r.Record.Value != "" && r.Alert.Value != "" {
+func validateRule(r *rulefmt.Rule, groupName string) error {
+	if r.Record != "" && r.Alert != "" {
 		return errors.Errorf("only one of 'record' and 'alert' must be set")
 	}
 
-	if r.Record.Value == "" && r.Alert.Value == "" {
+	if r.Record == "" && r.Alert == "" {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
 	}
 
-	if r.Expr.Value == "" {
+	if r.Expr == "" {
 		return errors.Errorf("field 'expr' must be set in rule")
-	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
-		if r.Record.Value != "" {
-			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)
+	} else if _, err := syntax.ParseExpr(r.Expr); err != nil {
+		if r.Record != "" {
+			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record, groupName)
 		}
-		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName)
+		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert, groupName)
 	}
 
-	if r.Record.Value != "" {
+	if r.Record != "" {
 		if len(r.Annotations) > 0 {
 			return errors.Errorf("invalid field 'annotations' in recording rule")
 		}
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
-			return errors.Errorf("invalid recording rule name: %s", r.Record.Value)
+		if !model.IsValidMetricName(model.LabelValue(r.Record)) {
+			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
@@ -300,8 +300,8 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 
 // testTemplateParsing checks if the templates used in labels and annotations
 // of the alerting rules are parsed correctly.
-func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
-	if rl.Alert.Value == "" {
+func testTemplateParsing(rl *rulefmt.Rule) (errs []error) {
+	if rl.Alert == "" {
 		// Not an alerting rule.
 		return errs
 	}
@@ -317,7 +317,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 		tmpl := template.NewTemplateExpander(
 			context.TODO(),
 			strings.Join(append(defs, text), ""),
-			"__alert_"+rl.Alert.Value,
+			"__alert_"+rl.Alert,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
 			nil,
