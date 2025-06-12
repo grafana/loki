@@ -340,6 +340,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 		// Labels are key-value pairs, preallocate to half the number to store just the keys,
 		// likely less memory than the exponential growth Go will do.
 		normalizedNames: make(map[uint32]string, numLabels/2),
+		normalizer:      &otlptranslator.LabelNamer{},
 	}
 
 	for i := 0; i < numLabels; i++ {
@@ -370,6 +371,7 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 		labels: make([]string, 0, numLabels),
 		// Same as symbolizerFromCheckpoint
 		normalizedNames: make(map[uint32]string, numLabels/2),
+		normalizer:      &otlptranslator.LabelNamer{},
 		compressedSize:  len(b),
 		readOnly:        true,
 	}
