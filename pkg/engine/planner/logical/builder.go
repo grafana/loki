@@ -52,6 +52,7 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	}
 }
 
+// RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
 	partitionBy []ColumnRef,
 	operation types.RangeAggregationType,
@@ -69,6 +70,20 @@ func (b *Builder) RangeAggregation(
 			End:           endTS,
 			Step:          step,
 			RangeInterval: rangeInterval,
+		},
+	}
+}
+
+// VectorAggregation applies a [VectorAggregation] operation to the Builder.
+func (b *Builder) VectorAggregation(
+	groupBy []ColumnRef,
+	operation types.VectorAggregationType,
+) *Builder {
+	return &Builder{
+		val: &VectorAggregation{
+			Table:     b.val,
+			GroupBy:   groupBy,
+			Operation: operation,
 		},
 	}
 }

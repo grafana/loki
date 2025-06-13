@@ -105,7 +105,7 @@ SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
 	require.Equal(t, expected, actual)
 }
 
-func TestFormatRangeAggregate(t *testing.T) {
+func TestFormatRangeAggregationQuery(t *testing.T) {
 	// Build a query plan for a simple range aggregation query:
 	//
 	// count_over_time({ app="users" } | age > 51[5m])
@@ -154,6 +154,49 @@ RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01 00:00:00 +000
             └── BinOp <%1> op=EQ left=label.app right="users"
                 ├── ColumnRef column=app type=label
                 └── Literal value="users" kind=string
+`
+
+	require.Equal(t, expected, actual)
+}
+
+func TestFormatVectorAggregationQuery(t *testing.T) {
+	// Build a query plan for a simple vector aggregation query:
+	//
+	// sum by (app, env) (rate({ app="users" }[5m]))
+	b := NewBuilder(
+		&MakeTable{
+			Selector: &BinOp{
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+		},
+	).VectorAggregation(
+		[]ColumnRef{
+			*NewColumnRef("app", types.ColumnTypeLabel),
+			*NewColumnRef("env", types.ColumnTypeLabel),
+		},
+		types.VectorAggregationTypeSum,
+	)
+
+	// Convert to plan so that node IDs get populated
+	plan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	var sb strings.Builder
+	PrintTree(&sb, plan.Value())
+
+	actual := "\n" + sb.String()
+	t.Logf("Actual output:\n%s", actual)
+
+	expected := `
+VectorAggregation <%3> table=%2 operation=sum group_by=(label.app, label.env)
+│   ├── ColumnRef column=app type=label
+│   └── ColumnRef column=env type=label
+└── MAKETABLE <%2> selector=EQ label.app "users"
+        └── BinOp <%1> op=EQ left=label.app right="users"
+            ├── ColumnRef column=app type=label
+            └── Literal value="users" kind=string
 `
 
 	require.Equal(t, expected, actual)

@@ -16,65 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-type partitionAggregator struct {
-	digest  *xxhash.Digest // used to compute key for each partition
-	entries map[uint64]*partitionEntry
-}
-
-func newPartitionAggregator() *partitionAggregator {
-	return &partitionAggregator{
-		digest: xxhash.New(),
-		// TODO: estimate size during planning
-		entries: make(map[uint64]*partitionEntry),
-	}
-}
-
-type partitionEntry struct {
-	count       int64
-	labelValues []string
-}
-
-func (a *partitionAggregator) Add(partitionLabelValues []string) {
-	a.digest.Reset()
-
-	for i, val := range partitionLabelValues {
-		if i > 0 {
-			_, _ = a.digest.Write([]byte{0}) // separator for label values
-		}
-
-		a.digest.WriteString(val)
-	}
-
-	key := a.digest.Sum64()
-	if entry, ok := a.entries[key]; ok {
-		// TODO: handle hash collisions
-		entry.count++
-	} else {
-		// create a new slice since partitionLabelValues is reused by the calling code
-		labelValues := make([]string, len(partitionLabelValues))
-		for i, v := range partitionLabelValues {
-			// copy the value as this is backed by the arrow array data buffer.
-			// We could retain the record to avoid this copy, but that would hold
-			// all other columns in memory for as long as the query is evaluated.
-			labelValues[i] = strings.Clone(v)
-		}
-
-		// TODO: add limits on number of partitions
-		a.entries[key] = &partitionEntry{
-			labelValues: labelValues,
-			count:       1,
-		}
-	}
-}
-
-func (a *partitionAggregator) Reset() {
-	clear(a.entries)
-}
-
-func (a *partitionAggregator) NumOfPartitions() int {
-	return len(a.entries)
-}
-
 type rangeAggregationOptions struct {
 	partitionBy []physical.ColumnExpression
 
@@ -86,9 +27,11 @@ type rangeAggregationOptions struct {
 }
 
 // RangeAggregationPipeline is a pipeline that performs aggregations over a time window.
-// - It reads from the input pipelines
-// - Partitions the data by the specified columns
-// - Applies the aggregation function on each partition
+//
+// 1. It reads from the input pipelines
+// 2. Partitions the data by the specified columns
+// 3. Applies the aggregation function on each partition
+//
 // Current version only supports counting for instant queries.
 type RangeAggregationPipeline struct {
 	state  state
@@ -225,10 +168,10 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 			Metadata: datatype.ColumnMetadataBuiltinTimestamp,
 		},
 		arrow.Field{
-			Name:     "value",
+			Name:     types.ColumnNameGeneratedValue,
 			Type:     arrow.PrimitiveTypes.Int64,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Integer), // needs a new ColumnType, ColumnTypeComputed or Generated?
+			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer), // needs a new ColumnType, ColumnTypeComputed or Generated?
 		},
 	)
 
@@ -294,4 +237,63 @@ func (r *RangeAggregationPipeline) Inputs() []Pipeline {
 // Transport returns the type of transport of the implementation.
 func (r *RangeAggregationPipeline) Transport() Transport {
 	return Local
+}
+
+type partitionAggregator struct {
+	digest  *xxhash.Digest // used to compute key for each partition
+	entries map[uint64]*partitionEntry
+}
+
+func newPartitionAggregator() *partitionAggregator {
+	return &partitionAggregator{
+		digest: xxhash.New(),
+		// TODO: estimate size during planning
+		entries: make(map[uint64]*partitionEntry),
+	}
+}
+
+type partitionEntry struct {
+	count       int64
+	labelValues []string
+}
+
+func (a *partitionAggregator) Add(partitionLabelValues []string) {
+	a.digest.Reset()
+
+	for i, val := range partitionLabelValues {
+		if i > 0 {
+			_, _ = a.digest.Write([]byte{0}) // separator for label values
+		}
+
+		_, _ = a.digest.WriteString(val)
+	}
+
+	key := a.digest.Sum64()
+	if entry, ok := a.entries[key]; ok {
+		// TODO: handle hash collisions
+		entry.count++
+	} else {
+		// create a new slice since partitionLabelValues is reused by the calling code
+		labelValues := make([]string, len(partitionLabelValues))
+		for i, v := range partitionLabelValues {
+			// copy the value as this is backed by the arrow array data buffer.
+			// We could retain the record to avoid this copy, but that would hold
+			// all other columns in memory for as long as the query is evaluated.
+			labelValues[i] = strings.Clone(v)
+		}
+
+		// TODO: add limits on number of partitions
+		a.entries[key] = &partitionEntry{
+			labelValues: labelValues,
+			count:       1,
+		}
+	}
+}
+
+func (a *partitionAggregator) Reset() {
+	clear(a.entries)
+}
+
+func (a *partitionAggregator) NumOfPartitions() int {
+	return len(a.entries)
 }
