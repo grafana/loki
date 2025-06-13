@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
+
+
+### Bug Fixes
+
+* **auth:** Add back DirectPath misconfiguration logging ([#11162](https://github.com/googleapis/google-cloud-go/issues/11162)) ([8d52da5](https://github.com/googleapis/google-cloud-go/commit/8d52da58da5a0ed77a0f6307d1b561bc045406a1))
+* **auth:** Remove s2a fallback option ([#12354](https://github.com/googleapis/google-cloud-go/issues/12354)) ([d5acc59](https://github.com/googleapis/google-cloud-go/commit/d5acc599cd775ddc404349e75906fa02e8ff133e))
+
 ## [0.16.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.0...auth/v0.16.1) (2025-04-23)
 
 
