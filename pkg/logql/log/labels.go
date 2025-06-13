@@ -53,15 +53,9 @@ func (l labelsResult) Labels() labels.Labels {
 	size := l.stream.Len() + l.structuredMetadata.Len() + l.parsed.Len()
 	b := labels.NewScratchBuilder(size)
 
-	l.stream.Range(func(l labels.Label) {
-		b.Add(l.Name, l.Value)
-	})
-	l.structuredMetadata.Range(func(l labels.Label) {
-		b.Add(l.Name, l.Value)
-	})
-	l.parsed.Range(func(l labels.Label) {
-		b.Add(l.Name, l.Value)
-	})
+	b.Assign(l.stream)
+	b.Assign(l.structuredMetadata)
+	b.Assign(l.parsed)
 
 	b.Sort()
 	return b.Labels()
