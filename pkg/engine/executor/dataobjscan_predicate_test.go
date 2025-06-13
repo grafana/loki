@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -645,6 +646,127 @@ func TestMapMetadataPredicate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedPred, pred)
+			}
+		})
+	}
+}
+
+func TestMapMessagePredicate(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		expr         physical.Expression
+		expectedErr  string
+		expectedType string
+	}{
+		{
+			name: "string match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("dataobjscan"),
+				Op:    types.BinaryOpMatchSubstr,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "not string match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("dataobjscan"),
+				Op:    types.BinaryOpNotMatchSubstr,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "regex match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
+				Op:    types.BinaryOpMatchRe,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "not regex match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
+				Op:    types.BinaryOpNotMatchRe,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "pattern match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("<_> dataobj <_>"),
+				Op:    types.BinaryOpMatchPattern,
+			},
+			expectedErr: "unsupported binary operator (MATCH_PAT) for string predicate",
+		},
+		{
+			name: "not pattern match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("<_> dataobj <_>"),
+				Op:    types.BinaryOpNotMatchPattern,
+			},
+			expectedErr: "unsupported binary operator (NOT_MATCH_PAT) for string predicate",
+		},
+		{
+			name: "and filter",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Right: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("bar"),
+					Op:    types.BinaryOpNotMatchSubstr,
+				},
+				Op: types.BinaryOpAnd,
+			},
+			expectedType: "logs.AndRowPredicate",
+		},
+		{
+			name: "or filter",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Right: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("bar"),
+					Op:    types.BinaryOpNotMatchSubstr,
+				},
+				Op: types.BinaryOpOr,
+			},
+			expectedType: "logs.OrRowPredicate",
+		},
+		{
+			name: "not filter",
+			expr: &physical.UnaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Op: types.UnaryOpNot,
+			},
+			expectedType: "logs.NotRowPredicate",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("%s", tc.expr)
+			got, err := mapMessagePredicate(tc.expr)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedType, fmt.Sprintf("%T", got))
 			}
 		})
 	}
