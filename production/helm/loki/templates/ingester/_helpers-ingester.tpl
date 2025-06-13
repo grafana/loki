@@ -11,6 +11,8 @@ ingester common labels
 {{- define "loki.ingesterLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: ingester
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
