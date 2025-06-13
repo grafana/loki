@@ -86,7 +86,7 @@ func NewExtensionArrayWithStorage(dt arrow.ExtensionType, storage arrow.Array) a
 // underlying data built for the storage array.
 func NewExtensionData(data arrow.ArrayData) ExtensionArray {
 	base := ExtensionArrayBase{}
-	base.refCount = 1
+	base.refCount.Add(1)
 	base.setData(data.(*Data))
 
 	// use the ExtensionType's ArrayType to construct the correctly typed object
@@ -173,7 +173,7 @@ func (e *ExtensionArrayBase) ValueStr(i int) string {
 }
 
 // no-op function that exists simply to force embedding this in any extension array types.
-func (ExtensionArrayBase) mustEmbedExtensionArrayBase() {}
+func (*ExtensionArrayBase) mustEmbedExtensionArrayBase() {}
 
 // ExtensionBuilder is a convenience builder so that NewBuilder and such will still work
 // with extension types properly. Depending on preference it may be cleaner or easier to just use

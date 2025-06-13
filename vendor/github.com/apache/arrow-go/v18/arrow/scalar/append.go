@@ -76,41 +76,32 @@ func appendBinary(bldr binaryBuilder, scalars []Scalar) {
 	}
 }
 
-// Append requires the passed in builder and scalar to have the same datatype
-// otherwise it will return an error. Will return arrow.ErrNotImplemented if
-// the type hasn't been implemented for this.
-//
-// NOTE only available in go1.18+
-func Append(bldr array.Builder, s Scalar) error {
-	return AppendSlice(bldr, []Scalar{s})
+type extbuilder interface {
+	array.Builder
+	StorageBuilder() array.Builder
 }
 
-// AppendSlice requires the passed in builder and all scalars in the slice
-// to have the same datatype otherwise it will return an error. Will return
-// arrow.ErrNotImplemented if the type hasn't been implemented for this.
-//
-// NOTE only available in go1.18+
-func AppendSlice(bldr array.Builder, scalars []Scalar) error {
+func appendToBldr(bldr array.Builder, scalars []Scalar) error {
 	if len(scalars) == 0 {
 		return nil
 	}
 
 	ty := bldr.Type()
-	for _, sc := range scalars {
-		if !arrow.TypeEqual(ty, sc.DataType()) {
-			return fmt.Errorf("%w: cannot append scalar of type %s to builder for type %s",
-				arrow.ErrInvalid, scalars[0].DataType(), bldr.Type())
-		}
-	}
-
 	bldr.Reserve(len(scalars))
 	switch bldr := bldr.(type) {
+	case extbuilder:
+		baseScalars := make([]Scalar, len(scalars))
+		for i, sc := range scalars {
+			baseScalars[i] = sc.(*Extension).Value
+		}
+
+		return appendToBldr(bldr.StorageBuilder(), baseScalars)
 	case *array.BooleanBuilder:
-		appendPrimitive[bool](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Decimal128Builder:
-		appendPrimitive[decimal128.Num](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Decimal256Builder:
-		appendPrimitive[decimal256.Num](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.FixedSizeBinaryBuilder:
 		for _, sc := range scalars {
 			s := sc.(*FixedSizeBinary)
@@ -121,45 +112,45 @@ func AppendSlice(bldr array.Builder, scalars []Scalar) error {
 			}
 		}
 	case *array.Int8Builder:
-		appendPrimitive[int8](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Uint8Builder:
-		appendPrimitive[uint8](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Int16Builder:
-		appendPrimitive[int16](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Uint16Builder:
-		appendPrimitive[uint16](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Int32Builder:
-		appendPrimitive[int32](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Uint32Builder:
-		appendPrimitive[uint32](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Int64Builder:
-		appendPrimitive[int64](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Uint64Builder:
-		appendPrimitive[uint64](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Float16Builder:
-		appendPrimitive[float16.Num](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Float32Builder:
-		appendPrimitive[float32](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Float64Builder:
-		appendPrimitive[float64](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Date32Builder:
-		appendPrimitive[arrow.Date32](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Date64Builder:
-		appendPrimitive[arrow.Date64](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Time32Builder:
-		appendPrimitive[arrow.Time32](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.Time64Builder:
-		appendPrimitive[arrow.Time64](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.DayTimeIntervalBuilder:
-		appendPrimitive[arrow.DayTimeInterval](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.MonthIntervalBuilder:
-		appendPrimitive[arrow.MonthInterval](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.MonthDayNanoIntervalBuilder:
-		appendPrimitive[arrow.MonthDayNanoInterval](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.DurationBuilder:
-		appendPrimitive[arrow.Duration](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case *array.TimestampBuilder:
-		appendPrimitive[arrow.Timestamp](bldr, scalars)
+		appendPrimitive(bldr, scalars)
 	case array.StringLikeBuilder:
 		appendBinary(bldr, scalars)
 	case *array.BinaryBuilder:
@@ -260,4 +251,34 @@ func AppendSlice(bldr array.Builder, scalars []Scalar) error {
 	}
 
 	return nil
+}
+
+// Append requires the passed in builder and scalar to have the same datatype
+// otherwise it will return an error. Will return arrow.ErrNotImplemented if
+// the type hasn't been implemented for this.
+//
+// NOTE only available in go1.18+
+func Append(bldr array.Builder, s Scalar) error {
+	return AppendSlice(bldr, []Scalar{s})
+}
+
+// AppendSlice requires the passed in builder and all scalars in the slice
+// to have the same datatype otherwise it will return an error. Will return
+// arrow.ErrNotImplemented if the type hasn't been implemented for this.
+//
+// NOTE only available in go1.18+
+func AppendSlice(bldr array.Builder, scalars []Scalar) error {
+	if len(scalars) == 0 {
+		return nil
+	}
+
+	ty := bldr.Type()
+	for _, sc := range scalars {
+		if !arrow.TypeEqual(ty, sc.DataType()) {
+			return fmt.Errorf("%w: cannot append scalar of type %s to builder for type %s",
+				arrow.ErrInvalid, scalars[0].DataType(), bldr.Type())
+		}
+	}
+
+	return appendToBldr(bldr, scalars)
 }

@@ -38,6 +38,10 @@ func NewInstrumentationScope() InstrumentationScope {
 func (ms InstrumentationScope) MoveTo(dest InstrumentationScope) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = otlpcommon.InstrumentationScope{}
 }

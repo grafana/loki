@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -40,7 +39,7 @@ type Timestamp struct {
 // NewTimestampData creates a new Timestamp from Data.
 func NewTimestampData(data arrow.ArrayData) *Timestamp {
 	a := &Timestamp{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -53,8 +52,10 @@ func (a *Timestamp) Reset(data *Data) {
 // Value returns the value at the specified index.
 func (a *Timestamp) Value(i int) arrow.Timestamp { return a.values[i] }
 
+func (a *Timestamp) Values() []arrow.Timestamp { return a.values }
+
 // TimestampValues returns the values.
-func (a *Timestamp) TimestampValues() []arrow.Timestamp { return a.values }
+func (a *Timestamp) TimestampValues() []arrow.Timestamp { return a.Values() }
 
 // String returns a string representation of the array.
 func (a *Timestamp) String() string {
@@ -132,7 +133,9 @@ type TimestampBuilder struct {
 }
 
 func NewTimestampBuilder(mem memory.Allocator, dtype *arrow.TimestampType) *TimestampBuilder {
-	return &TimestampBuilder{builder: builder{refCount: 1, mem: mem}, dtype: dtype}
+	tb := &TimestampBuilder{builder: builder{mem: mem}, dtype: dtype}
+	tb.refCount.Add(1)
+	return tb
 }
 
 func (b *TimestampBuilder) Type() arrow.DataType { return b.dtype }
@@ -140,9 +143,9 @@ func (b *TimestampBuilder) Type() arrow.DataType { return b.dtype }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *TimestampBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -375,6 +378,7 @@ func (b *TimestampBuilder) UnmarshalJSON(data []byte) error {
 }
 
 var (
-	_ arrow.Array = (*Timestamp)(nil)
-	_ Builder     = (*TimestampBuilder)(nil)
+	_ arrow.Array                       = (*Timestamp)(nil)
+	_ Builder                           = (*TimestampBuilder)(nil)
+	_ arrow.TypedArray[arrow.Timestamp] = (*Timestamp)(nil)
 )
