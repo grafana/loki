@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"35393233393936313736383532303734323135\"",
+  "etag": "\"36383730363437323837383838393538333732\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4539,7 +4539,7 @@
       }
     }
   },
-  "revision": "20250524",
+  "revision": "20250605",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4831,6 +4831,10 @@
         "ipFilter": {
           "description": "The bucket's IP filter configuration. Specifies the network sources that are allowed to access the operations on the bucket, as well as its underlying objects. Only enforced when the mode is set to 'Enabled'.",
           "properties": {
+            "allowAllServiceAgentAccess": {
+              "description": "Whether to allow all service agents to access the bucket regardless of the IP filter configuration.",
+              "type": "boolean"
+            },
             "allowCrossOrgVpcs": {
               "description": "Whether to allow cross-org VPCs in the bucket's IP filter configuration.",
               "type": "boolean"

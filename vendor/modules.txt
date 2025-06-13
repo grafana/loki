@@ -11,7 +11,7 @@ cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
-# cloud.google.com/go/auth v0.16.1
+# cloud.google.com/go/auth v0.16.2
 ## explicit; go 1.23.0
 cloud.google.com/go/auth
 cloud.google.com/go/auth/credentials
@@ -2250,7 +2250,7 @@ golang.org/x/tools/internal/versions
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.236.0
+# google.golang.org/api v0.237.0
 ## explicit; go 1.23.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
@@ -2286,7 +2286,7 @@ google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822
 ## explicit; go 1.23.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails

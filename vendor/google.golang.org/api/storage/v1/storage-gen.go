@@ -852,6 +852,9 @@ func (s BucketIamConfigurationUniformBucketLevelAccess) MarshalJSON() ([]byte, e
 // sources that are allowed to access the operations on the bucket, as well as
 // its underlying objects. Only enforced when the mode is set to 'Enabled'.
 type BucketIpFilter struct {
+	// AllowAllServiceAgentAccess: Whether to allow all service agents to access
+	// the bucket regardless of the IP filter configuration.
+	AllowAllServiceAgentAccess bool `json:"allowAllServiceAgentAccess,omitempty"`
 	// AllowCrossOrgVpcs: Whether to allow cross-org VPCs in the bucket's IP filter
 	// configuration.
 	AllowCrossOrgVpcs bool `json:"allowCrossOrgVpcs,omitempty"`
@@ -862,15 +865,15 @@ type BucketIpFilter struct {
 	// VpcNetworkSources: The list of VPC network
 	// (https://cloud.google.com/vpc/docs/vpc) sources of the bucket's IP filter.
 	VpcNetworkSources []*BucketIpFilterVpcNetworkSources `json:"vpcNetworkSources,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "AllowCrossOrgVpcs") to
-	// unconditionally include in API requests. By default, fields with empty or
+	// ForceSendFields is a list of field names (e.g. "AllowAllServiceAgentAccess")
+	// to unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "AllowCrossOrgVpcs") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "AllowAllServiceAgentAccess") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }

@@ -224,6 +224,7 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.RegionZones = NewRegionZonesService(s)
 	s.Regions = NewRegionsService(s)
 	s.ReservationBlocks = NewReservationBlocksService(s)
+	s.ReservationSubBlocks = NewReservationSubBlocksService(s)
 	s.Reservations = NewReservationsService(s)
 	s.ResourcePolicies = NewResourcePoliciesService(s)
 	s.Routers = NewRoutersService(s)
@@ -429,6 +430,8 @@ type Service struct {
 	Regions *RegionsService
 
 	ReservationBlocks *ReservationBlocksService
+
+	ReservationSubBlocks *ReservationSubBlocksService
 
 	Reservations *ReservationsService
 
@@ -1189,6 +1192,15 @@ func NewReservationBlocksService(s *Service) *ReservationBlocksService {
 }
 
 type ReservationBlocksService struct {
+	s *Service
+}
+
+func NewReservationSubBlocksService(s *Service) *ReservationSubBlocksService {
+	rs := &ReservationSubBlocksService{s: s}
+	return rs
+}
+
+type ReservationSubBlocksService struct {
 	s *Service
 }
 
@@ -6133,7 +6145,7 @@ type BackendServiceHAPolicy struct {
 	// fastIPMove. - The regional backend service must set the network field, and
 	// all NEGs must belong to that network. However, individual NEGs can belong to
 	// different subnetworks of that network. - The maximum number of network
-	// endpoints across all backends of a backend service with fastIPMove is 64. -
+	// endpoints across all backends of a backend service with fastIPMove is 32. -
 	// The maximum number of backend services with fastIPMove that can have the
 	// same network endpoint attached to one of its backends is 64. - The maximum
 	// number of backend services with fastIPMove in a VPC in a region is 64. - The
@@ -7504,6 +7516,54 @@ type BulkInsertOperationStatus struct {
 
 func (s BulkInsertOperationStatus) MarshalJSON() ([]byte, error) {
 	type NoMethod BulkInsertOperationStatus
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type BulkSetLabelsRequest struct {
+	// LabelFingerprint: The fingerprint of the previous set of labels for this
+	// resource, used to detect conflicts. The fingerprint is initially generated
+	// by Compute Engine and changes after every request to modify or update
+	// labels. You may optionally provide an up-to-date fingerprint hash in order
+	// to update or change labels. Make a get() request to the resource to get the
+	// latest fingerprint.
+	LabelFingerprint string `json:"labelFingerprint,omitempty"`
+	// Labels: The labels to set for this resource.
+	Labels map[string]string `json:"labels,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "LabelFingerprint") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "LabelFingerprint") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BulkSetLabelsRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod BulkSetLabelsRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type BulkZoneSetLabelsRequest struct {
+	Requests []*BulkSetLabelsRequest `json:"requests,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Requests") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Requests") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BulkZoneSetLabelsRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod BulkZoneSetLabelsRequest
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -11994,6 +12054,16 @@ type FirewallPolicyRuleMatcher struct {
 	// DestIpRanges: CIDR IP address range. Maximum number of destination CIDR IP
 	// ranges allowed is 5000.
 	DestIpRanges []string `json:"destIpRanges,omitempty"`
+	// DestNetworkType: Network type of the traffic destination. Allowed values
+	// are: - UNSPECIFIED - INTERNET - NON_INTERNET
+	//
+	// Possible values:
+	//   "INTERNET"
+	//   "INTRA_VPC"
+	//   "NON_INTERNET"
+	//   "UNSPECIFIED"
+	//   "VPC_NETWORKS"
+	DestNetworkType string `json:"destNetworkType,omitempty"`
 	// DestRegionCodes: Region codes whose IP addresses will be used to match for
 	// destination of traffic. Should be specified as 2 letter country code defined
 	// as per ISO 3166 alpha-2 country codes. ex."US" Maximum number of dest region
@@ -12013,6 +12083,19 @@ type FirewallPolicyRuleMatcher struct {
 	// SrcIpRanges: CIDR IP address range. Maximum number of source CIDR IP ranges
 	// allowed is 5000.
 	SrcIpRanges []string `json:"srcIpRanges,omitempty"`
+	// SrcNetworkType: Network type of the traffic source. Allowed values are: -
+	// UNSPECIFIED - INTERNET - INTRA_VPC - NON_INTERNET - VPC_NETWORKS
+	//
+	// Possible values:
+	//   "INTERNET"
+	//   "INTRA_VPC"
+	//   "NON_INTERNET"
+	//   "UNSPECIFIED"
+	//   "VPC_NETWORKS"
+	SrcNetworkType string `json:"srcNetworkType,omitempty"`
+	// SrcNetworks: Networks of the traffic source. It can be either a full or
+	// partial url.
+	SrcNetworks []string `json:"srcNetworks,omitempty"`
 	// SrcRegionCodes: Region codes whose IP addresses will be used to match for
 	// source of traffic. Should be specified as 2 letter country code defined as
 	// per ISO 3166 alpha-2 country codes. ex."US" Maximum number of source region
@@ -12416,6 +12499,9 @@ type ForwardingRule struct {
 	Region string `json:"region,omitempty"`
 	// SelfLink: [Output Only] Server-defined URL for the resource.
 	SelfLink string `json:"selfLink,omitempty"`
+	// SelfLinkWithId: [Output Only] Server-defined URL for this resource with the
+	// resource id.
+	SelfLinkWithId string `json:"selfLinkWithId,omitempty"`
 	// ServiceDirectoryRegistrations: Service Directory resources to register this
 	// forwarding rule with. Currently, only supports a single Service Directory
 	// resource.
@@ -14935,7 +15021,9 @@ type HttpHeaderOption struct {
 	HeaderValue string `json:"headerValue,omitempty"`
 	// Replace: If false, headerValue is appended to any values that already exist
 	// for the header. If true, headerValue is set for the header, discarding any
-	// values that were set for that header. The default value is false.
+	// values that were set for that header. The default value is true, unless a
+	// variable is present in headerValue, in which case the default value is
+	// false. .
 	Replace bool `json:"replace,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "HeaderName") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -16343,7 +16431,7 @@ type Instance struct {
 	// restrictions, read the Specifications for custom machine types.
 	MachineType string `json:"machineType,omitempty"`
 	// Metadata: The metadata key/value pairs assigned to this instance. This
-	// includes custom metadata and predefined keys.
+	// includes metadata keys that were explicitly defined for the instance.
 	Metadata *Metadata `json:"metadata,omitempty"`
 	// MinCpuPlatform: Specifies a minimum CPU platform for the VM instance.
 	// Applicable values are the friendly names of CPU platforms, such as
@@ -27843,6 +27931,9 @@ type Network struct {
 	// https://www.googleapis.com/compute/{api_version}/projects/{project_id}/global/networkProfiles/{network_profile_name}
 	// - projects/{project_id}/global/networkProfiles/{network_profile_name}
 	NetworkProfile string `json:"networkProfile,omitempty"`
+	// Params: Input only. [Input Only] Additional params passed with the request,
+	// but not persisted as part of resource payload.
+	Params *NetworkParams `json:"params,omitempty"`
 	// Peerings: [Output Only] A list of network peerings for the resource.
 	Peerings []*NetworkPeering `json:"peerings,omitempty"`
 	// RoutingConfig: The network-level routing configuration for this network.
@@ -30291,6 +30382,36 @@ type NetworkListWarningData struct {
 
 func (s NetworkListWarningData) MarshalJSON() ([]byte, error) {
 	type NoMethod NetworkListWarningData
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// NetworkParams: Additional network parameters.
+type NetworkParams struct {
+	// ResourceManagerTags: Tag keys/values directly bound to this resource. Tag
+	// keys and values have the same definition as resource manager tags. The field
+	// is allowed for INSERT only. The keys/values to set on the resource should be
+	// specified in either ID { : } or Namespaced format { : }. For example the
+	// following are valid inputs: * {"tagKeys/333" : "tagValues/444",
+	// "tagKeys/123" : "tagValues/456"} * {"123/environment" : "production",
+	// "345/abc" : "xyz"} Note: * Invalid combinations of ID & namespaced format is
+	// not supported. For instance: {"123/environment" : "tagValues/444"} is
+	// invalid.
+	ResourceManagerTags map[string]string `json:"resourceManagerTags,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ResourceManagerTags") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ResourceManagerTags") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s NetworkParams) MarshalJSON() ([]byte, error) {
+	type NoMethod NetworkParams
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -39049,6 +39170,9 @@ type Reservation struct {
 	// Description: An optional description of this resource. Provide this property
 	// when you create the resource.
 	Description string `json:"description,omitempty"`
+	// EnableEmergentMaintenance: Indicates whether Compute Engine allows unplanned
+	// maintenance for your VMs; for example, to fix hardware errors.
+	EnableEmergentMaintenance bool `json:"enableEmergentMaintenance,omitempty"`
 	// Id: [Output Only] The unique identifier for the resource. This identifier is
 	// defined by the server.
 	Id uint64 `json:"id,omitempty,string"`
@@ -39356,6 +39480,13 @@ type ReservationBlock struct {
 	// ReservationMaintenance: [Output Only] Maintenance information for this
 	// reservation block.
 	ReservationMaintenance *GroupMaintenanceInfo `json:"reservationMaintenance,omitempty"`
+	// ReservationSubBlockCount: [Output Only] The number of reservation subBlocks
+	// associated with this reservation block.
+	ReservationSubBlockCount int64 `json:"reservationSubBlockCount,omitempty"`
+	// ReservationSubBlockInUseCount: [Output Only] The number of in-use
+	// reservation subBlocks associated with this reservation block. If at least
+	// one VM is running on a subBlock, it is considered in-use.
+	ReservationSubBlockInUseCount int64 `json:"reservationSubBlockInUseCount,omitempty"`
 	// SelfLink: [Output Only] Server-defined fully-qualified URL for this
 	// resource.
 	SelfLink string `json:"selfLink,omitempty"`
@@ -39746,6 +39877,268 @@ type ReservationListWarningData struct {
 
 func (s ReservationListWarningData) MarshalJSON() ([]byte, error) {
 	type NoMethod ReservationListWarningData
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationSubBlock: Represents a reservation subBlock resource.
+type ReservationSubBlock struct {
+	// Count: [Output Only] The number of hosts that are allocated in this
+	// reservation subBlock.
+	Count int64 `json:"count,omitempty"`
+	// CreationTimestamp: [Output Only] Creation timestamp in RFC3339 text format.
+	CreationTimestamp string `json:"creationTimestamp,omitempty"`
+	// Id: [Output Only] The unique identifier for the resource. This identifier is
+	// defined by the server.
+	Id uint64 `json:"id,omitempty,string"`
+	// InUseCount: [Output Only] The number of instances that are currently in use
+	// on this reservation subBlock.
+	InUseCount int64 `json:"inUseCount,omitempty"`
+	// Kind: [Output Only] Type of the resource. Always compute#reservationSubBlock
+	// for reservation subBlocks.
+	Kind string `json:"kind,omitempty"`
+	// Name: [Output Only] The name of this reservation subBlock generated by
+	// Google Compute Engine. The name must be 1-63 characters long, and comply
+	// with RFC1035 @pattern a-z (?:[-a-z0-9]{0,61}[a-z0-9])?
+	Name string `json:"name,omitempty"`
+	// PhysicalTopology: [Output Only] The physical topology of the reservation
+	// subBlock.
+	PhysicalTopology *ReservationSubBlockPhysicalTopology `json:"physicalTopology,omitempty"`
+	// SelfLink: [Output Only] Server-defined fully-qualified URL for this
+	// resource.
+	SelfLink string `json:"selfLink,omitempty"`
+	// SelfLinkWithId: [Output Only] Server-defined URL for this resource with the
+	// resource id.
+	SelfLinkWithId string `json:"selfLinkWithId,omitempty"`
+	// Status: [Output Only] Status of the reservation subBlock.
+	//
+	// Possible values:
+	//   "CREATING" - Resources are being allocated for the reservation subBlock.
+	//   "DELETING" - Reservation subBlock is currently being deleted.
+	//   "INVALID"
+	//   "READY" - Reservation subBlock has allocated all its resources.
+	Status string `json:"status,omitempty"`
+	// Zone: [Output Only] Zone in which the reservation subBlock resides.
+	Zone string `json:"zone,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Count") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Count") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlock) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlock
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type ReservationSubBlockPhysicalTopology struct {
+	// Block: The hash of the capacity block within the cluster.
+	Block string `json:"block,omitempty"`
+	// Cluster: The cluster name of the reservation subBlock.
+	Cluster string `json:"cluster,omitempty"`
+	// SubBlock: The hash of the capacity sub-block within the capacity block.
+	SubBlock string `json:"subBlock,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Block") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Block") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlockPhysicalTopology) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlockPhysicalTopology
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type ReservationSubBlocksGetResponse struct {
+	Resource *ReservationSubBlock `json:"resource,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Resource") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Resource") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlocksGetResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlocksGetResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationSubBlocksListResponse: A list of reservation subBlocks under a
+// single reservation.
+type ReservationSubBlocksListResponse struct {
+	// Id: Unique identifier for the resource; defined by the server.
+	Id string `json:"id,omitempty"`
+	// Items: A list of reservation subBlock resources.
+	Items []*ReservationSubBlock `json:"items,omitempty"`
+	// Kind: Type of the resource. Always compute#reservationSubBlock for a list of
+	// reservation subBlocks.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: This token allows you to get the next page of results for
+	// list requests. If the number of results is larger than maxResults, use the
+	// nextPageToken as a value for the query parameter pageToken in the next list
+	// request. Subsequent list requests will have their own nextPageToken to
+	// continue paging through the results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// SelfLink: Server-defined URL for this resource.
+	SelfLink string `json:"selfLink,omitempty"`
+	// Warning: Informational warning message.
+	Warning *ReservationSubBlocksListResponseWarning `json:"warning,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Id") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Id") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlocksListResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlocksListResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationSubBlocksListResponseWarning: Informational warning message.
+type ReservationSubBlocksListResponseWarning struct {
+	// Code: [Output Only] A warning code, if applicable. For example, Compute
+	// Engine returns NO_RESULTS_ON_PAGE if there are no results in the response.
+	//
+	// Possible values:
+	//   "CLEANUP_FAILED" - Warning about failed cleanup of transient changes made
+	// by a failed operation.
+	//   "DEPRECATED_RESOURCE_USED" - A link to a deprecated resource was created.
+	//   "DEPRECATED_TYPE_USED" - When deploying and at least one of the resources
+	// has a type marked as deprecated
+	//   "DISK_SIZE_LARGER_THAN_IMAGE_SIZE" - The user created a boot disk that is
+	// larger than image size.
+	//   "EXPERIMENTAL_TYPE_USED" - When deploying and at least one of the
+	// resources has a type marked as experimental
+	//   "EXTERNAL_API_WARNING" - Warning that is present in an external api call
+	//   "FIELD_VALUE_OVERRIDEN" - Warning that value of a field has been
+	// overridden. Deprecated unused field.
+	//   "INJECTED_KERNELS_DEPRECATED" - The operation involved use of an injected
+	// kernel, which is deprecated.
+	//   "INVALID_HEALTH_CHECK_FOR_DYNAMIC_WIEGHTED_LB" - A WEIGHTED_MAGLEV backend
+	// service is associated with a health check that is not of type
+	// HTTP/HTTPS/HTTP2.
+	//   "LARGE_DEPLOYMENT_WARNING" - When deploying a deployment with a
+	// exceedingly large number of resources
+	//   "LIST_OVERHEAD_QUOTA_EXCEED" - Resource can't be retrieved due to list
+	// overhead quota exceed which captures the amount of resources filtered out by
+	// user-defined list filter.
+	//   "MISSING_TYPE_DEPENDENCY" - A resource depends on a missing type
+	//   "NEXT_HOP_ADDRESS_NOT_ASSIGNED" - The route's nextHopIp address is not
+	// assigned to an instance on the network.
+	//   "NEXT_HOP_CANNOT_IP_FORWARD" - The route's next hop instance cannot ip
+	// forward.
+	//   "NEXT_HOP_INSTANCE_HAS_NO_IPV6_INTERFACE" - The route's nextHopInstance
+	// URL refers to an instance that does not have an ipv6 interface on the same
+	// network as the route.
+	//   "NEXT_HOP_INSTANCE_NOT_FOUND" - The route's nextHopInstance URL refers to
+	// an instance that does not exist.
+	//   "NEXT_HOP_INSTANCE_NOT_ON_NETWORK" - The route's nextHopInstance URL
+	// refers to an instance that is not on the same network as the route.
+	//   "NEXT_HOP_NOT_RUNNING" - The route's next hop instance does not have a
+	// status of RUNNING.
+	//   "NOT_CRITICAL_ERROR" - Error which is not critical. We decided to continue
+	// the process despite the mentioned error.
+	//   "NO_RESULTS_ON_PAGE" - No results are present on a particular list page.
+	//   "PARTIAL_SUCCESS" - Success is reported, but some results may be missing
+	// due to errors
+	//   "QUOTA_INFO_UNAVAILABLE" - Quota information is not available to client
+	// requests (e.g: regions.list).
+	//   "REQUIRED_TOS_AGREEMENT" - The user attempted to use a resource that
+	// requires a TOS they have not accepted.
+	//   "RESOURCE_IN_USE_BY_OTHER_RESOURCE_WARNING" - Warning that a resource is
+	// in use.
+	//   "RESOURCE_NOT_DELETED" - One or more of the resources set to auto-delete
+	// could not be deleted because they were in use.
+	//   "SCHEMA_VALIDATION_IGNORED" - When a resource schema validation is
+	// ignored.
+	//   "SINGLE_INSTANCE_PROPERTY_TEMPLATE" - Instance template used in instance
+	// group manager is valid as such, but its application does not make a lot of
+	// sense, because it allows only single instance in instance group.
+	//   "UNDECLARED_PROPERTIES" - When undeclared properties in the schema are
+	// present
+	//   "UNREACHABLE" - A given scope cannot be reached.
+	Code string `json:"code,omitempty"`
+	// Data: [Output Only] Metadata about this warning in key: value format. For
+	// example: "data": [ { "key": "scope", "value": "zones/us-east1-d" }
+	Data []*ReservationSubBlocksListResponseWarningData `json:"data,omitempty"`
+	// Message: [Output Only] A human-readable description of the warning code.
+	Message string `json:"message,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Code") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Code") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlocksListResponseWarning) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlocksListResponseWarning
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type ReservationSubBlocksListResponseWarningData struct {
+	// Key: [Output Only] A key that provides more detail on the warning being
+	// returned. For example, for warnings where there are no results in a list
+	// request for a particular zone, this key might be scope and the key value
+	// might be the zone name. Other examples might be a key indicating a
+	// deprecated resource and a suggested replacement, or a warning about invalid
+	// network settings (for example, if an instance attempts to perform IP
+	// forwarding but is not enabled for IP forwarding).
+	Key string `json:"key,omitempty"`
+	// Value: [Output Only] A warning data value corresponding to the key.
+	Value string `json:"value,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Key") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Key") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlocksListResponseWarningData) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlocksListResponseWarningData
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -40228,7 +40621,8 @@ type ResourcePolicy struct {
 	//   "EXPIRED" - Resource policy is expired and will not run again.
 	//   "INVALID"
 	//   "READY" - Resource policy is ready to be used.
-	Status string `json:"status,omitempty"`
+	Status         string                        `json:"status,omitempty"`
+	WorkloadPolicy *ResourcePolicyWorkloadPolicy `json:"workloadPolicy,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -40457,6 +40851,9 @@ type ResourcePolicyGroupPlacementPolicy struct {
 	//   "COLLOCATED"
 	//   "UNSPECIFIED_COLLOCATION"
 	Collocation string `json:"collocation,omitempty"`
+	// GpuTopology: Specifies the shape of the GPU slice, in slice based GPU
+	// families eg. A4X.
+	GpuTopology string `json:"gpuTopology,omitempty"`
 	// VmCount: Number of VMs in this placement group. Google does not recommend
 	// that you use this field unless you use a compact policy and you want your
 	// policy to work only if it contains this exact number of VMs.
@@ -40954,6 +41351,38 @@ type ResourcePolicyWeeklyCycleDayOfWeek struct {
 
 func (s ResourcePolicyWeeklyCycleDayOfWeek) MarshalJSON() ([]byte, error) {
 	type NoMethod ResourcePolicyWeeklyCycleDayOfWeek
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ResourcePolicyWorkloadPolicy: Represents the workload policy.
+type ResourcePolicyWorkloadPolicy struct {
+	AcceleratorTopology string `json:"acceleratorTopology,omitempty"`
+	// Possible values:
+	//   "BLOCK" - VMs must be provisioned in the same block.
+	//   "CLUSTER" - VMs must be provisioned in the same cluster.
+	//   "SUBBLOCK" - VMs must be provisioned in the same subblock.
+	MaxTopologyDistance string `json:"maxTopologyDistance,omitempty"`
+	// Possible values:
+	//   "HIGH_AVAILABILITY" - VMs will be provisioned in such a way which provides
+	// high availability.
+	//   "HIGH_THROUGHPUT" - VMs will be provisioned in such a way which provides
+	// high throughput.
+	Type string `json:"type,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AcceleratorTopology") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AcceleratorTopology") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ResourcePolicyWorkloadPolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod ResourcePolicyWorkloadPolicy
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -49980,6 +50409,9 @@ type Subnetwork struct {
 	// by the client when initially creating the subnetwork. This field can be set
 	// only at resource creation time.
 	Network string `json:"network,omitempty"`
+	// Params: Input only. [Input Only] Additional params passed with the request,
+	// but not persisted as part of resource payload.
+	Params *SubnetworkParams `json:"params,omitempty"`
 	// PrivateIpGoogleAccess: Whether the VMs in this subnet can access Google
 	// services without assigned external IP addresses. This field can be both set
 	// at resource creation time and updated using setPrivateIpGoogleAccess.
@@ -50477,6 +50909,36 @@ func (s *SubnetworkLogConfig) UnmarshalJSON(data []byte) error {
 	}
 	s.FlowSampling = float64(s1.FlowSampling)
 	return nil
+}
+
+// SubnetworkParams: Additional subnetwork parameters.
+type SubnetworkParams struct {
+	// ResourceManagerTags: Tag keys/values directly bound to this resource. Tag
+	// keys and values have the same definition as resource manager tags. The field
+	// is allowed for INSERT only. The keys/values to set on the resource should be
+	// specified in either ID { : } or Namespaced format { : }. For example the
+	// following are valid inputs: * {"tagKeys/333" : "tagValues/444",
+	// "tagKeys/123" : "tagValues/456"} * {"123/environment" : "production",
+	// "345/abc" : "xyz"} Note: * Invalid combinations of ID & namespaced format is
+	// not supported. For instance: {"123/environment" : "tagValues/444"} is
+	// invalid.
+	ResourceManagerTags map[string]string `json:"resourceManagerTags,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ResourceManagerTags") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ResourceManagerTags") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s SubnetworkParams) MarshalJSON() ([]byte, error) {
+	type NoMethod SubnetworkParams
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // SubnetworkSecondaryRange: Represents a secondary IP range of a subnetwork.
