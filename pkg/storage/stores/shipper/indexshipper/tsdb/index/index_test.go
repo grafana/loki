@@ -72,14 +72,14 @@ func (m mockIndex) AddSeries(ref storage.SeriesRef, l labels.Labels, chunks ...C
 	if _, ok := m.series[ref]; ok {
 		return errors.Errorf("series with reference %d already added", ref)
 	}
-	for _, lbl := range l {
+	l.Range(func(lbl labels.Label) {
 		m.symbols[lbl.Name] = struct{}{}
 		m.symbols[lbl.Value] = struct{}{}
 		if _, ok := m.postings[lbl]; !ok {
 			m.postings[lbl] = []storage.SeriesRef{}
 		}
 		m.postings[lbl] = append(m.postings[lbl], ref)
-	}
+	})
 	m.postings[allPostingsKey] = append(m.postings[allPostingsKey], ref)
 
 	s := series{l: l}
@@ -113,12 +113,13 @@ func (m mockIndex) Postings(name string, values ...string) (Postings, error) {
 	return Merge(p...), nil
 }
 
-func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]ChunkMeta) error {
+func (m mockIndex) Series(ref storage.SeriesRef, lb *labels.ScratchBuilder, chks *[]ChunkMeta) error {
 	s, ok := m.series[ref]
 	if !ok {
 		return errors.New("not found")
 	}
-	*lset = append((*lset)[:0], s.l...)
+	lb.Reset()
+	lb.Assign(s.l) // TODO: check if we need to copy the labels
 	*chks = append((*chks)[:0], s.chunks...)
 
 	return nil
@@ -188,11 +189,13 @@ func TestIndexRW_Postings(t *testing.T) {
 	p, err := ir.Postings("a", nil, "1")
 	require.NoError(t, err)
 
+	lb := labels.NewScratchBuilder(10)
 	var l labels.Labels
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, &lb, &c)
+		l = lb.Labels()
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -311,11 +314,13 @@ func TestPostingsMany(t *testing.T) {
 		require.NoError(t, err)
 
 		got := []string{}
+		lb := labels.NewScratchBuilder(10)
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lb, &metas)
 			require.NoError(t, err)
+			lbls = lb.Labels()
 			got = append(got, lbls.Get("i"))
 		}
 		require.NoError(t, it.Err())
@@ -348,10 +353,10 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	var input indexWriterSeriesSlice
@@ -398,14 +403,14 @@ func TestPersistence_index_e2e(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
-		for _, l := range s.labels {
+		s.labels.Range(func(l labels.Label) {
 			valset, ok := values[l.Name]
 			if !ok {
 				valset = map[string]struct{}{}
 				values[l.Name] = valset
 			}
 			valset[l.Value] = struct{}{}
-		}
+		})
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
@@ -424,17 +429,22 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 		var lset, explset labels.Labels
 		var chks, expchks []ChunkMeta
+		lb := labels.NewScratchBuilder(10)
 
 		for gotp.Next() {
 			require.True(t, expp.Next())
 
 			ref := gotp.At()
 
-			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks)
+			lb.Reset()
+			_, err := ir.Series(ref, 0, math.MaxInt64, &lb, &chks)
 			require.NoError(t, err)
+			lset = lb.Labels()
 
-			err = mi.Series(expp.At(), &explset, &expchks)
+			lb.Reset()
+			err = mi.Series(expp.At(), &lb, &expchks)
 			require.NoError(t, err)
+			explset = lb.Labels()
 			require.Equal(t, explset, lset)
 			require.Equal(t, expchks, chks)
 		}
@@ -560,16 +570,16 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 	dir := t.TempDir()
 
 	lbls := []labels.Labels{
-		{{Name: "fizz", Value: "buzz"}},
-		{{Name: "ping", Value: "pong"}},
+		labels.FromStrings("fizz", "buzz"),
+		labels.FromStrings("ping", "pong"),
 	}
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	now := model.Now()
@@ -762,7 +772,9 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			require.Nil(t, ir.dec.chunksSample[postings.At()])
 
 			// read series so that chunk samples get built
-			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
+			lb := labels.NewScratchBuilder(10)
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lb, &chks)
+			lset = lb.Labels()
 			require.NoError(t, err)
 
 			require.Equal(t, tc.chunkMetas, chks)
@@ -962,10 +974,10 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	var input indexWriterSeriesSlice
