@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 
@@ -203,7 +204,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	)
 
 	g, ctx := errgroup.WithContext(s.ctx)
-	g.SetLimit(1)
+	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
 
 	var gotData atomic.Bool
 
