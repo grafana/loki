@@ -4,7 +4,7 @@ menuTitle:  Label best practices
 description: Describes best practices for using labels in Grafana Loki.
 aliases:
 - ../../best-practices/ # /docs/loki/<LOKI_VERSION>/best-practices/
-weight: 700
+weight: 100
 ---
 # Label best practices
 
