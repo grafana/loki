@@ -1328,6 +1328,12 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    # -- Paths that are exposed by Loki Compactor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    compactor:
+      - /loki/api/v1/delete
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
     - loki.example.com
