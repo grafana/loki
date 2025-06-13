@@ -344,6 +344,7 @@ func NewIdentityV3(client *gophercloud.ProviderClient, eo gophercloud.EndpointOp
 	}, nil
 }
 
+// TODO(stephenfin): Allow passing aliases to all New${SERVICE}V${VERSION} methods in v3
 func initClientOpts(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts, clientType string) (*gophercloud.ServiceClient, error) {
 	sc := new(gophercloud.ServiceClient)
 	eo.ApplyDefaults(clientType)
@@ -393,6 +394,7 @@ func NewNetworkV2(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpt
 	return sc, err
 }
 
+// TODO(stephenfin): Remove this in v3. We no longer support the V1 Block Storage service.
 // NewBlockStorageV1 creates a ServiceClient that may be used to access the v1
 // block storage service.
 func NewBlockStorageV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
@@ -402,17 +404,17 @@ func NewBlockStorageV1(client *gophercloud.ProviderClient, eo gophercloud.Endpoi
 // NewBlockStorageV2 creates a ServiceClient that may be used to access the v2
 // block storage service.
 func NewBlockStorageV2(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "volumev2")
+	return initClientOpts(client, eo, "block-storage")
 }
 
 // NewBlockStorageV3 creates a ServiceClient that may be used to access the v3 block storage service.
 func NewBlockStorageV3(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "volumev3")
+	return initClientOpts(client, eo, "block-storage")
 }
 
 // NewSharedFileSystemV2 creates a ServiceClient that may be used to access the v2 shared file system service.
 func NewSharedFileSystemV2(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "sharev2")
+	return initClientOpts(client, eo, "shared-file-system")
 }
 
 // NewOrchestrationV1 creates a ServiceClient that may be used to access the v1
@@ -457,14 +459,14 @@ func NewLoadBalancerV2(client *gophercloud.ProviderClient, eo gophercloud.Endpoi
 // NewMessagingV2 creates a ServiceClient that may be used with the v2 messaging
 // service.
 func NewMessagingV2(client *gophercloud.ProviderClient, clientID string, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	sc, err := initClientOpts(client, eo, "messaging")
+	sc, err := initClientOpts(client, eo, "message")
 	sc.MoreHeaders = map[string]string{"Client-ID": clientID}
 	return sc, err
 }
 
 // NewContainerV1 creates a ServiceClient that may be used with v1 container package
 func NewContainerV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "container")
+	return initClientOpts(client, eo, "application-container")
 }
 
 // NewKeyManagerV1 creates a ServiceClient that may be used with the v1 key
@@ -478,12 +480,12 @@ func NewKeyManagerV1(client *gophercloud.ProviderClient, eo gophercloud.Endpoint
 // NewContainerInfraV1 creates a ServiceClient that may be used with the v1 container infra management
 // package.
 func NewContainerInfraV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "container-infra")
+	return initClientOpts(client, eo, "container-infrastructure-management")
 }
 
 // NewWorkflowV2 creates a ServiceClient that may be used with the v2 workflow management package.
 func NewWorkflowV2(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
-	return initClientOpts(client, eo, "workflowv2")
+	return initClientOpts(client, eo, "workflow")
 }
 
 // NewPlacementV1 creates a ServiceClient that may be used with the placement package.

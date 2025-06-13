@@ -78,31 +78,20 @@ func (f ShutdownFunc) Shutdown(ctx context.Context) error {
 }
 
 // Kind represents component kinds.
-type Kind int
+type Kind struct {
+	name string
+}
 
-const (
-	_ Kind = iota // skip 0, start types from 1.
-	KindReceiver
-	KindProcessor
-	KindExporter
-	KindExtension
-	KindConnector
+var (
+	KindReceiver  = Kind{name: "Receiver"}
+	KindProcessor = Kind{name: "Processor"}
+	KindExporter  = Kind{name: "Exporter"}
+	KindExtension = Kind{name: "Extension"}
+	KindConnector = Kind{name: "Connector"}
 )
 
 func (k Kind) String() string {
-	switch k {
-	case KindReceiver:
-		return "Receiver"
-	case KindProcessor:
-		return "Processor"
-	case KindExporter:
-		return "Exporter"
-	case KindExtension:
-		return "Extension"
-	case KindConnector:
-		return "Connector"
-	}
-	return ""
+	return k.name
 }
 
 // StabilityLevel represents the stability level of the component created by the factory.
