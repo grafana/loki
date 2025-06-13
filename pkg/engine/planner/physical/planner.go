@@ -229,6 +229,13 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
+			newOptimization("GroupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
+			),
+			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
+			newOptimization("ProjectionPushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
 		optimizer.optimize(root)
