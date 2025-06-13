@@ -161,6 +161,42 @@ func TestRuler_PrometheusRules(t *testing.T) {
 				},
 			},
 		},
+		"should load alerting rules with keep_firing_for": {
+			configuredRules: rulespb.RuleGroupList{
+				&rulespb.RuleGroupDesc{
+					Name:      "group1",
+					Namespace: "namespace1",
+					User:      userID,
+					Rules: []*rulespb.RuleDesc{{
+						Alert:         "UP_ALERT_WITH_KEEP_FIRING_FOR",
+						Expr:          "up < 1",
+						For:           time.Minute,
+						KeepFiringFor: 2 * time.Minute,
+					}},
+					Interval: interval,
+				},
+			},
+			expectedConfigured: 1,
+			expectedRules: []*RuleGroup{
+				{
+					Name: "group1",
+					File: "namespace1",
+					Rules: []rule{
+						&alertingRule{
+							Name:          "UP_ALERT_WITH_KEEP_FIRING_FOR",
+							Query:         "up < 1",
+							State:         "inactive",
+							Health:        "unknown",
+							Type:          "alerting",
+							Duration:      time.Minute.Seconds(),
+							KeepFiringFor: (2 * time.Minute).Seconds(),
+							Alerts:        []*Alert{},
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
 		"API returns only alerts": {
 			configuredRules: rulespb.RuleGroupList{
 				&rulespb.RuleGroupDesc{
