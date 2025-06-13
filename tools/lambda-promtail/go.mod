@@ -151,4 +151,4 @@ require (
 
 //replace k8s.io/client-go => k8s.io/client-go v0.21.0
 // Using a fork of Prometheus with Mimir-specific changes.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.302.1
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.304.1
