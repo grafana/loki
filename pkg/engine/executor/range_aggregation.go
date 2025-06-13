@@ -17,7 +17,16 @@ import (
 )
 
 type partitionAggregator struct {
+	digest  *xxhash.Digest // used to compute key for each partition
 	entries map[uint64]*partitionEntry
+}
+
+func newPartitionAggregator() *partitionAggregator {
+	return &partitionAggregator{
+		digest: xxhash.New(),
+		// TODO: estimate size during planning
+		entries: make(map[uint64]*partitionEntry),
+	}
 }
 
 type partitionEntry struct {
@@ -25,7 +34,18 @@ type partitionEntry struct {
 	labelValues []string
 }
 
-func (a *partitionAggregator) Add(key uint64, partitionLabelValues []string) {
+func (a *partitionAggregator) Add(partitionLabelValues []string) {
+	a.digest.Reset()
+
+	for i, val := range partitionLabelValues {
+		if i > 0 {
+			_, _ = a.digest.Write([]byte{0}) // separator for label values
+		}
+
+		a.digest.WriteString(val)
+	}
+
+	key := a.digest.Sum64()
 	if entry, ok := a.entries[key]; ok {
 		// TODO: handle hash collisions
 		entry.count++
@@ -83,7 +103,7 @@ func NewRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluat
 	return &RangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
-		aggregator: &partitionAggregator{entries: make(map[uint64]*partitionEntry)}, // TODO: estimate size during planning
+		aggregator: newPartitionAggregator(),
 		opts:       opts,
 	}, nil
 }
@@ -125,7 +145,6 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 		} // timestamp column expression
 
 		// reused on each row read
-		h           = xxhash.New()
 		labelValues = make([]string, len(r.opts.partitionBy))
 	)
 
@@ -184,19 +203,10 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 
 				// reset label values and hash for each row
 				clear(labelValues)
-				h.Reset()
-
 				for col, arr := range arrays {
-					if col > 0 {
-						_, _ = h.Write([]byte{0}) // separator
-					}
-
-					v := arr.Value(row)
-					_, _ = h.WriteString(v)
-					labelValues[col] = v
+					labelValues[col] = arr.Value(row)
 				}
-
-				r.aggregator.Add(h.Sum64(), labelValues)
+				r.aggregator.Add(labelValues)
 			}
 		}
 	}
