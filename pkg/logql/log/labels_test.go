@@ -447,11 +447,15 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 }
 
 func mergeLabels(streamLabels, structuredMetadataLabels, parsedLabels labels.Labels) labels.Labels {
-	builder := labels.NewScratchBuilder(streamLabels.Len() + structuredMetadataLabels.Len() + parsedLabels.Len())
-	builder.Assign(streamLabels)
-	builder.Assign(structuredMetadataLabels)
-	builder.Assign(parsedLabels)
-	builder.Sort()
+	builder := labels.NewBuilder(streamLabels)
+
+	structuredMetadataLabels.Range(func(l labels.Label) {
+		builder.Set(l.Name, l.Value)
+	})
+
+	parsedLabels.Range(func(l labels.Label) {
+		builder.Set(l.Name, l.Value)
+	})
 
 	return builder.Labels()
 }
