@@ -44,6 +44,7 @@ func TestResolver_ParseBlockKey(t *testing.T) {
 		{compression.LZ4_4M, compression.LZ4_4M},
 		{compression.Flate, compression.Flate},
 		{compression.Zstd, compression.Zstd},
+		{compression.S2, compression.S2},
 	} {
 		t.Run(tc.srcEnc.String(), func(t *testing.T) {
 			r := defaultKeyResolver{}
