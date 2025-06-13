@@ -119,7 +119,7 @@ func (m mockIndex) Series(ref storage.SeriesRef, lb *labels.ScratchBuilder, chks
 		return errors.New("not found")
 	}
 	lb.Reset()
-	lb.Overwrite(&s.l) // TODO: check if we need to copy the labels
+	lb.Assign(s.l) // TODO: check if we need to copy the labels
 	*chks = append((*chks)[:0], s.chunks...)
 
 	return nil

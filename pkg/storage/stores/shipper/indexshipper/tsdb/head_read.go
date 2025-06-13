@@ -118,9 +118,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		return 0, storage.ErrNotFound
 	}
 	lb.Reset()
-	s.ls.Range(func(l labels.Label) {
-		lb.Add(l.Name, l.Value)
-	})
+	lb.Assign(s.ls)
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -146,9 +144,7 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 	}
 	if len(by) == 0 {
 		lb.Reset()
-		s.ls.Range(func(l labels.Label) {
-			lb.Add(l.Name, l.Value)
-		})
+		lb.Assign(s.ls)
 	} else {
 		lb.Reset()
 		s.ls.Range(func(l labels.Label) {
