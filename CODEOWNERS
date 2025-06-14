@@ -10,7 +10,7 @@
 
 # Logql grammar
 # The observability logs team is listed as co-codeowner for grammar file. This is to receive notifications about updates, so these can be implemented in https://github.com/grafana/lezer-logql
-/pkg/logql/syntax/expr.y @grafana/observability-logs @grafana/loki-team
+/pkg/logql/syntax/expr.y @grafana/oss-big-tent @grafana/loki-team
 
 # Nix
 /nix/ @trevorwhitney
