@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 
@@ -43,6 +44,7 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
+	Sections    []int                       // Logs sections to fetch.
 	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
@@ -86,8 +88,9 @@ func (s *dataobjScan) init() error {
 
 	s.readers = nil
 
-	for _, section := range s.opts.Object.Sections() {
-		if !logs.CheckSection(section) {
+	for idx, section := range s.opts.Object.Sections().Filter(logs.CheckSection) {
+		// Filter out sections that are not part of this shard
+		if !slices.Contains(s.opts.Sections, idx) {
 			continue
 		}
 
@@ -124,6 +127,7 @@ func (s *dataobjScan) init() error {
 // that emitted [arrow.Record]s can include stream labels in results.
 func (s *dataobjScan) initStreams() error {
 	var sr streams.RowReader
+	defer sr.Close()
 
 	streamsBuf := make([]streams.Stream, 512)
 
@@ -134,11 +138,7 @@ func (s *dataobjScan) initStreams() error {
 		s.streams[id] = labels.EmptyLabels()
 	}
 
-	for _, section := range s.opts.Object.Sections() {
-		if !streams.CheckSection(section) {
-			continue
-		}
-
+	for _, section := range s.opts.Object.Sections().Filter(streams.CheckSection) {
 		sec, err := streams.Open(s.ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
@@ -204,13 +204,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	)
 
 	g, ctx := errgroup.WithContext(s.ctx)
+	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
 
 	var gotData atomic.Bool
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			buf := make([]logs.Record, 512)
 			for {
+				buf := make([]logs.Record, 1024) // do not re-use buffer
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
 					return nil
