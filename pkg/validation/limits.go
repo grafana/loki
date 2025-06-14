@@ -258,6 +258,9 @@ type Limits struct {
 
 type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
+	// DisableLogfmtAutoDetection completely disables automatic logfmt parsing to prevent false positives
+	// When enabled, logs will not be automatically parsed as logfmt format during field detection
+	DisableLogfmtAutoDetection bool `yaml:"disable_logfmt_auto_detection,omitempty" json:"disable_logfmt_auto_detection,omitempty"`
 }
 
 type StreamRetention struct {
@@ -308,6 +311,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl", "severity_text", "Severity_Text", "SEVERITY_TEXT"}
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
+	f.BoolVar(&l.DiscoverGenericFields.DisableLogfmtAutoDetection, "validation.disable-logfmt-auto-detection", false, "Disable automatic logfmt parsing during field detection to prevent false positives. When enabled, logs will not be automatically parsed as logfmt format.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -1041,6 +1045,10 @@ func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 
 func (o *Overrides) DiscoverGenericFields(userID string) map[string][]string {
 	return o.getOverridesForUser(userID).DiscoverGenericFields.Fields
+}
+
+func (o *Overrides) DisableLogfmtAutoDetection(userID string) bool {
+	return o.getOverridesForUser(userID).DiscoverGenericFields.DisableLogfmtAutoDetection
 }
 
 func (o *Overrides) DiscoverServiceName(userID string) []string {
