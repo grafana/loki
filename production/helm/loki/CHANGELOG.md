@@ -26,6 +26,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
 - [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
 - [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+- [FEATURE] Allow passing tenant password hash instead of password to avoid idempotency issue with the gateway secret [12032](https://github.com/grafana/loki/issues/12032).
 
 ## 6.29.0
 
