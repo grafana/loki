@@ -112,11 +112,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"max streams exceeded"}},
+		expectedReasons: map[uint64][]string{1: {"max streams"}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -138,14 +138,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"max streams exceeded"}},
+		expectedReasons: map[uint64][]string{1: {"max streams"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -246,11 +246,11 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"max streams exceeded"}},
+		expectedReasons:       map[uint64][]string{1: {"max streams"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
