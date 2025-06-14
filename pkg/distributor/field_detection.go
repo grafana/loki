@@ -3,6 +3,7 @@ package distributor
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -178,7 +179,7 @@ func (l *FieldDetector) detectGenericFieldFromLogEntry(entry logproto.Entry, hin
 	var v []byte
 	if isJSON(entry.Line) {
 		v = getValueUsingJSONParser(lineBytes, hints)
-	} else if isLogFmt(lineBytes) {
+	} else if !l.validationContext.disableLogfmtAutoDetection && isLogFmt(lineBytes) {
 		v = getValueUsingLogfmtParser(lineBytes, hints)
 	}
 	return string(v)
@@ -189,7 +190,7 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	var v []byte
 	if isJSON(log) {
 		v = getLevelUsingJSONParser(lineBytes, l.allowedLevelLabelsMap, l.logLevelFromJSONMaxDepth)
-	} else if isLogFmt(lineBytes) {
+	} else if !l.validationContext.disableLogfmtAutoDetection && isLogFmt(lineBytes) {
 		v = getValueUsingLogfmtParser(lineBytes, l.allowedLevelLabels)
 	} else {
 		return detectLevelFromLogLine(log)
@@ -285,11 +286,12 @@ func getLevelUsingJSONParser(line []byte, allowedLevelFields map[string]struct{}
 }
 
 func isLogFmt(line []byte) bool {
-	equalIndex := bytes.Index(line, []byte("="))
-	if len(line) == 0 || equalIndex == -1 {
+	if len(line) == 0 {
 		return false
 	}
-	return true
+
+	logfmtPattern := regexp.MustCompile(`^(\w+=(([^\s"]+)|("([^"\\]|\\.)*"))\s*)+$`)
+	return logfmtPattern.Match(line)
 }
 
 func isJSON(line string) bool {
