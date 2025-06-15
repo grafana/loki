@@ -71,6 +71,28 @@ aws cloudformation create-stack --stack-name lambda-promtail-stack --template-bo
 
 # Appendix
 
+## Importing this Terraform module into your own Terraform workspace
+
+Rather than running `terraform apply` from this repo, you can refer to this repo as a `module`. Here's an example:
+
+```hcl
+locals {
+  # This should match a git tag in the grafana/loki repo
+  module_version = "v3.5.1"
+}
+module "lambda_promtail" {
+  source        = "github.com/grafana/loki//tools/lambda-promtail?ref=${local.module_version}"
+  # This will ensure the code is only recompiled if the version changes
+  lambda_code_version = local.module_version
+  write_address       = "https://loki.example.com/loki/api/v1/push"
+  # This example shows pulling the credentials from Vault
+  username            = data.vault_generic_secret.loki_creds.data["username"]
+  password            = data.vault_generic_secret.loki_creds.data["password"]
+
+  log_group_names = ["/aws/lambda/some-lambda1", "/aws/lambda/some-lambda2"]
+}
+```
+
 ## Golang installation
 
 Please ensure Go 1.x (where 'x' is the latest version) is installed as per the instructions on the official golang website: https://golang.org/doc/install
