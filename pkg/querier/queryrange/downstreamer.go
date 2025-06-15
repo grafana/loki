@@ -94,6 +94,7 @@ func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer 
 		locks:       locks,
 		handler:     h.next,
 		splitAlign:  h.splitAlign,
+		limits:      h.limits,
 	}
 }
 
@@ -104,6 +105,7 @@ type instance struct {
 	handler     queryrangebase.Handler
 
 	splitAlign bool
+	limits     Limits
 }
 
 // withoutOffset returns the given query string with offsets removed and timestamp adjusted accordingly. If no offset is present in original query, it will be returned as is.
@@ -134,6 +136,16 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery, acc logql.Accumulator) ([]logqlmodel.Result, error) {
+	// Get the user/tenant ID from context
+	user, _ := tenant.TenantID(ctx)
+	// Get the max_query_series limit from the instance's limits
+	maxSeries := 0
+	if in.limits != nil {
+		maxSeries = in.limits.MaxQuerySeries(ctx, user)
+	}
+	if maxSeries > 0 {
+		acc = logql.NewLimitingAccumulator(acc, maxSeries)
+	}
 	return in.For(ctx, queries, acc, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		var req queryrangebase.Request
 		if in.splitAlign {
@@ -207,7 +219,10 @@ func (in instance) For(
 	for {
 		select {
 		case <-ctx.Done():
-			// Return early if the context is canceled
+			// Prefer returning the accumulator error if it exists
+			if err != nil {
+				return acc.Result(), err
+			}
 			return acc.Result(), ctx.Err()
 		case resp, ok := <-ch:
 			if !ok {
@@ -222,6 +237,10 @@ func (in instance) For(
 				continue
 			}
 			err = acc.Accumulate(ctx, resp.Res, resp.I)
+			if err != nil {
+				cancel() // Cancel all workers immediately
+				continue
+			}
 		}
 	}
 }
