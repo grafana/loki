@@ -11,4 +11,5 @@ type Visitor interface {
 	VisitRangeAggregation(*RangeAggregation) error
 	VisitFilter(*Filter) error
 	VisitLimit(*Limit) error
+	VisitVectorAggregation(*VectorAggregation) error
 }

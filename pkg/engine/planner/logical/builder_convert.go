@@ -43,6 +43,8 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processSortPlan(value)
 	case *RangeAggregation:
 		return b.processRangeAggregate(value)
+	case *VectorAggregation:
+		return b.processVectorAggregation(value)
 
 	case *UnaryOp:
 		return b.processUnaryOp(value)
@@ -114,6 +116,16 @@ func (b *ssaBuilder) processUnaryOp(value *UnaryOp) (Value, error) {
 }
 
 func (b *ssaBuilder) processRangeAggregate(plan *RangeAggregation) (Value, error) {
+	if _, err := b.process(plan.Table); err != nil {
+		return nil, err
+	}
+
+	plan.id = fmt.Sprintf("%%%d", b.getID())
+	b.instructions = append(b.instructions, plan)
+	return plan, nil
+}
+
+func (b *ssaBuilder) processVectorAggregation(plan *VectorAggregation) (Value, error) {
 	if _, err := b.process(plan.Table); err != nil {
 		return nil, err
 	}

@@ -50,6 +50,8 @@ func ColumnTypeFromString(ct string) ColumnType {
 		return ColumnTypeParsed
 	case ctNames[5]:
 		return ColumnTypeAmbiguous
+	case ctNames[6]:
+		return ColumnTypeGenerated
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
 	}
