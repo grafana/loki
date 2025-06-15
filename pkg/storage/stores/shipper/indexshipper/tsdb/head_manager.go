@@ -573,7 +573,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 				}
 
 				// labels are always written to the WAL before corresponding chunks
-				if len(rec.Series.Labels) > 0 {
+				if !rec.Series.Labels.IsEmpty() {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
 						tenant = make(map[uint64]*labelsWithFp)
@@ -827,7 +827,9 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				b := labels.NewScratchBuilder(10)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &b, &chks)
+				ls = b.Labels()
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
