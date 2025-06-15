@@ -23,6 +23,7 @@ const (
 	LZ4_4M
 	Flate
 	Zstd
+	S2
 )
 
 var supportedCodecs = []Codec{
@@ -35,6 +36,7 @@ var supportedCodecs = []Codec{
 	LZ4_4M,
 	Flate,
 	Zstd,
+	S2,
 }
 
 func (e Codec) String() string {
@@ -57,6 +59,8 @@ func (e Codec) String() string {
 		return "flate"
 	case Zstd:
 		return "zstd"
+	case S2:
+		return "s2"
 	default:
 		return "unknown"
 	}

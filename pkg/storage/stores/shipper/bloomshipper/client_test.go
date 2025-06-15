@@ -31,6 +31,7 @@ var supportedCompressions = []compression.Codec{
 	compression.LZ4_4M,
 	compression.Flate,
 	compression.Zstd,
+	compression.S2,
 }
 
 func parseTime(s string) model.Time {
