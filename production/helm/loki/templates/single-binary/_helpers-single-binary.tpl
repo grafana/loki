@@ -11,6 +11,8 @@ app.kubernetes.io/component: single-binary
 {{- define "loki.singleBinarySelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: single-binary
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
