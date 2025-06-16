@@ -654,55 +654,19 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 		"test": {
 			{
 				Name: "group1",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: yaml.Node{
-							Value:  "UP_RULE",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   5,
-							Column: 19,
-						},
-						Expr: yaml.Node{
-							Value:  "up",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   6,
-							Column: 17,
-						},
+						Record: "UP_RULE",
+						Expr:   "up",
 					},
 					{
-						Alert: yaml.Node{
-							Value:  "UP_ALERT",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   7,
-							Column: 18,
-						},
-						Expr: yaml.Node{
-							Value:  "up < 1",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   8,
-							Column: 17,
-						},
+						Alert:  "UP_ALERT",
+						Expr:   "up < 1",
 						Labels: map[string]string{"foo": "bar"},
 					},
 					{
-						Alert: yaml.Node{
-							Value:  "DOWN_ALERT",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   11,
-							Column: 18,
-						},
-						Expr: yaml.Node{
-							Value:  "down < 1",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   12,
-							Column: 17,
-						},
+						Alert:  "DOWN_ALERT",
+						Expr:   "down < 1",
 						Labels: map[string]string{"namespace": "delta"},
 					},
 				},
@@ -714,39 +678,15 @@ func TestRuler_GetRulesLabelFilter(t *testing.T) {
 		"test": {
 			{
 				Name: "group1",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Alert: yaml.Node{
-							Value:  "UP_ALERT",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   5,
-							Column: 18,
-						},
-						Expr: yaml.Node{
-							Value:  "up < 1",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   6,
-							Column: 17,
-						},
+						Alert:  "UP_ALERT",
+						Expr:   "up < 1",
 						Labels: map[string]string{"foo": "bar"},
 					},
 					{
-						Alert: yaml.Node{
-							Value:  "DOWN_ALERT",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   9,
-							Column: 18,
-						},
-						Expr: yaml.Node{
-							Value:  "down < 1",
-							Tag:    "!!str",
-							Kind:   8,
-							Line:   10,
-							Column: 17,
-						},
+						Alert:  "DOWN_ALERT",
+						Expr:   "down < 1",
 						Labels: map[string]string{"namespace": "delta"},
 					},
 				},

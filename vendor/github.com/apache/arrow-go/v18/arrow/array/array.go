@@ -35,7 +35,7 @@ const (
 )
 
 type array struct {
-	refCount        int64
+	refCount        atomic.Int64
 	data            *Data
 	nullBitmapBytes []byte
 }
@@ -43,16 +43,16 @@ type array struct {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (a *array) Retain() {
-	atomic.AddInt64(&a.refCount, 1)
+	a.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // Release may be called simultaneously from multiple goroutines.
 // When the reference count goes to zero, the memory is freed.
 func (a *array) Release() {
-	debug.Assert(atomic.LoadInt64(&a.refCount) > 0, "too many releases")
+	debug.Assert(a.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&a.refCount, -1) == 0 {
+	if a.refCount.Add(-1) == 0 {
 		a.data.Release()
 		a.data, a.nullBitmapBytes = nil, nil
 	}
@@ -109,9 +109,7 @@ func (a *array) Offset() int {
 
 type arrayConstructorFn func(arrow.ArrayData) arrow.Array
 
-var (
-	makeArrayFn [64]arrayConstructorFn
-)
+var makeArrayFn [64]arrayConstructorFn
 
 func invalidDataType(data arrow.ArrayData) arrow.Array {
 	panic("invalid data type: " + data.DataType().ID().String())

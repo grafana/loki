@@ -19,6 +19,7 @@
 package bos
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,7 @@ import (
 	sdk_http "github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
 	"github.com/baidubce/bce-sdk-go/services/sts"
+	"github.com/baidubce/bce-sdk-go/util"
 	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
@@ -958,6 +960,14 @@ func (c *Client) BasicPutObject(bucket, object string, body *bce.Body) (string, 
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromBytes(bucket, object string, bytesArr []byte,
 	args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		buf := bytes.NewBuffer(bytesArr)
+		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromBytes(bytesArr)
 	if err != nil {
 		return "", err
@@ -969,6 +979,14 @@ func (c *Client) PutObjectFromBytes(bucket, object string, bytesArr []byte,
 // PutObjectFromBytesWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, object string,
 	bytesArr []byte, args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		buf := bytes.NewBuffer(bytesArr)
+		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromBytes(bytesArr)
 	if err != nil {
 		return "", err
@@ -991,6 +1009,14 @@ func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, obje
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromString(bucket, object, content string,
 	args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		buf := bytes.NewBufferString(content)
+		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromString(content)
 	if err != nil {
 		return "", err
@@ -1002,6 +1028,14 @@ func (c *Client) PutObjectFromString(bucket, object, content string,
 // PutObjectFromStringWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 	bucket, object, content string, args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		buf := bytes.NewBufferString(content)
+		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromString(content)
 	if err != nil {
 		return "", err
@@ -1025,6 +1059,13 @@ func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 	args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", err
@@ -1036,6 +1077,13 @@ func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 // PutObjectFromFileWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
 	bucket, object, fileName string, args *api.PutObjectArgs) (string, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", err
@@ -1058,6 +1106,17 @@ func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 	args *api.PutObjectArgs) (string, error) {
+	if seeker, ok := reader.(io.Seeker); ok && args != nil && args.ContentCrc32cFlag {
+		contentCrc32c, err := util.CalculateContentCrc32cFromStream(reader)
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+		_, err = seeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return "", err
+		}
+	}
 	body, err := bce.NewBodyFromSizedReader(reader, -1)
 	if err != nil {
 		return "", err
@@ -1069,6 +1128,17 @@ func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 // PutObjectFromStreamWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, object string,
 	reader io.Reader, args *api.PutObjectArgs) (string, error) {
+	if seeker, ok := reader.(io.Seeker); ok && args != nil && args.ContentCrc32cFlag {
+		contentCrc32c, err := util.CalculateContentCrc32cFromStream(reader)
+		if err != nil {
+			return "", err
+		}
+		args.ContentCrc32c = contentCrc32c
+		_, err = seeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return "", nil
+		}
+	}
 	body, err := bce.NewBodyFromSizedReader(reader, -1)
 	if err != nil {
 		return "", err
@@ -1080,6 +1150,13 @@ func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, obj
 
 func (c *Client) PutObjectFromFileWithCallback(bucket, object, fileName string,
 	args *api.PutObjectArgs) (string, *api.PutObjectResult, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
+		if err != nil {
+			return "", nil, err
+		}
+		args.ContentCrc32c = contentCrc32c
+	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", nil, err

@@ -6982,7 +6982,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.2"
+"v0.15.3"
 </pre>
 </td>
 		</tr>
