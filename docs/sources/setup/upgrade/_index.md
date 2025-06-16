@@ -20,6 +20,8 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Checking for config changes
 
+<!-- vale Grafana.Spelling = NO -->
+
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```bash
@@ -1756,3 +1758,4 @@ If you attempt to add a v1.4.0 ingester to a ring created by Loki v1.2.0 or olde
 This will result in distributors failing to write and a general ingestion failure for the system.
 
 If this happens to you, you will want to rollback your deployment immediately. You need to remove the v1.4.0 ingester from the ring ASAP, this should allow the existing ingesters to re-insert their tokens.  You will also want to remove any v1.4.0 distributors as they will not understand the old ring either and will fail to send traffic.
+<!-- vale Grafana.Spelling = YES -->
