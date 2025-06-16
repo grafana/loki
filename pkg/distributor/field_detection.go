@@ -314,23 +314,33 @@ func isJSON(line string) bool {
 }
 
 func detectLevelFromLogLine(log string) string {
-	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
-		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
-		return constants.LogLevelInfo
+	logLower := strings.ToLower(log)
+
+	if containsLogLevel(logLower, "fatal") {
+		return constants.LogLevelFatal
 	}
-	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
-		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
-		return constants.LogLevelError
-	}
-	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
-		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return constants.LogLevelWarn
-	}
-	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+	if containsLogLevel(logLower, "critical") {
 		return constants.LogLevelCritical
 	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+	if containsLogLevel(logLower, "error") || strings.Contains(logLower, "err:") {
+		return constants.LogLevelError
+	}
+	if containsLogLevel(logLower, "warn") || containsLogLevel(logLower, "warning") {
+		return constants.LogLevelWarn
+	}
+	if containsLogLevel(logLower, "debug") {
 		return constants.LogLevelDebug
 	}
+	if containsLogLevel(logLower, "info") {
+		return constants.LogLevelInfo
+	}
 	return constants.LogLevelUnknown
+}
+
+func containsLogLevel(log, level string) bool {
+	return strings.Contains(log, level+":") ||
+		strings.Contains(log, level+" ") ||
+		strings.Contains(log, "["+level+"]") ||
+		strings.HasPrefix(log, level+" ") ||
+		strings.HasSuffix(log, " "+level)
 }
