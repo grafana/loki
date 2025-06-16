@@ -298,8 +298,8 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
-		// TODO(owen-d): use pool
-		b := log.NewBufferedLabelsBuilderWithSize(10)
+		b := LabelsBuilderPool.Get()
+		defer LabelsBuilderPool.Put(b)
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
