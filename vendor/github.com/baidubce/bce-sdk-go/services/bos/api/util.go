@@ -69,6 +69,9 @@ const (
 	NAMESPACE_BUCKET   = "namespace"
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
+
+	// BOS Client error message format
+	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
