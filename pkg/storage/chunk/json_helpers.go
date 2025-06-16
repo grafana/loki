@@ -3,10 +3,11 @@ package chunk
 import (
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func init() {
