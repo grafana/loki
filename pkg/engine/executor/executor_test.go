@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -11,13 +12,13 @@ import (
 
 func TestExecutor(t *testing.T) {
 	t.Run("pipeline fails if plan is nil", func(t *testing.T) {
-		pipeline := Run(context.TODO(), Config{}, nil)
+		pipeline := Run(context.TODO(), Config{}, nil, log.NewNopLogger())
 		err := pipeline.Read()
 		require.ErrorContains(t, err, "failed to execute pipeline: plan is nil")
 	})
 
 	t.Run("pipeline fails if plan has no root node", func(t *testing.T) {
-		pipeline := Run(context.TODO(), Config{}, &physical.Plan{})
+		pipeline := Run(context.TODO(), Config{}, &physical.Plan{}, log.NewNopLogger())
 		err := pipeline.Read()
 		require.ErrorContains(t, err, "failed to execute pipeline: plan has no root node")
 	})

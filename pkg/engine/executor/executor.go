@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -17,11 +18,12 @@ type Config struct {
 	Bucket    objstore.Bucket
 }
 
-func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
+func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:      plan,
 		batchSize: cfg.BatchSize,
 		bucket:    cfg.Bucket,
+		logger:    logger,
 	}
 	if plan == nil {
 		return errorPipeline(errors.New("plan is nil"))
@@ -39,6 +41,7 @@ type Context struct {
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
+	logger    log.Logger
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -95,7 +98,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 
 		Direction: node.Direction,
 		Limit:     node.Limit,
-	})
+	}, log.With(c.logger, "pipeline", "dataobjscan"))
 }
 
 func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {

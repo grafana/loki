@@ -129,7 +129,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		BatchSize: int64(e.opts.BatchSize),
 		Bucket:    e.bucket,
 	}
-	pipeline := executor.Run(ctx, cfg, plan)
+	pipeline := executor.Run(ctx, cfg, plan, logger)
 	defer pipeline.Close()
 
 	if err := collectResult(ctx, pipeline, builder); err != nil {

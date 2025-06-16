@@ -8,14 +8,19 @@ import (
 	"io"
 	"runtime"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -35,6 +40,8 @@ type dataobjScan struct {
 	streams     map[int64]labels.Labels
 
 	state state
+
+	logger log.Logger
 }
 
 type dataobjScanOptions struct {
@@ -58,8 +65,8 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of all log sections in a data object. Rows in the
 // returned record are ordered by timestamp in the direction specified by
 // opts.Direction.
-func newDataobjScanPipeline(ctx context.Context, opts dataobjScanOptions) *dataobjScan {
-	return &dataobjScan{ctx: ctx, opts: opts}
+func newDataobjScanPipeline(ctx context.Context, opts dataobjScanOptions, logger log.Logger) *dataobjScan {
+	return &dataobjScan{ctx: ctx, opts: opts, logger: logger}
 }
 
 // Read retrieves the next [arrow.Record] from the dataobj.
@@ -203,38 +210,46 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 		}
 	)
 
-	g, ctx := errgroup.WithContext(s.ctx)
-	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
-
+	parallelism := max(runtime.GOMAXPROCS(0)/2, 1)
 	var gotData atomic.Bool
 
-	for _, reader := range s.readers {
-		g.Go(func() error {
-			for {
-				buf := make([]logs.Record, 1024) // do not re-use buffer
-				n, err := reader.Read(ctx, buf)
-				if n == 0 && errors.Is(err, io.EOF) {
-					return nil
-				} else if err != nil && !errors.Is(err, io.EOF) {
-					return err
-				}
+	bufferCount := make([]int, len(s.readers))
+	rowCount := make([]int, len(s.readers))
 
-				gotData.Store(true)
+	start := time.Now()
 
-				heapMut.Lock()
-				for _, rec := range buf[:n] {
-					heap.Push(rec)
-				}
-				heapMut.Unlock()
+	err := concurrency.ForEachJob(s.ctx, len(s.readers), parallelism, func(ctx context.Context, idx int) error {
+		for {
+			buf := make([]logs.Record, 1024) // do not re-use buffer
+			n, err := s.readers[idx].Read(ctx, buf)
+			if n == 0 && errors.Is(err, io.EOF) {
+				level.Warn(s.logger).Log("msg", "finished reading data object file", "idx", idx)
+				return nil
+			} else if err != nil && !errors.Is(err, io.EOF) {
+				level.Warn(s.logger).Log("msg", "error reading data object file", "idx", idx, "err", err)
+				return err
 			}
-		})
-	}
 
-	if err := g.Wait(); err != nil {
+			gotData.Store(true)
+
+			heapMut.Lock()
+			bufferCount[idx]++
+			rowCount[idx] += n
+			for _, rec := range buf[:n] {
+				heap.Push(rec)
+			}
+			heapMut.Unlock()
+		}
+	})
+
+	if err != nil {
 		return nil, err
 	} else if !gotData.Load() {
 		return nil, EOF
 	}
+
+	duration := time.Since(start)
+	level.Info(s.logger).Log("msg", "dataobjscan stats", "sections", len(s.readers), "parallelism", parallelism, "rows", strJoin(rowCount), "buffers", strJoin(bufferCount), "duration", duration)
 
 	projections, err := s.effectiveProjections(&heap)
 	if err != nil {
@@ -569,3 +584,14 @@ func (s *dataobjScan) Inputs() []Pipeline { return nil }
 
 // Transport implements Pipeline and returns [Local].
 func (s *dataobjScan) Transport() Transport { return Local }
+
+func strJoin(s []int) string {
+	var b strings.Builder
+	for i, v := range s {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(strconv.Itoa(v))
+	}
+	return b.String()
+}

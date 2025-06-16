@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -72,7 +73,7 @@ func Test_dataobjScan(t *testing.T) {
 			Projections: nil,           // All columns
 			Direction:   physical.Forward,
 			Limit:       0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -106,7 +107,7 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 			},
 			Direction: physical.Forward,
 			Limit:     0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
@@ -137,7 +138,7 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 			},
 			Direction: physical.Forward,
 			Limit:     0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -200,7 +201,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			Projections: nil,              // All columns
 			Direction:   physical.Forward,
 			Limit:       0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -236,7 +237,7 @@ prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 			},
 			Direction: physical.Forward,
 			Limit:     0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -264,7 +265,7 @@ NULL,NULL`
 			},
 			Direction: physical.Forward,
 			Limit:     0, // No limit
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
