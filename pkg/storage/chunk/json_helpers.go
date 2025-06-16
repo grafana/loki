@@ -3,6 +3,7 @@ package chunk
 import (
 	"unsafe"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,14 +19,15 @@ func init() {
 // Override Prometheus' labels.Labels decoder which goes via a map
 func decodeLabels(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	labelsPtr := (*labels.Labels)(ptr)
-	b := labels.NewScratchBuilder(10)
+	b := log.NewBufferedLabelsBuilder(make(labels.Labels, 0, 10))
 	iter.ReadMapCB(func(iter *jsoniter.Iterator, key string) bool {
 		value := iter.ReadString()
-		b.Add(key, value)
+		b.Add(labels.Label{Name: key, Value: value})
 		return true
 	})
 	// Labels are always sorted, but earlier Cortex using a map would
 	// output in any order so we have to sort on read in
+	b.Sort()
 	*labelsPtr = b.Labels()
 }
 

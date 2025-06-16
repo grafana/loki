@@ -2,7 +2,12 @@
 
 package log
 
-import "github.com/prometheus/prometheus/model/labels"
+import (
+	"slices"
+	"strings"
+
+	"github.com/prometheus/prometheus/model/labels"
+)
 
 type hasher struct {
 	buf []byte // buffer for computing hash without bytes slice allocation.
@@ -44,4 +49,8 @@ func (b *BufferedLabelsBuilder) Add(label labels.Label) {
 func (b *BufferedLabelsBuilder) Labels() labels.Labels {
 	//slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	return b.buf
+}
+
+func (b *BufferedLabelsBuilder) Sort() {
+	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 }
