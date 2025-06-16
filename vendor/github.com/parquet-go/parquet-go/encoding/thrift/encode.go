@@ -14,7 +14,7 @@ import (
 // protocol p.
 //
 // The function panics if v cannot be converted to a thrift representation.
-func Marshal(p Protocol, v interface{}) ([]byte, error) {
+func Marshal(p Protocol, v any) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := NewEncoder(p.NewWriter(buf))
 	err := enc.Encode(v)
@@ -30,7 +30,7 @@ func NewEncoder(w Writer) *Encoder {
 	return &Encoder{w: w, f: encoderFlags(w)}
 }
 
-func (e *Encoder) Encode(v interface{}) error {
+func (e *Encoder) Encode(v any) error {
 	t := reflect.TypeOf(v)
 	cache, _ := encoderCache.Load().(map[typeID]encodeFunc)
 	encode, _ := cache[makeTypeID(t)]
@@ -155,7 +155,7 @@ func encodeFuncSliceOf(t reflect.Type, seen encodeFuncCache) encodeFunc {
 			return err
 		}
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if err := enc(w, v.Index(i), flags); err != nil {
 				return err
 			}

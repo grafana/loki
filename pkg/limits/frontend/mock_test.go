@@ -26,7 +26,7 @@ type mockExceedsLimitsGatherer struct {
 	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
 }
 
-func (g *mockExceedsLimitsGatherer) exceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (g *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if expected := g.expectedExceedsLimitsRequest; expected != nil {
 		require.Equal(g.t, expected, req)
 	}
@@ -101,6 +101,10 @@ func (m *mockIngestLimitsClient) Check(_ context.Context, _ *grpc_health_v1.Heal
 	return &grpc_health_v1.HealthCheckResponse{
 		Status: grpc_health_v1.HealthCheckResponse_SERVING,
 	}, nil
+}
+
+func (m *mockIngestLimitsClient) List(_ context.Context, _ *grpc_health_v1.HealthListRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	return &grpc_health_v1.HealthListResponse{}, nil
 }
 
 func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {

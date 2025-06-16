@@ -15,8 +15,9 @@ const (
 	DefaultActiveWindow  = 2 * time.Hour
 	DefaultRateWindow    = 5 * time.Minute
 	DefaultBucketSize    = 1 * time.Minute
-	DefaultEvictInterval = 30 * time.Minute
+	DefaultEvictInterval = 10 * time.Minute
 	DefaultNumPartitions = 64
+	DefaultConsumerGroup = "ingest-limits"
 )
 
 // Config represents the configuration for the ingest limits service.
@@ -49,10 +50,8 @@ type Config struct {
 	// LifecyclerConfig is the config to build a ring lifecycler.
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 	KafkaConfig      kafka.Config          `yaml:"-"`
-
-	// Deprecated.
-	WindowSize     time.Duration `yaml:"window_size" doc:"hidden|deprecated"`
-	BucketDuration time.Duration `yaml:"bucket_duration" doc:"hidden|deprecated"`
+	ConsumerGroup    string                `yaml:"consumer_group"`
+	Topic            string                `yaml:"topic"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -93,6 +92,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		DefaultNumPartitions,
 		"The number of partitions for the Kafka topic used to read and write stream metadata. It is fixed, not a maximum.",
 	)
+	f.StringVar(
+		&cfg.ConsumerGroup,
+		"ingest-limits.consumer-group",
+		DefaultConsumerGroup,
+		"The consumer group for the Kafka topic used to read stream metadata records.",
+	)
+	f.StringVar(
+		&cfg.Topic,
+		"ingest-limits.topic",
+		"",
+		"The topic for the Kafka topic used to read and write stream metadata records.",
+	)
 }
 
 func (cfg *Config) Validate() error {
@@ -105,14 +116,20 @@ func (cfg *Config) Validate() error {
 	if cfg.BucketSize <= 0 {
 		return errors.New("bucket-size must be greater than 0")
 	}
-	if cfg.RateWindow < cfg.BucketSize {
-		return errors.New("rate-window must be greater than or equal to bucket-size")
+	if cfg.RateWindow%cfg.BucketSize != 0 {
+		return errors.New("rate-window must be a multiple of bucket-size")
 	}
 	if cfg.EvictionInterval <= 0 {
 		return errors.New("eviction-interval must be greater than 0")
 	}
 	if cfg.NumPartitions <= 0 {
 		return errors.New("num-partitions must be greater than 0")
+	}
+	if cfg.ConsumerGroup == "" {
+		return errors.New("consumer-group must be set")
+	}
+	if cfg.Topic == "" {
+		return errors.New("topic must be set")
 	}
 	return nil
 }

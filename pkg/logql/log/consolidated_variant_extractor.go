@@ -37,7 +37,7 @@ func (c *consolidatedMultiVariantStreamExtractor) BaseLabels() LabelsResult {
 	return c.commonPipeline.BaseLabels()
 }
 
-func (c *consolidatedMultiVariantStreamExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (c *consolidatedMultiVariantStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// Process the line through the common pipeline
 	processedLine, commonLabels, ok := c.commonPipeline.Process(ts, line, structuredMetadata)
 	if !ok {
@@ -57,7 +57,7 @@ func (c *consolidatedMultiVariantStreamExtractor) Process(ts int64, line []byte,
 	lbls := commonLabels.Labels()
 	for i, variant := range c.variants {
 		streamVariantExtractor := variant.ForStream(lbls)
-		samples, ok := streamVariantExtractor.Process(ts, processedLine, commonStructuredMetadata...)
+		samples, ok := streamVariantExtractor.Process(ts, processedLine, commonStructuredMetadata)
 		if ok {
 			for _, sample := range samples {
 				sample.Labels = appendVariantLabel(sample.Labels, i)
@@ -74,14 +74,15 @@ func (c *consolidatedMultiVariantStreamExtractor) Process(ts int64, line []byte,
 }
 
 func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
-	streamLbls := lbls.Stream()
+	newLblsBuilder := labels.NewScratchBuilder(lbls.Stream().Len() + 1)
 
-	newLbls := make(labels.Labels, 0, len(streamLbls)+1)
-	newLbls = append(newLbls, labels.Label{
-		Name:  constants.VariantLabel,
-		Value: strconv.Itoa(variantIndex),
+	lbls.Stream().Range(func(l labels.Label) {
+		newLblsBuilder.Add(l.Name, l.Value)
 	})
-	newLbls = append(newLbls, streamLbls...)
+
+	newLblsBuilder.Add(constants.VariantLabel, strconv.Itoa(variantIndex))
+	newLblsBuilder.Sort()
+	newLbls := newLblsBuilder.Labels()
 
 	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
 	builder.Add(StructuredMetadataLabel, lbls.StructuredMetadata())
@@ -89,8 +90,8 @@ func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
 	return builder.LabelsResult()
 }
 
-func (c *consolidatedMultiVariantStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
-	return c.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+func (c *consolidatedMultiVariantStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+	return c.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
 
 func (c *consolidatedMultiVariantStreamExtractor) ReferencedStructuredMetadata() bool {

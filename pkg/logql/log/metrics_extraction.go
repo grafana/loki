@@ -35,8 +35,8 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutates the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool)
-	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool)
+	Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
+	ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
 	ReferencedStructuredMetadata() bool
 }
 
@@ -99,7 +99,7 @@ func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.builder.referencedStructuredMetadata
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
 
@@ -120,9 +120,9 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMet
 	return []ExtractedSample{{Value: value, Labels: labels}}, true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -199,7 +199,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
@@ -230,9 +230,9 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 	return []ExtractedSample{{Value: v, Labels: l.builder.GroupedLabels()}}, true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -283,7 +283,7 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -295,10 +295,10 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 		}
 	}
 
-	return sp.extractor.Process(ts, line, structuredMetadata...)
+	return sp.extractor.Process(ts, line, structuredMetadata)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -310,7 +310,7 @@ func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structu
 		}
 	}
 
-	return sp.extractor.ProcessString(ts, line, labels.EmptyLabels()...)
+	return sp.extractor.ProcessString(ts, line, structuredMetadata)
 }
 
 func convertFloat(v string) (float64, error) {

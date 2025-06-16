@@ -8,10 +8,11 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -93,6 +94,7 @@ func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer 
 		locks:       locks,
 		handler:     h.next,
 		splitAlign:  h.splitAlign,
+		limits:      h.limits,
 	}
 }
 
@@ -103,6 +105,7 @@ type instance struct {
 	handler     queryrangebase.Handler
 
 	splitAlign bool
+	limits     Limits
 }
 
 // withoutOffset returns the given query string with offsets removed and timestamp adjusted accordingly. If no offset is present in original query, it will be returned as is.
@@ -133,6 +136,16 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 }
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery, acc logql.Accumulator) ([]logqlmodel.Result, error) {
+	// Get the user/tenant ID from context
+	user, _ := tenant.TenantID(ctx)
+	// Get the max_query_series limit from the instance's limits
+	maxSeries := 0
+	if in.limits != nil {
+		maxSeries = in.limits.MaxQuerySeries(ctx, user)
+	}
+	if maxSeries > 0 {
+		acc = logql.NewLimitingAccumulator(acc, maxSeries)
+	}
 	return in.For(ctx, queries, acc, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		var req queryrangebase.Request
 		if in.splitAlign {
@@ -141,9 +154,16 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		} else {
 			req = ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
 		}
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
-		defer sp.Finish()
-		sp.LogKV("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "start", req.GetStart(), "end", req.GetEnd(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
+		ctx, sp := tracer.Start(ctx, "DownstreamHandler.instance", trace.WithAttributes(
+			attribute.String("shards", fmt.Sprintf("%+v", qry.Params.Shards())),
+			attribute.String("query", req.GetQuery()),
+			attribute.String("start", req.GetStart().String()),
+			attribute.String("end", req.GetEnd().String()),
+			attribute.Int64("step", req.GetStep()),
+			attribute.String("handler", reflect.TypeOf(in.handler).String()),
+			attribute.String("engine", "downstream"),
+		))
+		defer sp.End()
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
@@ -199,7 +219,10 @@ func (in instance) For(
 	for {
 		select {
 		case <-ctx.Done():
-			// Return early if the context is canceled
+			// Prefer returning the accumulator error if it exists
+			if err != nil {
+				return acc.Result(), err
+			}
 			return acc.Result(), ctx.Err()
 		case resp, ok := <-ch:
 			if !ok {
@@ -214,6 +237,10 @@ func (in instance) For(
 				continue
 			}
 			err = acc.Accumulate(ctx, resp.Res, resp.I)
+			if err != nil {
+				cancel() // Cancel all workers immediately
+				continue
+			}
 		}
 	}
 }

@@ -8,6 +8,7 @@ type Visitor interface {
 	VisitDataObjScan(*DataObjScan) error
 	VisitSortMerge(*SortMerge) error
 	VisitProjection(*Projection) error
+	VisitRangeAggregation(*RangeAggregation) error
 	VisitFilter(*Filter) error
 	VisitLimit(*Limit) error
 }

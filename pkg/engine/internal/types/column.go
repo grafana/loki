@@ -17,17 +17,20 @@ const (
 	ColumnTypeMetadata  // ColumnTypeMetadata represents a column from a log metadata.
 	ColumnTypeParsed    // ColumnTypeParsed represents a parsed column from a parser stage.
 	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a builtin, label, metadata, or parsed.
+	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
 )
 
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
 	ColumnNameBuiltinMessage   = "message"
-	MetadataKeyColumnType      = "column_type"
-	MetadataKeyColumnDataType  = "column_datatype"
+	ColumnNameGeneratedValue   = "value"
+
+	MetadataKeyColumnType     = "column_type"
+	MetadataKeyColumnDataType = "column_datatype"
 )
 
-var ctNames = [6]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous"}
+var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
 
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {

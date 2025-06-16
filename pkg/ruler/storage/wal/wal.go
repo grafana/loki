@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -70,7 +71,7 @@ type Storage struct {
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string, enableReplay bool) (*Storage, error) {
-	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
+	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, compression.Snappy)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +374,7 @@ func (w *Storage) Truncate(mint int64) error {
 		return nil
 	}
 
-	keep := func(id chunks.HeadSeriesRef) bool {
+	keep := func(id chunks.HeadSeriesRef, _ int) bool {
 		if w.series.getByID(id) != nil {
 			return true
 		}

@@ -17,6 +17,11 @@ import (
 	"modernc.org/libc/utime"
 )
 
+// #define FE_DOWNWARD         0x0400
+// #define FE_UPWARD           0x0800
+const FE_DOWNWARD = 0x0400
+const FE_UPWARD = 0x0800
+
 // int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 func Xsigaction(t *TLS, signum int32, act, oldact uintptr) int32 {
 	if __ccgo_strace {

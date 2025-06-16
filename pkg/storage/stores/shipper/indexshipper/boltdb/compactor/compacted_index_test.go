@@ -1,10 +1,10 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,11 +111,11 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			require.NoError(t, err)
 
 			sort.Slice(expectedChunkEntries, func(i, j int) bool {
-				return bytes.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
+				return strings.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
 			})
 
 			sort.Slice(chunkEntriesFound, func(i, j int) bool {
-				return bytes.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
+				return strings.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
 			})
 
 			require.Equal(t, expectedChunkEntries, chunkEntriesFound)

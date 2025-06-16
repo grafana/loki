@@ -2464,34 +2464,6 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		},
 		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
 	}, {
-		name:                "rate limit is exceeded",
-		ingestLimitsEnabled: true,
-		tenant:              "test",
-		streams: logproto.PushRequest{
-			Streams: []logproto.Stream{{
-				Labels: "{foo=\"bar\"}",
-				Entries: []logproto.Entry{{
-					Timestamp: time.Now(),
-					Line:      "baz",
-				}},
-			}},
-		},
-		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*limitsproto.StreamMetadata{{
-				StreamHash: 0x90eb45def17f924,
-				TotalSize:  0x3,
-			}},
-		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
-			}},
-		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
-	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
 		tenant:              "test",

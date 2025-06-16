@@ -373,7 +373,19 @@ else
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
-	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+	faillint -paths \
+		"sync/atomic=go.uber.org/atomic" \
+		./...
+
+	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
+	faillint -paths \
+		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
+		./...
+
+	# We don't use opentracing anymore.
+	faillint -paths \
+		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
+		./...
 endif
 
 ########

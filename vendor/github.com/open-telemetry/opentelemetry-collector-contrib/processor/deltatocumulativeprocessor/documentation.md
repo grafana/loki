@@ -6,15 +6,7 @@
 
 The following telemetry is emitted by this component.
 
-### otelcol_deltatocumulative.datapoints.dropped
-
-number of datapoints dropped due to given 'reason'
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {datapoint} | Sum | Int | true |
-
-### otelcol_deltatocumulative.datapoints.linear
+### otelcol_deltatocumulative_datapoints
 
 total number of datapoints processed. may have 'error' attribute, if processing failed
 
@@ -22,31 +14,7 @@ total number of datapoints processed. may have 'error' attribute, if processing 
 | ---- | ----------- | ---------- | --------- |
 | {datapoint} | Sum | Int | true |
 
-### otelcol_deltatocumulative.datapoints.processed
-
-number of datapoints processed
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {datapoint} | Sum | Int | true |
-
-### otelcol_deltatocumulative.gaps.length
-
-total duration where data was expected but not received
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| s | Sum | Int | true |
-
-### otelcol_deltatocumulative.streams.evicted
-
-number of streams evicted
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {stream} | Sum | Int | true |
-
-### otelcol_deltatocumulative.streams.limit
+### otelcol_deltatocumulative_streams_limit
 
 upper limit of tracked streams
 
@@ -54,7 +22,7 @@ upper limit of tracked streams
 | ---- | ----------- | ---------- |
 | {stream} | Gauge | Int |
 
-### otelcol_deltatocumulative.streams.max_stale
+### otelcol_deltatocumulative_streams_max_stale
 
 duration after which streams inactive streams are dropped
 
@@ -62,15 +30,7 @@ duration after which streams inactive streams are dropped
 | ---- | ----------- | ---------- |
 | s | Gauge | Int |
 
-### otelcol_deltatocumulative.streams.tracked
-
-number of streams tracked
-
-| Unit | Metric Type | Value Type | Monotonic |
-| ---- | ----------- | ---------- | --------- |
-| {dps} | Sum | Int | false |
-
-### otelcol_deltatocumulative.streams.tracked.linear
+### otelcol_deltatocumulative_streams_tracked
 
 number of streams tracked
 

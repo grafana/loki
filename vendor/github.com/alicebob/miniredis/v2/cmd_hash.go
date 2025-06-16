@@ -54,7 +54,7 @@ func (m *Miniredis) cmdHset(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -91,14 +91,14 @@ func (m *Miniredis) cmdHsetnx(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
 
 		if _, ok := db.hashKeys[opts.key]; !ok {
 			db.hashKeys[opts.key] = map[string]string{}
-			db.keys[opts.key] = "hash"
+			db.keys[opts.key] = keyTypeHash
 		}
 		_, ok := db.hashKeys[opts.key][opts.field]
 		if ok {
@@ -135,7 +135,7 @@ func (m *Miniredis) cmdHmset(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -173,7 +173,7 @@ func (m *Miniredis) cmdHget(c *server.Peer, cmd string, args []string) {
 			c.WriteNull()
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -217,7 +217,7 @@ func (m *Miniredis) cmdHdel(c *server.Peer, cmd string, args []string) {
 			c.WriteInt(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -270,7 +270,7 @@ func (m *Miniredis) cmdHexists(c *server.Peer, cmd string, args []string) {
 			c.WriteInt(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -307,7 +307,7 @@ func (m *Miniredis) cmdHgetall(c *server.Peer, cmd string, args []string) {
 			c.WriteMapLen(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -343,7 +343,7 @@ func (m *Miniredis) cmdHkeys(c *server.Peer, cmd string, args []string) {
 			c.WriteLen(0)
 			return
 		}
-		if db.t(key) != "hash" {
+		if db.t(key) != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -380,7 +380,7 @@ func (m *Miniredis) cmdHstrlen(c *server.Peer, cmd string, args []string) {
 			c.WriteInt(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -414,7 +414,7 @@ func (m *Miniredis) cmdHvals(c *server.Peer, cmd string, args []string) {
 			c.WriteLen(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -451,7 +451,7 @@ func (m *Miniredis) cmdHlen(c *server.Peer, cmd string, args []string) {
 			c.WriteInt(0)
 			return
 		}
-		if t != "hash" {
+		if t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -479,7 +479,7 @@ func (m *Miniredis) cmdHmget(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[key]; ok && t != "hash" {
+		if t, ok := db.keys[key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -530,7 +530,7 @@ func (m *Miniredis) cmdHincrby(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -577,7 +577,7 @@ func (m *Miniredis) cmdHincrbyfloat(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if t, ok := db.keys[opts.key]; ok && t != "hash" {
+		if t, ok := db.keys[opts.key]; ok && t != keyTypeHash {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -662,7 +662,7 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 			c.WriteLen(0)    // no elements
 			return
 		}
-		if db.exists(opts.key) && db.t(opts.key) != "hash" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeHash {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}

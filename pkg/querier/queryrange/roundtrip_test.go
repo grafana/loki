@@ -354,7 +354,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 		maxQueryBytesRead:       1000,
 		maxQuerierBytesRead:     100,
 		queryTimeout:            1 * time.Minute,
-		maxSeries:               1,
+		maxSeries:               10,
 	}
 	tpw, stopper, err := NewMiddleware(testLocal, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -985,6 +985,7 @@ func TestPostQueries(t *testing.T) {
 		base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 			return nil, nil
 		}),
+		handler,
 		handler,
 		handler,
 		handler,

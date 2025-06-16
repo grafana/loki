@@ -247,6 +247,7 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
+	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -465,10 +466,17 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(
 		&l.MetricAggregationEnabled,
-		"limits.metric-aggregation-enabled",
+		"limits.aggregation-enabled",
 		false,
-		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and count, and these metric will be written back into Loki as a special __aggregated_metric__ stream, which can be queried for faster histogram queries.",
+		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and line counts. These metrics will be written back into Loki as a special __aggregated_metric__ stream.",
 	)
+	f.BoolVar(
+		&l.PatternPersistenceEnabled,
+		"limits.pattern-persistence-enabled",
+		false,
+		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
+	)
+
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
 	f.BoolVar(
@@ -1212,6 +1220,10 @@ func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []
 
 func (o *Overrides) MetricAggregationEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).MetricAggregationEnabled
+}
+
+func (o *Overrides) PatternPersistenceEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).PatternPersistenceEnabled
 }
 
 func (o *Overrides) EnableMultiVariantQueries(userID string) bool {

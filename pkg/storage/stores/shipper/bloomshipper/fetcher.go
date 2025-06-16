@@ -128,7 +128,7 @@ func (f *Fetcher) Close() {
 
 // FetchMetas implements fetcher
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	logger := spanlogger.FromContextWithFallback(ctx, f.logger)
+	logger := spanlogger.FromContext(ctx, f.logger)
 
 	if ctx.Err() != nil {
 		return nil, errors.Wrap(ctx.Err(), "fetch Metas")
