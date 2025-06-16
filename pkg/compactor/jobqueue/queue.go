@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -23,17 +24,17 @@ var (
 type Builder interface {
 	// BuildJobs builds new jobs and sends them to the provided channel
 	// It should be a blocking call and returns when ctx is cancelled.
-	BuildJobs(ctx context.Context, jobsChan chan<- *Job) error
+	BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error
 
 	// OnJobResponse reports back the response of the job execution.
-	OnJobResponse(response *ReportJobResultRequest)
+	OnJobResponse(response *grpc.ReportJobResultRequest)
 }
 
 // Queue implements the job queue service
 type Queue struct {
-	queue                     chan *Job
+	queue                     chan *grpc.Job
 	closed                    atomic.Bool
-	builders                  map[JobType]Builder
+	builders                  map[grpc.JobType]Builder
 	wg                        sync.WaitGroup
 	stop                      chan struct{}
 	checkTimedOutJobsInterval time.Duration
@@ -46,7 +47,7 @@ type Queue struct {
 }
 
 type processingJob struct {
-	job        *Job
+	job        *grpc.Job
 	dequeued   time.Time
 	retryCount int
 }
@@ -59,8 +60,8 @@ func New() *Queue {
 // newQueue creates a new job queue with a configurable timed out jobs check ticker interval (for testing)
 func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 	q := &Queue{
-		queue:                     make(chan *Job),
-		builders:                  make(map[JobType]Builder),
+		queue:                     make(chan *grpc.Job),
+		builders:                  make(map[grpc.JobType]Builder),
 		stop:                      make(chan struct{}),
 		checkTimedOutJobsInterval: checkTimedOutJobsInterval,
 		processingJobs:            make(map[string]*processingJob),
@@ -77,7 +78,7 @@ func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 }
 
 // RegisterBuilder registers a builder for a specific job type
-func (q *Queue) RegisterBuilder(jobType JobType, builder Builder) error {
+func (q *Queue) RegisterBuilder(jobType grpc.JobType, builder Builder) error {
 	if _, exists := q.builders[jobType]; exists {
 		return ErrBuilderAlreadyRegistered
 	}
@@ -102,7 +103,7 @@ func (q *Queue) Stop() error {
 	return nil
 }
 
-func (q *Queue) startBuilder(ctx context.Context, jobType JobType, builder Builder) {
+func (q *Queue) startBuilder(ctx context.Context, jobType grpc.JobType, builder Builder) {
 	defer q.wg.Done()
 
 	// Start the builder in a separate goroutine
@@ -162,9 +163,9 @@ func (q *Queue) checkJobTimeouts() {
 }
 
 // Dequeue implements the gRPC Dequeue method
-func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueResponse, error) {
+func (q *Queue) Dequeue(ctx context.Context, _ *grpc.DequeueRequest) (*grpc.DequeueResponse, error) {
 	if q.closed.Load() {
-		return &DequeueResponse{}, nil
+		return &grpc.DequeueResponse{}, nil
 	}
 
 	select {
@@ -172,7 +173,7 @@ func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueRespons
 		return nil, status.Error(codes.Canceled, ctx.Err().Error())
 	case job, ok := <-q.queue:
 		if !ok {
-			return &DequeueResponse{}, nil
+			return &grpc.DequeueResponse{}, nil
 		}
 
 		// Track the job as being processed
@@ -184,14 +185,14 @@ func (q *Queue) Dequeue(ctx context.Context, _ *DequeueRequest) (*DequeueRespons
 			retryCount: 0,
 		}
 
-		return &DequeueResponse{
+		return &grpc.DequeueResponse{
 			Job: job,
 		}, nil
 	}
 }
 
 // ReportJobResult implements the gRPC ReportJobResult method
-func (q *Queue) ReportJobResult(ctx context.Context, req *ReportJobResultRequest) (*ReportJobResultResponse, error) {
+func (q *Queue) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRequest) (*grpc.ReportJobResultResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
 	}
@@ -227,7 +228,7 @@ func (q *Queue) ReportJobResult(ctx context.Context, req *ReportJobResultRequest
 			select {
 			case <-ctx.Done():
 			case q.queue <- pj.job:
-				return &ReportJobResultResponse{}, nil
+				return &grpc.ReportJobResultResponse{}, nil
 			}
 		} else {
 			level.Error(util_log.Logger).Log(
@@ -249,7 +250,7 @@ func (q *Queue) ReportJobResult(ctx context.Context, req *ReportJobResultRequest
 	// Remove the job from processing jobs
 	delete(q.processingJobs, req.JobId)
 
-	return &ReportJobResultResponse{}, nil
+	return &grpc.ReportJobResultResponse{}, nil
 }
 
 // Close closes the queue and releases all resources

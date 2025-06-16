@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -31,11 +31,6 @@ type manifestJobs struct {
 	manifestPath   string
 }
 
-type manifestError struct {
-	JobID string `json:"job_id"`
-	Error string `json:"error"`
-}
-
 type JobBuilder struct {
 	deleteStoreClient client.ObjectClient
 
@@ -51,7 +46,7 @@ func NewJobBuilder(deleteStoreClient client.ObjectClient) *JobBuilder {
 }
 
 // BuildJobs implements jobqueue.Builder interface
-func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -70,7 +65,7 @@ func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *jobqueue.Jo
 	}
 }
 
-func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error {
 	// List all manifest directories
 	manifests, err := b.listManifests(ctx)
 	if err != nil {
@@ -87,7 +82,7 @@ func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *jobqueue.Jo
 	return nil
 }
 
-func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, jobsChan chan<- *grpc.Job) error {
 	level.Info(util_log.Logger).Log("msg", "starting manifest processing", "manifest", manifestPath)
 
 	// Read manifest
@@ -232,7 +227,7 @@ func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*ma
 	return &m, nil
 }
 
-func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, userID, groupID string, group ChunksGroup, jobsChan chan<- *jobqueue.Job) error {
+func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, userID, groupID string, group ChunksGroup, jobsChan chan<- *grpc.Job) error {
 	// Split chunks into groups of maxChunksPerJob
 	for i := 0; i < len(group.Chunks); i += maxChunksPerJob {
 		end := i + maxChunksPerJob
@@ -250,9 +245,9 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 			return err
 		}
 
-		job := &jobqueue.Job{
+		job := &grpc.Job{
 			Id:      fmt.Sprintf("%s_%d", groupID, i/maxChunksPerJob),
-			Type:    jobqueue.JOB_TYPE_DELETION,
+			Type:    grpc.JOB_TYPE_DELETION,
 			Payload: payload,
 		}
 
@@ -271,7 +266,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 }
 
 // OnJobResponse implements jobqueue.Builder interface
-func (b *JobBuilder) OnJobResponse(response *jobqueue.ReportJobResultRequest) {
+func (b *JobBuilder) OnJobResponse(response *grpc.ReportJobResultRequest) {
 	b.currentManifestMtx.Lock()
 	defer b.currentManifestMtx.Unlock()
 

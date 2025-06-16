@@ -11,16 +11,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 type mockChunkClient struct {
@@ -281,7 +280,7 @@ func TestJobRunner_Run(t *testing.T) {
 			})
 
 			// Create job
-			job := jobqueue.Job{
+			job := grpc.Job{
 				Id: "test-job",
 				Payload: mustMarshal(t, deletionJob{
 					UserID:         userID,

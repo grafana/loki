@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -49,7 +49,7 @@ func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobR
 	}
 }
 
-func (jr *JobRunner) Run(ctx context.Context, job jobqueue.Job) (*JobResult, error) {
+func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) (*JobResult, error) {
 	var deletionJob deletionJob
 	var jobResult JobResult
 

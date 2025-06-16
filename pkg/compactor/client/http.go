@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -22,6 +23,8 @@ const (
 	getDeletePath   = "/loki/api/v1/delete"
 	cacheGenNumPath = "/loki/api/v1/cache/generation_numbers"
 )
+
+var errMethodNotSupported = fmt.Errorf("method not supported")
 
 type HTTPConfig struct {
 	TLSEnabled bool             `yaml:"tls_enabled"`
@@ -45,7 +48,7 @@ type compactorHTTPClient struct {
 
 // NewHTTPClient creates a client which talks to compactor over HTTP.
 // It uses provided TLS config which creating HTTP client.
-func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error) {
+func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
@@ -150,4 +153,12 @@ func (c *compactorHTTPClient) GetCacheGenerationNumber(ctx context.Context, user
 	}
 
 	return genNumber, err
+}
+
+func (c *compactorHTTPClient) DequeueJob(ctx context.Context) (*grpc.Job, error) {
+	return nil, errMethodNotSupported
+}
+
+func (c *compactorHTTPClient) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRequest) error {
+	return errMethodNotSupported
 }
