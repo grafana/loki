@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -163,7 +164,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
-	b := labels.NewScratchBuilder(10)
+	b := log.NewBufferedLabelsBuilderWithSize(10)
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
 
@@ -174,7 +175,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &b, &chks)
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), b, &chks)
 			if err != nil {
 				return err
 			}
@@ -298,7 +299,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
-		b := labels.NewScratchBuilder(10)
+		b := log.NewBufferedLabelsBuilderWithSize(10)
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
@@ -311,7 +312,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &b, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), b, by)
 			if err != nil {
 				return err
 			}
@@ -373,7 +374,7 @@ func (i *TSDBIndex) Volume(
 
 	seriesNames := make(map[uint64]string)
 	var seriesLabels labels.Labels
-	b := labels.NewScratchBuilder(len(labelsToMatch))
+	b := log.NewBufferedLabelsBuilderWithSize(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -397,7 +398,7 @@ func (i *TSDBIndex) Volume(
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &b, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), b, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
@@ -407,7 +408,7 @@ func (i *TSDBIndex) Volume(
 				continue
 			}
 
-			ls := b.Labels() // TODO: This is a new allocation. We should avoid it
+			ls := b.Labels()
 			if filterer != nil && filterer.ShouldFilter(ls) {
 				continue
 			}
@@ -419,7 +420,7 @@ func (i *TSDBIndex) Volume(
 					b.Reset()
 					ls.Range(func(l labels.Label) {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							b.Add(l.Name, l.Value)
+							b.Add(l)
 						}
 					})
 					seriesLabels = b.Labels() // TODO: avoid this allocation

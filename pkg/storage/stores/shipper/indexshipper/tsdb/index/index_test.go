@@ -36,6 +36,7 @@ import (
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -113,7 +114,7 @@ func (m mockIndex) Postings(name string, values ...string) (Postings, error) {
 	return Merge(p...), nil
 }
 
-func (m mockIndex) Series(ref storage.SeriesRef, lb *labels.ScratchBuilder, chks *[]ChunkMeta) error {
+func (m mockIndex) Series(ref storage.SeriesRef, lb *log.BufferedLabelsBuilder, chks *[]ChunkMeta) error {
 	s, ok := m.series[ref]
 	if !ok {
 		return errors.New("not found")
@@ -189,12 +190,12 @@ func TestIndexRW_Postings(t *testing.T) {
 	p, err := ir.Postings("a", nil, "1")
 	require.NoError(t, err)
 
-	lb := labels.NewScratchBuilder(10)
+	lb := log.NewBufferedLabelsBuilderWithSize(10)
 	var l labels.Labels
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		_, err := ir.Series(p.At(), 0, math.MaxInt64, &lb, &c)
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, lb, &c)
 		l = lb.Labels()
 
 		require.NoError(t, err)
@@ -314,11 +315,11 @@ func TestPostingsMany(t *testing.T) {
 		require.NoError(t, err)
 
 		got := []string{}
-		lb := labels.NewScratchBuilder(10)
+		lb := log.NewBufferedLabelsBuilderWithSize(10)
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lb, &metas)
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, lb, &metas)
 			require.NoError(t, err)
 			lbls = lb.Labels()
 			got = append(got, lbls.Get("i"))
@@ -429,7 +430,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 		var lset, explset labels.Labels
 		var chks, expchks []ChunkMeta
-		lb := labels.NewScratchBuilder(10)
+		lb := log.NewBufferedLabelsBuilderWithSize(10)
 
 		for gotp.Next() {
 			require.True(t, expp.Next())
@@ -437,14 +438,14 @@ func TestPersistence_index_e2e(t *testing.T) {
 			ref := gotp.At()
 
 			lb.Reset()
-			_, err := ir.Series(ref, 0, math.MaxInt64, &lb, &chks)
+			_, err := ir.Series(ref, 0, math.MaxInt64, lb, &chks)
 			require.NoError(t, err)
-			lset = lb.Labels()
+			lset = lb.Labels().Copy()
 
 			lb.Reset()
-			err = mi.Series(expp.At(), &lb, &expchks)
+			err = mi.Series(expp.At(), lb, &expchks)
 			require.NoError(t, err)
-			explset = lb.Labels()
+			explset = lb.Labels().Copy()
 			require.Equal(t, explset, lset)
 			require.Equal(t, expchks, chks)
 		}
@@ -772,9 +773,9 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			require.Nil(t, ir.dec.chunksSample[postings.At()])
 
 			// read series so that chunk samples get built
-			lb := labels.NewScratchBuilder(10)
-			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lb, &chks)
-			lset = lb.Labels()
+			lb := log.NewBufferedLabelsBuilderWithSize(10)
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, lb, &chks)
+			lset = lb.Labels().Copy()
 			require.NoError(t, err)
 
 			require.Equal(t, tc.chunkMetas, chks)

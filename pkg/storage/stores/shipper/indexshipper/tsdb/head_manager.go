@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	logqlLog "github.com/grafana/loki/v3/pkg/logql/log" // TODO: move buffered labels builder to other package
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -827,8 +828,8 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				b := labels.NewScratchBuilder(10)
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &b, &chks)
+				b := logqlLog.NewBufferedLabelsBuilderWithSize(10)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, b, &chks)
 				ls = b.Labels()
 
 				if err != nil {

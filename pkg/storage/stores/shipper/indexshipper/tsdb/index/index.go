@@ -39,6 +39,7 @@ import (
 
 	"github.com/grafana/dskit/multierror"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -1751,7 +1752,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lb *labels.ScratchBuilder, chks *[]ChunkMeta) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lb *log.BufferedLabelsBuilder, chks *[]ChunkMeta) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1770,7 +1771,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lb *lab
 	return fprint, nil
 }
 
-func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lb *labels.ScratchBuilder, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lb *log.BufferedLabelsBuilder, by map[string]struct{}) (uint64, ChunkStats, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -2136,7 +2137,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lb *labels.ScratchBuilder, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeries(b []byte, lb *log.BufferedLabelsBuilder, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
 	lb.Reset()
 	if chks != nil {
 		*chks = (*chks)[:0]
@@ -2164,14 +2165,14 @@ func (dec *Decoder) prepSeries(b []byte, lb *labels.ScratchBuilder, chks *[]Chun
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		lb.Add(ln, lv)
+		lb.Add(labels.Label{Name: ln, Value: lv})
 	}
 	return &d, fprint, nil
 }
 
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
 // If `by` is empty, it returns all labels for the series.
-func (dec *Decoder) prepSeriesBy(b []byte, lb *labels.ScratchBuilder, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeriesBy(b []byte, lb *log.BufferedLabelsBuilder, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
 	if by == nil {
 		return dec.prepSeries(b, lb, chks)
 	}
@@ -2206,12 +2207,12 @@ func (dec *Decoder) prepSeriesBy(b []byte, lb *labels.ScratchBuilder, chks *[]Ch
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		lb.Add(ln, lv)
+		lb.Add(labels.Label{Name: ln, Value: lv})
 	}
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lb *labels.ScratchBuilder, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lb *log.BufferedLabelsBuilder, by map[string]struct{}) (uint64, ChunkStats, error) {
 	d, fp, err := dec.prepSeriesBy(b, lb, nil, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
@@ -2355,7 +2356,7 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lb *labels.ScratchBuilder, chks *[]ChunkMeta) (uint64, error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lb *log.BufferedLabelsBuilder, chks *[]ChunkMeta) (uint64, error) {
 	d, fprint, err := dec.prepSeries(b, lb, chks)
 	if err != nil {
 		return 0, err

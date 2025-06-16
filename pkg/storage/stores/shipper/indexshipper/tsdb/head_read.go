@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -110,7 +111,7 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lb *labels.ScratchBuilder, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lb *log.BufferedLabelsBuilder, chks *[]index.ChunkMeta) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -135,7 +136,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lb *labels.ScratchBuilder, by map[string]struct{}) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lb *log.BufferedLabelsBuilder, by map[string]struct{}) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -149,7 +150,7 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 		lb.Reset()
 		s.ls.Range(func(l labels.Label) {
 			if _, ok := by[l.Name]; ok {
-				lb.Add(l.Name, l.Value)
+				lb.Add(l)
 			}
 		})
 	}

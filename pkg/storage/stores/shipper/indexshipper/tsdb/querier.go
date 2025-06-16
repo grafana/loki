@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -63,10 +64,10 @@ type IndexReader interface {
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
 	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
-	Series(ref storage.SeriesRef, from int64, through int64, lb *labels.ScratchBuilder, chks *[]index.ChunkMeta) (uint64, error)
+	Series(ref storage.SeriesRef, from int64, through int64, lb *log.BufferedLabelsBuilder, chks *[]index.ChunkMeta) (uint64, error)
 
 	// ChunkStats returns the stats for the chunks in the given series.
-	ChunkStats(ref storage.SeriesRef, from, through int64, lb *labels.ScratchBuilder, by map[string]struct{}) (uint64, index.ChunkStats, error)
+	ChunkStats(ref storage.SeriesRef, from, through int64, lb *log.BufferedLabelsBuilder, by map[string]struct{}) (uint64, index.ChunkStats, error)
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)

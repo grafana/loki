@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -112,17 +113,17 @@ func TestQueryIndex(t *testing.T) {
 		chks []index.ChunkMeta
 		ls   labels.Labels
 	)
-	lb := labels.NewScratchBuilder(10)
+	lb := log.NewBufferedLabelsBuilderWithSize(10)
 
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &lb, &chks)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, lb, &chks)
 	require.Nil(t, err)
-	ls = lb.Labels()
+	ls = lb.Labels().Copy()
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
 
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &lb, &chks)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, lb, &chks)
 	require.Nil(t, err)
 	ls = lb.Labels()
 	require.Equal(t, cases[1].labels.String(), ls.String())
