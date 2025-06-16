@@ -366,7 +366,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 			return match(e)
 
 		case types.BinaryOpMatchPattern, types.BinaryOpNotMatchPattern:
-			return nil, fmt.Errorf("unsupported binary operator (%s) for string predicate", e.Op)
+			return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate", e.Op)
 
 		case types.BinaryOpAnd:
 			leftPredicate, err := mapMessagePredicate(e.Left)
@@ -397,7 +397,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 			}, nil
 
 		default:
-			return nil, fmt.Errorf("unsupported binary operator (%s) for metadata predicate, expected MATCH_STR, NOT_MATCH_STR, MATCH_RE, NOT_MATCH_RE, AND, or OR", e.Op)
+			return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate, expected MATCH_STR, NOT_MATCH_STR, MATCH_RE, NOT_MATCH_RE, AND, or OR", e.Op)
 		}
 
 	case *physical.UnaryExpr:
@@ -413,7 +413,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported expression type (%T) for metadata predicate, expected BinaryExpr or UnaryExpr", expr)
+		return nil, fmt.Errorf("unsupported expression type (%T) for log message predicate, expected BinaryExpr or UnaryExpr", expr)
 	}
 }
 
