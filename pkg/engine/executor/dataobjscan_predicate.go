@@ -59,8 +59,39 @@ func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 // Support for timestamp and metadata predicates has been implemented.
 // TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
 func mapInitiallySupportedPredicates(expr physical.Expression) (logs.RowPredicate, error) {
+	return mapPredicates(expr)
+}
+
+func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
+
+		// Special case: both sides of the binary op are again binary expressions (where LHS is expected to be a column expression)
+		if e.Left.Type() == physical.ExprTypeBinary && e.Right.Type() == physical.ExprTypeBinary {
+			left, err := mapPredicates(e.Left)
+			if err != nil {
+				return nil, err
+			}
+			right, err := mapPredicates(e.Right)
+			if err != nil {
+				return nil, err
+			}
+			switch e.Op {
+			case types.BinaryOpAnd:
+				return logs.AndRowPredicate{
+					Left:  left,
+					Right: right,
+				}, nil
+			case types.BinaryOpOr:
+				return logs.OrRowPredicate{
+					Left:  left,
+					Right: right,
+				}, nil
+			default:
+				return nil, fmt.Errorf("unsupported operator for timestamp predicate: %s", e.Op)
+			}
+		}
+
 		if e.Left.Type() != physical.ExprTypeColumn {
 			return nil, fmt.Errorf("unsupported predicate, expected column ref on LHS: %s", expr.String())
 		}
@@ -402,7 +433,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 
 	case *physical.UnaryExpr:
 		if e.Op != types.UnaryOpNot {
-			return nil, fmt.Errorf("unsupported unary operator (%s) for metadata predicate, expected NOT", e.Op)
+			return nil, fmt.Errorf("unsupported unary operator (%s) for log message predicate, expected NOT", e.Op)
 		}
 		innerPredicate, err := mapMessagePredicate(e.Left)
 		if err != nil {
@@ -454,7 +485,7 @@ func match(e *physical.BinaryExpr) (logs.RowPredicate, error) {
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported binary operator (%s) for string predicate", e.Op)
+		return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate", e.Op)
 	}
 }
 

@@ -701,7 +701,7 @@ func TestMapMessagePredicate(t *testing.T) {
 				Right: physical.NewLiteral("<_> dataobj <_>"),
 				Op:    types.BinaryOpMatchPattern,
 			},
-			expectedErr: "unsupported binary operator (MATCH_PAT) for string predicate",
+			expectedErr: "unsupported binary operator (MATCH_PAT) for log message predicate",
 		},
 		{
 			name: "not pattern match filter",
@@ -710,7 +710,7 @@ func TestMapMessagePredicate(t *testing.T) {
 				Right: physical.NewLiteral("<_> dataobj <_>"),
 				Op:    types.BinaryOpNotMatchPattern,
 			},
-			expectedErr: "unsupported binary operator (NOT_MATCH_PAT) for string predicate",
+			expectedErr: "unsupported binary operator (NOT_MATCH_PAT) for log message predicate",
 		},
 		{
 			name: "and filter",
