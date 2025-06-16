@@ -108,6 +108,8 @@ func (ms LogRecord) unmarshalJsoniter(iter *jsoniter.Iterator) {
 			ms.orig.SeverityNumber = otlplogs.SeverityNumber(json.ReadEnumValue(iter, otlplogs.SeverityNumber_value))
 		case "severity_text", "severityText":
 			ms.orig.SeverityText = iter.ReadString()
+		case "event_name", "eventName":
+			ms.orig.EventName = iter.ReadString()
 		case "body":
 			json.ReadValue(iter, &ms.orig.Body)
 		case "attributes":

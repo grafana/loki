@@ -184,10 +184,19 @@ func (r Result) ExtractIntoStructPtr(to any, label string) error {
 		return r.Err
 	}
 
+	if to == nil {
+		return fmt.Errorf("Expected pointer, got %T", to)
+	}
+
 	t := reflect.TypeOf(to)
 	if k := t.Kind(); k != reflect.Ptr {
 		return fmt.Errorf("Expected pointer, got %v", k)
 	}
+
+	if reflect.ValueOf(to).IsNil() {
+		return fmt.Errorf("Expected pointer, got %T", to)
+	}
+
 	switch t.Elem().Kind() {
 	case reflect.Struct:
 		return r.extractIntoPtr(to, label)
@@ -210,10 +219,19 @@ func (r Result) ExtractIntoSlicePtr(to any, label string) error {
 		return r.Err
 	}
 
+	if to == nil {
+		return fmt.Errorf("Expected pointer, got %T", to)
+	}
+
 	t := reflect.TypeOf(to)
 	if k := t.Kind(); k != reflect.Ptr {
 		return fmt.Errorf("Expected pointer, got %v", k)
 	}
+
+	if reflect.ValueOf(to).IsNil() {
+		return fmt.Errorf("Expected pointer, got %T", to)
+	}
+
 	switch t.Elem().Kind() {
 	case reflect.Slice:
 		return r.extractIntoPtr(to, label)

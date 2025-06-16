@@ -521,6 +521,10 @@ func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Opti
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},

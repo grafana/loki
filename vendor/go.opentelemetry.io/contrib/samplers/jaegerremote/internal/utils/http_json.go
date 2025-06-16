@@ -16,6 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package utils provides utilities for the jaegerremote package.
 package utils // import "go.opentelemetry.io/contrib/samplers/jaegerremote/internal/utils"
 
 import (

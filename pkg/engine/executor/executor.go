@@ -59,6 +59,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return c.executeFilter(ctx, n, inputs)
 	case *physical.Projection:
 		return c.executeProjection(ctx, n, inputs)
+	case *physical.RangeAggregation:
+		return c.executeRangeAggregation(ctx, n, inputs)
 	default:
 		return errorPipeline(fmt.Errorf("invalid node type: %T", node))
 	}
@@ -151,4 +153,23 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 		return errorPipeline(err)
 	}
 	return p
+}
+
+func (c *Context) executeRangeAggregation(_ context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := NewRangeAggregationPipeline(inputs, &c.evaluator, rangeAggregationOptions{
+		partitionBy:   plan.PartitionBy,
+		startTs:       plan.Start,
+		endTs:         plan.End,
+		rangeInterval: plan.Range,
+		step:          plan.Step,
+	})
+	if err != nil {
+		return errorPipeline(err)
+	}
+
+	return pipeline
 }

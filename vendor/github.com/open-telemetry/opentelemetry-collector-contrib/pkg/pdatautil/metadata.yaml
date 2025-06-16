@@ -1,3 +1,4 @@
 status:
+  class: pkg
   codeowners:
     active: [dmitryax]
