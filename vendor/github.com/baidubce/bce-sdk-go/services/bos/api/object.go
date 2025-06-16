@@ -147,6 +147,10 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 	}
 	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
 		jsonBody.ContentCrc32c = val
+		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
+			return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, bce.NewBceClientError(errMsg)
+		}
 	}
 	if NeedReturnCallback {
 		if err := resp.ParseJsonBody(jsonBody); err != nil {
@@ -663,6 +667,7 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 	if resp.IsFail() {
 		return nil, resp.ServiceError()
 	}
+	defer func() { resp.Body().Close() }()
 	headers := resp.Headers()
 	result := &AppendObjectResult{}
 	if val, ok := headers[http.CONTENT_MD5]; ok {
@@ -680,13 +685,17 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body,
 	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
 		result.ContentCrc32 = val
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-	}
 	if val, ok := headers[http.ETAG]; ok {
 		result.ETag = strings.Trim(val, "\"")
 	}
-	defer func() { resp.Body().Close() }()
+	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
+		result.ContentCrc32c = val
+		fmt.Printf(BOS_CRC32C_CHECK_ERROR_MSG+"\n", args.ContentCrc32c, val)
+		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
+			return result, bce.NewBceClientError(errMsg)
+		}
+	}
 	return result, nil
 }
 
