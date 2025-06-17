@@ -406,10 +406,6 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			return nil, fmt.Errorf("invalid column expression type %T", column)
 		}
 
-		md := arrow.MetadataFrom(map[string]string{
-			types.MetadataKeyColumnType: columnExpr.Ref.Type.String(),
-		})
-
 		switch columnExpr.Ref.Type {
 		case types.ColumnTypeLabel:
 			// TODO(rfratto): Switch to dictionary encoding for labels.
@@ -424,9 +420,10 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			//
 			// We skipped dictionary encoding for now to get the initial prototype
 			// working.
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     ty,
 				Nullable: true,
 				Metadata: md,
 			})
@@ -436,15 +433,16 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			// has unconstrained cardinality. Using dictionary encoding would require
 			// tracking every encoded value in the record, which is likely to be too
 			// expensive.
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     ty,
 				Nullable: true,
 				Metadata: md,
 			})
 
 		case types.ColumnTypeBuiltin:
-			ty, md := builtinColumnType(columnExpr.Ref)
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
 				Type:     ty,
@@ -472,16 +470,16 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeLabel.String()}),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String),
 			})
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeMetadata.String()}),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String),
 			})
 
-		case types.ColumnTypeParsed:
+		case types.ColumnTypeParsed, types.ColumnTypeGenerated:
 			return nil, fmt.Errorf("parsed column type not supported: %s", columnExpr.Ref.Type)
 		}
 	}
@@ -489,19 +487,19 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 	return arrow.NewSchema(fields, nil), nil
 }
 
-func builtinColumnType(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
-	if ref.Type != types.ColumnTypeBuiltin {
-		panic("builtinColumnType called with a non-builtin column")
+func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
+	if ref.Type == types.ColumnTypeBuiltin {
+		switch ref.Column {
+		case types.ColumnNameBuiltinTimestamp:
+			return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
+		case types.ColumnNameBuiltinMessage:
+			return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
+		default:
+			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
+		}
 	}
 
-	switch ref.Column {
-	case types.ColumnNameBuiltinTimestamp:
-		return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
-	case types.ColumnNameBuiltinMessage:
-		return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
-	default:
-		panic(fmt.Sprintf("unsupported builtin column type %s", ref))
-	}
+	return arrow.BinaryTypes.String, datatype.ColumnMetadata(ref.Type, datatype.String)
 }
 
 // appendToBuilder appends a the provided field from record into the given
