@@ -43,21 +43,22 @@ func (h *Heap[T]) Pop() (T, bool) {
 		return zero, false
 	}
 
-	return heap.Pop(heapImpl[T]{h}).(T), true
+	return heap.Pop(h.impl()).(T), true
 }
 
 // Len returns the current number of elements in the heap.
 func (h *Heap[T]) Len() int { return len(h.values) }
 
-// PopAll removes and returns all elements from the heap in sorted order.
+// PopAll removes and returns all elements from the heap in sorted reversed order.
 func (h *Heap[T]) PopAll() []T {
 	res := h.values
 
+	// Since the Less function is reversed, we need to "undo" it while sorting the elements.
 	slices.SortFunc(res, func(a, b T) int {
 		if h.Less(a, b) {
-			return -1
+			return 1
 		}
-		return 1
+		return -1
 	})
 
 	// Reset h.values to nil to avoid changes to the heap modifying the returned
