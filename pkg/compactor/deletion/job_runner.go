@@ -183,10 +183,10 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
 	}
 
-	jobResultJson, err := json.Marshal(jobResult)
+	jobResultJSON, err := json.Marshal(jobResult)
 	if err != nil {
 		return nil, err
 	}
 
-	return jobResultJson, nil
+	return jobResultJSON, nil
 }

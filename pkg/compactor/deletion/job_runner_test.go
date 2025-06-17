@@ -291,7 +291,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Run job
-			resultJson, err := runner.Run(context.Background(), job)
+			resultJSON, err := runner.Run(context.Background(), job)
 
 			if tc.expectError {
 				require.Error(t, err)
@@ -300,7 +300,7 @@ func TestJobRunner_Run(t *testing.T) {
 
 			require.NoError(t, err)
 			result := &JobResult{}
-			require.NoError(t, json.Unmarshal(resultJson, result))
+			require.NoError(t, json.Unmarshal(resultJSON, result))
 
 			// For test cases where we expect no changes
 			if len(tc.expectedResult.ChunksToDelete) == 0 && len(tc.expectedResult.ChunksToIndex) == 0 {
