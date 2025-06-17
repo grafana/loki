@@ -2462,7 +2462,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams",
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
