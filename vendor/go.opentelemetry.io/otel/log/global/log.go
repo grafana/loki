@@ -3,7 +3,7 @@
 
 /*
 Package global provides access to a global implementation of the OpenTelemetry
-Logs Bridge API.
+Logs API.
 
 This package is experimental. It will be deprecated and removed when the [log]
 package becomes stable. Its functionality will be migrated to

@@ -9,10 +9,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -82,15 +84,16 @@ type Config struct {
 	// for details. A generally useful value is 1.1.
 	MetricsNativeHistogramFactor float64 `yaml:"-"`
 
-	HTTPListenNetwork    string `yaml:"http_listen_network"`
-	HTTPListenAddress    string `yaml:"http_listen_address"`
-	HTTPListenPort       int    `yaml:"http_listen_port"`
-	HTTPConnLimit        int    `yaml:"http_listen_conn_limit"`
-	GRPCListenNetwork    string `yaml:"grpc_listen_network"`
-	GRPCListenAddress    string `yaml:"grpc_listen_address"`
-	GRPCListenPort       int    `yaml:"grpc_listen_port"`
-	GRPCConnLimit        int    `yaml:"grpc_listen_conn_limit"`
-	ProxyProtocolEnabled bool   `yaml:"proxy_protocol_enabled"`
+	HTTPListenNetwork           string `yaml:"http_listen_network"`
+	HTTPListenAddress           string `yaml:"http_listen_address"`
+	HTTPListenPort              int    `yaml:"http_listen_port"`
+	HTTPConnLimit               int    `yaml:"http_listen_conn_limit"`
+	GRPCListenNetwork           string `yaml:"grpc_listen_network"`
+	GRPCListenAddress           string `yaml:"grpc_listen_address"`
+	GRPCListenPort              int    `yaml:"grpc_listen_port"`
+	GRPCConnLimit               int    `yaml:"grpc_listen_conn_limit"`
+	GRPCCollectMaxStreamsByConn bool   `yaml:"grpc_collect_max_streams_by_conn"`
+	ProxyProtocolEnabled        bool   `yaml:"proxy_protocol_enabled"`
 
 	CipherSuites  string    `yaml:"tls_cipher_suites"`
 	MinVersion    string    `yaml:"tls_min_version"`
@@ -145,6 +148,9 @@ type Config struct {
 	LogRequestAtInfoLevel        bool             `yaml:"log_request_at_info_level_enabled"`
 	LogRequestExcludeHeadersList string           `yaml:"log_request_exclude_headers_list"`
 
+	TraceRequestHeaders            bool   `yaml:"trace_request_headers"`
+	TraceRequestExcludeHeadersList string `yaml:"trace_request_exclude_headers_list"`
+
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
 
@@ -189,6 +195,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.GRPCListenAddress, "server.grpc-listen-address", "", "gRPC server listen address.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
+	f.BoolVar(&cfg.GRPCCollectMaxStreamsByConn, "server.grpc-collect-max-streams-by-conn", true, "If true, the max streams by connection gauge will be collected.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
 	f.BoolVar(&cfg.ReportGRPCCodesInInstrumentationLabel, "server.report-grpc-codes-in-instrumentation-label-enabled", false, "If set to true, gRPC statuses will be reported in instrumentation labels with their string representations. Otherwise, they will be reported as \"error\".")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
@@ -220,6 +227,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogRequestHeaders, "server.log-request-headers", false, "Optionally log request headers.")
 	f.StringVar(&cfg.LogRequestExcludeHeadersList, "server.log-request-headers-exclude-list", "", "Comma separated list of headers to exclude from loggin. Only used if server.log-request-headers is true.")
 	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level. Applies to request headers as well if server.log-request-headers is enabled.")
+
+	f.BoolVar(&cfg.TraceRequestHeaders, "server.trace-request-headers", false, "Optionally add request headers to tracing spans.")
+	f.StringVar(&cfg.TraceRequestExcludeHeadersList, "server.trace-request-headers-exclude-list", "", fmt.Sprintf("Comma separated list of headers to exclude from tracing spans. Only used if server.trace-request-headers is true. The following headers are always excluded: %s.", strings.Join(slices.Sorted(maps.Keys(middleware.AlwaysExcludedHeaders)), ", ")))
+
 	f.BoolVar(&cfg.ProxyProtocolEnabled, "server.proxy-protocol-enabled", false, "Enables PROXY protocol.")
 	f.DurationVar(&cfg.Throughput.LatencyCutoff, "server.throughput.latency-cutoff", 0, "Requests taking over the cutoff are be observed to measure throughput. Server-Timing header is used with specified unit as the indicator, for example 'Server-Timing: unit;val=8.2'. If set to 0, the throughput is not calculated.")
 	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
@@ -273,6 +284,8 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if logger == nil {
 		logger = log.NewGoKitWithLevel(cfg.LogLevel, cfg.LogFormat)
 	}
+
+	reg := cfg.registererOrDefault()
 
 	gatherer := cfg.Gatherer
 	if gatherer == nil {
@@ -483,10 +496,11 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if cfg.GRPCServerStatsTrackingEnabled {
 		grpcOptions = append(grpcOptions,
 			grpc.StatsHandler(middleware.NewStatsHandler(
+				reg,
 				metrics.ReceivedMessageSize,
 				metrics.SentMessageSize,
 				metrics.InflightRequests,
-				metrics.GRPCConcurrentStreamsByConnMax,
+				cfg.GRPCCollectMaxStreamsByConn,
 			)),
 		)
 	}
@@ -570,9 +584,7 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 		middleware.RouteInjector{
 			RouteMatcher: router,
 		},
-		middleware.Tracer{
-			SourceIPs: sourceIPs,
-		},
+		middleware.NewTracer(sourceIPs, cfg.TraceRequestHeaders, strings.Split(cfg.TraceRequestExcludeHeadersList, ",")),
 		defaultLogMiddleware,
 		middleware.Instrument{
 			Duration:          metrics.RequestDuration,
