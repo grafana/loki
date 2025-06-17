@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 )
