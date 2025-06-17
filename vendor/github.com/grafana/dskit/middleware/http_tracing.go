@@ -9,18 +9,18 @@ import (
 	"fmt"
 	"net/http"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/grafana/dskit/httpgrpc"
-
 	"github.com/gorilla/mux"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.20.0" // otelhttp uses semconv v1.20.0 so we stick to the same version in order to produce consistent attributes on HTTP and HTTPGRPC spans.
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/dskit/httpgrpc"
 )
 
 var tracer = otel.Tracer("dskit/middleware")
@@ -30,8 +30,31 @@ var tracer = otel.Tracer("dskit/middleware")
 var _ = nethttp.MWURLTagFunc
 
 // Tracer is a middleware which traces incoming requests.
+// An empty Tracer is valid, but consider using NewTracer to access all its features.
 type Tracer struct {
 	SourceIPs *SourceIPExtractor
+
+	traceHeaders         bool
+	httpHeadersToExclude map[string]bool
+}
+
+// NewTracer creates a new tracer optionally configuring the tracing of HTTP headers.
+// The configuration for HTTP headers tracing only applies to OpenTelemetry spans.
+func NewTracer(sourceIPs *SourceIPExtractor, traceHeaders bool, excludeHeaders []string) Tracer {
+	httpHeadersToExclude := map[string]bool{}
+	for header := range AlwaysExcludedHeaders {
+		httpHeadersToExclude[header] = true
+	}
+	for _, header := range excludeHeaders {
+		httpHeadersToExclude[header] = true
+	}
+
+	return Tracer{
+		SourceIPs: sourceIPs,
+
+		traceHeaders:         traceHeaders,
+		httpHeadersToExclude: httpHeadersToExclude,
+	}
 }
 
 // Wrap implements Interface
@@ -48,13 +71,15 @@ func (t Tracer) wrapWithOpenTracing(next http.Handler) http.Handler {
 	options := []nethttp.MWOption{
 		nethttp.OperationNameFunc(httpOperationName),
 		nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
-			// add a tag with the client's user agent to the span
+			// Add a tag with the client's user agent to the span.
+			// We add this regardless the traceHeaders flag, for backwards compatibility.
 			userAgent := r.Header.Get("User-Agent")
 			if userAgent != "" {
 				sp.SetTag("http.user_agent", userAgent)
 			}
 
-			// add the content type, useful when query requests are sent as POST
+			// Add the content type, useful when query requests are sent as POST.
+			// We add this regardless the traceHeaders flag, for backwards compatibility.
 			if ct := r.Header.Get("Content-Type"); ct != "" {
 				sp.SetTag("http.content_type", ct)
 			}
@@ -71,39 +96,65 @@ func (t Tracer) wrapWithOpenTracing(next http.Handler) http.Handler {
 }
 
 func (t Tracer) wrapWithOTel(next http.Handler) http.Handler {
-	tracingMiddleware := otelhttp.NewHandler(next, "http.tracing", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-		return httpOperationName(r)
-	}))
+	addSpanAttributes := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sp := trace.SpanFromContext(r.Context())
+		if !sp.SpanContext().IsValid() {
+			// Span is not valid (which implies it is not sampled), there's no need to waste time adding attributes.
+			next.ServeHTTP(w, r)
+			return
+		}
 
-	// Wrap the 'tracingMiddleware' to capture its execution
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
-			// add a tag with the client's user agent to the span
-			userAgent := r.Header.Get("User-Agent")
-			if userAgent != "" {
-				labeler.Add(attribute.String("http.user_agent", userAgent))
+		attributes := make([]attribute.KeyValue, 0, len(r.Header)+1)
+
+		if route := ExtractRouteName(r.Context()); route != "" {
+			attributes = append(attributes, semconv.HTTPRoute(route))
+		}
+
+		// Add an attribute with the client's sourceIPs to the span, if a SourceIPExtractor is given.
+		if t.SourceIPs != nil {
+			attributes = append(attributes, attribute.String("source_ips", t.SourceIPs.Get(r)))
+		}
+
+		if t.traceHeaders {
+			const maxHeadersToAddAsSpanAttributes = 100
+
+			var notAddedHeaders []string
+			if len(r.Header) > maxHeadersToAddAsSpanAttributes {
+				notAddedHeaders = make([]string, len(r.Header)-maxHeadersToAddAsSpanAttributes)
 			}
 
-			labeler.Add(attribute.String("http.url", r.URL.Path))
-			labeler.Add(attribute.String("http.method", r.Method))
-
-			// add the content type, useful when query requests are sent as POST
-			if ct := r.Header.Get("Content-Type"); ct != "" {
-				labeler.Add(attribute.String("http.content_type", ct))
+			added := 0
+			for header, values := range r.Header {
+				if added >= maxHeadersToAddAsSpanAttributes {
+					notAddedHeaders = append(notAddedHeaders, header)
+					continue
+				}
+				added++
+				if _, ok := t.httpHeadersToExclude[header]; ok {
+					// Do not add excluded headers to the span attributes, but note that they were sent.
+					attributes = append(attributes, attribute.String("http.header."+header+".present", "true"))
+					continue
+				}
+				attributes = append(attributes, attribute.StringSlice("http.header."+header, values))
 			}
 
-			labeler.Add(attribute.String("headers", fmt.Sprintf("%v", r.Header)))
-			// add a tag with the client's sourceIPs to the span, if a
-			// SourceIPExtractor is given.
-			if t.SourceIPs != nil {
-				labeler.Add(attribute.String("sourceIPs", t.SourceIPs.Get(r)))
+			if len(notAddedHeaders) > 0 {
+				sp.AddEvent("Client sent too many headers, some of them were not included in the span attributes: ", trace.WithAttributes(
+					attribute.Int("headers_total", len(r.Header)),
+					attribute.StringSlice("headers_not_added_as_span_attributes", notAddedHeaders)),
+				)
 			}
 		}
 
-		tracingMiddleware.ServeHTTP(w, r)
+		if len(attributes) > 0 {
+			sp.SetAttributes(attributes...)
+		}
+		next.ServeHTTP(w, r)
 	})
 
-	return handler
+	return otelhttp.NewHandler(addSpanAttributes, "http.tracing", otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+		return httpOperationName(r)
+	}))
 }
 
 // HTTPGRPCTracingInterceptor adds additional information about the encapsulated HTTP request
@@ -202,22 +253,23 @@ func handleHTTPGRPCRequestWithOTel(ctx context.Context, req any, httpRequest *ht
 
 	parentSpan := trace.SpanFromContext(ctx)
 	if parentSpan.SpanContext().IsValid() {
-		parentSpan.SetAttributes(attribute.String("http.url", urlPath))
-		parentSpan.SetAttributes(attribute.String("http.method", method))
-		parentSpan.SetAttributes(attribute.String("http.route", routeName))
-		parentSpan.SetAttributes(attribute.String("http.user_agent", userAgent))
+		parentSpan.SetAttributes(
+			semconv.HTTPMethod(method),
+			semconv.HTTPRouteKey.String(routeName),
+			attribute.String("http.target", urlPath),
+			semconv.UserAgentOriginal(userAgent),
+		)
 	}
 	// create and start child HTTP span and set span name and attributes
-	childSpanName := httpOperationName(httpRequest)
+	childSpanName := getOperationName(routeName, httpRequest)
 
 	startSpanOpts := []trace.SpanStartOption{
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(
-			attribute.String("component", "net/http"),
-			attribute.String("http.method", method),
-			attribute.String("http.url", urlPath),
-			attribute.String("http.route", routeName),
-			attribute.String("http.user_agent", userAgent),
+			semconv.HTTPMethod(method),
+			semconv.HTTPRouteKey.String(routeName),
+			semconv.UserAgentOriginal(userAgent),
+			attribute.String("http.target", urlPath),
 		),
 	}
 
