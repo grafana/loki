@@ -7,7 +7,7 @@ weight: 400
 
 # Remove default OpenTelemetry labels
 
-When Grafana Loki first started supporting OpenTelemetry, we selected a set of [default resource attributes to promote to labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-opentelemetry). As we've continued to learn more about how our customers are using OpenTelemetry, we realized that some of our choices had higher [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) than we'd anticipated. Because of their high cardinality, we no longer recommend the following as default labels:
+When Grafana Loki first started supporting OpenTelemetry, we selected a set of [default resource attributes to promote to labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-opentelemetry). We included some labels such as k8s.pod.name to be consistent with the scrape configs we have been suggesting for many years for Promtail and Grafana Alloy. However, Loki has evolved a lot over the years and with the introduction of Structured Metadata we no longer recommend indexing a few of the labels we included in the defaults as they often have very high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) and Structured Metadata is a much better place for them. We no longer recommend the following as default labels:
 
 - `k8s.pod.name`
 - `service.instance.id`
