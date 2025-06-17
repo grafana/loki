@@ -88,7 +88,7 @@ func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 					Right: right,
 				}, nil
 			default:
-				return nil, fmt.Errorf("unsupported operator for timestamp predicate: %s", e.Op)
+				return nil, fmt.Errorf("unsupported operator in predicate: %s", e.Op)
 			}
 		}
 
