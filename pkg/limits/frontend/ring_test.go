@@ -283,7 +283,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		}},
 	}, {
 		// When one instance returns an error, the streams for that instance
-		// are permitted.
+		// are failed.
 		name: "two streams, two instances, one instance returns error",
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
@@ -337,6 +337,11 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
 				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		}, {
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonFailed),
 			}},
 		}},
 	}, {

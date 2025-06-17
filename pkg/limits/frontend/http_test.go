@@ -8,6 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -71,14 +75,23 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f := Frontend{
-				gatherer: &mockExceedsLimitsGatherer{
-					t:                            t,
-					expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
-					exceedsLimitsResponses:       test.exceedsLimitsResponses,
+			readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+			f, err := New(Config{
+				LifecyclerConfig: ring.LifecyclerConfig{
+					RingConfig: ring.Config{
+						KVStore: kv.Config{
+							Store: "inmemory",
+						},
+					},
 				},
+			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			f.gatherer = &mockExceedsLimitsGatherer{
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
+				exceedsLimitsResponses:       test.exceedsLimitsResponses,
 			}
-			ts := httptest.NewServer(&f)
+			ts := httptest.NewServer(f)
 			defer ts.Close()
 
 			b, err := json.Marshal(test.request)
