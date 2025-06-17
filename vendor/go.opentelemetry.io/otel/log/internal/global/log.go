@@ -1,6 +1,8 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Package global is the internal implementation of the OpenTelemetry global
+// Logs API.
 package global // import "go.opentelemetry.io/otel/log/internal/global"
 
 import (
