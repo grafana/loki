@@ -24,8 +24,6 @@ const (
 	cacheGenNumPath = "/loki/api/v1/cache/generation_numbers"
 )
 
-var errMethodNotSupported = fmt.Errorf("method not supported")
-
 type HTTPConfig struct {
 	TLSEnabled bool             `yaml:"tls_enabled"`
 	TLS        tls.ClientConfig `yaml:",inline"`
@@ -155,10 +153,6 @@ func (c *compactorHTTPClient) GetCacheGenerationNumber(ctx context.Context, user
 	return genNumber, err
 }
 
-func (c *compactorHTTPClient) DequeueJob(ctx context.Context) (*grpc.Job, error) {
-	return nil, errMethodNotSupported
-}
-
-func (c *compactorHTTPClient) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRequest) error {
-	return errMethodNotSupported
+func (c *compactorHTTPClient) JobQueueClient() grpc.JobQueueClient {
+	panic("compactor does not support interacting with job queue over HTTP")
 }
