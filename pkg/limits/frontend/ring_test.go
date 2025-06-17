@@ -93,14 +93,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -145,7 +145,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -153,7 +153,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -203,7 +203,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -211,7 +211,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -261,24 +261,24 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -327,7 +327,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, nil},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {
@@ -336,7 +336,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -386,7 +386,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{
@@ -397,7 +397,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}}
