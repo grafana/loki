@@ -81,7 +81,7 @@ Replace `<PROJECT_ID>` with the ID of the project you want to create the cluster
 ## Create GCS buckets
 
 {{< admonition type="warning" >}}
- **DO NOT** use the default bucket names;  `chunks`, `ruler` and `admin`. Choose a **unique** name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-GCS-buckets/).
+ **DO NOT** use the default bucket names;  `chunks`, `ruler` and `admin`. Choose a **unique** name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
 {{< /admonition >}}
 
 Before deploying Loki, you need to create two GCS buckets: one to store logs (chunks) and another to store alert rules (ruler). You can create the bucket using the GCP Management Console or the GCP CLI. The bucket name must be globally unique.
