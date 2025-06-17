@@ -46,19 +46,19 @@ func NewJobBuilder(deleteStoreClient client.ObjectClient) *JobBuilder {
 }
 
 // BuildJobs implements jobqueue.Builder interface
-func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error {
+func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		if err := b.buildJobs(ctx, jobsChan); err != nil {
-			return err
+			// ToDo(Sandeep): Add a metric for tracking failures in building jobs
+			level.Error(util_log.Logger).Log("msg", "error building jobs", "err", err)
 		}
 
 		// Wait for next tick or context cancellation
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
 		case <-ticker.C:
 			// Continue to next iteration
 		}
@@ -266,7 +266,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 }
 
 // OnJobResponse implements jobqueue.Builder interface
-func (b *JobBuilder) OnJobResponse(response *grpc.ReportJobResultRequest) {
+func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) {
 	b.currentManifestMtx.Lock()
 	defer b.currentManifestMtx.Unlock()
 

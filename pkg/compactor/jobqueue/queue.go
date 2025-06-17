@@ -24,7 +24,7 @@ var (
 type Builder interface {
 	// BuildJobs builds new jobs and sends them to the provided channel
 	// It should be a blocking call and returns when ctx is cancelled.
-	BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error
+	BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job)
 
 	// OnJobResponse reports back the response of the job execution.
 	OnJobResponse(response *grpc.JobResult)
@@ -89,9 +89,9 @@ func (q *Queue) RegisterBuilder(jobType grpc.JobType, builder Builder) error {
 
 // Start starts all registered builders
 func (q *Queue) Start(ctx context.Context) error {
-	for jobType, builder := range q.builders {
+	for _, builder := range q.builders {
 		q.wg.Add(1)
-		go q.startBuilder(ctx, jobType, builder)
+		go q.startBuilder(ctx, builder)
 	}
 	return nil
 }
@@ -103,13 +103,14 @@ func (q *Queue) Stop() error {
 	return nil
 }
 
-func (q *Queue) startBuilder(ctx context.Context, jobType grpc.JobType, builder Builder) {
+func (q *Queue) startBuilder(ctx context.Context, builder Builder) {
 	defer q.wg.Done()
 
-	// Start the builder in a separate goroutine
-	builderErrChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	go func() {
-		builderErrChan <- builder.BuildJobs(ctx, q.queue)
+		builder.BuildJobs(ctx, q.queue)
 	}()
 
 	for {
@@ -117,11 +118,6 @@ func (q *Queue) startBuilder(ctx context.Context, jobType grpc.JobType, builder 
 		case <-ctx.Done():
 			return
 		case <-q.stop:
-			return
-		case err := <-builderErrChan:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				level.Error(util_log.Logger).Log("msg", "builder error", "job_type", jobType, "error", err)
-			}
 			return
 		}
 	}

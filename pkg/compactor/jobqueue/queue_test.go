@@ -19,27 +19,21 @@ import (
 // mockBuilder implements the Builder interface for testing
 type mockBuilder struct {
 	jobsToBuild []*compactor_grpc.Job
-	buildErr    error
 }
 
 func (m *mockBuilder) OnJobResponse(_ *compactor_grpc.JobResult) {}
 
-func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_grpc.Job) error {
-	if m.buildErr != nil {
-		return m.buildErr
-	}
-
+func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_grpc.Job) {
 	for _, job := range m.jobsToBuild {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		case jobsChan <- job:
 		}
 	}
 
 	// Keep running until context is cancelled
 	<-ctx.Done()
-	return ctx.Err()
 }
 
 func server(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
