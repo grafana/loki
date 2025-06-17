@@ -18,47 +18,69 @@ var errUnimplemented = errors.New("query contains unimplemented features")
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
-func BuildPlan(query logql.Params) (*Plan, error) {
-	var selector Value
-	var predicates []Value
+func BuildPlan(params logql.Params) (*Plan, error) {
+	var (
+		builder *Builder
+		err     error
+	)
+
+	switch e := params.GetExpression().(type) {
+	case syntax.LogSelectorExpr:
+		// If the query is a log selector expression, we build a plan for it.
+		builder, err = buildPlanForLogQuery(e, params, false)
+	case syntax.SampleExpr:
+		builder, err = buildPlanForSampleQuery(e, params)
+	default:
+		err = fmt.Errorf("unexpected expression type (%T)", e)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
+	}
+
+	return builder.ToPlan()
+}
+
+func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool) (*Builder, error) {
+	var (
+		err        error
+		selector   Value
+		predicates []Value
+	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
-	var err error
-
-	expr := query.GetExpression()
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
-		case syntax.SampleExpr:
-			err = errUnimplemented
-			return false // do not traverse children
-		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
-			return false // do not traverse children
-		case *syntax.LineFmtExpr, *syntax.LabelFmtExpr:
-			err = errUnimplemented
-			return false // do not traverse children
-		case *syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
-			err = errUnimplemented
-			return false // do not traverse children
+		case *syntax.PipelineExpr:
+			// [PipelineExpr] is a container for other expressions, just traverse it
+			return true
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
+			return true
 		case *syntax.LineFilterExpr:
 			predicates = append(predicates, convertLineFilterExpr(e))
 			// We do not want to traverse the AST further down, because line filter expressions can be nested,
 			// which would lead to multiple predicates of the same expression.
-			return false
+			return false // do not traverse children
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
 				predicates = append(predicates, val)
 			}
+			return true
+		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
+			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		default:
+			err = errUnimplemented
+			return false // do not traverse children
 		}
-		return true
 	})
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
+		return nil, err
 	}
 
 	// MAKETABLE -> DataObjScan
@@ -68,14 +90,17 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 		},
 	)
 
-	// SORT -> SortMerge
-	direction := query.Direction()
-	ascending := direction == logproto.FORWARD
-	builder = builder.Sort(*timestampColumnRef(), ascending, false)
+	// Metric queries currently do not expect the logs to be sorted by timestamp.
+	if !isMetricQuery {
+		// SORT -> SortMerge
+		direction := params.Direction()
+		ascending := direction == logproto.FORWARD
+		builder = builder.Sort(*timestampColumnRef(), ascending, false)
+	}
 
 	// SELECT -> Filter
-	start := query.Start()
-	end := query.End()
+	start := params.Start()
+	end := params.End()
 	for _, value := range convertQueryRangeToPredicates(start, end) {
 		builder = builder.Select(value)
 	}
@@ -84,12 +109,79 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 		builder = builder.Select(value)
 	}
 
-	// LIMIT -> Limit
-	limit := query.Limit()
-	builder = builder.Limit(0, limit)
+	// Metric queries do not apply a limit.
+	if !isMetricQuery {
+		// LIMIT -> Limit
+		limit := params.Limit()
+		builder = builder.Limit(0, limit)
+	}
 
-	plan, err := builder.ToPlan()
-	return plan, err
+	return builder, nil
+}
+
+func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
+	logSelectorExpr, err := e.Selector()
+	if err != nil {
+		return nil, err
+	}
+
+	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		groupBy      []ColumnRef
+		rangeAggType types.RangeAggregationType
+		vecAggType   types.VectorAggregationType
+	)
+
+	err = nil // reset before traversing the AST
+	e.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			if e.Operation != syntax.OpRangeTypeCount {
+				err = errUnimplemented
+				return false
+			}
+
+			rangeAggType = types.RangeAggregationTypeCount
+			return false // do not traverse log range query
+
+		case *syntax.VectorAggregationExpr:
+			// only sum operation is supported for vector aggregation
+			// grouping by atleast one label is required.
+			if e.Operation != syntax.OpTypeSum ||
+				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+				err = errUnimplemented
+				return false
+			}
+
+			vecAggType = types.VectorAggregationTypeSum
+			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
+			for _, group := range e.Grouping.Groups {
+				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
+			}
+
+			return true
+		default:
+			err = errUnimplemented
+			return false // do not traverse children
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
+		return nil, errUnimplemented
+	}
+
+	builder = builder.RangeAggregation(
+		nil, rangeAggType, params.Start(), params.End(), params.Step(), params.Interval(),
+	).VectorAggregation(groupBy, vecAggType)
+
+	return builder, nil
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {

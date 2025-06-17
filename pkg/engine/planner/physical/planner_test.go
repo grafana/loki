@@ -103,7 +103,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		nil,           // Step
+		0,             // Step
 		time.Minute*5, // Range
 	)
 
