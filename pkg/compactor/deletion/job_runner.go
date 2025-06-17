@@ -49,7 +49,7 @@ func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobR
 	}
 }
 
-func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) (*JobResult, error) {
+func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 	var deletionJob deletionJob
 	var jobResult JobResult
 
@@ -183,5 +183,10 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) (*JobResult, error) 
 		jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
 	}
 
-	return &jobResult, nil
+	jobResultJson, err := json.Marshal(jobResult)
+	if err != nil {
+		return nil, err
+	}
+
+	return jobResultJson, nil
 }

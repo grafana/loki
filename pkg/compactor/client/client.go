@@ -10,8 +10,7 @@ type CompactorClient interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 
-	DequeueJob(ctx context.Context) (*grpc.Job, error)
-	ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRequest) error
+	JobQueueClient() grpc.JobQueueClient
 
 	Name() string
 	Stop()

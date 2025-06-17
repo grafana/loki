@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	// ErrBuilderAlreadyRegistered is returned when trying to register a builder for a job type that already has one
-	ErrBuilderAlreadyRegistered = errors.New("builder already registered for this job type")
+	// ErrJobTypeAlreadyRegistered is returned when trying to register a job type that is already registered
+	ErrJobTypeAlreadyRegistered = errors.New("job type already registered")
 )
 
 // Builder defines the interface for building jobs that will be added to the queue
@@ -27,7 +27,7 @@ type Builder interface {
 	BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error
 
 	// OnJobResponse reports back the response of the job execution.
-	OnJobResponse(response *grpc.ReportJobResultRequest)
+	OnJobResponse(response *grpc.JobResult)
 }
 
 // Queue implements the job queue service
@@ -80,7 +80,7 @@ func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 // RegisterBuilder registers a builder for a specific job type
 func (q *Queue) RegisterBuilder(jobType grpc.JobType, builder Builder) error {
 	if _, exists := q.builders[jobType]; exists {
-		return ErrBuilderAlreadyRegistered
+		return ErrJobTypeAlreadyRegistered
 	}
 
 	q.builders[jobType] = builder
@@ -162,54 +162,63 @@ func (q *Queue) checkJobTimeouts() {
 	}
 }
 
-// Dequeue implements the gRPC Dequeue method
-func (q *Queue) Dequeue(ctx context.Context, _ *grpc.DequeueRequest) (*grpc.DequeueResponse, error) {
-	if q.closed.Load() {
-		return &grpc.DequeueResponse{}, nil
-	}
+func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
+	for {
+		var job *grpc.Job
+		ctx := s.Context()
 
-	select {
-	case <-ctx.Done():
-		return nil, status.Error(codes.Canceled, ctx.Err().Error())
-	case job, ok := <-q.queue:
-		if !ok {
-			return &grpc.DequeueResponse{}, nil
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-q.stop:
+			return nil
+		case job = <-q.queue:
 		}
 
 		// Track the job as being processed
 		q.processingJobsMtx.Lock()
-		defer q.processingJobsMtx.Unlock()
 		q.processingJobs[job.Id] = &processingJob{
 			job:        job,
 			dequeued:   time.Now(),
 			retryCount: 0,
 		}
+		q.processingJobsMtx.Unlock()
 
-		return &grpc.DequeueResponse{
-			Job: job,
-		}, nil
+		if err := s.Send(job); err != nil {
+			return err
+		}
+
+		// Wait for the worker to finish the current job before we give it the next job.
+		// Worker signals completion of job by sending us back the execution result of the job we sent.
+		resp, err := s.Recv()
+		if err != nil {
+			return err
+		}
+
+		if err := q.reportJobResult(ctx, resp); err != nil {
+			return err
+		}
 	}
 }
 
-// ReportJobResult implements the gRPC ReportJobResult method
-func (q *Queue) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRequest) (*grpc.ReportJobResultResponse, error) {
-	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "request cannot be nil")
+func (q *Queue) reportJobResult(ctx context.Context, result *grpc.JobResult) error {
+	if result == nil {
+		return status.Error(codes.InvalidArgument, "result cannot be nil")
 	}
 
 	q.processingJobsMtx.Lock()
 	defer q.processingJobsMtx.Unlock()
-	pj, exists := q.processingJobs[req.JobId]
+	pj, exists := q.processingJobs[result.JobId]
 	if !exists {
-		return nil, status.Error(codes.NotFound, "job not found")
+		return status.Error(codes.NotFound, "job not found")
 	}
 
-	if req.Error != "" {
+	if result.Error != "" {
 		level.Error(util_log.Logger).Log(
 			"msg", "job execution failed",
-			"job_id", req.JobId,
-			"job_type", req.JobType,
-			"error", req.Error,
+			"job_id", result.JobId,
+			"job_type", result.JobType,
+			"error", result.Error,
 			"retry_count", pj.retryCount,
 		)
 
@@ -218,8 +227,8 @@ func (q *Queue) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRe
 			pj.retryCount++
 			level.Info(util_log.Logger).Log(
 				"msg", "retrying failed job",
-				"job_id", req.JobId,
-				"job_type", req.JobType,
+				"job_id", result.JobId,
+				"job_type", result.JobType,
 				"retry_count", pj.retryCount,
 				"max_retries", q.maxRetries,
 			)
@@ -228,29 +237,29 @@ func (q *Queue) ReportJobResult(ctx context.Context, req *grpc.ReportJobResultRe
 			select {
 			case <-ctx.Done():
 			case q.queue <- pj.job:
-				return &grpc.ReportJobResultResponse{}, nil
+				return nil
 			}
 		} else {
 			level.Error(util_log.Logger).Log(
 				"msg", "job failed after max retries",
-				"job_id", req.JobId,
-				"job_type", req.JobType,
+				"job_id", result.JobId,
+				"job_type", result.JobType,
 				"max_retries", q.maxRetries,
 			)
 		}
 	} else {
 		level.Debug(util_log.Logger).Log(
 			"msg", "job execution succeeded",
-			"job_id", req.JobId,
-			"job_type", req.JobType,
+			"job_id", result.JobId,
+			"job_type", result.JobType,
 		)
 	}
-	q.builders[req.JobType].OnJobResponse(req)
+	q.builders[result.JobType].OnJobResponse(result)
 
 	// Remove the job from processing jobs
-	delete(q.processingJobs, req.JobId)
+	delete(q.processingJobs, result.JobId)
 
-	return &grpc.ReportJobResultResponse{}, nil
+	return nil
 }
 
 // Close closes the queue and releases all resources

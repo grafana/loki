@@ -101,18 +101,8 @@ func (s *compactorGRPCClient) GetCacheGenerationNumber(ctx context.Context, user
 	return grpcResp.ResultsCacheGen, nil
 }
 
-func (s *compactorGRPCClient) DequeueJob(ctx context.Context) (*compactor_grpc.Job, error) {
-	grpcResp, err := s.jobQueueClient.Dequeue(ctx, &compactor_grpc.DequeueRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	return grpcResp.Job, nil
-}
-
-func (s *compactorGRPCClient) ReportJobResult(ctx context.Context, req *compactor_grpc.ReportJobResultRequest) error {
-	_, err := s.jobQueueClient.ReportJobResult(ctx, req)
-	return err
+func (s *compactorGRPCClient) JobQueueClient() compactor_grpc.JobQueueClient {
+	return compactor_grpc.NewJobQueueClient(s.conn)
 }
 
 func (s *compactorGRPCClient) Name() string {
