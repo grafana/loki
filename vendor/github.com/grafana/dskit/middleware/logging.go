@@ -29,7 +29,7 @@ type Log struct {
 	HTTPHeadersToExclude     map[string]bool
 }
 
-var defaultExcludedHeaders = map[string]bool{
+var AlwaysExcludedHeaders = map[string]bool{
 	"Cookie":        true,
 	"X-Csrf-Token":  true,
 	"Authorization": true,
@@ -37,7 +37,7 @@ var defaultExcludedHeaders = map[string]bool{
 
 func NewLogMiddleware(log log.Logger, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {
 	httpHeadersToExclude := map[string]bool{}
-	for header := range defaultExcludedHeaders {
+	for header := range AlwaysExcludedHeaders {
 		httpHeadersToExclude[header] = true
 	}
 	for _, header := range headersList {
@@ -80,7 +80,7 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		uri := r.RequestURI // capture the URI before running next, as it may get rewritten
 		requestLog := l.logWithRequest(r)
 		// Log headers before running 'next' in case other interceptors change the data.
-		headers, err := dumpRequest(r, l.HTTPHeadersToExclude)
+		headers, err := dumpRequestHeaders(r, l.HTTPHeadersToExclude)
 		if err != nil {
 			headers = nil
 			level.Error(requestLog).Log("msg", "could not dump request headers", "err", err)
@@ -145,12 +145,12 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-func dumpRequest(req *http.Request, httpHeadersToExclude map[string]bool) ([]byte, error) {
+func dumpRequestHeaders(req *http.Request, httpHeadersToExclude map[string]bool) ([]byte, error) {
 	var b bytes.Buffer
 
 	// In case users initialize the Log middleware using the exported struct, skip the default headers anyway
 	if len(httpHeadersToExclude) == 0 {
-		httpHeadersToExclude = defaultExcludedHeaders
+		httpHeadersToExclude = AlwaysExcludedHeaders
 	}
 	// Exclude some headers for security, or just that we don't need them when debugging
 	err := req.Header.WriteSubset(&b, httpHeadersToExclude)

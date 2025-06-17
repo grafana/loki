@@ -16,18 +16,17 @@ import (
 )
 
 type Metrics struct {
-	TCPConnections                 *prometheus.GaugeVec
-	TCPConnectionsLimit            *prometheus.GaugeVec
-	GRPCConcurrentStreamsByConnMax *prometheus.GaugeVec
-	GRPCConcurrentStreamsLimit     *prometheus.GaugeVec
-	RequestDuration                *prometheus.HistogramVec
-	PerTenantRequestDuration       *prometheus.HistogramVec
-	PerTenantRequestTotal          *prometheus.CounterVec
-	ReceivedMessageSize            *prometheus.HistogramVec
-	SentMessageSize                *prometheus.HistogramVec
-	InflightRequests               *prometheus.GaugeVec
-	RequestThroughput              *prometheus.HistogramVec
-	InvalidClusterRequests         *prometheus.CounterVec
+	TCPConnections             *prometheus.GaugeVec
+	TCPConnectionsLimit        *prometheus.GaugeVec
+	GRPCConcurrentStreamsLimit *prometheus.GaugeVec
+	RequestDuration            *prometheus.HistogramVec
+	PerTenantRequestDuration   *prometheus.HistogramVec
+	PerTenantRequestTotal      *prometheus.CounterVec
+	ReceivedMessageSize        *prometheus.HistogramVec
+	SentMessageSize            *prometheus.HistogramVec
+	InflightRequests           *prometheus.GaugeVec
+	RequestThroughput          *prometheus.HistogramVec
+	InvalidClusterRequests     *prometheus.CounterVec
 }
 
 func NewServerMetrics(cfg Config) *Metrics {
@@ -45,11 +44,6 @@ func NewServerMetrics(cfg Config) *Metrics {
 			Name:      "tcp_connections_limit",
 			Help:      "The max number of TCP connections that can be accepted (0 means no limit).",
 		}, []string{"protocol"}),
-		GRPCConcurrentStreamsByConnMax: factory.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "grpc_concurrent_streams_by_connection_max",
-			Help:      "The current number of concurrent streams in the connection with the most.",
-		}, []string{}),
 		GRPCConcurrentStreamsLimit: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,
 			Name:      "grpc_concurrent_streams_limit",
