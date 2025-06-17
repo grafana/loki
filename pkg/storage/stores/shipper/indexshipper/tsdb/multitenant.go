@@ -34,6 +34,8 @@ func withTenantLabelMatcher(userID string, matchers []*labels.Matcher) []*labels
 }
 
 func withoutTenantLabel(ls labels.Labels) labels.Labels {
+	//b := labels.NewBuilder(ls)
+	//b.Del(TenantLabel)
 	b := labels.NewScratchBuilder(ls.Len())
 	ls.Range(func(l labels.Label) {
 		if l.Name == TenantLabel {

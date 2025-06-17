@@ -103,7 +103,6 @@ Outer:
 		if lbs.lbs.Has(unsafeGetString(ref.Name)) {
 			continue Outer
 		}
-		// TODO: Slow. Use scratch builder per series.
 		lbs.lbs = labels.NewBuilder(lbs.lbs).Set(string(ref.Name), string(v)).Labels()
 	}
 	return nil
