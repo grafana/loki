@@ -759,13 +759,9 @@ func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListOb
 	objectStatCh := make(chan ObjectInfo, 1)
 	go func() {
 		defer close(objectStatCh)
-		send := func(obj ObjectInfo) bool {
-			select {
-			case <-ctx.Done():
-				return false
-			case objectStatCh <- obj:
-				return true
-			}
+		if contextCanceled(ctx) {
+			objectStatCh <- ObjectInfo{Err: ctx.Err()}
+			return
 		}
 
 		var objIter iter.Seq[ObjectInfo]
@@ -783,8 +779,11 @@ func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListOb
 			}
 		}
 		for obj := range objIter {
-			if !send(obj) {
+			select {
+			case <-ctx.Done():
+				objectStatCh <- ObjectInfo{Err: ctx.Err()}
 				return
+			case objectStatCh <- obj:
 			}
 		}
 	}()
