@@ -76,6 +76,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		}, []string{"tenant"}),
 		clock:            quartz.NewReal(),
 		assigmentRetries: atomic.NewInt32(0),
+		initialized:      atomic.NewBool(false),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
