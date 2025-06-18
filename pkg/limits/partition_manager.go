@@ -84,6 +84,13 @@ func (m *partitionManager) Assign(partitions []int32) {
 	}
 }
 
+// Count returns the number of assigned partitions.
+func (m *partitionManager) Count() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return len(m.partitions)
+}
+
 // GetState returns the current state of the partition. It returns false
 // if the partition does not exist.
 func (m *partitionManager) GetState(partition int32) (partitionState, bool) {

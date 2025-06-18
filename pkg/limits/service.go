@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/coder/quartz"
@@ -27,8 +28,9 @@ const (
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
 
-	// Readiness check
-	maxPartitionReadinessAttempts int32 = 10
+	// The maximum number of checks to fail while waiting to be assigned
+	// some partitions before giving up and going ready.
+	maxPartitionReadinessWaitAssignChecks = 10
 )
 
 // Service is a service that manages stream metadata limits.
@@ -52,9 +54,9 @@ type Service struct {
 	streamEvictionsTotal *prometheus.CounterVec
 
 	// Readiness check
-	partitionReadinessAttempts int
-	partitionReadinessPassed   bool
-	partitionReadinessMtx      sync.Mutex
+	partitionReadinessWaitAssignChecks int
+	partitionReadinessPassed           bool
+	partitionReadinessMtx              sync.Mutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -192,27 +194,31 @@ func (s *Service) CheckReady(ctx context.Context) error {
 	if err := s.lifecycler.CheckReady(ctx); err != nil {
 		return fmt.Errorf("lifecycler not ready: %w", err)
 	}
-	// Check if the partitions assignment and replay
-	// are complete on the service startup only.
 	s.partitionReadinessMtx.Lock()
 	defer s.partitionReadinessMtx.Unlock()
+	// We are ready when all of our assigned partitions have replayed the
+	// last active window of data. This is referred to as partition readiness.
+	// Once we have passed partition readiness we never check it again as
+	// otherwise the service could become unready during a partition rebalance.
 	if !s.partitionReadinessPassed {
-		if len(s.partitionManager.List()) == 0 {
-			if s.partitionReadinessAttempts >= maxPartitionReadinessAttempts {
-				// If no partition assigment on startup,
-				// declare the service initialized.
+		if s.partitionManager.Count() == 0 {
+			// If partition readiness, once passed, is never checked again,
+			// we can assume that the service has recently started and is
+			// trying to become ready for the first time. If we do not have
+			// any assigned partitions we should wait some time in case we
+			// eventually get assigned some partitions, and if not, we give
+			// give up and become ready to guarantee liveness.
+			s.partitionReadinessWaitAssignChecks++
+			if s.partitionReadinessWaitAssignChecks > maxPartitionReadinessWaitAssignChecks {
+				level.Warn(s.logger).Log("msg", "no partitions assigned, going ready")
 				s.partitionReadinessPassed = true
-				level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
 				return nil
 			}
-			s.partitionReadinessAttempts++
-			return fmt.Errorf("no partitions assigned, retrying")
+			return fmt.Errorf("waiting initial period to be assigned some partitions")
 		}
 		if !s.partitionManager.CheckReady() {
-			return fmt.Errorf("partitions not ready")
+			return fmt.Errorf("partitions are not ready")
 		}
-		// If the partitions are assigned, and the replay is complete,
-		// declare the service initialized.
 		s.partitionReadinessPassed = true
 	}
 	return nil
