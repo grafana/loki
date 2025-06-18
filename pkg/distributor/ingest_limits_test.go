@@ -26,7 +26,7 @@ type mockIngestLimitsFrontendClient struct {
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	c.calls.Add(1)
 	if c.expectedRequest != nil {
 		require.Equal(c.t, c.expectedRequest, r)
@@ -49,7 +49,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response        *proto.ExceedsLimitsResponse
 		responseErr     error
 		expectedStreams []KeyedStream
-		expectedReasons map[uint64][]string
 		expectedErr     string
 	}{{
 		// This test also asserts that streams are returned unmodified.
@@ -112,11 +111,10 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"max streams exceeded"}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -138,14 +136,13 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"max streams exceeded"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -174,7 +171,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: nil,
 	}}
 
 	for _, test := range tests {
@@ -188,35 +184,29 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			streams, reasons, err := l.enforceLimits(ctx, test.tenant, test.streams)
+			accepted, err := l.EnforceLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				// The streams should be returned unmodified.
-				require.Equal(t, test.streams, streams)
-				require.Nil(t, reasons)
+				require.Equal(t, test.streams, accepted)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedStreams, streams)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedStreams, accepted)
 			}
 		})
 	}
 }
 
-// This test asserts that when checking ingest limits the expected proto
-// message is sent, and that for a given response, the result contains the
-// expected streams each with their expected reasons.
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name                  string
-		tenant                string
-		streams               []KeyedStream
-		expectedRequest       *proto.ExceedsLimitsRequest
-		response              *proto.ExceedsLimitsResponse
-		responseErr           error
-		expectedExceedsLimits bool
-		expectedReasons       map[uint64][]string
-		expectedErr           string
+		name            string
+		tenant          string
+		streams         []KeyedStream
+		expectedRequest *proto.ExceedsLimitsRequest
+		response        *proto.ExceedsLimitsResponse
+		responseErr     error
+		expectedResult  []*proto.ExceedsLimitsResult
+		expectedErr     string
 	}{{
 		name:   "error should be returned if limits cannot be checked",
 		tenant: "test",
@@ -246,11 +236,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"max streams exceeded"}},
+		expectedResult: []*proto.ExceedsLimitsResult{{
+			StreamHash: 1,
+			Reason:     uint32(limits.ReasonMaxStreams),
+		}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -266,7 +258,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{},
 		},
-		expectedReasons: nil,
+		expectedResult: []*proto.ExceedsLimitsResult{},
 	}}
 
 	for _, test := range tests {
@@ -280,15 +272,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			exceedsLimits, reasons, err := l.exceedsLimits(ctx, test.tenant, test.streams)
+			res, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				require.False(t, exceedsLimits)
-				require.Nil(t, reasons)
+				require.Nil(t, res)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedExceedsLimits, exceedsLimits)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedResult, res)
 			}
 		})
 	}

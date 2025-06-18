@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
-	deletion_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 )
 
@@ -29,17 +29,18 @@ func (cfg *GRPCConfig) RegisterFlags(f *flag.FlagSet) {
 type compactorGRPCClient struct {
 	cfg GRPCConfig
 
-	GRPCClientRequestDuration *prometheus.HistogramVec
+	grpcClientRequestDuration *prometheus.HistogramVec
 	conn                      *grpc.ClientConn
-	grpcClient                deletion_grpc.CompactorClient
+	grpcClient                compactor_grpc.CompactorClient
+	jobQueueClient            compactor_grpc.JobQueueClient
 }
 
 // NewGRPCClient supports only methods which are used for internal communication of Loki like
-// loading delete requests and cache gen numbers for query time filtering.
-func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (deletion.CompactorClient, error) {
+// loading delete requests, cache gen numbers for query time filtering and interacting with job queue for horizontal scaling of compactor.
+func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (CompactorClient, error) {
 	client := &compactorGRPCClient{
 		cfg: cfg,
-		GRPCClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+		grpcClientRequestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_compactor",
 			Name:      "grpc_request_duration_seconds",
 			Help:      "Time (in seconds) spent serving requests when using compactor GRPC client",
@@ -47,7 +48,7 @@ func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (deleti
 		}, []string{"operation", "status_code"}),
 	}
 
-	unaryInterceptors, streamInterceptors := grpcclient.Instrument(client.GRPCClientRequestDuration)
+	unaryInterceptors, streamInterceptors := grpcclient.Instrument(client.grpcClientRequestDuration)
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
@@ -59,7 +60,8 @@ func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (deleti
 		return nil, err
 	}
 
-	client.grpcClient = deletion_grpc.NewCompactorClient(client.conn)
+	client.grpcClient = compactor_grpc.NewCompactorClient(client.conn)
+	client.jobQueueClient = compactor_grpc.NewJobQueueClient(client.conn)
 	return client, nil
 }
 
@@ -69,7 +71,7 @@ func (s *compactorGRPCClient) Stop() {
 
 func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &deletion_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
+	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &compactor_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
 	if err != nil {
 		return nil, err
 	}
@@ -91,12 +93,16 @@ func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, u
 
 func (s *compactorGRPCClient) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetCacheGenNumbers(ctx, &deletion_grpc.GetCacheGenNumbersRequest{})
+	grpcResp, err := s.grpcClient.GetCacheGenNumbers(ctx, &compactor_grpc.GetCacheGenNumbersRequest{})
 	if err != nil {
 		return "", err
 	}
 
 	return grpcResp.ResultsCacheGen, nil
+}
+
+func (s *compactorGRPCClient) JobQueueClient() compactor_grpc.JobQueueClient {
+	return compactor_grpc.NewJobQueueClient(s.conn)
 }
 
 func (s *compactorGRPCClient) Name() string {

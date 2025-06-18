@@ -6,15 +6,6 @@ import "fmt"
 // object storage.
 type DataObjLocation string
 
-// Direction defines the order in which the data object is read, which is
-// either forward (ascending timestamps) or backwards (descending timestamps).
-type Direction int8
-
-const (
-	Forward Direction = iota
-	Backwards
-)
-
 // DataObjScan represents a physical plan operation for reading data objects.
 // It contains information about the object location, stream IDs, projections,
 // predicates, scan direction, and result limit for reading data from a data
@@ -37,7 +28,7 @@ type DataObjScan struct {
 	// only read the logs for the requested time range.
 	Predicates []Expression
 	// Direction defines in what order columns are read.
-	Direction Direction
+	Direction SortOrder
 	// Limit is used to stop scanning the data object once it is reached.
 	Limit uint32
 }
