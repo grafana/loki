@@ -30,7 +30,7 @@ const (
 	RingName = "ingest-limits"
 
 	// Readiness check
-	maxAssignmentRetries int32 = 10
+	maxPartitionReadinessAttempts int32 = 10
 )
 
 // Service is a service that manages stream metadata limits.
@@ -54,8 +54,8 @@ type Service struct {
 	streamEvictionsTotal *prometheus.CounterVec
 
 	// Readiness check
-	assigmentRetries *atomic.Int32
-	initialized      *atomic.Bool
+	partitionReadinessAttempts *atomic.Int32
+	partitionReadinessPassed   *atomic.Bool
 
 	// Used for tests.
 	clock quartz.Clock
@@ -74,9 +74,9 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		clock:            quartz.NewReal(),
-		assigmentRetries: atomic.NewInt32(0),
-		initialized:      atomic.NewBool(false),
+		clock:                      quartz.NewReal(),
+		partitionReadinessAttempts: atomic.NewInt32(0),
+		partitionReadinessPassed:   atomic.NewBool(false),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
@@ -197,23 +197,23 @@ func (s *Service) CheckReady(ctx context.Context) error {
 	}
 	// Check if the partitions assignment and replay
 	// are complete on the service startup only.
-	if !s.initialized.Load() {
+	if !s.partitionReadinessPassed.Load() {
 		if len(s.partitionManager.List()) == 0 {
-			if s.assigmentRetries.Load() == maxAssignmentRetries {
+			if s.partitionReadinessAttempts.Load() == maxPartitionReadinessAttempts {
 				// If no partition assigment on startup,
 				// declare the service initialized.
-				s.initialized.Store(true)
+				s.partitionReadinessPassed.Store(true)
 
 				level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
 				return nil
 			}
 
-			s.assigmentRetries.Inc()
+			s.partitionReadinessAttempts.Inc()
 			return fmt.Errorf("no partitions assigned, retrying")
 		}
 
 		// reset retries on success
-		s.assigmentRetries.Store(0)
+		s.partitionReadinessAttempts.Store(0)
 
 		if !s.partitionManager.CheckReady() {
 			return fmt.Errorf("partitions not ready")
@@ -221,7 +221,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 
 		// If the partitions are assigned, and the replay is complete,
 		// declare the service initialized.
-		s.initialized.Store(true)
+		s.partitionReadinessPassed.Store(true)
 	}
 	return nil
 }
