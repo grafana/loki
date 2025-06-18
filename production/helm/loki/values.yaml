@@ -3204,14 +3204,15 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
-  # -- Readiness probe
+  # -- Readiness probe for memcached pods
   readinessProbe:
-    tcpSocket:
-      port: 11211
+    enabled: false
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
+  # -- custom Readiness probe for memcached pods that overrides the default one
+  customReadinessProbe: {}
   # -- The SecurityContext for memcached containers
   containerSecurityContext:
     readOnlyRootFilesystem: true

@@ -6,6 +6,9 @@ Params:
   component = name of the component
 valuesSection and component are specified separately because helm prefers camelcase for naming convetion and k8s components are named with snake case.
 */}}
+{{- if and .customReadinessProbe .readinessProbe.enabled }}
+{{- fail "Cannot specify both customReadinessProbe and readinessProbe.enabled" }}
+{{- end }}
 {{- define "loki.memcached.statefulSet" -}}
 {{ with (index $.ctx.Values $.valuesSection) }}
 {{- if .enabled -}}
@@ -124,8 +127,17 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
+          {{- if $.ctx.Values.memcached.customReadinessProbe }}
+          readinessProbe: 
+            {{- toYaml $.ctx.Values.memcached.customReadinessProbe | nindent 12 }}
+          {{- else if $.ctx.Values.memcached.readinessProbe.enabled }}
           readinessProbe:
-            {{- toYaml $.ctx.Values.memcached.readinessProbe | nindent 12 }}
+            tcpSocket:
+              port: {{ .port }}
+            {{- with omit $.ctx.Values.memcached.readinessProbe "enabled" }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
