@@ -26,14 +26,14 @@ type rangeAggregationOptions struct {
 	step          *time.Duration // step used for range queries, nil for instant queries
 }
 
-// rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
+// RangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
 // 2. Partitions the data by the specified columns
 // 3. Applies the aggregation function on each partition
 //
 // Current version only supports counting for instant queries.
-type rangeAggregationPipeline struct {
+type RangeAggregationPipeline struct {
 	state  state
 	inputs []Pipeline
 
@@ -42,8 +42,8 @@ type rangeAggregationPipeline struct {
 	opts       rangeAggregationOptions
 }
 
-func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
-	return &rangeAggregationPipeline{
+func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
+	return &RangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		aggregator: newPartitionAggregator(),
@@ -54,7 +54,7 @@ func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluato
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *rangeAggregationPipeline) Read() error {
+func (r *RangeAggregationPipeline) Read() error {
 	// if the state already has an error, do not attempt to read.
 	if r.state.err != nil {
 		return r.state.err
@@ -77,7 +77,7 @@ func (r *rangeAggregationPipeline) Read() error {
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausing all inputs.
-func (r *rangeAggregationPipeline) read() (arrow.Record, error) {
+func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 	var (
 		isTSInRange  func(t time.Time) bool
 		tsColumnExpr = &physical.ColumnExpr{
@@ -212,13 +212,13 @@ func (r *rangeAggregationPipeline) read() (arrow.Record, error) {
 }
 
 // Value returns the current value in state.
-func (r *rangeAggregationPipeline) Value() (arrow.Record, error) {
+func (r *RangeAggregationPipeline) Value() (arrow.Record, error) {
 	return r.state.Value()
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
-func (r *rangeAggregationPipeline) Close() {
+func (r *RangeAggregationPipeline) Close() {
 	// Release last batch
 	if r.state.batch != nil {
 		r.state.batch.Release()
@@ -230,12 +230,12 @@ func (r *rangeAggregationPipeline) Close() {
 }
 
 // Inputs returns the inputs of the pipeline.
-func (r *rangeAggregationPipeline) Inputs() []Pipeline {
+func (r *RangeAggregationPipeline) Inputs() []Pipeline {
 	return r.inputs
 }
 
 // Transport returns the type of transport of the implementation.
-func (r *rangeAggregationPipeline) Transport() Transport {
+func (r *RangeAggregationPipeline) Transport() Transport {
 	return Local
 }
 

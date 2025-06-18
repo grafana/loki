@@ -18,11 +18,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-// vectorAggregationPipeline is a pipeline that performs vector aggregations.
+// VectorAggregationPipeline is a pipeline that performs vector aggregations.
 //
 // It reads from the input pipeline, groups the data by specified columns,
 // and applies the aggregation function on each group.
-type vectorAggregationPipeline struct {
+type VectorAggregationPipeline struct {
 	state  state
 	inputs []Pipeline
 
@@ -34,12 +34,12 @@ type vectorAggregationPipeline struct {
 	valueEval evalFunc // used to evaluate the value column
 }
 
-func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*vectorAggregationPipeline, error) {
+func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*VectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
 
-	return &vectorAggregationPipeline{
+	return &VectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		groupBy:    groupBy,
@@ -60,7 +60,7 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *vectorAggregationPipeline) Read() error {
+func (v *VectorAggregationPipeline) Read() error {
 	if v.state.err != nil {
 		return v.state.err
 	}
@@ -79,7 +79,7 @@ func (v *vectorAggregationPipeline) Read() error {
 	return nil
 }
 
-func (v *vectorAggregationPipeline) read() (arrow.Record, error) {
+func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)
@@ -150,12 +150,12 @@ func (v *vectorAggregationPipeline) read() (arrow.Record, error) {
 }
 
 // Value returns the current value in state.
-func (v *vectorAggregationPipeline) Value() (arrow.Record, error) {
+func (v *VectorAggregationPipeline) Value() (arrow.Record, error) {
 	return v.state.Value()
 }
 
 // Close closes the resources of the pipeline.
-func (v *vectorAggregationPipeline) Close() {
+func (v *VectorAggregationPipeline) Close() {
 	if v.state.batch != nil {
 		v.state.batch.Release()
 	}
@@ -166,12 +166,12 @@ func (v *vectorAggregationPipeline) Close() {
 }
 
 // Inputs returns the inputs of the pipeline.
-func (v *vectorAggregationPipeline) Inputs() []Pipeline {
+func (v *VectorAggregationPipeline) Inputs() []Pipeline {
 	return v.inputs
 }
 
 // Transport returns the transport type of the pipeline.
-func (v *vectorAggregationPipeline) Transport() Transport {
+func (v *VectorAggregationPipeline) Transport() Transport {
 	return Local
 }
 

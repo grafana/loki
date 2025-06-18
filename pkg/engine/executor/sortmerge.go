@@ -12,7 +12,7 @@ import (
 )
 
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
-func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*kWayMerge, error) {
+func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
 	var compare func(a, b int64) bool
 	switch order {
 	case physical.ASC:
@@ -23,18 +23,18 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
 
-	return &kWayMerge{
+	return &KWayMerge{
 		inputs:     inputs,
 		columnEval: evaluator.newFunc(column),
 		compare:    compare,
 	}, nil
 }
 
-// kWayMerge is a k-way merge of multiple sorted inputs.
+// KWayMerge is a k-way merge of multiple sorted inputs.
 // It requires the input batches to be sorted in the same order (ASC/DESC) as the SortMerge operator itself.
 // The sort order is defined by the direction of the query, which is either FORWARD or BACKWARDS,
 // which is applied to the SortMerge as well as to the DataObjScan during query planning.
-type kWayMerge struct {
+type KWayMerge struct {
 	inputs      []Pipeline
 	state       state
 	initialized bool
@@ -45,10 +45,10 @@ type kWayMerge struct {
 	compare     func(a, b int64) bool
 }
 
-var _ Pipeline = (*kWayMerge)(nil)
+var _ Pipeline = (*KWayMerge)(nil)
 
 // Close implements Pipeline.
-func (p *kWayMerge) Close() {
+func (p *KWayMerge) Close() {
 	// Release last batch
 	if p.state.batch != nil {
 		p.state.batch.Release()
@@ -59,27 +59,27 @@ func (p *kWayMerge) Close() {
 }
 
 // Inputs implements Pipeline.
-func (p *kWayMerge) Inputs() []Pipeline {
+func (p *KWayMerge) Inputs() []Pipeline {
 	return p.inputs
 }
 
 // Read implements Pipeline.
-func (p *kWayMerge) Read() error {
+func (p *KWayMerge) Read() error {
 	p.init()
 	return p.read()
 }
 
 // Transport implements Pipeline.
-func (p *kWayMerge) Transport() Transport {
+func (p *KWayMerge) Transport() Transport {
 	return Local
 }
 
 // Value implements Pipeline.
-func (p *kWayMerge) Value() (arrow.Record, error) {
+func (p *KWayMerge) Value() (arrow.Record, error) {
 	return p.state.Value()
 }
 
-func (p *kWayMerge) init() {
+func (p *KWayMerge) init() {
 	if p.initialized {
 		return
 	}
@@ -100,7 +100,7 @@ func (p *kWayMerge) init() {
 // Track the top two winners (e.g., the record whose next value is the smallest and the record whose next value is the next smallest).
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
-func (p *kWayMerge) read() error {
+func (p *KWayMerge) read() error {
 	// Release previous batch
 	if p.state.batch != nil {
 		p.state.batch.Release()
