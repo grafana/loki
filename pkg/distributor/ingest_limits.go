@@ -105,6 +105,11 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 	if err != nil {
 		return streams, err
 	}
+	// Fast path. No results means all streams were accepted and there were
+	// no failures, so we can return the input streams.
+	if len(results) == 0 {
+		return streams, nil
+	}
 	// We can do this without allocation if needed, but doing so will modify
 	// the original backing array. See "Filtering without allocation" from
 	// https://go.dev/wiki/SliceTricks.
