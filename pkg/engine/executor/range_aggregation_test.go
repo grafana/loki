@@ -84,7 +84,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		step:          nil, // instant query
 	}
 
-	pipeline, err := NewRangeAggregationPipeline([]Pipeline{input1, input2}, &expressionEvaluator{}, opts)
+	pipeline, err := NewRangeAggregationPipeline([]Pipeline{input1, input2}, expressionEvaluator{}, opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

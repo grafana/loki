@@ -7,6 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
+// Internal state of the planner
+type state struct {
+	direction SortOrder
+}
+
 // Planner creates an executable physical plan from a logical plan.
 // Planning is done in two steps:
 //  1. Convert
@@ -18,6 +23,7 @@ import (
 type Planner struct {
 	catalog Catalog
 	plan    *Plan
+	state   state
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -28,7 +34,7 @@ func NewPlanner(catalog Catalog) *Planner {
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
 func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
-	p.plan = &Plan{}
+	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
@@ -43,6 +49,12 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
+}
+
+// reset resets the internal state of the planner
+func (p *Planner) reset() {
+	p.plan = &Plan{}
+	p.state = state{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -98,6 +110,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Direction: p.state.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
@@ -125,14 +138,15 @@ func (p *Planner) processSelect(lp *logical.Select) ([]Node, error) {
 
 // Convert [logical.Sort] into one [SortMerge] node.
 func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
-	order := ASC
-	if !lp.Ascending {
-		order = DESC
+	order := DESC
+	if lp.Ascending {
+		order = ASC
 	}
 	node := &SortMerge{
 		Column: &ColumnExpr{Ref: lp.Column.Ref},
 		Order:  order,
 	}
+	p.state.direction = order
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
 	if err != nil {

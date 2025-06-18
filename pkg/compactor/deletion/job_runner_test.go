@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -281,7 +281,7 @@ func TestJobRunner_Run(t *testing.T) {
 			})
 
 			// Create job
-			job := jobqueue.Job{
+			job := grpc.Job{
 				Id: "test-job",
 				Payload: mustMarshal(t, deletionJob{
 					UserID:         userID,
@@ -292,7 +292,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Run job
-			result, err := runner.Run(context.Background(), job)
+			resultJSON, err := runner.Run(context.Background(), job)
 
 			if tc.expectError {
 				require.Error(t, err)
@@ -300,6 +300,8 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			result := &JobResult{}
+			require.NoError(t, json.Unmarshal(resultJSON, result))
 
 			// For test cases where we expect no changes
 			if len(tc.expectedResult.ChunksToDelete) == 0 && len(tc.expectedResult.ChunksToIndex) == 0 {

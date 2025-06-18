@@ -15,9 +15,16 @@ import (
 	"time"
 	"unicode/utf8"
 
+	otlptranslate "github.com/prometheus/otlptranslator"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"google.golang.org/grpc/codes"
+
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
@@ -29,12 +36,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/otlptranslator"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/twmb/franz-go/pkg/kgo"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
-	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -211,9 +213,6 @@ type Distributor struct {
 	kafkaWriteBytesTotal   prometheus.Counter
 	kafkaWriteLatency      prometheus.Histogram
 	kafkaRecordsPerRequest prometheus.Histogram
-
-	// OTLP Label Normalizer
-	normalizer *otlptranslator.LabelNamer
 }
 
 // New a distributor creates.
@@ -374,7 +373,6 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
 		numMetadataPartitions: numMetadataPartitions,
-		normalizer:            &otlptranslator.LabelNamer{},
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -648,7 +646,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
 				for i := range entry.StructuredMetadata {
-					normalized = d.normalizer.Build(structuredMetadata[i].Name)
+					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
 					if normalized != structuredMetadata[i].Name {
 						structuredMetadata[i].Name = normalized
 						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()

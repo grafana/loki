@@ -38,11 +38,11 @@ type RangeAggregationPipeline struct {
 	inputs []Pipeline
 
 	aggregator *partitionAggregator
-	evaluator  *expressionEvaluator // used to evaluate column expressions
+	evaluator  expressionEvaluator // used to evaluate column expressions
 	opts       rangeAggregationOptions
 }
 
-func NewRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
+func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
 	return &RangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
@@ -291,6 +291,7 @@ func (a *partitionAggregator) Add(partitionLabelValues []string) {
 }
 
 func (a *partitionAggregator) Reset() {
+	a.digest.Reset()
 	clear(a.entries)
 }
 

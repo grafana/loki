@@ -27,11 +27,14 @@ type VectorAggregationPipeline struct {
 	inputs []Pipeline
 
 	aggregator *vectorAggregator
-	evaluator  *expressionEvaluator
+	evaluator  expressionEvaluator
 	groupBy    []physical.ColumnExpression
+
+	tsEval    evalFunc // used to evaluate the timestamp column
+	valueEval evalFunc // used to evaluate the value column
 }
 
-func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator *expressionEvaluator) (*VectorAggregationPipeline, error) {
+func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*VectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -41,6 +44,18 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newVectorAggregator(groupBy),
+		tsEval: evaluator.newFunc(&physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameBuiltinTimestamp,
+				Type:   types.ColumnTypeBuiltin,
+			},
+		}),
+		valueEval: evaluator.newFunc(&physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameGeneratedValue,
+				Type:   types.ColumnTypeGenerated,
+			},
+		}),
 	}, nil
 }
 
@@ -87,24 +102,14 @@ func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 			record, _ := input.Value()
 
 			// extract timestamp column
-			tsVec, err := v.evaluator.eval(&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   types.ColumnTypeBuiltin,
-				},
-			}, record)
+			tsVec, err := v.tsEval(record)
 			if err != nil {
 				return nil, err
 			}
 			tsCol := tsVec.ToArray().(*array.Timestamp)
 
 			// extract value column
-			valueVec, err := v.evaluator.eval(&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameGeneratedValue,
-					Type:   types.ColumnTypeGenerated,
-				},
-			}, record)
+			valueVec, err := v.valueEval(record)
 			if err != nil {
 				return nil, err
 			}

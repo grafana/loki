@@ -162,7 +162,7 @@ func (c *Context) executeRangeAggregation(_ context.Context, plan *physical.Rang
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewRangeAggregationPipeline(inputs, &c.evaluator, rangeAggregationOptions{
+	pipeline, err := NewRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       plan.Start,
 		endTs:         plan.End,
@@ -181,7 +181,7 @@ func (c *Context) executeVectorAggregation(_ context.Context, plan *physical.Vec
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, &c.evaluator)
+	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
 	if err != nil {
 		return errorPipeline(err)
 	}

@@ -84,7 +84,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := NewVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, &expressionEvaluator{})
+	pipeline, err := NewVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{})
 	require.NoError(t, err)
 	defer pipeline.Close()
 

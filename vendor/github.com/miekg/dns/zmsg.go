@@ -762,6 +762,14 @@ func (rr *PX) pack(msg []byte, off int, compression compressionMap, compress boo
 	return off, nil
 }
 
+func (rr *RESINFO) pack(msg []byte, off int, compression compressionMap, compress bool) (off1 int, err error) {
+	off, err = packStringTxt(rr.Txt, msg, off)
+	if err != nil {
+		return off, err
+	}
+	return off, nil
+}
+
 func (rr *RFC3597) pack(msg []byte, off int, compression compressionMap, compress bool) (off1 int, err error) {
 	off, err = packStringHex(rr.Rdata, msg, off)
 	if err != nil {
@@ -2347,6 +2355,17 @@ func (rr *PX) unpack(msg []byte, off int) (off1 int, err error) {
 		return off, nil
 	}
 	rr.Mapx400, off, err = UnpackDomainName(msg, off)
+	if err != nil {
+		return off, err
+	}
+	return off, nil
+}
+
+func (rr *RESINFO) unpack(msg []byte, off int) (off1 int, err error) {
+	rdStart := off
+	_ = rdStart
+
+	rr.Txt, off, err = unpackStringTxt(msg, off)
 	if err != nil {
 		return off, err
 	}
