@@ -28,8 +28,9 @@ const (
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
 
-	// The maximum number of checks to fail while waiting to be assigned
-	// some partitions before giving up and going ready.
+	// The maximum number of consecutive checks to [Service.CheckReady]
+	// before giving up waiting to be assigned some partitions and going
+	// ready.
 	maxPartitionReadinessWaitAssignChecks = 10
 )
 
