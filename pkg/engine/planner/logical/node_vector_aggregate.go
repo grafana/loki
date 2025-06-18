@@ -69,7 +69,7 @@ func (v *VectorAggregation) Schema() *schema.Schema {
 			Type: schema.ValueTypeTimestamp,
 		},
 		schema.ColumnSchema{
-			Name: "value",
+			Name: types.ColumnNameGeneratedValue,
 			Type: schema.ValueTypeInt64,
 		},
 	)
