@@ -223,12 +223,11 @@ func (p *PromParser) Comment() []byte {
 	return p.text
 }
 
-// Metric writes the labels of the current sample into the passed labels.
-// It returns the string from which the metric was parsed.
-func (p *PromParser) Metric(l *labels.Labels) string {
-	// Copy the buffer to a string: this is only necessary for the return value.
+// Labels writes the labels of the current sample into the passed labels.
+func (p *PromParser) Labels(l *labels.Labels) {
+	// Defensive copy in case the following keeps a reference.
+	// See https://github.com/prometheus/prometheus/issues/16490
 	s := string(p.series)
-
 	p.builder.Reset()
 	metricName := unreplace(s[p.offsets[0]-p.start : p.offsets[1]-p.start])
 	p.builder.Add(labels.MetricName, metricName)
@@ -246,8 +245,6 @@ func (p *PromParser) Metric(l *labels.Labels) string {
 
 	p.builder.Sort()
 	*l = p.builder.Labels()
-
-	return s
 }
 
 // Exemplar implements the Parser interface. However, since the classic
@@ -257,10 +254,10 @@ func (p *PromParser) Exemplar(*exemplar.Exemplar) bool {
 	return false
 }
 
-// CreatedTimestamp returns nil as it's not implemented yet.
+// CreatedTimestamp returns 0 as it's not implemented yet.
 // TODO(bwplotka): https://github.com/prometheus/prometheus/issues/12980
-func (p *PromParser) CreatedTimestamp() *int64 {
-	return nil
+func (p *PromParser) CreatedTimestamp() int64 {
+	return 0
 }
 
 // nextToken returns the next token from the promlexer. It skips over tabs
@@ -504,6 +501,10 @@ func unreplace(s string) string {
 
 func yoloString(b []byte) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
+func yoloBytes(b string) []byte {
+	return unsafe.Slice(unsafe.StringData(b), len(b))
 }
 
 func parseFloat(s string) (float64, error) {

@@ -1,8 +1,10 @@
 package executor
 
 import (
+	"bytes"
 	"fmt"
 	"math"
+	"regexp"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -10,6 +12,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
+
+var matchAllFilter = logs.LogMessageFilterRowPredicate{
+	Keep: func(_ []byte) bool { return true },
+}
 
 // buildLogsPredicate builds a logs predicate from an expression.
 func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
@@ -53,8 +59,39 @@ func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 // Support for timestamp and metadata predicates has been implemented.
 // TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
 func mapInitiallySupportedPredicates(expr physical.Expression) (logs.RowPredicate, error) {
+	return mapPredicates(expr)
+}
+
+func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
+
+		// Special case: both sides of the binary op are again binary expressions (where LHS is expected to be a column expression)
+		if e.Left.Type() == physical.ExprTypeBinary && e.Right.Type() == physical.ExprTypeBinary {
+			left, err := mapPredicates(e.Left)
+			if err != nil {
+				return nil, err
+			}
+			right, err := mapPredicates(e.Right)
+			if err != nil {
+				return nil, err
+			}
+			switch e.Op {
+			case types.BinaryOpAnd:
+				return logs.AndRowPredicate{
+					Left:  left,
+					Right: right,
+				}, nil
+			case types.BinaryOpOr:
+				return logs.OrRowPredicate{
+					Left:  left,
+					Right: right,
+				}, nil
+			default:
+				return nil, fmt.Errorf("unsupported operator in predicate: %s", e.Op)
+			}
+		}
+
 		if e.Left.Type() != physical.ExprTypeColumn {
 			return nil, fmt.Errorf("unsupported predicate, expected column ref on LHS: %s", expr.String())
 		}
@@ -64,6 +101,9 @@ func mapInitiallySupportedPredicates(expr physical.Expression) (logs.RowPredicat
 		case types.ColumnTypeBuiltin:
 			if left.Ref.Column == types.ColumnNameBuiltinTimestamp {
 				return mapTimestampPredicate(e)
+			}
+			if left.Ref.Column == types.ColumnNameBuiltinMessage {
+				return mapMessagePredicate(e)
 			}
 			return nil, fmt.Errorf("unsupported builtin column in predicate (only timestamp is supported for now): %s", left.Ref.Column)
 		case types.ColumnTypeMetadata:
@@ -346,4 +386,133 @@ func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	default:
 		return nil, fmt.Errorf("unsupported expression type (%T) for metadata predicate, expected BinaryExpr or UnaryExpr", expr)
 	}
+}
+
+func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
+	switch e := expr.(type) {
+	case *physical.BinaryExpr:
+		switch e.Op {
+
+		case types.BinaryOpMatchSubstr, types.BinaryOpNotMatchSubstr, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
+			return match(e)
+
+		case types.BinaryOpMatchPattern, types.BinaryOpNotMatchPattern:
+			return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate", e.Op)
+
+		case types.BinaryOpAnd:
+			leftPredicate, err := mapMessagePredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of AND: %w", err)
+			}
+			rightPredicate, err := mapMessagePredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
+			}
+			return logs.AndRowPredicate{
+				Left:  leftPredicate,
+				Right: rightPredicate,
+			}, nil
+
+		case types.BinaryOpOr:
+			leftPredicate, err := mapMessagePredicate(e.Left)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map left operand of OR: %w", err)
+			}
+			rightPredicate, err := mapMessagePredicate(e.Right)
+			if err != nil {
+				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
+			}
+			return logs.OrRowPredicate{
+				Left:  leftPredicate,
+				Right: rightPredicate,
+			}, nil
+
+		default:
+			return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate, expected MATCH_STR, NOT_MATCH_STR, MATCH_RE, NOT_MATCH_RE, AND, or OR", e.Op)
+		}
+
+	case *physical.UnaryExpr:
+		if e.Op != types.UnaryOpNot {
+			return nil, fmt.Errorf("unsupported unary operator (%s) for log message predicate, expected NOT", e.Op)
+		}
+		innerPredicate, err := mapMessagePredicate(e.Left)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
+		}
+		return logs.NotRowPredicate{
+			Inner: innerPredicate,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported expression type (%T) for log message predicate, expected BinaryExpr or UnaryExpr", expr)
+	}
+}
+
+func match(e *physical.BinaryExpr) (logs.RowPredicate, error) {
+	val, err := rhsValue(e)
+	if err != nil {
+		return nil, err
+	}
+
+	switch e.Op {
+
+	case types.BinaryOpMatchSubstr:
+		return logs.LogMessageFilterRowPredicate{
+			Keep: func(line []byte) bool { return bytes.Contains(line, []byte(val)) },
+		}, nil
+
+	case types.BinaryOpNotMatchSubstr:
+		return logs.LogMessageFilterRowPredicate{
+			Keep: func(line []byte) bool { return !bytes.Contains(line, []byte(val)) },
+		}, nil
+
+	case types.BinaryOpMatchRe:
+		re, err := regexp.Compile(val)
+		if err != nil {
+			return nil, err
+		}
+		return logs.LogMessageFilterRowPredicate{
+			Keep: func(line []byte) bool { return re.Match(line) },
+		}, nil
+
+	case types.BinaryOpNotMatchRe:
+		re, err := regexp.Compile(val)
+		if err != nil {
+			return nil, err
+		}
+		return logs.LogMessageFilterRowPredicate{
+			Keep: func(line []byte) bool { return !re.Match(line) },
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate", e.Op)
+	}
+}
+
+func rhsValue(e *physical.BinaryExpr) (string, error) {
+	op := e.Op.String()
+
+	if e.Left.Type() != physical.ExprTypeColumn {
+		return "", fmt.Errorf("unsupported LHS type (%v) for %s message predicate, expected ColumnExpr", e.Left.Type(), op)
+	}
+	leftColumn, ok := e.Left.(*physical.ColumnExpr)
+	if !ok { // Should not happen due to Type() check but defensive
+		return "", fmt.Errorf("LHS of %s message predicate failed to cast to ColumnExpr", op)
+	}
+	if leftColumn.Ref.Type != types.ColumnTypeBuiltin {
+		return "", fmt.Errorf("unsupported LHS column type (%v) for %s message predicate, expected ColumnTypeBuiltin", leftColumn.Ref.Type, op)
+	}
+
+	if e.Right.Type() != physical.ExprTypeLiteral {
+		return "", fmt.Errorf("unsupported RHS type (%v) for %s message predicate, expected LiteralExpr", e.Right.Type(), op)
+	}
+	rightLiteral, ok := e.Right.(*physical.LiteralExpr)
+	if !ok { // Should not happen
+		return "", fmt.Errorf("RHS of %s message predicate failed to cast to LiteralExpr", op)
+	}
+	if rightLiteral.ValueType() != datatype.String {
+		return "", fmt.Errorf("unsupported RHS literal type (%v) for %s message predicate, expected ValueTypeStr", rightLiteral.ValueType(), op)
+	}
+
+	return rightLiteral.Literal.(*datatype.StringLiteral).Value(), nil
 }
