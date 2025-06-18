@@ -198,7 +198,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 	s.partitionReadinessMtx.Lock()
 	defer s.partitionReadinessMtx.Unlock()
 	// We are ready when all of our assigned partitions have replayed the
-	// last active window of data. This is referred to as partition readiness.
+	// last active window records. This is referred to as partition readiness.
 	// Once we have passed partition readiness we never check it again as
 	// otherwise the service could become unready during a partition rebalance.
 	if !s.partitionReadinessPassed {
