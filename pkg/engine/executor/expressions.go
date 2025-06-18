@@ -45,10 +45,10 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				}, nil
 			}
 		}
-		// A non-existent column is represented as a string scalar with zero-byte values.
-		// TODO(chaudum): Change value to NullLiteral?
+		// A non-existent column is represented as a string scalar with zero-value.
+		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
-			value: datatype.NewStringLiteral(string([]byte{0})), // xero-byte string does not match any "regular" string
+			value: datatype.NewStringLiteral(""),
 			rows:  input.NumRows(),
 			ct:    types.ColumnTypeGenerated,
 		}, nil
