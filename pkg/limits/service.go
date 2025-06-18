@@ -189,18 +189,12 @@ func (s *Service) ExceedsLimits(
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
-	serviceReady := func() error {
-		if s.State() != services.Running {
-			return fmt.Errorf("service is not running: %v", s.State())
-		}
-
-		if err := s.lifecycler.CheckReady(ctx); err != nil {
-			return fmt.Errorf("lifecycler not ready: %w", err)
-		}
-
-		return nil
+	if s.State() != services.Running {
+		return fmt.Errorf("service is not running: %v", s.State())
 	}
-
+	if err := s.lifecycler.CheckReady(ctx); err != nil {
+		return fmt.Errorf("lifecycler not ready: %w", err)
+	}
 	// Check if the partitions assignment and replay
 	// are complete on the service startup only.
 	if !s.initialized.Load() {
@@ -211,7 +205,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 				s.initialized.Store(true)
 
 				level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
-				return serviceReady()
+				return nil
 			}
 
 			s.assigmentRetries.Inc()
@@ -229,8 +223,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 		// declare the service initialized.
 		s.initialized.Store(true)
 	}
-
-	return serviceReady()
+	return nil
 }
 
 // starting implements the Service interface's starting method.
