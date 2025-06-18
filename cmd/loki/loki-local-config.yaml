@@ -26,7 +26,7 @@ query_range:
         max_size_mb: 100
 
 limits_config:
-  metric_aggregation_enabled: true
+  enable_multi_variant_queries: true
 
 schema_config:
   configs:
@@ -49,9 +49,6 @@ ruler:
 frontend:
   encoding: protobuf
 
-querier:
-  engine:
-    enable_multi_variant_queries: true
 
 
 # By default, Loki will send anonymous, but uniquely-identifiable usage and configuration
