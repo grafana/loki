@@ -37,9 +37,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
 		os.Exit(1)
 	}
+	parquetStore, err := bench.NewParquetStore(*dir, *tenantID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create parquet store: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Create builder with default options and the store
-	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), chunkStore, dataObjStore)
+	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), chunkStore, dataObjStore, parquetStore)
 
 	// Generate the data
 	ctx := context.Background()

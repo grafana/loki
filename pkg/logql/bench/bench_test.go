@@ -33,9 +33,10 @@ const (
 	StoreDataObj         = "dataobj"
 	StoreDataObjV2Engine = "dataobj-engine"
 	StoreChunk           = "chunk"
+	StoreParquet         = "parquet"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk, StoreParquet}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -83,8 +84,15 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngin
 		if err != nil {
 			tb.Fatal(err)
 		}
-	default:
-		tb.Fatalf("Unknown store type: %s", storeType)
+	case StoreParquet:
+		store, err := NewParquetStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		querier, err = store.Querier()
+		if err != nil {
+			tb.Fatal(err)
+		}
 	}
 
 	engine := logql.NewEngine(logql.EngineOpts{}, querier, logql.NoLimits,
