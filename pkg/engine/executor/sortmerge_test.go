@@ -24,7 +24,7 @@ func TestSortMerge(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "invalid",
+					Column: "not_a_timestamp_column",
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
@@ -40,7 +40,7 @@ func TestSortMerge(t *testing.T) {
 		require.NoError(t, err)
 
 		err = pipeline.Read()
-		require.ErrorContains(t, err, "key error")
+		require.ErrorContains(t, err, "column is not a timestamp column")
 	})
 
 	t.Run("ascending timestamp", func(t *testing.T) {

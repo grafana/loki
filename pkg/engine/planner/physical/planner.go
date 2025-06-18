@@ -93,6 +93,8 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 		return p.processLimit(inst)
 	case *logical.RangeAggregation:
 		return p.processRangeAggregation(inst)
+	case *logical.VectorAggregation:
+		return p.processVectorAggregation(inst)
 	}
 	return nil, nil
 }
@@ -204,6 +206,30 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, 
 	return []Node{node}, nil
 }
 
+// Convert [logical.VectorAggregation] into one [VectorAggregation] node.
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation) ([]Node, error) {
+	groupBy := make([]ColumnExpression, len(lp.GroupBy))
+	for i, col := range lp.GroupBy {
+		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	}
+
+	node := &VectorAggregation{
+		GroupBy:   groupBy,
+		Operation: lp.Operation,
+	}
+	p.plan.addNode(node)
+	children, err := p.process(lp.Table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
 // Optimize tries to optimize the plan by pushing down filter predicates and limits
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
@@ -216,6 +242,13 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
+			),
+			newOptimization("GroupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
+			),
+			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
+			newOptimization("ProjectionPushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
