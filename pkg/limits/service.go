@@ -74,9 +74,9 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		clock:                      quartz.NewReal(),
 		partitionReadinessAttempts: atomic.NewInt32(0),
 		partitionReadinessPassed:   atomic.NewBool(false),
+		clock:                      quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
