@@ -26,8 +26,7 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		// If the query is a log selector expression, we build a plan for it.
-		builder, err = buildPlanForLogQuery(e, params, false)
+		builder, err = buildPlanForLogQuery(e, params, false, 0)
 	case syntax.SampleExpr:
 		builder, err = buildPlanForSampleQuery(e, params)
 	default:
@@ -41,7 +40,10 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 	return builder.ToPlan()
 }
 
-func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool) (*Builder, error) {
+// buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
+// isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
+// rangeInterval should be set to a non-zero value if the query contains [$range].
+func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool, rangeInterval time.Duration) (*Builder, error) {
 	var (
 		err        error
 		selector   Value
@@ -52,7 +54,7 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.PipelineExpr:
-			// [PipelineExpr] is a container for other expressions, just traverse it
+			// [PipelineExpr] is a container for other expressions, nothing to do here.
 			return true
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
@@ -101,7 +103,8 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	// SELECT -> Filter
 	start := params.Start()
 	end := params.End()
-	for _, value := range convertQueryRangeToPredicates(start, end) {
+	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
+	for _, value := range convertQueryRangeToPredicates(start.Add(-rangeInterval), end) {
 		builder = builder.Select(value)
 	}
 
@@ -120,32 +123,32 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 }
 
 func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
-	logSelectorExpr, err := e.Selector()
-	if err != nil {
-		return nil, err
-	}
-
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true)
-	if err != nil {
-		return nil, err
+	if params.Step() > 0 {
+		return nil, fmt.Errorf("only instant metric queries are supported")
 	}
 
 	var (
-		groupBy      []ColumnRef
-		rangeAggType types.RangeAggregationType
-		vecAggType   types.VectorAggregationType
+		err error
+
+		rangeAggType  types.RangeAggregationType
+		rangeInterval time.Duration
+
+		vecAggType types.VectorAggregationType
+		groupBy    []ColumnRef
 	)
 
-	err = nil // reset before traversing the AST
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.RangeAggregationExpr:
-			if e.Operation != syntax.OpRangeTypeCount {
+			// only count operation is supported for range aggregation.
+			// offsets are not yet supported.
+			if e.Operation != syntax.OpRangeTypeCount || e.Left.Offset != 0 {
 				err = errUnimplemented
 				return false
 			}
 
 			rangeAggType = types.RangeAggregationTypeCount
+			rangeInterval = e.Left.Interval
 			return false // do not traverse log range query
 
 		case *syntax.VectorAggregationExpr:
@@ -177,8 +180,18 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, errUnimplemented
 	}
 
+	logSelectorExpr, err := e.Selector()
+	if err != nil {
+		return nil, err
+	}
+
+	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	if err != nil {
+		return nil, err
+	}
+
 	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), params.Interval(),
+		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	).VectorAggregation(groupBy, vecAggType)
 
 	return builder, nil

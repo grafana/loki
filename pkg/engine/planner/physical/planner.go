@@ -3,13 +3,15 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
 // Internal state of the planner
 type state struct {
-	direction SortOrder
+	direction     SortOrder
+	rangeInterval time.Duration // for queries with [$range]
 }
 
 // Planner creates an executable physical plan from a logical plan.
@@ -101,7 +103,7 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector), p.state.rangeInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +196,8 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, 
 		Step:        r.Step,
 	}
 	p.plan.addNode(node)
+	p.state.rangeInterval = r.RangeInterval
+
 	children, err := p.process(r.Table)
 	if err != nil {
 		return nil, err

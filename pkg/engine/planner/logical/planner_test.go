@@ -63,7 +63,7 @@ func (q *query) GetStoreChunks() *logproto.ChunkRefGroup {
 
 // Interval implements logql.Params.
 func (q *query) Interval() time.Duration {
-	return q.interval
+	panic("unimplemented")
 }
 
 // Shards implements logql.Params.
@@ -127,7 +127,6 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 		start:     3600,
 		end:       7200,
 		interval:  5 * time.Minute,
-		step:      time.Minute,
 	}
 
 	logicalPlan, err := BuildPlan(q)
@@ -138,13 +137,13 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
 %4 = MAKETABLE [selector=%3]
-%5 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %8 = SELECT %6 [predicate=%7]
 %9 = MATCH_STR builtin.message "metric.go"
 %10 = SELECT %8 [predicate=%9]
-%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=1m0s, range=5m0s]
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
 RETURN %12
 `

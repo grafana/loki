@@ -27,7 +27,7 @@ var (
 // providing this information (e.g. pg_catalog, ...) whereas in Loki there
 // is the Metastore.
 type Catalog interface {
-	ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, error)
+	ResolveDataObj(Expression, time.Duration) ([]DataObjLocation, [][]int64, error)
 }
 
 // Context is the default implementation of [Catalog].
@@ -50,7 +50,7 @@ func NewContext(ctx context.Context, ms metastore.Metastore, from, through time.
 // ResolveDataObj resolves DataObj locations and streams IDs based on a given
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
-func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, error) {
+func (c *Context) ResolveDataObj(selector Expression, rangeInterval time.Duration) ([]DataObjLocation, [][]int64, error) {
 	if c.metastore == nil {
 		return nil, nil, errors.New("no metastore to resolve objects")
 	}
@@ -60,7 +60,8 @@ func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]in
 		return nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	paths, streamIDs, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
+	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
+	paths, streamIDs, err := c.metastore.StreamIDs(c.ctx, c.from.Add(-rangeInterval), c.through, matchers...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}

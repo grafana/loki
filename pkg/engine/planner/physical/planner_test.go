@@ -15,7 +15,7 @@ type catalog struct {
 }
 
 // ResolveDataObj implements Catalog.
-func (t *catalog) ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, error) {
+func (t *catalog) ResolveDataObj(Expression, time.Duration) ([]DataObjLocation, [][]int64, error) {
 	objects := make([]DataObjLocation, 0, len(t.streamsByObject))
 	streams := make([][]int64, 0, len(t.streamsByObject))
 	for o, s := range t.streamsByObject {
