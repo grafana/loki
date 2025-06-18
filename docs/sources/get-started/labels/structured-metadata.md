@@ -2,6 +2,7 @@
 menuTitle: Structured metadata
 title: What is structured metadata
 description: Describes how to enable structure metadata for logs and how to query using structured metadata to filter log lines.
+weight: 300
 ---
 # What is structured metadata
 
