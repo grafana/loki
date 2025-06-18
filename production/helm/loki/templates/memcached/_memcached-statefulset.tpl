@@ -6,9 +6,6 @@ Params:
   component = name of the component
 valuesSection and component are specified separately because helm prefers camelcase for naming convetion and k8s components are named with snake case.
 */}}
-{{- if and .customReadinessProbe .readinessProbe.enabled }}
-{{- fail "Cannot specify both customReadinessProbe and readinessProbe.enabled" }}
-{{- end }}
 {{- define "loki.memcached.statefulSet" -}}
 {{ with (index $.ctx.Values $.valuesSection) }}
 {{- if .enabled -}}
