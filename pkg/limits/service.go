@@ -212,9 +212,6 @@ func (s *Service) CheckReady(ctx context.Context) error {
 			return fmt.Errorf("no partitions assigned, retrying")
 		}
 
-		// reset retries on success
-		s.partitionReadinessAttempts.Store(0)
-
 		if !s.partitionManager.CheckReady() {
 			return fmt.Errorf("partitions not ready")
 		}
