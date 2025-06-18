@@ -199,7 +199,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 	// are complete on the service startup only.
 	if !s.partitionReadinessPassed.Load() {
 		if len(s.partitionManager.List()) == 0 {
-			if s.partitionReadinessAttempts.Load() == maxPartitionReadinessAttempts {
+			if s.partitionReadinessAttempts.Load() >= maxPartitionReadinessAttempts {
 				// If no partition assigment on startup,
 				// declare the service initialized.
 				s.partitionReadinessPassed.Store(true)
