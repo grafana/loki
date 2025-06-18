@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -54,8 +52,9 @@ type Service struct {
 	streamEvictionsTotal *prometheus.CounterVec
 
 	// Readiness check
-	partitionReadinessAttempts *atomic.Int32
-	partitionReadinessPassed   *atomic.Bool
+	partitionReadinessAttempts int
+	partitionReadinessPassed   bool
+	partitionReadinessMtx      sync.Mutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -74,9 +73,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
-		partitionReadinessAttempts: atomic.NewInt32(0),
-		partitionReadinessPassed:   atomic.NewBool(false),
-		clock:                      quartz.NewReal(),
+		clock: quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
 	if err != nil {
@@ -197,28 +194,26 @@ func (s *Service) CheckReady(ctx context.Context) error {
 	}
 	// Check if the partitions assignment and replay
 	// are complete on the service startup only.
-	if !s.partitionReadinessPassed.Load() {
+	s.partitionReadinessMtx.Lock()
+	defer s.partitionReadinessMtx.Unlock()
+	if !s.partitionReadinessPassed {
 		if len(s.partitionManager.List()) == 0 {
-			if s.partitionReadinessAttempts.Load() >= maxPartitionReadinessAttempts {
+			if s.partitionReadinessAttempts >= maxPartitionReadinessAttempts {
 				// If no partition assigment on startup,
 				// declare the service initialized.
-				s.partitionReadinessPassed.Store(true)
-
+				s.partitionReadinessPassed = true
 				level.Warn(s.logger).Log("msg", "no partitions assigned after max retries, going ready")
 				return nil
 			}
-
-			s.partitionReadinessAttempts.Inc()
+			s.partitionReadinessAttempts++
 			return fmt.Errorf("no partitions assigned, retrying")
 		}
-
 		if !s.partitionManager.CheckReady() {
 			return fmt.Errorf("partitions not ready")
 		}
-
 		// If the partitions are assigned, and the replay is complete,
 		// declare the service initialized.
-		s.partitionReadinessPassed.Store(true)
+		s.partitionReadinessPassed = true
 	}
 	return nil
 }
