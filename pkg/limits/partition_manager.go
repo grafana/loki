@@ -84,6 +84,18 @@ func (m *partitionManager) Assign(partitions []int32) {
 	}
 }
 
+// CheckReady returns true if all partitions are ready.
+func (m *partitionManager) CheckReady() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	for _, entry := range m.partitions {
+		if entry.state != partitionReady {
+			return false
+		}
+	}
+	return true
+}
+
 // Count returns the number of assigned partitions.
 func (m *partitionManager) Count() int {
 	m.mtx.Lock()
@@ -144,18 +156,6 @@ func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
 		}
 	}
 	return result
-}
-
-// CheckReady returns true if all partitions are ready.
-func (m *partitionManager) CheckReady() bool {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-	for _, entry := range m.partitions {
-		if entry.state != partitionReady {
-			return false
-		}
-	}
-	return true
 }
 
 // SetReplaying sets the partition as replaying and the offset that must
