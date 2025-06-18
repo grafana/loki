@@ -18,34 +18,49 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-// VectorAggregationPipeline is a pipeline that performs vector aggregations.
+// vectorAggregationPipeline is a pipeline that performs vector aggregations.
 //
 // It reads from the input pipeline, groups the data by specified columns,
 // and applies the aggregation function on each group.
-type VectorAggregationPipeline struct {
+type vectorAggregationPipeline struct {
 	state  state
 	inputs []Pipeline
 
 	aggregator *vectorAggregator
-	evaluator  *expressionEvaluator
+	evaluator  expressionEvaluator
 	groupBy    []physical.ColumnExpression
+
+	tsEval    evalFunc // used to evaluate the timestamp column
+	valueEval evalFunc // used to evaluate the value column
 }
 
-func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator *expressionEvaluator) (*VectorAggregationPipeline, error) {
+func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
 
-	return &VectorAggregationPipeline{
+	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newVectorAggregator(groupBy),
+		tsEval: evaluator.newFunc(&physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameBuiltinTimestamp,
+				Type:   types.ColumnTypeBuiltin,
+			},
+		}),
+		valueEval: evaluator.newFunc(&physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameGeneratedValue,
+				Type:   types.ColumnTypeGenerated,
+			},
+		}),
 	}, nil
 }
 
 // Read reads the next value into its state.
-func (v *VectorAggregationPipeline) Read() error {
+func (v *vectorAggregationPipeline) Read() error {
 	if v.state.err != nil {
 		return v.state.err
 	}
@@ -64,7 +79,7 @@ func (v *VectorAggregationPipeline) Read() error {
 	return nil
 }
 
-func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
+func (v *vectorAggregationPipeline) read() (arrow.Record, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)
@@ -87,24 +102,14 @@ func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 			record, _ := input.Value()
 
 			// extract timestamp column
-			tsVec, err := v.evaluator.eval(&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   types.ColumnTypeBuiltin,
-				},
-			}, record)
+			tsVec, err := v.tsEval(record)
 			if err != nil {
 				return nil, err
 			}
 			tsCol := tsVec.ToArray().(*array.Timestamp)
 
 			// extract value column
-			valueVec, err := v.evaluator.eval(&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameGeneratedValue,
-					Type:   types.ColumnTypeGenerated,
-				},
-			}, record)
+			valueVec, err := v.valueEval(record)
 			if err != nil {
 				return nil, err
 			}
@@ -145,12 +150,12 @@ func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 }
 
 // Value returns the current value in state.
-func (v *VectorAggregationPipeline) Value() (arrow.Record, error) {
+func (v *vectorAggregationPipeline) Value() (arrow.Record, error) {
 	return v.state.Value()
 }
 
 // Close closes the resources of the pipeline.
-func (v *VectorAggregationPipeline) Close() {
+func (v *vectorAggregationPipeline) Close() {
 	if v.state.batch != nil {
 		v.state.batch.Release()
 	}
@@ -161,12 +166,12 @@ func (v *VectorAggregationPipeline) Close() {
 }
 
 // Inputs returns the inputs of the pipeline.
-func (v *VectorAggregationPipeline) Inputs() []Pipeline {
+func (v *vectorAggregationPipeline) Inputs() []Pipeline {
 	return v.inputs
 }
 
 // Transport returns the transport type of the pipeline.
-func (v *VectorAggregationPipeline) Transport() Transport {
+func (v *vectorAggregationPipeline) Transport() Transport {
 	return Local
 }
 
