@@ -78,13 +78,18 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 
 type ingestLimits struct {
 	client         ingestLimitsFrontendClient
-	limitsFailures prometheus.Counter
+	requests       prometheus.Counter
+	requestsFailed prometheus.Counter
 }
 
 func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
 	return &ingestLimits{
 		client: client,
-		limitsFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		requests: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_requests_total",
+			Help: "The total number of requests.",
+		}),
+		requestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_requests_failed_total",
 			Help: "The total number of requests that failed.",
 		}),
@@ -135,12 +140,15 @@ func (l *ingestLimits) ExceedsLimits(
 	tenant string,
 	streams []KeyedStream,
 ) ([]*proto.ExceedsLimitsResult, error) {
+	l.requests.Inc()
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
+		l.requestsFailed.Inc()
 		return nil, err
 	}
 	resp, err := l.client.ExceedsLimits(ctx, req)
 	if err != nil {
+		l.requestsFailed.Inc()
 		return nil, err
 	}
 	return resp.Results, nil
