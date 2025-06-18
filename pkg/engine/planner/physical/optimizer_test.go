@@ -279,11 +279,7 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		{
-			projected := []ColumnExpression{
-				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
-				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
-				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
-			}
+			projected := append(partitionBy, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 			scan1 := expectedPlan.addNode(&DataObjScan{
 				id:          "scan1",
 				Projections: projected,
