@@ -182,9 +182,9 @@ func lineColumnRef() *ColumnRef {
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
 	switch op {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchSubstr
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchSubstr
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
