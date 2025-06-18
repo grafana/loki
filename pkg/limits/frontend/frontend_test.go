@@ -168,7 +168,7 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 			// Replace with our mock.
-			f.gatherer = &mockExceedsLimitsGatherer{
+			f.limitsClient = &mockLimitsClient{
 				t:                            t,
 				expectedExceedsLimitsRequest: test.exceedsLimitsRequest,
 				exceedsLimitsResponses:       test.exceedsLimitsResponses,
