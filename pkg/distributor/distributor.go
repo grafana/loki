@@ -718,6 +718,17 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
+
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
+		d.writeFailuresManager.Log(tenantID, err)
+		// Return a 429 to indicate to the client they are being rate limited
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	}
+
+	// These limits are checked after the ingestion rate limit as this
+	// is how it works in ingesters.
 	if d.cfg.IngestLimitsEnabled {
 		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
@@ -727,15 +738,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 			streams = accepted
 		}
-	}
-
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
-
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
-		d.writeFailuresManager.Log(tenantID, err)
-		// Return a 429 to indicate to the client they are being rate limited
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
