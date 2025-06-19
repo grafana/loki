@@ -1,5 +1,5 @@
-//go:build appengine || plan9 || js || wasip1
-// +build appengine plan9 js wasip1
+//go:build appengine || plan9 || js || wasip1 || wasi
+// +build appengine plan9 js wasip1 wasi
 
 package maxminddb
 

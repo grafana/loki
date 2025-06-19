@@ -62,7 +62,6 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		Logger:                  b.logger,
 		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
 	})
-	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
 }
@@ -84,16 +83,31 @@ type weightedTargetBalancer struct {
 	targets map[string]Target
 }
 
+type localityKeyType string
+
+const localityKey = localityKeyType("locality")
+
+// LocalityFromResolverState returns the locality from the resolver.State
+// provided, or an empty string if not present.
+func LocalityFromResolverState(state resolver.State) string {
+	locality, _ := state.Attributes.Value(localityKey).(string)
+	return locality
+}
+
 // UpdateClientConnState takes the new targets in balancer group,
 // creates/deletes sub-balancers and sends them update. addresses are split into
 // groups based on hierarchy path.
 func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
+
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
 
 	b.stateAggregator.PauseStateUpdates()
 	defer b.stateAggregator.ResumeStateUpdates()
@@ -141,8 +155,9 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 		_ = b.bg.UpdateClientConnState(name, balancer.ClientConnState{
 			ResolverState: resolver.State{
 				Addresses:     addressesSplit[name],
+				Endpoints:     endpointsSplit[name],
 				ServiceConfig: s.ResolverState.ServiceConfig,
-				Attributes:    s.ResolverState.Attributes,
+				Attributes:    s.ResolverState.Attributes.WithValue(localityKey, name),
 			},
 			BalancerConfig: newT.ChildPolicy.Config,
 		})

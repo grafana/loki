@@ -40,7 +40,7 @@ pipeline_stages:
         ingest_timestamp: true
 `
 
-// TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline
+// TestPackPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestPackPipeline(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	plName := "test_pipeline_deal_with_it_linter"

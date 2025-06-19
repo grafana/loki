@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -21,6 +21,13 @@ var DefaultMaxPageSize = 64 << 20 // 64MB
 
 type Bloom struct {
 	filter.ScalableBloomFilter
+}
+
+func NewBloom() *Bloom {
+	return &Bloom{
+		// TODO parameterise SBF options. fp_rate
+		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
 }
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
@@ -40,18 +47,6 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	return nil
 }
 
-func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
-	ln := dec.Uvarint()
-	data := dec.Bytes(ln)
-
-	_, err := b.ReadFrom(bytes.NewReader(data))
-	if err != nil {
-		return errors.Wrap(err, "decoding copy of bloom filter")
-	}
-
-	return nil
-}
-
 func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
@@ -64,7 +59,7 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	return nil
 }
 
-func LazyDecodeBloomPage(r io.Reader, alloc mempool.Allocator, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPage(r io.Reader, alloc mempool.Allocator, pool compression.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
 	data, err := alloc.Get(page.Len)
 	if err != nil {
 		return nil, errors.Wrap(err, "allocating buffer")
@@ -167,7 +162,7 @@ type BloomPageDecoder struct {
 // perf optimization.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder:
-// on reads in the bloom-gw but not in the bloom-compactor
+// on reads in the bloom-gw but not in the bloom-builder
 func (d *BloomPageDecoder) Relinquish(alloc mempool.Allocator) {
 	if d == nil {
 		return
@@ -309,7 +304,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, alloc mempool.Allocator, 
 		return nil, false, errors.Wrap(err, "seeking to bloom page")
 	}
 
-	if b.schema.encoding == chunkenc.EncNone {
+	if b.schema.encoding == compression.None {
 		res, err = LazyDecodeBloomPageNoCompression(r, alloc, page)
 	} else {
 		res, err = LazyDecodeBloomPage(r, alloc, b.schema.DecompressorPool(), page)

@@ -2,7 +2,7 @@
 Package client is a Go client for the Docker Engine API.
 
 For more information about the Engine API, see the documentation:
-https://docs.docker.com/engine/api/
+https://docs.docker.com/reference/api/engine/
 
 # Usage
 
@@ -49,6 +49,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/docker/docker/api"
@@ -57,7 +59,6 @@ import (
 	"github.com/docker/go-connections/sockets"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // DummyHost is a hostname used for local communication.
@@ -97,6 +98,9 @@ const DummyHost = "api.moby.localhost"
 // recent version before negotiation was introduced.
 const fallbackAPIVersion = "1.24"
 
+// Ensure that Client always implements APIClient.
+var _ APIClient = &Client{}
+
 // Client is the API client that performs all operations
 // against a docker server.
 type Client struct {
@@ -131,9 +135,12 @@ type Client struct {
 	negotiateVersion bool
 
 	// negotiated indicates that API version negotiation took place
-	negotiated bool
+	negotiated atomic.Bool
 
-	tp trace.TracerProvider
+	// negotiateLock is used to single-flight the version negotiation process
+	negotiateLock sync.Mutex
+
+	traceOpts []otelhttp.Option
 
 	// When the client transport is an *http.Transport (default) we need to do some extra things (like closing idle connections).
 	// Store the original transport as the http.Client transport will be wrapped with tracing libs.
@@ -195,6 +202,12 @@ func NewClientWithOpts(ops ...Opt) (*Client, error) {
 		client:  client,
 		proto:   hostURL.Scheme,
 		addr:    hostURL.Host,
+
+		traceOpts: []otelhttp.Option{
+			otelhttp.WithSpanNameFormatter(func(_ string, req *http.Request) string {
+				return req.Method + " " + req.URL.Path
+			}),
+		},
 	}
 
 	for _, op := range ops {
@@ -222,13 +235,7 @@ func NewClientWithOpts(ops ...Opt) (*Client, error) {
 		}
 	}
 
-	c.client.Transport = otelhttp.NewTransport(
-		c.client.Transport,
-		otelhttp.WithTracerProvider(c.tp),
-		otelhttp.WithSpanNameFormatter(func(_ string, req *http.Request) string {
-			return req.Method + " " + req.URL.Path
-		}),
-	)
+	c.client.Transport = otelhttp.NewTransport(c.client.Transport, c.traceOpts...)
 
 	return c, nil
 }
@@ -242,6 +249,14 @@ func (cli *Client) tlsConfig() *tls.Config {
 
 func defaultHTTPClient(hostURL *url.URL) (*http.Client, error) {
 	transport := &http.Transport{}
+	// Necessary to prevent long-lived processes using the
+	// client from leaking connections due to idle connections
+	// not being released.
+	// TODO: see if we can also address this from the server side,
+	// or in go-connections.
+	// see: https://github.com/moby/moby/issues/45539
+	transport.MaxIdleConns = 6
+	transport.IdleConnTimeout = 30 * time.Second
 	err := sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host)
 	if err != nil {
 		return nil, err
@@ -266,7 +281,16 @@ func (cli *Client) Close() error {
 // be negotiated when making the actual requests, and for which cases
 // we cannot do the negotiation lazily.
 func (cli *Client) checkVersion(ctx context.Context) error {
-	if !cli.manualOverride && cli.negotiateVersion && !cli.negotiated {
+	if !cli.manualOverride && cli.negotiateVersion && !cli.negotiated.Load() {
+		// Ensure exclusive write access to version and negotiated fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
+		// May have been set during last execution of critical zone
+		if cli.negotiated.Load() {
+			return nil
+		}
+
 		ping, err := cli.Ping(ctx)
 		if err != nil {
 			return err
@@ -282,8 +306,7 @@ func (cli *Client) getAPIPath(ctx context.Context, p string, query url.Values) s
 	var apiPath string
 	_ = cli.checkVersion(ctx)
 	if cli.version != "" {
-		v := strings.TrimPrefix(cli.version, "v")
-		apiPath = path.Join(cli.basePath, "/v"+v, p)
+		apiPath = path.Join(cli.basePath, "/v"+strings.TrimPrefix(cli.version, "v"), p)
 	} else {
 		apiPath = path.Join(cli.basePath, p)
 	}
@@ -312,6 +335,10 @@ func (cli *Client) ClientVersion() string {
 // added (1.24).
 func (cli *Client) NegotiateAPIVersion(ctx context.Context) {
 	if !cli.manualOverride {
+		// Avoid concurrent modification of version-related fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
 		ping, err := cli.Ping(ctx)
 		if err != nil {
 			// FIXME(thaJeztah): Ping returns an error when failing to connect to the API; we should not swallow the error here, and instead returning it.
@@ -336,6 +363,10 @@ func (cli *Client) NegotiateAPIVersion(ctx context.Context) {
 // added (1.24).
 func (cli *Client) NegotiateAPIVersionPing(pingResponse types.Ping) {
 	if !cli.manualOverride {
+		// Avoid concurrent modification of version-related fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
 		cli.negotiateAPIVersionPing(pingResponse)
 	}
 }
@@ -361,7 +392,7 @@ func (cli *Client) negotiateAPIVersionPing(pingResponse types.Ping) {
 	// Store the results, so that automatic API version negotiation (if enabled)
 	// won't be performed on the next request.
 	if cli.negotiateVersion {
-		cli.negotiated = true
+		cli.negotiated.Store(true)
 	}
 }
 
@@ -420,6 +451,10 @@ func (cli *Client) dialerFromTransport() func(context.Context, string, string) (
 //
 // ["docker dial-stdio"]: https://github.com/docker/cli/pull/1014
 func (cli *Client) Dialer() func(context.Context) (net.Conn, error) {
+	return cli.dialer()
+}
+
+func (cli *Client) dialer() func(context.Context) (net.Conn, error) {
 	return func(ctx context.Context) (net.Conn, error) {
 		if dialFn := cli.dialerFromTransport(); dialFn != nil {
 			return dialFn(ctx, cli.proto, cli.addr)

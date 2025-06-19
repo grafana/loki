@@ -13,16 +13,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -36,6 +37,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/indexgateway")
 
 const (
 	maxIndexEntriesPerResponse = 1000
@@ -59,7 +62,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, bool, error)
 }
 
 type Gateway struct {
@@ -107,7 +110,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.New(context.Background(), "IndexGateway.QueryIndex")
+	log, _ := spanlogger.NewOTel(context.Background(), g.log, tracer, "IndexGateway.QueryIndex")
 	defer log.Finish()
 
 	var outerErr, innerErr error
@@ -209,6 +212,10 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
+	logger := util_log.WithContext(ctx, g.log)
+	ctx, sp := tracer.Start(ctx, "indexgateway.GetChunkRef")
+	defer sp.End()
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -234,6 +241,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	initialChunkCount := len(result.Refs)
+	result.Stats.TotalChunks = int64(initialChunkCount)
+	result.Stats.PostFilterChunks = int64(initialChunkCount) // populate early for error reponses
+
 	defer func() {
 		if err == nil {
 			g.metrics.preFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(initialChunkCount))
@@ -246,19 +256,39 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
-	// to the bloom-gateway (through the g.bloomQuerier)
-	if len(v1.ExtractTestableLineFilters(req.Plan.AST)) == 0 {
+	// Extract testable LabelFilters from the plan. If there is none, we can
+	// short-circuit and return before making a req to the bloom-gateway (through
+	// the g.bloomQuerier)
+	if len(v1.ExtractTestableLabelMatchers(req.Plan.AST)) == 0 {
 		return result, nil
 	}
 
-	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Plan)
+	// Doing a "duplicate" index lookup is not ideal,
+	// however, modifying the GetChunkRef() response, which contains the logproto.ChunkRef is neither.
+	start := time.Now()
+	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
+	seriesMap := make(map[uint64]labels.Labels, len(series))
+	for _, s := range series {
+		seriesMap[s.Hash()] = s
+	}
+	sp.AddEvent("indexQuerier.GetSeries", trace.WithAttributes(
+		attribute.String("duration", time.Since(start).String()),
+		attribute.Int("count", len(series)),
+	))
+
+	start = time.Now()
+	chunkRefs, used, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, seriesMap, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}
+	sp.AddEvent("bloomQuerier.FilterChunkRefs", trace.WithAttributes(
+		attribute.String("duration", time.Since(start).String()),
+	))
 
 	result.Refs = chunkRefs
-	level.Info(g.log).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
+	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs), "used_blooms", used)
+	result.Stats.PostFilterChunks = int64(len(result.Refs))
+	result.Stats.UsedBloomFilters = used
 	return result, nil
 }
 
@@ -375,8 +405,8 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 
 func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.IndexGateway_GetShardsServer) error {
 	ctx := server.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetShards")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "indexgateway.GetShards")
+	defer sp.End()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -390,10 +420,9 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 
 	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
 	if !ok {
-		sp.LogKV(
-			"msg", "index does not support forSeries",
-			"action", "falling back to indexQuerier.GetShards impl",
-		)
+		sp.AddEvent("index does not support forSeries", trace.WithAttributes(
+			attribute.String("action", "falling back to indexQuerier.GetShards impl"),
+		))
 		shards, err := g.indexQuerier.GetShards(
 			ctx,
 			instanceID,
@@ -412,7 +441,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	return g.boundedShards(ctx, request, server, instanceID, p, forSeries)
 }
 
-// boundedShards handles bounded shard requests, optionally using blooms and/or returning precomputed chunks.
+// boundedShards handles bounded shard requests, optionally returning precomputed chunks.
 func (g *Gateway) boundedShards(
 	ctx context.Context,
 	req *logproto.ShardsRequest,
@@ -434,8 +463,8 @@ func (g *Gateway) boundedShards(
 	// sending multiple requests to the entire keyspace).
 
 	logger := util_log.WithContext(ctx, g.log)
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.boundedShards")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
+	defer sp.End()
 
 	// 1) for all bounds, get chunk refs
 	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p, nil)
@@ -448,10 +477,9 @@ func (g *Gateway) boundedShards(
 		ct += len(g)
 	}
 
-	sp.LogKV(
-		"stage", "queried local index",
-		"index_chunks_resolved", ct,
-	)
+	sp.AddEvent("queried local index", trace.WithAttributes(
+		attribute.Int("index_chunks_resolved", ct),
+	))
 	// TODO(owen-d): pool
 	refs := make([]*logproto.ChunkRef, 0, ct)
 
@@ -464,33 +492,26 @@ func (g *Gateway) boundedShards(
 	filtered := refs
 
 	// 2) filter via blooms if enabled
-	filters := syntax.ExtractLineFilters(p.Plan().AST)
-	if g.bloomQuerier != nil && len(filters) > 0 {
-		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
-		} else {
-			filtered = xs
-		}
-		sp.LogKV(
-			"stage", "queried bloom gateway",
-			"err", err,
-		)
-	}
+	filters := v1.ExtractTestableLabelMatchers(p.Plan().AST)
+	// NOTE(chaudum): Temporarily disable bloom filtering of chunk refs,
+	// as this doubles the load on bloom gateways.
+	// if g.bloomQuerier != nil && len(filters) > 0 {
+	// 	xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+	// 	if err != nil {
+	// 		level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+	// 	} else {
+	// 		filtered = xs
+	// 	}
+	// 	sp.LogKV(
+	// 		"stage", "queried bloom gateway",
+	// 		"err", err,
+	// 	)
+	// }
 
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
 
-	statistics := stats.Result{
-		Index: stats.Index{
-			TotalChunks:      int64(ct),
-			PostFilterChunks: int64(len(filtered)),
-		},
-	}
-
-	resp := &logproto.ShardsResponse{
-		Statistics: statistics,
-	}
+	resp := &logproto.ShardsResponse{}
 
 	// Edge case: if there are no chunks after filtering, we still need to return a single shard
 	if len(filtered) == 0 {
@@ -515,7 +536,9 @@ func (g *Gateway) boundedShards(
 		}
 	}
 
-	sp.LogKV("msg", "send shards response", "shards", len(resp.Shards))
+	sp.AddEvent("send shards response", trace.WithAttributes(
+		attribute.Int("shards", len(resp.Shards)),
+	))
 
 	var refCt int
 	for _, grp := range resp.ChunkGroups {
@@ -525,8 +548,8 @@ func (g *Gateway) boundedShards(
 	ms := syntax.MatchersExpr{Mts: p.Matchers}
 	level.Debug(logger).Log(
 		"msg", "send shards response",
-		"total_chunks", statistics.Index.TotalChunks,
-		"post_filter_chunks", statistics.Index.PostFilterChunks,
+		"total_chunks", ct,
+		"post_filter_chunks", len(filtered),
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),

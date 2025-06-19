@@ -110,6 +110,21 @@ func (id *ResourceID) String() string {
 	return id.stringValue
 }
 
+// MarshalText returns a textual representation of the ResourceID
+func (id *ResourceID) MarshalText() ([]byte, error) {
+	return []byte(id.String()), nil
+}
+
+// UnmarshalText decodes the textual representation of a ResourceID
+func (id *ResourceID) UnmarshalText(text []byte) error {
+	newId, err := ParseResourceID(string(text))
+	if err != nil {
+		return err
+	}
+	*id = *newId
+	return nil
+}
+
 func newResourceID(parent *ResourceID, resourceTypeName string, resourceName string) *ResourceID {
 	id := &ResourceID{}
 	id.init(parent, chooseResourceType(resourceTypeName, parent), resourceName, true)
@@ -192,7 +207,7 @@ func appendNext(parent *ResourceID, parts []string, id string) (*ResourceID, err
 	}
 
 	if strings.EqualFold(parts[0], providersKey) && (len(parts) == 2 || strings.EqualFold(parts[2], providersKey)) {
-		//provider resource can only be on a tenant or a subscription parent
+		// provider resource can only be on a tenant or a subscription parent
 		if parent.ResourceType.String() != SubscriptionResourceType.String() && parent.ResourceType.String() != TenantResourceType.String() {
 			return nil, fmt.Errorf("invalid resource ID: %s", id)
 		}

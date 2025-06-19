@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 )
@@ -68,7 +68,6 @@ func TestGetTLSSecurityProfile(t *testing.T) {
 	k.StatusStub = func() client.StatusWriter { return sw }
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

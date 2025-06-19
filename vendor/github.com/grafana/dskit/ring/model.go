@@ -45,26 +45,30 @@ func NewDesc() *Desc {
 	}
 }
 
+func timeToUnixSecons(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time) InstanceDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time, readOnly bool, readOnlyUpdated time.Time) InstanceDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]InstanceDesc{}
 	}
 
-	registeredTimestamp := int64(0)
-	if !registeredAt.IsZero() {
-		registeredTimestamp = registeredAt.Unix()
-	}
-
 	ingester := InstanceDesc{
-		Id:                  id,
-		Addr:                addr,
-		Timestamp:           time.Now().Unix(),
-		RegisteredTimestamp: registeredTimestamp,
-		State:               state,
-		Tokens:              tokens,
-		Zone:                zone,
+		Id:                       id,
+		Addr:                     addr,
+		Timestamp:                time.Now().Unix(),
+		State:                    state,
+		Tokens:                   tokens,
+		Zone:                     zone,
+		RegisteredTimestamp:      timeToUnixSecons(registeredAt),
+		ReadOnly:                 readOnly,
+		ReadOnlyUpdatedTimestamp: timeToUnixSecons(readOnlyUpdated),
 	}
 
 	d.Ingesters[id] = ingester
@@ -140,6 +144,30 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	}
 
 	return time.Unix(i.RegisteredTimestamp, 0)
+}
+
+// GetLastHeartbeatAt returns the timestamp of the last heartbeat sent by the instance
+// or a zero value if unknown.
+func (i *InstanceDesc) GetLastHeartbeatAt() time.Time {
+	if i == nil || i.Timestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.Timestamp, 0)
+}
+
+// GetReadOnlyState returns the read-only state and timestamp of last read-only state update.
+func (i *InstanceDesc) GetReadOnlyState() (bool, time.Time) {
+	if i == nil {
+		return false, time.Time{}
+	}
+
+	ts := time.Time{}
+	if i.ReadOnlyUpdatedTimestamp > 0 {
+		ts = time.Unix(i.ReadOnlyUpdatedTimestamp, 0)
+	}
+
+	return i.ReadOnly, ts
 }
 
 func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
@@ -552,6 +580,53 @@ func (d *Desc) instancesWithTokensCountPerZone() map[string]int {
 	return instancesCountPerZone
 }
 
+func (d *Desc) writableInstancesWithTokensCount() int {
+	writableInstancesWithTokensCount := 0
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 && !ingester.ReadOnly {
+				writableInstancesWithTokensCount++
+			}
+		}
+	}
+	return writableInstancesWithTokensCount
+}
+
+func (d *Desc) writableInstancesWithTokensCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 && !ingester.ReadOnly {
+				instancesCountPerZone[ingester.Zone]++
+			}
+		}
+	}
+	return instancesCountPerZone
+}
+
+func (d *Desc) readOnlyInstancesAndOldestReadOnlyUpdatedTimestamp() (int, int64) {
+	readOnlyInstances := 0
+	oldestReadOnlyUpdatedTimestamp := int64(0)
+	first := true
+
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if !ingester.ReadOnly {
+				continue
+			}
+
+			readOnlyInstances++
+			if first {
+				oldestReadOnlyUpdatedTimestamp = ingester.ReadOnlyUpdatedTimestamp
+			} else {
+				oldestReadOnlyUpdatedTimestamp = min(oldestReadOnlyUpdatedTimestamp, ingester.ReadOnlyUpdatedTimestamp)
+			}
+			first = false
+		}
+	}
+	return readOnlyInstances, oldestReadOnlyUpdatedTimestamp
+}
+
 type CompareResult int
 
 // CompareResult responses
@@ -597,6 +672,14 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 		}
 
 		if ing.RegisteredTimestamp != oing.RegisteredTimestamp {
+			return Different
+		}
+
+		if ing.ReadOnly != oing.ReadOnly {
+			return Different
+		}
+
+		if ing.ReadOnlyUpdatedTimestamp != oing.ReadOnlyUpdatedTimestamp {
 			return Different
 		}
 

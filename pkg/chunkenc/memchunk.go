@@ -16,11 +16,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -131,7 +133,7 @@ type MemChunk struct {
 	head HeadBlock
 
 	format   byte
-	encoding Encoding
+	encoding compression.Codec
 	headFmt  HeadBlockFmt
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
@@ -196,7 +198,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error
 	return false, nil
 }
 
-func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -354,7 +356,7 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func NewMemChunk(chunkFormat byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
@@ -369,7 +371,7 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func newMemChunkWithFormat(format byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	panicIfInvalidFormat(format, head)
 
 	symbolizer := newSymbolizer()
@@ -413,10 +415,10 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	bc.format = version
 	switch version {
 	case ChunkFormatV1:
-		bc.encoding = EncGZIP
+		bc.encoding = compression.GZIP
 	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
-		enc := Encoding(db.byte())
+		enc := compression.Codec(db.byte())
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
 		}
@@ -441,13 +443,20 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
+	// There is a rare issue where chunks built by Loki have incorrect offset for some blocks which causes Loki to fail to read those chunks.
+	// While the root cause is yet to be identified, we will try to read those problematic chunks using the expected offset for blocks calculated using other relative offsets in the chunk.
+	expectedBlockOffset := 0
 	if version >= ChunkFormatV4 {
-		// version >= 4 starts writing length of sections after their offsets
+		// version >= 4 starts writing length of sections before their offsets
 		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
+		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
+		expectedBlockOffset = int(structuredMetadataLength + structuredMetadataOffset + 4)
 	} else {
 		// version <= 3 does not store length of metas. metas are followed by metasOffset + hash and then the chunk ends
 		metasOffset = binary.BigEndian.Uint64(b[len(b)-8:])
 		metasLen = uint64(len(b)-(8+4)) - metasOffset
+		// version 1 writes blocks after version number while version 2 and 3 write blocks after chunk encoding
+		expectedBlockOffset = len(b) - len(db.b)
 	}
 	mb := b[metasOffset : metasOffset+metasLen]
 	db = decbuf{b: mb}
@@ -476,18 +485,35 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
-		if blk.offset+l > len(b) {
-			return nil, fmt.Errorf("block %d offset %d + length %d exceeds chunk length %d", i, blk.offset, l, len(b))
+
+		invalidBlockErr := validateBlock(b, blk.offset, l)
+		if invalidBlockErr != nil {
+			level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+			// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+			if blk.offset != expectedBlockOffset {
+				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+				blk.offset = expectedBlockOffset
+				if err := validateBlock(b, blk.offset, l); err != nil {
+					level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+				} else {
+					invalidBlockErr = nil
+					level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+				}
+			}
+
+			// if the block read with expected offset is still invalid, do not continue further
+			if invalidBlockErr != nil {
+				if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+					expectedBlockOffset += l + 4
+					continue
+				}
+				return nil, invalidBlockErr
+			}
 		}
+
+		// next block starts at current block start + current block length + checksum
+		expectedBlockOffset = blk.offset + l + 4
 		blk.b = b[blk.offset : blk.offset+l]
-
-		// Verify checksums.
-		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
-		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
-			continue
-		}
-
 		bc.blocks = append(bc.blocks, blk)
 
 		// Update the counter used to track the size of cut blocks.
@@ -511,7 +537,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		if fromCheckpoint {
 			bc.symbolizer = symbolizerFromCheckpoint(lb)
 		} else {
-			symbolizer, err := symbolizerFromEnc(lb, GetReaderPool(bc.encoding))
+			symbolizer, err := symbolizerFromEnc(lb, compression.GetReaderPool(bc.encoding))
 			if err != nil {
 				return nil, err
 			}
@@ -629,7 +655,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			}
 		} else {
 			var err error
-			n, crcHash, err = c.symbolizer.SerializeTo(w, GetWriterPool(c.encoding))
+			n, crcHash, err = c.symbolizer.SerializeTo(w, compression.GetWriterPool(c.encoding))
 			if err != nil {
 				return offset, errors.Wrap(err, "write structured metadata")
 			}
@@ -752,7 +778,7 @@ func MemchunkFromCheckpoint(chk, head []byte, desiredIfNotUnordered HeadBlockFmt
 }
 
 // Encoding implements Chunk.
-func (c *MemChunk) Encoding() Encoding {
+func (c *MemChunk) Encoding() compression.Codec {
 	return c.encoding
 }
 
@@ -917,7 +943,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(GetWriterPool(c.encoding))
+	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
@@ -1040,7 +1066,14 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(
+	ctx context.Context,
+	from, through time.Time,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -1064,7 +1097,10 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor))
+		its = append(
+			its,
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+		)
 	}
 
 	if !c.head.IsEmpty() {
@@ -1072,7 +1108,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
 	}
 
 	var it iter.SampleIterator
@@ -1124,7 +1160,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
 			continue
 		}
 		if _, err := newChunk.Append(&entry); err != nil {
@@ -1148,7 +1184,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
-	enc        Encoding
+	enc        compression.Codec
 	format     byte
 	symbolizer *symbolizer
 	block
@@ -1158,14 +1194,24 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
-	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (b encBlock) SampleIterator(
+	ctx context.Context,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
-	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(
+		ctx,
+		compression.GetReaderPool(b.enc),
+		b.b,
+		b.format,
+		b.symbolizer,
+		extractors...,
+	)
 }
 
 func (b block) Offset() int {
@@ -1204,7 +1250,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata)
 		if !matches {
 			return
 		}
@@ -1250,45 +1296,66 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
-func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+}
+
+func (hb *headBlock) SampleIterator(
+	ctx context.Context,
+	mint, maxt int64,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
 	}
+
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
 
+	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-		if !ok {
-			continue
+		for _, extractor := range extractors {
+			stats.AddHeadChunkBytes(int64(len(e.s)))
+			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+			if !ok || len(samples) == 0 {
+				continue
+			}
+			var (
+				found bool
+				s     *logproto.Series
+			)
+
+			for _, sample := range samples {
+				value := sample.Value
+				lbls := sample.Labels
+
+				lblStr := lbls.String()
+				baseHash := extractor.BaseLabels().Hash()
+				if s, found = series[lblStr]; !found {
+					s = &logproto.Series{
+						Labels:     lblStr,
+						Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+						StreamHash: baseHash,
+					}
+					series[lblStr] = s
+				}
+
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: e.t,
+					Value:     value,
+					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+				})
+			}
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
 		}
 		stats.AddPostFilterLines(1)
-		var (
-			found bool
-			s     *logproto.Series
-		)
-
-		lbs := parsedLabels.String()
-		if s, found = series[lbs]; !found {
-			s = &logproto.Series{
-				Labels:     lbs,
-				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-				StreamHash: baseHash,
-			}
-			series[lbs] = s
-		}
-
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-		})
 	}
 
-	if extractor.ReferencedStructuredMetadata() {
+	if setQueryReferencedStructuredMetadata {
 		stats.SetQueryReferencedStructuredMetadata()
 	}
 	if len(series) == 0 {
@@ -1306,16 +1373,12 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 	})
 }
 
-func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
-
 type bufferedIterator struct {
 	origBytes []byte
 	stats     *stats.Context
 
 	reader     io.Reader
-	pool       ReaderPool
+	pool       compression.ReaderPool
 	symbolizer *symbolizer
 
 	err error
@@ -1334,16 +1397,17 @@ type bufferedIterator struct {
 	closed bool
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:      stats,
-		origBytes:  b,
-		reader:     nil, // will be initialized later
-		pool:       pool,
-		format:     format,
-		symbolizer: symbolizer,
+		stats:                  stats,
+		origBytes:              b,
+		reader:                 nil, // will be initialized later
+		pool:                   pool,
+		format:                 format,
+		symbolizer:             symbolizer,
+		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
 	}
 }
 
@@ -1386,14 +1450,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1408,7 +1472,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, nil, false
+		return 0, nil, labels.EmptyLabels(), false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1419,7 +1483,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1439,7 +1503,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1448,7 +1512,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	if si.format < ChunkFormatV4 {
 		si.stats.AddDecompressedBytes(decompressedBytes)
 		si.stats.AddDecompressedLines(1)
-		return ts, si.buf[:lineSize], nil, true
+		return ts, si.buf[:lineSize], labels.EmptyLabels(), true
 	}
 
 	lastAttempt = 0
@@ -1459,14 +1523,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, labels.EmptyLabels(), false
 			}
 		}
 		var l uint64
@@ -1516,7 +1580,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		si.symbolsBuf = SymbolsPool.Get(nSymbols).([]symbol)
 		if nSymbols > cap(si.symbolsBuf) {
 			si.err = fmt.Errorf("could not get a symbols matrix of size %d, actual %d", nSymbols, cap(si.symbolsBuf))
-			return 0, nil, nil, false
+			return 0, nil, labels.EmptyLabels(), false
 		}
 	}
 
@@ -1532,14 +1596,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 			if err != nil {
 				if err != io.EOF {
 					si.err = err
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					si.err = fmt.Errorf("invalid data in chunk")
-					return 0, nil, nil, false
+					return 0, nil, labels.EmptyLabels(), false
 				}
 			}
 			sName, nWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
@@ -1558,7 +1622,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
+	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1587,15 +1652,15 @@ func (si *bufferedIterator) close() {
 		si.symbolsBuf = nil
 	}
 
-	if si.currStructuredMetadata != nil {
+	if !si.currStructuredMetadata.IsEmpty() {
 		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
-		si.currStructuredMetadata = nil
+		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
@@ -1622,7 +1687,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !matches {
 			continue
 		}
@@ -1647,11 +1712,28 @@ func (e *entryBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
+
+	if len(extractors) > 1 {
+		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
+	}
+
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractor,
+		extractor:        extractors[0],
 		stats:            stats.FromContext(ctx),
+		curr:             []logproto.Sample{},
+		currLabels:       []log.LabelsResult{},
 	}
 }
 
@@ -1661,21 +1743,50 @@ type sampleBufferedIterator struct {
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
 
-	cur        logproto.Sample
-	currLabels log.LabelsResult
+	curr       []logproto.Sample
+	currLabels []log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
+	// sample at e.curr[0] is the current sample
+	// since there is more than one sample, shift the remaining samples down by one
+	// to make e.curr[1] the new current sample
+	if len(e.curr) > 1 {
+		e.curr = e.curr[1:]
+		e.currLabels = e.currLabels[1:]
+
+		return true
+	}
+
+	// sample at e.curr[0] is the current sample
+	// since there is only one sample (the current one), we need to shift it out
+	// and clear the slice
+	if len(e.curr) == 1 {
+		e.curr = e.curr[:0]
+		e.currLabels = e.currLabels[:0]
+	}
+
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
-		if !ok {
+		e.stats.AddPostFilterLines(1)
+
+		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		if !ok || len(samples) == 0 {
 			continue
 		}
-		e.stats.AddPostFilterLines(1)
-		e.currLabels = labels
-		e.cur.Value = val
-		e.cur.Hash = xxhash.Sum64(e.currLine)
-		e.cur.Timestamp = e.currTs
+
+		for _, sample := range samples {
+			e.currLabels = append(e.currLabels, sample.Labels)
+
+			// multilple samples from the same line can't have the same line hash or they will be deduplicated
+			// so they must have unique labels, which we'll use to create a unique line hash
+			lblString := sample.Labels.String()
+			e.curr = append(e.curr, logproto.Sample{
+				Timestamp: e.currTs,
+				Value:     sample.Value,
+				Hash:      util.UniqueSampleHash(lblString, e.currLine),
+			})
+		}
+
 		return true
 	}
 	return false
@@ -1689,10 +1800,28 @@ func (e *sampleBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.cur
+	return e.curr[0]
+}
+
+// validateBlock validates block by doing following checks:
+// 1. Offset+length do not overrun size of the chunk from which we are reading the block.
+// 2. Checksum of the block we will read matches the stored checksum in the chunk.
+func validateBlock(chunkBytes []byte, offset, length int) error {
+	if offset+length > len(chunkBytes) {
+		return fmt.Errorf("offset %d + length %d exceeds chunk length %d", offset, length, len(chunkBytes))
+	}
+
+	blockBytes := chunkBytes[offset : offset+length]
+	// Verify checksums.
+	expCRC := binary.BigEndian.Uint32(chunkBytes[offset+length:])
+	if expCRC != crc32.Checksum(blockBytes, castagnoliTable) {
+		return ErrInvalidChecksum
+	}
+
+	return nil
 }

@@ -44,7 +44,7 @@ func TestQueryTags(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			checked := false
-			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 				require.Equal(t, tc.exp, req.Context().Value(QueryTagsHTTPHeader).(string))
 				checked = true
 			}))
@@ -85,7 +85,7 @@ func TestQueryMetrics(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			checked := false
-			mware := ExtractQueryMetricsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mware := ExtractQueryMetricsMiddleware().Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 				require.Equal(t, tc.exp, req.Context().Value(QueryQueueTimeHTTPHeader))
 				checked = true
 			}))
@@ -93,6 +93,52 @@ func TestQueryMetrics(t *testing.T) {
 			mware.ServeHTTP(w, req)
 
 			assert.True(t, true, checked)
+		})
+	}
+}
+
+func Test_testToKeyValues(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		exp  []interface{}
+	}{
+		{
+			name: "canonical-form",
+			in:   "Source=logvolhist",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+			},
+		},
+		{
+			name: "canonical-form-multiple-values",
+			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
+			exp: []interface{}{
+				"source",
+				"logvolhist",
+				"feature",
+				"beta",
+				"user",
+				"Jinx@grafana.com",
+			},
+		},
+		{
+			name: "empty",
+			in:   "",
+			exp:  []interface{}{},
+		},
+		{
+			name: "non-canonical form",
+			in:   "abc",
+			exp:  []interface{}{},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := TagsToKeyValues(c.in)
+			assert.Equal(t, c.exp, got)
 		})
 	}
 }

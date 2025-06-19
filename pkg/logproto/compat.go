@@ -14,11 +14,11 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -51,14 +51,18 @@ func ToWriteRequest(lbls []labels.Labels, samples []LegacySample, metadata []*Me
 // Note: while resulting labels.Labels is supposedly sorted, this function
 // doesn't enforce that. If input is not sorted, output will be wrong.
 func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
-	return *(*labels.Labels)(unsafe.Pointer(&ls))
+	return *(*labels.Labels)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
 func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
-	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
+	return *(*[]LabelAdapter)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
+}
+
+func EmptyLabelAdapters() []LabelAdapter {
+	return FromLabelsToLabelAdapters(labels.EmptyLabels())
 }
 
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
@@ -80,10 +84,6 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 	}
 	sort.Sort(byLabel(result)) // The labels should be sorted upon initialisation.
 	return result
-}
-
-func FromMetricsToLabels(metric model.Metric) labels.Labels {
-	return FromLabelAdaptersToLabels(FromMetricsToLabelAdapters(metric))
 }
 
 type byLabel []LabelAdapter
@@ -159,7 +159,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 
 	bs := iter.ReadStringAsSlice()
-	ss := *(*string)(unsafe.Pointer(&bs))
+	ss := *(*string)(unsafe.Pointer(&bs)) // #nosec G103 -- we know the string is not mutated
 	v, err := strconv.ParseFloat(ss, 64)
 	if err != nil {
 		iter.ReportError("logproto.LegacySample", err.Error())
@@ -280,12 +280,12 @@ func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
-// LogToSpan writes information about this request to an OpenTracing span
-func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(int64(m.From)).String()),
-		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
+// LogToSpan writes information about this request to an OTel span
+func (m *IndexStatsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", timestamp.Time(int64(m.From)).String()),
+		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
 }
 
@@ -310,9 +310,6 @@ func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers
 }
 
-// GetCachingOptions returns the caching options.
-func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
@@ -333,13 +330,13 @@ func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
-// LogToSpan writes information about this request to an OpenTracing span
-func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(int64(m.From)).String()),
-		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
-		otlog.String("step", time.Duration(m.Step).String()),
+// LogToSpan writes information about this request to an OTel span
+func (m *VolumeRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", timestamp.Time(int64(m.From)).String()),
+		attribute.String("end", timestamp.Time(int64(m.Through)).String()),
+		attribute.String("step", time.Duration(m.Step).String()),
 	)
 }
 
@@ -398,6 +395,7 @@ func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resul
 		if len(refs) > 0 {
 			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
+				Labels:      chunkRef.Labels,
 				Tenant:      chunkRef.Tenant,
 				Refs:        refs,
 			})
@@ -500,14 +498,13 @@ func (m *ShardsRequest) WithStartEndForCache(start, end time.Time) resultscache.
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
-func (m *ShardsRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("from", timestamp.Time(int64(m.From)).String()),
-		otlog.String("through", timestamp.Time(int64(m.Through)).String()),
-		otlog.String("query", m.GetQuery()),
-		otlog.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
-	}
-	sp.LogFields(fields...)
+func (m *ShardsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("from", timestamp.Time(int64(m.From)).String()),
+		attribute.String("through", timestamp.Time(int64(m.Through)).String()),
+		attribute.String("query", m.GetQuery()),
+		attribute.String("target_bytes_per_shard", datasize.ByteSize(m.TargetBytesPerShard).HumanReadable()),
+	)
 }
 
 func (m *DetectedFieldsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
@@ -525,16 +522,15 @@ func (m *DetectedFieldsRequest) WithQuery(query string) definitions.Request {
 	return &clone
 }
 
-func (m *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
-		otlog.String("field_limit", fmt.Sprintf("%d", m.FieldLimit)),
-		otlog.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
-	}
-	sp.LogFields(fields...)
+func (m *DetectedFieldsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", m.Start.String()),
+		attribute.String("end", m.End.String()),
+		attribute.String("step", time.Duration(m.Step).String()),
+		attribute.String("field_limit", fmt.Sprintf("%d", m.Limit)),
+		attribute.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
+	)
 }
 
 func (m *QueryPatternsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
@@ -556,14 +552,13 @@ func (m *QueryPatternsRequest) WithStartEndForCache(start, end time.Time) result
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
-func (m *QueryPatternsRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
-	}
-	sp.LogFields(fields...)
+func (m *QueryPatternsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", m.Start.String()),
+		attribute.String("end", m.End.String()),
+		attribute.String("step", time.Duration(m.Step).String()),
+	)
 }
 
 func (m *DetectedLabelsRequest) GetStep() int64 { return 0 }
@@ -587,40 +582,10 @@ func (m *DetectedLabelsRequest) WithStartEndForCache(start, end time.Time) resul
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
-func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-	}
-	sp.LogFields(fields...)
-}
-
-func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
-func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
-	clone := *m
-	clone.Start = start
-	clone.End = end
-	return &clone
-}
-
-func (m *QuerySamplesRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
-	return m.WithStartEnd(start, end).(resultscache.Request)
-}
-
-func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
-	clone := *m
-	clone.Query = query
-	return &clone
-}
-
-func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
-	}
-	sp.LogFields(fields...)
+func (m *DetectedLabelsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", m.GetQuery()),
+		attribute.String("start", m.Start.String()),
+		attribute.String("end", m.End.String()),
+	)
 }

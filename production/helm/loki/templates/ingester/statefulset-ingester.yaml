@@ -17,12 +17,13 @@ spec:
   replicas: {{ .Values.ingester.replicas }}
 {{- end }}
   podManagementPolicy: Parallel
+{{- with .Values.ingester.updateStrategy }}
   updateStrategy:
-    rollingUpdate:
-      partition: 0
+     {{- tpl (. | toYaml) $ | nindent 4 }}
+{{- end }}
   serviceName: {{ include "loki.ingesterFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -45,16 +46,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
+        {{- include "loki.ingesterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.ingester.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.ingester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -89,7 +87,7 @@ spec:
             - -config.file=/etc/loki/config/config.yaml
             - -ingester.availability-zone=zone-default
             - -target=ingester
-            {{- with .Values.ingester.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.ingester.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -102,11 +100,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.ingester.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.ingester.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.ingester.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.ingester.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -125,7 +123,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.ingester.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.ingester.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.ingester.resources }}
@@ -166,7 +164,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.ingester.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.ingester.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if not .Values.ingester.persistence.enabled }}
@@ -184,7 +182,9 @@ spec:
   {{- else }}
   volumeClaimTemplates:
   {{- range .Values.ingester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

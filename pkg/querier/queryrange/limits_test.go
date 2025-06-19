@@ -20,14 +20,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 func TestLimits(t *testing.T) {
@@ -65,9 +66,7 @@ func TestMetricQueryCacheKey(t *testing.T) {
 		ingesterQueryWindow = defaultSplit * 3
 	)
 
-	var (
-		step = (15 * time.Second).Milliseconds()
-	)
+	step := (15 * time.Second).Milliseconds()
 
 	l := fakeLimits{
 		splitDuration:         map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
@@ -204,16 +203,10 @@ func Test_seriesLimiter(t *testing.T) {
 						F: 0.013333333333333334,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "anotherjob",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "anotherjob",
+				),
 			},
 		}
 		params, err := ParamsFromRequest(req)
@@ -228,15 +221,272 @@ func Test_seriesLimiter(t *testing.T) {
 	require.LessOrEqual(t, *c, 4)
 }
 
+func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		req              *LokiRequest
+		resp             *LokiPromResponse
+		expectedResponse *LokiPromResponse
+		expectedWarnings []string
+	}{
+		{
+			name: "single variant under limit should not exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+			}),
+		},
+		{
+			name: "multiple variants under limit should not exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+		},
+		{
+			name: "single variant over the limit should exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app4"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
+		},
+		{
+			name: "multiple variants over the limit should exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app4"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app5"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
+		},
+	} {
+
+		t.Run(test.name, func(t *testing.T) {
+			middleware := newSeriesLimiter(3)
+			mock := variantMockHandler{
+				response: test.resp,
+			}
+			handler := middleware.Wrap(mock)
+
+			metadata, ctx := metadata.NewContext(context.Background())
+
+			resp, err := handler.Do(ctx, &LokiRequest{})
+			require.NoError(t, err)
+			require.EqualValues(t, test.expectedResponse.Response.Data, resp.(*LokiPromResponse).Response.Data)
+
+			if test.expectedWarnings != nil {
+				require.Equal(t, test.expectedWarnings, metadata.Warnings())
+			}
+		})
+	}
+}
+
+type seriesLabels = logproto.LabelAdapter
+
+// variantMockHandler is a mock implementation of queryrangebase.Handler
+type variantMockHandler struct {
+	response *LokiPromResponse
+}
+
+func (m variantMockHandler) Do(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+	// For testing, we'll return the predefined responses
+	// This is just a mock - in a real case, the handler would return
+	// different responses based on the request
+	if m.response != nil {
+		return m.response, nil
+	}
+	// Return empty response by default
+	return createPromResponse(nil), nil
+}
+
+func createPromResponse(series [][]seriesLabels) *LokiPromResponse {
+	result := make([]queryrangebase.SampleStream, len(series))
+	for i, labels := range series {
+		result[i] = queryrangebase.SampleStream{
+			Labels:  labels,
+			Samples: []logproto.LegacySample{{Value: 1.0}},
+		}
+	}
+
+	return &LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Data: queryrangebase.PrometheusData{
+				ResultType: "matrix",
+				Result:     result,
+			},
+		},
+	}
+}
+
 func Test_MaxQueryParallelism(t *testing.T) {
 	maxQueryParallelism := 2
 
 	var count atomic.Int32
-	var max atomic.Int32
+	var maxVal atomic.Int32
 	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		cur := count.Inc()
-		if cur > max.Load() {
-			max.Store(cur)
+		if cur > maxVal.Load() {
+			maxVal.Store(cur)
 		}
 		defer count.Dec()
 		// simulate some work
@@ -248,7 +498,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	_, _ = NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
+			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
@@ -262,7 +512,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 			})
 		}),
 	).Do(ctx, &LokiRequest{})
-	maxFound := int(max.Load())
+	maxFound := int(maxVal.Load())
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
 
@@ -306,7 +556,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
+			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})
@@ -417,7 +667,7 @@ func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
 
 func Test_WeightedParallelism(t *testing.T) {
 	limits := &fakeLimits{
-		tsdbMaxQueryParallelism: 100,
+		tsdbMaxQueryParallelism: 2048,
 		maxQueryParallelism:     10,
 	}
 
@@ -477,19 +727,25 @@ func Test_WeightedParallelism(t *testing.T) {
 				desc:  "50% each",
 				start: borderTime.Add(-time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   55,
+				exp:   1029,
 			},
 			{
 				desc:  "75/25 split",
 				start: borderTime.Add(-3 * time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   32,
+				exp:   519,
 			},
 			{
 				desc:  "start==end",
 				start: borderTime.Add(time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   100,
+				exp:   2048,
+			},
+			{
+				desc:  "huge range to make sure we don't int overflow in the calculations.",
+				start: borderTime,
+				end:   borderTime.Add(24 * time.Hour * 365 * 20),
+				exp:   2048,
 			},
 		} {
 			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {
@@ -497,7 +753,6 @@ func Test_WeightedParallelism(t *testing.T) {
 			})
 		}
 	}
-
 }
 
 func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
@@ -676,9 +931,9 @@ func Test_MaxQuerySize(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1))})
+			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQueryStatsHits, 1))})
 
-			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1))})
+			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / max(tc.expectedQuerierStatsHits, 1))})
 
 			_, promHandler := promqlResult(matrix)
 
@@ -713,7 +968,6 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
 		})
 	}
-
 }
 
 func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
@@ -759,7 +1013,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			}
 
 			handler := tc.middleware.Wrap(
-				base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+				base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 					return &LokiResponse{}, nil
 				}),
 			)
@@ -772,14 +1026,13 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 }
 
 func TestAcquireWithTiming(t *testing.T) {
-
 	ctx := context.Background()
 	sem := NewSemaphoreWithTiming(2)
 
 	// Channel to collect waiting times
 	waitingTimes := make(chan struct {
 		GoroutineID int
-		WaitingTime int64
+		WaitingTime time.Duration
 	}, 3)
 
 	tryAcquire := func(n int64, goroutineID int) {
@@ -789,8 +1042,8 @@ func TestAcquireWithTiming(t *testing.T) {
 		}
 		waitingTimes <- struct {
 			GoroutineID int
-			WaitingTime int64
-		}{goroutineID, elapsed.Milliseconds()}
+			WaitingTime time.Duration
+		}{goroutineID, elapsed}
 
 		defer sem.sem.Release(n)
 
@@ -808,13 +1061,13 @@ func TestAcquireWithTiming(t *testing.T) {
 	// Collect and sort waiting times
 	var waitingDurations []struct {
 		GoroutineID int
-		WaitingTime int64
+		WaitingTime time.Duration
 	}
 	for i := 0; i < 3; i++ {
 		waitingDurations = append(waitingDurations, <-waitingTimes)
 	}
 	// Find and check the waiting time for the third goroutine
-	var waiting3 int64
+	var waiting3 time.Duration
 	for _, waiting := range waitingDurations {
 		if waiting.GoroutineID == 3 {
 			waiting3 = waiting.WaitingTime
@@ -822,7 +1075,7 @@ func TestAcquireWithTiming(t *testing.T) {
 		}
 	}
 
-	// Check that the waiting time for the third request is larger than 0 milliseconds and less than or equal to 10-5=5 milliseconds
-	require.Greater(t, waiting3, 0*time.Millisecond)
-	require.LessOrEqual(t, waiting3, 5*time.Millisecond)
+	// Check that the waiting time for the third request is larger than 0 milliseconds and less than 10 milliseconds
+	require.Greater(t, waiting3, 0*time.Nanosecond)
+	require.Less(t, waiting3, 10*time.Millisecond)
 }

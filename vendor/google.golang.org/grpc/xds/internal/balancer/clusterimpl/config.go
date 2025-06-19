@@ -22,8 +22,8 @@ import (
 	"encoding/json"
 
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/serviceconfig"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 // DropConfig contains the category, and drop ratio.
@@ -40,10 +40,12 @@ type LBConfig struct {
 	EDSServiceName string `json:"edsServiceName,omitempty"`
 	// LoadReportingServer is the LRS server to send load reports to. If not
 	// present, load reporting will be disabled.
-	LoadReportingServer   *bootstrap.ServerConfig               `json:"lrsLoadReportingServer,omitempty"`
-	MaxConcurrentRequests *uint32                               `json:"maxConcurrentRequests,omitempty"`
-	DropCategories        []DropConfig                          `json:"dropCategories,omitempty"`
-	ChildPolicy           *internalserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
+	LoadReportingServer   *bootstrap.ServerConfig `json:"lrsLoadReportingServer,omitempty"`
+	MaxConcurrentRequests *uint32                 `json:"maxConcurrentRequests,omitempty"`
+	DropCategories        []DropConfig            `json:"dropCategories,omitempty"`
+	// TelemetryLabels are the telemetry Labels associated with this cluster.
+	TelemetryLabels map[string]string                     `json:"telemetryLabels,omitempty"`
+	ChildPolicy     *internalserviceconfig.BalancerConfig `json:"childPolicy,omitempty"`
 }
 
 func parseConfig(c json.RawMessage) (*LBConfig, error) {

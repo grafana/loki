@@ -2,12 +2,12 @@ package rulestore
 
 import (
 	"flag"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/grafana/loki/v3/pkg/configs/client"
-	"github.com/grafana/loki/v3/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
@@ -15,17 +15,17 @@ import (
 // Config configures a rule store.
 type Config struct {
 	bucket.Config `yaml:",inline"`
-	ConfigDB      client.Config `yaml:"configdb"`
-	Local         local.Config  `yaml:"local"`
+	Backend       string       `yaml:"backend"`
+	Local         local.Config `yaml:"local"`
 }
 
 // RegisterFlags registers the backend storage config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	prefix := "ruler-storage."
 
-	cfg.ExtraBackends = []string{configdb.Name, local.Name}
-	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
+	cfg.ExtraBackends = []string{local.Name}
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
+	f.StringVar(&cfg.Backend, prefix+"backend", "filesystem", fmt.Sprintf("Backend storage to use. Supported backends are: local, %s", strings.Join(bucket.SupportedBackends, ", ")))
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -124,7 +125,7 @@ type astMapperware struct {
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	maxQuerierBytesReadCapture := func(id string) int { return ast.limits.MaxQuerierBytesRead(ctx, id) }
@@ -151,7 +152,7 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, ast.logger)
-	spLogger := spanlogger.FromContextWithFallback(
+	spLogger := spanlogger.FromContext(
 		ctx,
 		logger,
 	)
@@ -161,11 +162,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
-	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
-	}
+	maxRVDuration, maxOffset := maxRangeVectorAndOffsetDuration(params.GetExpression())
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
@@ -203,20 +200,32 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	v := ast.limits.TSDBShardingStrategy(tenants[0])
-	version, err := logql.ParseShardVersion(v)
-	if err != nil {
-		level.Warn(spLogger).Log(
-			"msg", "failed to parse shard version",
-			"fallback", version.String(),
-			"err", err.Error(),
-			"user", tenants[0],
-			"query", r.GetQuery(),
-		)
-	}
-	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+	var strategy logql.ShardingStrategy
 
-	mapper := logql.NewShardMapper(strategy, ast.metrics, ast.shardAggregation)
+	if conf.IndexType == types.TSDBType {
+		v := ast.limits.TSDBShardingStrategy(tenants[0])
+		version, err := logql.ParseShardVersion(v)
+		if err != nil {
+			level.Warn(spLogger).Log(
+				"msg", "failed to parse shard version",
+				"fallback", version.String(),
+				"err", err.Error(),
+				"user", tenants[0],
+				"query", r.GetQuery(),
+			)
+		}
+		strategy = version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
+	} else {
+		strategy = logql.NewPowerOfTwoStrategy(resolver)
+	}
+
+	// Merge global shard aggregations and tenant overrides.
+	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
+		return ast.limits.ShardAggregations(tenant)
+	})
+	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.shardAggregation...))
+
+	mapper := logql.NewShardMapper(strategy, ast.metrics, mergedShardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
@@ -323,7 +332,7 @@ type shardSplitter struct {
 func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	minShardingLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, splitter.limits.MinShardingLookback)
 	if minShardingLookback == 0 {
@@ -456,7 +465,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	requestResponses, err := queryrangebase.DoRequests(
 		ctx,

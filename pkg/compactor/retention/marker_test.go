@@ -50,7 +50,7 @@ func Test_marlkerProcessor_Deadlock(t *testing.T) {
 	paths, _, err := p.availablePath()
 	require.NoError(t, err)
 	for _, path := range paths {
-		require.NoError(t, p.processPath(path, func(ctx context.Context, chunkId []byte) error { return nil }))
+		require.NoError(t, p.processPath(path, func(_ context.Context, _ []byte) error { return nil }))
 		require.NoError(t, p.deleteEmptyMarks(path))
 	}
 	paths, _, err = p.availablePath()

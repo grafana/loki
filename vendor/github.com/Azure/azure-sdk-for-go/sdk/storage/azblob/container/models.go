@@ -7,7 +7,9 @@
 package container
 
 import (
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"reflect"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
@@ -24,14 +26,29 @@ func NewSharedKeyCredential(accountName, accountKey string) (*SharedKeyCredentia
 
 // Request Model Declaration -------------------------------------------------------------------------------------------
 
-// CpkScopeInfo contains a group of parameters for the ContainerClient.Create method.
-type CpkScopeInfo = generated.ContainerCpkScopeInfo
+// CPKScopeInfo contains a group of parameters for the ContainerClient.Create method.
+type CPKScopeInfo = generated.ContainerCPKScopeInfo
 
-// BlobProperties - Properties of a blob
-type BlobProperties = generated.BlobPropertiesInternal
+// BlobFlatListSegment - List of BlobItem.
+type BlobFlatListSegment = generated.BlobFlatListSegment
 
-// BlobItem - An Azure Storage blob
-type BlobItem = generated.BlobItemInternal
+// BlobHierarchyListSegment - List of BlobItem and BlobPrefix.
+type BlobHierarchyListSegment = generated.BlobHierarchyListSegment
+
+// BlobProperties - Properties of a blob.
+type BlobProperties = generated.BlobProperties
+
+// BlobItem - An Azure Storage blob.
+type BlobItem = generated.BlobItem
+
+// BlobTags - Blob tags.
+type BlobTags = generated.BlobTags
+
+// BlobPrefix is a blob's prefix when hierarchically listing blobs.
+type BlobPrefix = generated.BlobPrefix
+
+// BlobTag - a key/value pair on a blob.
+type BlobTag = generated.BlobTag
 
 // AccessConditions identifies container-specific access conditions which you optionally set.
 type AccessConditions = exported.ContainerAccessConditions
@@ -42,28 +59,28 @@ type LeaseAccessConditions = exported.LeaseAccessConditions
 // ModifiedAccessConditions contains a group of parameters for specifying access conditions.
 type ModifiedAccessConditions = exported.ModifiedAccessConditions
 
-// AccessPolicy - An Access policy
+// AccessPolicy - An Access policy.
 type AccessPolicy = generated.AccessPolicy
 
 // AccessPolicyPermission type simplifies creating the permissions string for a container's access policy.
 // Initialize an instance of this type and then call its String method to set AccessPolicy's Permission field.
 type AccessPolicyPermission = exported.AccessPolicyPermission
 
-// SignedIdentifier - signed identifier
+// SignedIdentifier - signed identifier.
 type SignedIdentifier = generated.SignedIdentifier
 
 // Request Model Declaration -------------------------------------------------------------------------------------------
 
 // CreateOptions contains the optional parameters for the Client.Create method.
 type CreateOptions struct {
-	// Specifies whether data in the container may be accessed publicly and the level of access
+	// Specifies whether data in the container may be accessed publicly and the level of access.
 	Access *PublicAccessType
 
 	// Optional. Specifies a user-defined name-value pair associated with the blob.
-	Metadata map[string]string
+	Metadata map[string]*string
 
 	// Optional. Specifies the encryption scope settings to set on the container.
-	CpkScopeInfo *CpkScopeInfo
+	CPKScopeInfo *CPKScopeInfo
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -163,11 +180,11 @@ type ListBlobsFlatOptions struct {
 	// as the value for the marker parameter in a subsequent call to request the next
 	// page of list items. The marker value is opaque to the client.
 	Marker *string
-	// Specifies the maximum number of containers to return. If the request does not specify maxresults, or specifies a value
+	// Specifies the maximum number of containers to return. If the request does not specify MaxResults, or specifies a value
 	// greater than 5000, the server will return up to 5000 items. Note that if the
 	// listing operation crosses a partition boundary, then the service will return a continuation token for retrieving the remainder
 	// of the results. For this reason, it is possible that the service will
-	// return fewer results than specified by maxresults, or than the default of 5000.
+	// return fewer results than specified by MaxResults, or than the default of 5000.
 	MaxResults *int32
 	// Filters the results to return only containers whose name begins with the specified prefix.
 	Prefix *string
@@ -185,11 +202,11 @@ type ListBlobsHierarchyOptions struct {
 	// as the value for the marker parameter in a subsequent call to request the next
 	// page of list items. The marker value is opaque to the client.
 	Marker *string
-	// Specifies the maximum number of containers to return. If the request does not specify maxresults, or specifies a value
+	// Specifies the maximum number of containers to return. If the request does not specify MaxResults, or specifies a value
 	// greater than 5000, the server will return up to 5000 items. Note that if the
 	// listing operation crosses a partition boundary, then the service will return a continuation token for retrieving the remainder
 	// of the results. For this reason, it is possible that the service will
-	// return fewer results than specified by maxresults, or than the default of 5000.
+	// return fewer results than specified by MaxResults, or than the default of 5000.
 	MaxResults *int32
 	// Filters the results to return only containers whose name begins with the specified prefix.
 	Prefix *string
@@ -211,9 +228,30 @@ func (o *ListBlobsHierarchyOptions) format() generated.ContainerClientListBlobHi
 
 // ---------------------------------------------------------------------------------------------------------------------
 
+// GetSASURLOptions contains the optional parameters for the Client.GetSASURL method.
+type GetSASURLOptions struct {
+	StartTime *time.Time
+}
+
+func (o *GetSASURLOptions) format() time.Time {
+	if o == nil {
+		return time.Time{}
+	}
+
+	var st time.Time
+	if o.StartTime != nil {
+		st = o.StartTime.UTC()
+	} else {
+		st = time.Time{}
+	}
+	return st
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
 // SetMetadataOptions contains the optional parameters for the Client.SetMetadata method.
 type SetMetadataOptions struct {
-	Metadata                 map[string]string
+	Metadata                 map[string]*string
 	LeaseAccessConditions    *LeaseAccessConditions
 	ModifiedAccessConditions *ModifiedAccessConditions
 }
@@ -243,21 +281,147 @@ func (o *GetAccessPolicyOptions) format() (*generated.ContainerClientGetAccessPo
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-// SetAccessPolicyOptions provides set of configurations for ContainerClient.SetAccessPolicy operation
+// SetAccessPolicyOptions provides set of configurations for ContainerClient.SetAccessPolicy operation.
 type SetAccessPolicyOptions struct {
-	// Specifies whether data in the container may be accessed publicly and the level of access
-	Access *PublicAccessType
-	// Provides a client-generated, opaque value with a 1 KB character limit that is recorded in the analytics logs when storage
-	// analytics logging is enabled.
+	// Specifies whether data in the container may be accessed publicly and the level of access.
+	// If this header is not included in the request, container data is private to the account owner.
+	Access           *PublicAccessType
 	AccessConditions *AccessConditions
+	ContainerACL     []*SignedIdentifier
 }
 
-func (o *SetAccessPolicyOptions) format() (*generated.ContainerClientSetAccessPolicyOptions, *LeaseAccessConditions, *ModifiedAccessConditions) {
+func (o *SetAccessPolicyOptions) format() (*generated.ContainerClientSetAccessPolicyOptions, *LeaseAccessConditions, *ModifiedAccessConditions, []*SignedIdentifier, error) {
 	if o == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
+	}
+	if o.ContainerACL != nil {
+		for _, c := range o.ContainerACL {
+			err := formatTime(c)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+		}
 	}
 	lac, mac := exported.FormatContainerAccessConditions(o.AccessConditions)
 	return &generated.ContainerClientSetAccessPolicyOptions{
 		Access: o.Access,
-	}, lac, mac
+	}, lac, mac, o.ContainerACL, nil
+}
+
+func formatTime(c *SignedIdentifier) error {
+	if c.AccessPolicy == nil {
+		return nil
+	}
+
+	if c.AccessPolicy.Start != nil {
+		st, err := time.Parse(time.RFC3339, c.AccessPolicy.Start.UTC().Format(time.RFC3339))
+		if err != nil {
+			return err
+		}
+		c.AccessPolicy.Start = &st
+	}
+	if c.AccessPolicy.Expiry != nil {
+		et, err := time.Parse(time.RFC3339, c.AccessPolicy.Expiry.UTC().Format(time.RFC3339))
+		if err != nil {
+			return err
+		}
+		c.AccessPolicy.Expiry = &et
+	}
+
+	return nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// GetAccountInfoOptions provides set of options for Client.GetAccountInfo
+type GetAccountInfoOptions struct {
+	// placeholder for future options
+}
+
+func (o *GetAccountInfoOptions) format() *generated.ContainerClientGetAccountInfoOptions {
+	return nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// BatchDeleteOptions contains the optional parameters for the BatchBuilder.Delete method.
+type BatchDeleteOptions struct {
+	blob.DeleteOptions
+	VersionID *string
+	Snapshot  *string
+}
+
+func (o *BatchDeleteOptions) format() (*generated.BlobClientDeleteOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
+	if o == nil {
+		return nil, nil, nil
+	}
+
+	basics := generated.BlobClientDeleteOptions{
+		DeleteSnapshots: o.DeleteSnapshots,
+		DeleteType:      o.BlobDeleteType, // None by default
+		Snapshot:        o.Snapshot,
+		VersionID:       o.VersionID,
+	}
+
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
+	return &basics, leaseAccessConditions, modifiedAccessConditions
+}
+
+// BatchSetTierOptions contains the optional parameters for the BatchBuilder.SetTier method.
+type BatchSetTierOptions struct {
+	blob.SetTierOptions
+	VersionID *string
+	Snapshot  *string
+}
+
+func (o *BatchSetTierOptions) format() (*generated.BlobClientSetTierOptions, *generated.LeaseAccessConditions, *generated.ModifiedAccessConditions) {
+	if o == nil {
+		return nil, nil, nil
+	}
+
+	basics := generated.BlobClientSetTierOptions{
+		RehydratePriority: o.RehydratePriority,
+		Snapshot:          o.Snapshot,
+		VersionID:         o.VersionID,
+	}
+
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
+	return &basics, leaseAccessConditions, modifiedAccessConditions
+}
+
+// SubmitBatchOptions contains the optional parameters for the Client.SubmitBatch method.
+type SubmitBatchOptions struct {
+	// placeholder for future options
+}
+
+func (o *SubmitBatchOptions) format() *generated.ContainerClientSubmitBatchOptions {
+	return nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// FilterBlobsOptions provides set of options for Client.FilterBlobs.
+type FilterBlobsOptions struct {
+	// A string value that identifies the portion of the list of containers to be returned with the next listing operation. The
+	// operation returns the NextMarker value within the response body if the listing
+	// operation did not return all containers remaining to be listed with the current page. The NextMarker value can be used
+	// as the value for the marker parameter in a subsequent call to request the next
+	// page of list items. The marker value is opaque to the client.
+	Marker *string
+	// Specifies the maximum number of containers to return. If the request does not specify maxresults, or specifies a value
+	// greater than 5000, the server will return up to 5000 items. Note that if the
+	// listing operation crosses a partition boundary, then the service will return a continuation token for retrieving the remainder
+	// of the results. For this reason, it is possible that the service will
+	// return fewer results than specified by maxresults, or than the default of 5000.
+	MaxResults *int32
+}
+
+func (o *FilterBlobsOptions) format() *generated.ContainerClientFilterBlobsOptions {
+	if o == nil {
+		return nil
+	}
+	return &generated.ContainerClientFilterBlobsOptions{
+		Marker:     o.Marker,
+		Maxresults: o.MaxResults,
+	}
 }

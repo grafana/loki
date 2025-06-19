@@ -4,95 +4,97 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/ring"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
+	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
-	"github.com/grafana/loki/v3/pkg/pattern/metric"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
-var lbls = labels.New(labels.Label{Name: "test", Value: "test"})
+func TestInstancePushQuery(t *testing.T) {
+	lbs := labels.FromStrings("test", "test", "service_name", "test_service")
+	now := drain.TruncateTimestamp(model.Now(), drain.TimeResolution)
 
-func setup(t *testing.T) *instance {
+	ingesterID := "foo"
+	replicationSet := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Id: ingesterID, Addr: "ingester0"},
+			{Id: "bar", Addr: "ingester1"},
+			{Id: "baz", Addr: "ingester2"},
+		},
+	}
+
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(replicationSet, nil)
+
+	ringClient := &fakeRingClient{
+		ring: fakeRing,
+	}
+
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
 	inst, err := newInstance(
 		"foo",
 		log.NewNopLogger(),
 		newIngesterMetrics(nil, "test"),
-		metric.NewChunkMetrics(nil, "test"),
 		drain.DefaultConfig(),
-		metric.AggregationConfig{
-			Enabled: true,
-		},
+		&fakeLimits{},
+		ringClient,
+		ingesterID,
+		mockWriter,
 	)
 	require.NoError(t, err)
-
-	return inst
-}
-
-func downsampleInstance(inst *instance, tts int64) {
-	ts := model.TimeFromUnixNano(time.Unix(tts, 0).UnixNano())
-	_ = inst.streams.ForEach(func(s *stream) (bool, error) {
-		inst.streams.WithLock(func() {
-			s.Downsample(ts)
-		})
-		return true, nil
-	})
-}
-
-func TestInstancePushQuery(t *testing.T) {
-	inst := setup(t)
-	err := inst.Push(context.Background(), &push.PushRequest{
-		Streams: []push.Stream{
-			{
-				Labels: lbls.String(),
-				Entries: []push.Entry{
-					{
-						Timestamp: time.Unix(20, 0),
-						Line:      "ts=1 msg=hello",
-					},
-				},
-			},
-		},
-	})
-	require.NoError(t, err)
-	downsampleInstance(inst, 20)
 
 	err = inst.Push(context.Background(), &push.PushRequest{
 		Streams: []push.Stream{
 			{
-				Labels: lbls.String(),
+				Labels: lbs.String(),
 				Entries: []push.Entry{
 					{
-						Timestamp: time.Unix(30, 0),
-						Line:      "ts=2 msg=hello",
+						Timestamp: now.Time(),
+						Line:      "ts=1 msg=hello",
+						StructuredMetadata: push.LabelsAdapter{
+							push.LabelAdapter{
+								Name:  constants.LevelLabel,
+								Value: constants.LogLevelInfo,
+							},
+						},
 					},
 				},
 			},
 		},
 	})
 	require.NoError(t, err)
-	downsampleInstance(inst, 30)
-
 	for i := 0; i <= 30; i++ {
+		foo := "bar"
+		if i%2 != 0 {
+			foo = "baz"
+		}
 		err = inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
-					Labels: lbls.String(),
+					Labels: lbs.String(),
 					Entries: []push.Entry{
 						{
-							Timestamp: time.Unix(30, 0),
-							Line:      "foo bar foo bar",
+							Timestamp: now.Add(time.Duration(i) * time.Second).Time(),
+							Line:      fmt.Sprintf("foo=%s num=%d", foo, rand.Int()),
 						},
 					},
 				},
@@ -100,7 +102,27 @@ func TestInstancePushQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	downsampleInstance(inst, 30)
+
+	err = inst.Push(context.Background(), &push.PushRequest{
+		Streams: []push.Stream{
+			{
+				Labels: lbs.String(),
+				Entries: []push.Entry{
+					{
+						Timestamp: now.Add(1 * time.Minute).Time(),
+						Line:      "ts=2 msg=hello",
+						StructuredMetadata: push.LabelsAdapter{
+							push.LabelAdapter{
+								Name:  constants.LevelLabel,
+								Value: constants.LogLevelInfo,
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
 
 	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
 		Query: "{test=\"test\"}",
@@ -110,745 +132,324 @@ func TestInstancePushQuery(t *testing.T) {
 	require.NoError(t, err)
 	res, err := iter.ReadAll(it)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(res.Series))
+	require.Equal(t, 3, len(res.Series))
+
+	patterns := make([]string, 0, 3)
+	for _, it := range res.Series {
+		patterns = append(patterns, it.Pattern)
+	}
+
+	require.ElementsMatch(t, []string{
+		"foo=bar num=<_>",
+		"foo=baz num=<_>",
+		"ts=<_> msg=hello",
+	}, patterns)
+
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Time(),
+		aggregation.PatternEntry(
+			now.Time(),
+			1,
+			"ts=<_> msg=hello",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+		},
+	)
+
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Time(),
+		aggregation.PatternEntry(
+			now.Time(),
+			5,
+			"foo=bar num=<_>",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
+		},
+	)
+
+	// writes a sample every 10s
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Add(10*time.Second).Time(),
+		aggregation.PatternEntry(
+			now.Add(10*time.Second).Time(),
+			5,
+			"foo=bar num=<_>",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
+		},
+	)
 }
 
-func TestInstancePushQuerySamples(t *testing.T) {
-	t.Run("test count_over_time samples", func(t *testing.T) {
-		inst := setup(t)
-		err := inst.Push(context.Background(), &push.PushRequest{
-			Streams: []push.Stream{
-				{
-					Labels: lbls.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=hello",
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-		downsampleInstance(inst, 0)
+func TestInstancePushAggregateMetrics(t *testing.T) {
+	lbs := labels.New(
+		labels.Label{Name: "test", Value: "test"},
+		labels.Label{Name: "service_name", Value: "test_service"},
+	)
+	lbs2 := labels.New(
+		labels.Label{Name: "foo", Value: "bar"},
+		labels.Label{Name: "service_name", Value: "foo_service"},
+	)
+	lbs3 := labels.New(
+		labels.Label{Name: "foo", Value: "baz"},
+		labels.Label{Name: "service_name", Value: "baz_service"},
+	)
 
-		for i := 1; i <= 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
-				Streams: []push.Stream{
-					{
-						Labels: lbls.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo bar foo bar",
-							},
-						},
-					},
-				},
-			})
-			require.NoError(t, err)
-			downsampleInstance(inst, int64(20*i))
+	setup := func(now time.Time) (*instance, *mockEntryWriter) {
+		ingesterID := "foo"
+		replicationSet := ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Id: ingesterID, Addr: "ingester0"},
+				{Id: "bar", Addr: "ingester1"},
+				{Id: "baz", Addr: "ingester2"},
+			},
 		}
 
-		expr, err := syntax.ParseSampleExpr(`count_over_time({test="test"}[20s])`)
-		require.NoError(t, err)
+		fakeRing := &fakeRing{}
+		fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(replicationSet, nil)
 
-		it, err := inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(20*30), 0),
-			Step:  10000,
-		})
-		require.NoError(t, err)
-		res, err := iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
-		expectedDataPoints := ((20 * 30) / 10)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
-		require.Equal(t, float64(1), res.Series[0].Samples[expectedDataPoints-1].Value)
-
-		expr, err = syntax.ParseSampleExpr(`count_over_time({test="test"}[80s])`)
-		require.NoError(t, err)
-
-		it, err = inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(20*30), 0),
-			Step:  10000,
-		})
-		require.NoError(t, err)
-		res, err = iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
-		expectedDataPoints = ((20 * 30) / 10)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-
-		// with a larger selection range of 80s, we expect to eventually get up to 4 per datapoint
-		// our pushes are spaced 20s apart, and there's 10s step, so we ecpect to see the value increase
-		// every 2 samples, maxing out and staying at 4 after 6 samples (since it starts a 1, not 0)
-		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
-		require.Equal(t, float64(1), res.Series[0].Samples[1].Value)
-		require.Equal(t, float64(2), res.Series[0].Samples[2].Value)
-		require.Equal(t, float64(2), res.Series[0].Samples[3].Value)
-		require.Equal(t, float64(3), res.Series[0].Samples[4].Value)
-		require.Equal(t, float64(3), res.Series[0].Samples[5].Value)
-		require.Equal(t, float64(4), res.Series[0].Samples[6].Value)
-		require.Equal(t, float64(4), res.Series[0].Samples[expectedDataPoints-1].Value)
-	})
-
-	t.Run("test count_over_time samples with downsampling", func(t *testing.T) {
-		inst := setup(t)
-		err := inst.Push(context.Background(), &push.PushRequest{
-			Streams: []push.Stream{
-				{
-					Labels: lbls.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=hello",
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-		downsampleInstance(inst, 0)
-
-		for i := 1; i <= 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
-				Streams: []push.Stream{
-					{
-						Labels: lbls.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(10*i), 0),
-								Line:      "foo bar foo bar",
-							},
-						},
-					},
-				},
-			})
-			require.NoError(t, err)
-
-			// downsample every 20s
-			if i%2 == 0 {
-				downsampleInstance(inst, int64(10*i))
-			}
+		ringClient := &fakeRingClient{
+			ring: fakeRing,
 		}
 
-		expr, err := syntax.ParseSampleExpr(`count_over_time({test="test"}[20s])`)
-		require.NoError(t, err)
+		mockWriter := &mockEntryWriter{}
+		mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
-		it, err := inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(10*30), 0),
-			Step:  20000,
-		})
-		require.NoError(t, err)
-		res, err := iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
-		expectedDataPoints := ((10 * 30) / 20)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
-
-		// after the first push there's 2 pushes per sample due to downsampling
-		require.Equal(t, float64(2), res.Series[0].Samples[expectedDataPoints-1].Value)
-
-		expr, err = syntax.ParseSampleExpr(`count_over_time({test="test"}[80s])`)
-		require.NoError(t, err)
-
-		it, err = inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(10*30), 0),
-			Step:  20000,
-		})
-		require.NoError(t, err)
-		res, err = iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
-		expectedDataPoints = ((10 * 30) / 20)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-
-		// with a larger selection range of 80s, we expect to eventually get up to 8 per datapoint
-		// our pushes are spaced 10s apart, downsampled every 20s, and there's 10s step,
-		// so we expect to see the value increase by 2 every samples, maxing out and staying at 8 after 5 samples
-		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
-		require.Equal(t, float64(3), res.Series[0].Samples[1].Value)
-		require.Equal(t, float64(5), res.Series[0].Samples[2].Value)
-		require.Equal(t, float64(7), res.Series[0].Samples[3].Value)
-		require.Equal(t, float64(8), res.Series[0].Samples[4].Value)
-		require.Equal(t, float64(8), res.Series[0].Samples[expectedDataPoints-1].Value)
-	})
-
-	t.Run("test bytes_over_time samples", func(t *testing.T) {
-		inst := setup(t)
-		err := inst.Push(context.Background(), &push.PushRequest{
-			Streams: []push.Stream{
-				{
-					Labels: lbls.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "foo bar foo bars",
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-
-		downsampleInstance(inst, 0)
-		for i := 1; i <= 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
-				Streams: []push.Stream{
-					{
-						Labels: lbls.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo bar foo bars",
-							},
-						},
-					},
-				},
-			})
-			require.NoError(t, err)
-			downsampleInstance(inst, int64(20*i))
-		}
-
-		expr, err := syntax.ParseSampleExpr(`bytes_over_time({test="test"}[20s])`)
-		require.NoError(t, err)
-
-		it, err := inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(20*30), 0),
-			Step:  10000,
-		})
-		require.NoError(t, err)
-		res, err := iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s)
-		expectedDataPoints := ((20 * 30) / 10)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-		require.Equal(t, float64(16), res.Series[0].Samples[0].Value)
-
-		expr, err = syntax.ParseSampleExpr(`bytes_over_time({test="test"}[80s])`)
-		require.NoError(t, err)
-
-		it, err = inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
-			Query: expr.String(),
-			Start: time.Unix(0, 0),
-			End:   time.Unix(int64(20*30), 0),
-			Step:  10000,
-		})
-		require.NoError(t, err)
-		res, err = iter.ReadAllSamples(it)
-		require.NoError(t, err)
-		require.Equal(t, 1, len(res.Series))
-
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
-
-		// end - start / step -- (start is 0, step is 10s)
-		expectedDataPoints = ((20 * 30) / 10)
-		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
-
-		// with a larger selection range of 80s, we expect to eventually get up to 64 bytes
-		// as each pushe is 16 bytes and are spaced 20s apart. We query with 10s step,
-		// so we ecpect to see the value increase by 16 bytes every 2 samples,
-		// maxing out and staying at 64 after 6 samples (since it starts a 1, not 0)
-		require.Equal(t, float64(16), res.Series[0].Samples[0].Value)
-		require.Equal(t, float64(16), res.Series[0].Samples[1].Value)
-		require.Equal(t, float64(32), res.Series[0].Samples[2].Value)
-		require.Equal(t, float64(32), res.Series[0].Samples[3].Value)
-		require.Equal(t, float64(48), res.Series[0].Samples[4].Value)
-		require.Equal(t, float64(48), res.Series[0].Samples[5].Value)
-		require.Equal(t, float64(64), res.Series[0].Samples[6].Value)
-		require.Equal(t, float64(64), res.Series[0].Samples[expectedDataPoints-1].Value)
-	})
-
-	t.Run("test count_over_time samples, multiple streams", func(t *testing.T) {
-		lbls2 := labels.New(
-			labels.Label{Name: "fizz", Value: "buzz"},
-			labels.Label{Name: "test", Value: "test"},
-			labels.Label{Name: "foo", Value: "bar"},
+		inst, err := newInstance(
+			"foo",
+			log.NewNopLogger(),
+			newIngesterMetrics(nil, "test"),
+			drain.DefaultConfig(),
+			&fakeLimits{},
+			ringClient,
+			ingesterID,
+			mockWriter,
 		)
-		lbls3 := labels.New(
-			labels.Label{Name: "fizz", Value: "buzz"},
-			labels.Label{Name: "test", Value: "test"},
+		require.NoError(t, err)
+
+		err = inst.Push(context.Background(), &push.PushRequest{
+			Streams: []push.Stream{
+				{
+					Labels: lbs.String(),
+					Entries: []push.Entry{
+						{
+							Timestamp: now.Add(-1 * time.Minute),
+							Line:      "ts=1 msg=hello",
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  constants.LevelLabel,
+									Value: "info",
+								},
+							},
+						},
+					},
+				},
+				{
+					Labels: lbs2.String(),
+					Entries: []push.Entry{
+						{
+							Timestamp: now.Add(-1 * time.Minute),
+							Line:      fmt.Sprintf("ts=%d msg=hello", rand.Intn(9)),
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  constants.LevelLabel,
+									Value: "error",
+								},
+							},
+						},
+					},
+				},
+				{
+					Labels: lbs3.String(),
+					Entries: []push.Entry{
+						{
+							Timestamp: now.Add(-1 * time.Minute),
+							Line:      "error error error",
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  constants.LevelLabel,
+									Value: "error",
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		for i := 0; i < 30; i++ {
+			err = inst.Push(context.Background(), &push.PushRequest{
+				Streams: []push.Stream{
+					{
+						Labels: lbs.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: now.Add(-1 * time.Duration(i) * time.Second),
+								Line:      "foo=bar baz=qux",
+								StructuredMetadata: push.LabelsAdapter{
+									push.LabelAdapter{
+										Name:  constants.LevelLabel,
+										Value: "info",
+									},
+								},
+							},
+						},
+					},
+					{
+						Labels: lbs2.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: now.Add(-1 * time.Duration(i) * time.Second),
+								Line:      "foo=bar baz=qux",
+								StructuredMetadata: push.LabelsAdapter{
+									push.LabelAdapter{
+										Name:  constants.LevelLabel,
+										Value: "error",
+									},
+								},
+							},
+						},
+					},
+				},
+			})
+			require.NoError(t, err)
+		}
+		require.NoError(t, err)
+
+		return inst, mockWriter
+	}
+
+	t.Run("accumulates bytes and count for each stream and level on every push", func(t *testing.T) {
+		now := time.Now()
+		inst, _ := setup(now)
+
+		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
+
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes)
+		require.Equal(t, uint64(17), inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes)
+
+		require.Equal(
+			t,
+			uint64(31),
+			inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].count,
 		)
-		lbls4 := labels.New(
-			labels.Label{Name: "fizz", Value: "buzz"},
-			labels.Label{Name: "foo", Value: "baz"},
+		require.Equal(
+			t,
+			uint64(31),
+			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].count,
+		)
+		require.Equal(
+			t,
+			uint64(1),
+			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].count,
+		)
+	})
+
+	t.Run("downsamples aggregated metrics", func(t *testing.T) {
+		now := model.Now()
+		inst, mockWriter := setup(now.Time())
+		inst.Downsample(now)
+
+		mockWriter.AssertCalled(
+			t,
+			"WriteEntry",
+			now.Time(),
+			aggregation.AggregatedMetricEntry(
+				now,
+				uint64(14+(15*30)),
+				uint64(31),
+				lbs,
+			),
+			labels.New(
+				labels.Label{Name: constants.AggregatedMetricLabel, Value: "test_service"},
+			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+			},
 		)
 
-		inst := setup(t)
-		err := inst.Push(context.Background(), &push.PushRequest{
-			Streams: []push.Stream{
-				{
-					Labels: lbls.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=hello",
-						},
-					},
-				},
-				{
-					Labels: lbls2.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=goodbye",
-						},
-					},
-				},
-				{
-					Labels: lbls3.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=hello",
-						},
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=goodbye",
-						},
-					},
-				},
-				{
-					Labels: lbls4.String(),
-					Entries: []push.Entry{
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=hello",
-						},
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=goodbye",
-						},
-						{
-							Timestamp: time.Unix(0, 0),
-							Line:      "ts=1 msg=shalom",
-						},
-					},
-				},
+		mockWriter.AssertCalled(
+			t,
+			"WriteEntry",
+			now.Time(),
+			aggregation.AggregatedMetricEntry(
+				now,
+				uint64(14+(15*30)),
+				uint64(31),
+				lbs2,
+			),
+			labels.New(
+				labels.Label{Name: constants.AggregatedMetricLabel, Value: "foo_service"},
+			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
 			},
-		})
-		require.NoError(t, err)
-		downsampleInstance(inst, 0)
+		)
 
-		for i := 1; i <= 30; i++ {
-			err = inst.Push(context.Background(), &push.PushRequest{
-				Streams: []push.Stream{
-					{
-						Labels: lbls.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo bar foo bar",
-							},
-						},
-					},
-					{
-						Labels: lbls2.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo",
-							},
-						},
-					},
-					{
-						Labels: lbls3.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo",
-							},
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "bar",
-							},
-						},
-					},
-					{
-						Labels: lbls4.String(),
-						Entries: []push.Entry{
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "foo",
-							},
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "bar",
-							},
-							{
-								Timestamp: time.Unix(int64(20*i), 0),
-								Line:      "baz",
-							},
-						},
-					},
-				},
-			})
-			require.NoError(t, err)
-			downsampleInstance(inst, int64(20*i))
-		}
-
-		for _, tt := range []struct {
-			name                string
-			expr                func(string) syntax.SampleExpr
-			req                 func(syntax.SampleExpr) logproto.QuerySamplesRequest
-			verifySeries20sStep func([]logproto.Series)
-			verifySeries80sStep func([]logproto.Series)
-		}{
-			{
-				// test="test" will capture lbls - lbls3
-				name: `{test="test"}`,
-				expr: func(selRange string) syntax.SampleExpr {
-					expr, err := syntax.ParseSampleExpr(fmt.Sprintf(`count_over_time({test="test"}[%s])`, selRange))
-					require.NoError(t, err)
-					return expr
-				},
-				req: func(expr syntax.SampleExpr) logproto.QuerySamplesRequest {
-					return logproto.QuerySamplesRequest{
-						Query: expr.String(),
-						Start: time.Unix(0, 0),
-						End:   time.Unix(int64(20*30), 0),
-						Step:  10000,
-					}
-				},
-				verifySeries20sStep: func(series []logproto.Series) {
-					require.Equal(t, 3, len(series))
-					require.Equal(t, lbls2.String(), series[0].GetLabels())
-					require.Equal(t, lbls3.String(), series[1].GetLabels())
-					require.Equal(t, lbls.String(), series[2].GetLabels())
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-					require.Equal(t, expectedDataPoints, len(series[2].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line per step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(1), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 2 lines per step for lbls3
-					require.Equal(t, float64(2), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(2), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 1 linee per step for lbls3
-					require.Equal(t, float64(1), series[2].Samples[0].Value, fmt.Sprintf("series: %v, samples: %v", series[2].Labels, series[2].Samples))
-					require.Equal(t, float64(1), series[2].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, samples: %v", series[2].Labels, series[2].Samples[expectedDataPoints-1]))
-				},
-				verifySeries80sStep: func(series []logproto.Series) {
-					require.Equal(t, 3, len(series))
-					require.Equal(t, lbls2.String(), series[0].GetLabels())
-					require.Equal(t, lbls3.String(), series[1].GetLabels())
-					require.Equal(t, lbls.String(), series[2].GetLabels())
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-					require.Equal(t, expectedDataPoints, len(series[2].Samples))
-
-					// pushes are spaced 80s apart, and there's 10s step,
-					// so we expect to see a single line for the first step
-					// and 4 lines for the last for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(4), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 2 lines for the first step and
-					// 8 lines for the last for lbls3
-					require.Equal(t, float64(2), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(8), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 1 linee for the first step
-					// and 4 lintes for the last step for lbls3
-					require.Equal(t, float64(1), series[2].Samples[0].Value, fmt.Sprintf("series: %v, samples: %v", series[2].Labels, series[2].Samples))
-					require.Equal(t, float64(4), series[2].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, samples: %v", series[2].Labels, series[2].Samples[expectedDataPoints-1]))
-				},
+		mockWriter.AssertCalled(
+			t,
+			"WriteEntry",
+			now.Time(),
+			aggregation.AggregatedMetricEntry(
+				now,
+				uint64(17),
+				uint64(1),
+				lbs3,
+			),
+			labels.New(
+				labels.Label{Name: constants.AggregatedMetricLabel, Value: "baz_service"},
+			),
+			[]logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: constants.LogLevelError},
 			},
-			{
-				// fizz="buzz" will capture lbls2 - lbls4
-				name: `{fizz="buzz"}`,
-				expr: func(selRange string) syntax.SampleExpr {
-					expr, err := syntax.ParseSampleExpr(fmt.Sprintf(`count_over_time({fizz="buzz"}[%s])`, selRange))
-					require.NoError(t, err)
-					return expr
-				},
-				req: func(expr syntax.SampleExpr) logproto.QuerySamplesRequest {
-					return logproto.QuerySamplesRequest{
-						Query: expr.String(),
-						Start: time.Unix(0, 0),
-						End:   time.Unix(int64(20*30), 0),
-						Step:  10000,
-					}
-				},
-				verifySeries20sStep: func(series []logproto.Series) {
-					require.Equal(t, 3, len(series))
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
+		)
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls3.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-					require.Equal(t, expectedDataPoints, len(series[2].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line per step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(1), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 3 lines per step for lbls4
-					require.Equal(t, float64(3), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(3), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 2 lines per step for lbls3
-					require.Equal(t, float64(2), series[2].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[2].Labels, series[2].Samples[0]))
-					require.Equal(t, float64(2), series[2].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[2].Labels, series[2].Samples[expectedDataPoints-1]))
-				},
-				verifySeries80sStep: func(series []logproto.Series) {
-					require.Equal(t, 3, len(series))
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
-
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls3.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-					require.Equal(t, expectedDataPoints, len(series[2].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line for the first step
-					// and 4 lines for the last step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(4), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 3 lines for the first step
-					// and 12 lines for the last step for lbls4
-					require.Equal(t, float64(3), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(12), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a 2 lines for the first step
-					// and 8 lines for the last step for lbls3
-					require.Equal(t, float64(2), series[2].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[2].Labels, series[2].Samples[0]))
-					require.Equal(t, float64(8), series[2].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[2].Labels, series[2].Samples[expectedDataPoints-1]))
-				},
-			},
-			{
-				// foo="bar" will capture only lbls2
-				name: `{foo="bar"}`,
-				expr: func(selRange string) syntax.SampleExpr {
-					expr, err := syntax.ParseSampleExpr(fmt.Sprintf(`count_over_time({foo="bar"}[%s])`, selRange))
-					require.NoError(t, err)
-					return expr
-				},
-				req: func(expr syntax.SampleExpr) logproto.QuerySamplesRequest {
-					return logproto.QuerySamplesRequest{
-						Query: expr.String(),
-						Start: time.Unix(0, 0),
-						End:   time.Unix(int64(20*30), 0),
-						Step:  10000,
-					}
-				},
-				verifySeries20sStep: func(series []logproto.Series) {
-					require.Equal(t, 1, len(series))
-
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
-
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line per step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(1), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-				},
-				verifySeries80sStep: func(series []logproto.Series) {
-					require.Equal(t, 1, len(series))
-
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
-
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line for the first step
-					// and 4 lines for the last step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(4), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-				},
-			},
-			{
-				// foo=~".+" will capture lbls2 and lbls4
-				name: `{foo=~".+"}`,
-				expr: func(selRange string) syntax.SampleExpr {
-					expr, err := syntax.ParseSampleExpr(fmt.Sprintf(`count_over_time({foo=~".+"}[%s])`, selRange))
-					require.NoError(t, err)
-					return expr
-				},
-				req: func(expr syntax.SampleExpr) logproto.QuerySamplesRequest {
-					return logproto.QuerySamplesRequest{
-						Query: expr.String(),
-						Start: time.Unix(0, 0),
-						End:   time.Unix(int64(20*30), 0),
-						Step:  10000,
-					}
-				},
-				verifySeries20sStep: func(series []logproto.Series) {
-					require.Equal(t, 2, len(series))
-
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
-
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line per step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(1), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see 3 lines per step for lbls4
-					require.Equal(t, float64(3), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(3), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-				},
-				verifySeries80sStep: func(series []logproto.Series) {
-					require.Equal(t, 2, len(series))
-
-					sereisLabels := make([]string, 0, len(series))
-					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
-					}
-
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-
-					// end - start / step -- (start is 0, step is 10s)
-					expectedDataPoints := ((20 * 30) / 10)
-					require.Equal(t, expectedDataPoints, len(series[0].Samples))
-					require.Equal(t, expectedDataPoints, len(series[1].Samples))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see a single line for the first step
-					// and 4 lines for the last step for lbls2
-					require.Equal(t, float64(1), series[0].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[0]))
-					require.Equal(t, float64(4), series[0].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[0].Labels, series[0].Samples[expectedDataPoints-1]))
-
-					// pushes are spaced 20s apart, and there's 10s step,
-					// so we expect to see 3 lines for the first step
-					// and 12 lines for the last step for lbls4
-					require.Equal(t, float64(3), series[1].Samples[0].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[0]))
-					require.Equal(t, float64(12), series[1].Samples[expectedDataPoints-1].Value, fmt.Sprintf("series: %v, sample: %v", series[1].Labels, series[1].Samples[expectedDataPoints-1]))
-				},
-			},
-		} {
-			t.Run(tt.name, func(t *testing.T) {
-				expr := tt.expr("20s")
-				req := tt.req(expr)
-
-				it, err := inst.QuerySample(context.Background(), expr, &req)
-				require.NoError(t, err)
-				res, err := iter.ReadAllSamples(it)
-				require.NoError(t, err)
-
-				ss := make([]logproto.Series, 0, len(res.Series))
-				ss = append(ss, res.Series...)
-
-				sort.Slice(ss, func(i, j int) bool {
-					return ss[i].Labels < ss[j].Labels
-				})
-
-				tt.verifySeries20sStep(ss)
-
-				expr = tt.expr("80s")
-				req = tt.req(expr)
-
-				it, err = inst.QuerySample(context.Background(), expr, &req)
-				require.NoError(t, err)
-				res, err = iter.ReadAllSamples(it)
-				require.NoError(t, err)
-
-				ss = make([]logproto.Series, 0, len(res.Series))
-				ss = append(ss, res.Series...)
-
-				sort.Slice(ss, func(i, j int) bool {
-					return ss[i].Labels < ss[j].Labels
-				})
-
-				if tt.verifySeries80sStep != nil {
-					tt.verifySeries80sStep(ss)
-				}
-			})
-		}
+		require.Equal(t, 0, len(inst.aggMetricsByStreamAndLevel))
 	})
+}
+
+type mockEntryWriter struct {
+	mock.Mock
+}
+
+func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels, structuredMetadata []logproto.LabelAdapter) {
+	_ = m.Called(ts, entry, lbls, structuredMetadata)
+}
+
+func (m *mockEntryWriter) Stop() {
+	_ = m.Called()
+}
+
+type fakeLimits struct {
+	Limits
+	metricAggregationEnabled bool
+}
+
+func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
+	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
+}
+
+func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
+	return f.metricAggregationEnabled
 }

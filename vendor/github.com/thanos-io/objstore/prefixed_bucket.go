@@ -39,6 +39,8 @@ func withPrefix(prefix, name string) string {
 	return prefix + DirDelim + name
 }
 
+func (p *PrefixedBucket) Provider() ObjProvider { return p.bkt.Provider() }
+
 func (p *PrefixedBucket) Close() error {
 	return p.bkt.Close()
 }
@@ -54,6 +56,19 @@ func (p *PrefixedBucket) Iter(ctx context.Context, dir string, f func(string) er
 	}, options...)
 }
 
+func (p *PrefixedBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	pdir := withPrefix(p.prefix, dir)
+
+	return p.bkt.IterWithAttributes(ctx, pdir, func(attrs IterObjectAttributes) error {
+		attrs.Name = strings.TrimPrefix(attrs.Name, p.prefix+DirDelim)
+		return f(attrs)
+	}, options...)
+}
+
+func (p *PrefixedBucket) SupportedIterOptions() []IterOptionType {
+	return p.bkt.SupportedIterOptions()
+}
+
 // Get returns a reader for the given object name.
 func (p *PrefixedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	return p.bkt.Get(ctx, conditionalPrefix(p.prefix, name))
@@ -62,6 +77,10 @@ func (p *PrefixedBucket) Get(ctx context.Context, name string) (io.ReadCloser, e
 // GetRange returns a new range reader for the given object name and range.
 func (p *PrefixedBucket) GetRange(ctx context.Context, name string, off int64, length int64) (io.ReadCloser, error) {
 	return p.bkt.GetRange(ctx, conditionalPrefix(p.prefix, name), off, length)
+}
+
+func (b *PrefixedBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	return b.bkt.GetAndReplace(ctx, conditionalPrefix(b.prefix, name), f)
 }
 
 // Exists checks if the given object exists in the bucket.
@@ -80,7 +99,7 @@ func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
 }
 
 // Attributes returns information about the specified object.
-func (p PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
+func (p *PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))
 }
 

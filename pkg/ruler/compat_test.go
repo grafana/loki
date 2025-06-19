@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql"
 	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
@@ -23,14 +21,14 @@ import (
 func TestInvalidRuleGroup(t *testing.T) {
 	ruleGroupValid := rulefmt.RuleGroup{
 		Name: "test",
-		Rules: []rulefmt.RuleNode{
+		Rules: []rulefmt.Rule{
 			{
-				Alert: yaml.Node{Value: "alert-1-name"},
-				Expr:  yaml.Node{Value: "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)"},
+				Alert: "alert-1-name",
+				Expr:  "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)",
 			},
 			{
-				Alert: yaml.Node{Value: "record-1-name"},
-				Expr:  yaml.Node{Value: "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)"},
+				Alert: "record-1-name",
+				Expr:  "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)",
 			},
 		},
 	}
@@ -38,14 +36,14 @@ func TestInvalidRuleGroup(t *testing.T) {
 
 	ruleGroupInValid := rulefmt.RuleGroup{
 		Name: "test",
-		Rules: []rulefmt.RuleNode{
+		Rules: []rulefmt.Rule{
 			{
-				Alert: yaml.Node{Value: "alert-1-name"},
-				Expr:  yaml.Node{Value: "bad_value"},
+				Alert: "alert-1-name",
+				Expr:  "bad_value",
 			},
 			{
-				Record: yaml.Node{Value: "record-1-name"},
-				Expr:   yaml.Node{Value: "bad_value"},
+				Record: "record-1-name",
+				Expr:   "bad_value",
 			},
 		},
 	}
@@ -56,21 +54,21 @@ func TestInvalidRuleGroup(t *testing.T) {
 // TestInvalidRuleExprParsing tests that a validation error is raised when rule expression is invalid
 func TestInvalidRuleExprParsing(t *testing.T) {
 	expectedAlertErrorMsg := "could not parse expression for alert 'alert-1-name' in group 'test': parse error"
-	alertRuleExprInvalid := &rulefmt.RuleNode{
-		Alert: yaml.Node{Value: "alert-1-name"},
-		Expr:  yaml.Node{Value: "bad_value"},
+	alertRuleExprInvalid := &rulefmt.Rule{
+		Alert: "alert-1-name",
+		Expr:  "bad_value",
 	}
 
-	alertErr := validateRuleNode(alertRuleExprInvalid, "test")
+	alertErr := validateRule(alertRuleExprInvalid, "test")
 	assert.Containsf(t, alertErr.Error(), expectedAlertErrorMsg, "expected error containing '%s', got '%s'", expectedAlertErrorMsg, alertErr)
 
 	expectedRecordErrorMsg := "could not parse expression for record 'record-1-name' in group 'test': parse error"
-	recordRuleExprInvalid := &rulefmt.RuleNode{
-		Record: yaml.Node{Value: "record-1-name"},
-		Expr:   yaml.Node{Value: "bad_value"},
+	recordRuleExprInvalid := &rulefmt.Rule{
+		Record: "record-1-name",
+		Expr:   "bad_value",
 	}
 
-	recordErr := validateRuleNode(recordRuleExprInvalid, "test")
+	recordErr := validateRule(recordRuleExprInvalid, "test")
 	assert.Containsf(t, recordErr.Error(), expectedRecordErrorMsg, "expected error containing '%s', got '%s'", expectedRecordErrorMsg, recordErr)
 }
 
@@ -129,4 +127,20 @@ type fakeChecker struct{}
 
 func (f fakeChecker) isReady(_ string) bool {
 	return true
+}
+
+func TestAddAndGetRuleDetailsFromContext(t *testing.T) {
+	ctx := context.Background()
+	ruleName := "test_rule"
+	ruleType := "test_type"
+
+	// Add rule details to context
+	ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
+
+	// Retrieve rule details from context
+	retrievedRuleName, retrievedRuleType := GetRuleDetailsFromContext(ctx)
+
+	// Assert that the retrieved values match the expected values
+	assert.Equal(t, ruleName, retrievedRuleName, "Expected rule name to match")
+	assert.Equal(t, ruleType, retrievedRuleType, "Expected rule type to match")
 }

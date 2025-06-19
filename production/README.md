@@ -83,7 +83,7 @@ First, see the [build from source](../README.md) section of the root readme.
 Once Promtail is built, to run Promtail, use the following command:
 
 ```bash
-$ ./promtail -config.file=./cmd/promtail/promtail-local-config.yaml
+$ ./promtail -config.file=./clients/cmd/promtail/promtail-local-config.yaml
 ...
 ```
 

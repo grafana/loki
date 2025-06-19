@@ -11,7 +11,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -82,11 +81,12 @@ type logResultCache struct {
 }
 
 func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "logResultCache.Do")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "logResultCache.Do")
+	defer sp.End()
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {

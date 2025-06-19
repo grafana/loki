@@ -10,7 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
@@ -81,7 +81,7 @@ func ConfigureGatewayDeployment(
 			}
 
 			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
-				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatchers),
 			)
 		}
 	}
@@ -102,7 +102,7 @@ func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName stri
 
 	container := corev1.Container{
 		Args: []string{
-			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatchers),
 		},
 	}
 

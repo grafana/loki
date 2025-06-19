@@ -19,21 +19,22 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
-// VolumeMountApplyConfiguration represents an declarative configuration of the VolumeMount type for use
+// VolumeMountApplyConfiguration represents a declarative configuration of the VolumeMount type for use
 // with apply.
 type VolumeMountApplyConfiguration struct {
-	Name             *string                  `json:"name,omitempty"`
-	ReadOnly         *bool                    `json:"readOnly,omitempty"`
-	MountPath        *string                  `json:"mountPath,omitempty"`
-	SubPath          *string                  `json:"subPath,omitempty"`
-	MountPropagation *v1.MountPropagationMode `json:"mountPropagation,omitempty"`
-	SubPathExpr      *string                  `json:"subPathExpr,omitempty"`
+	Name              *string                       `json:"name,omitempty"`
+	ReadOnly          *bool                         `json:"readOnly,omitempty"`
+	RecursiveReadOnly *corev1.RecursiveReadOnlyMode `json:"recursiveReadOnly,omitempty"`
+	MountPath         *string                       `json:"mountPath,omitempty"`
+	SubPath           *string                       `json:"subPath,omitempty"`
+	MountPropagation  *corev1.MountPropagationMode  `json:"mountPropagation,omitempty"`
+	SubPathExpr       *string                       `json:"subPathExpr,omitempty"`
 }
 
-// VolumeMountApplyConfiguration constructs an declarative configuration of the VolumeMount type for use with
+// VolumeMountApplyConfiguration constructs a declarative configuration of the VolumeMount type for use with
 // apply.
 func VolumeMount() *VolumeMountApplyConfiguration {
 	return &VolumeMountApplyConfiguration{}
@@ -52,6 +53,14 @@ func (b *VolumeMountApplyConfiguration) WithName(value string) *VolumeMountApply
 // If called multiple times, the ReadOnly field is set to the value of the last call.
 func (b *VolumeMountApplyConfiguration) WithReadOnly(value bool) *VolumeMountApplyConfiguration {
 	b.ReadOnly = &value
+	return b
+}
+
+// WithRecursiveReadOnly sets the RecursiveReadOnly field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RecursiveReadOnly field is set to the value of the last call.
+func (b *VolumeMountApplyConfiguration) WithRecursiveReadOnly(value corev1.RecursiveReadOnlyMode) *VolumeMountApplyConfiguration {
+	b.RecursiveReadOnly = &value
 	return b
 }
 
@@ -74,7 +83,7 @@ func (b *VolumeMountApplyConfiguration) WithSubPath(value string) *VolumeMountAp
 // WithMountPropagation sets the MountPropagation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the MountPropagation field is set to the value of the last call.
-func (b *VolumeMountApplyConfiguration) WithMountPropagation(value v1.MountPropagationMode) *VolumeMountApplyConfiguration {
+func (b *VolumeMountApplyConfiguration) WithMountPropagation(value corev1.MountPropagationMode) *VolumeMountApplyConfiguration {
 	b.MountPropagation = &value
 	return b
 }

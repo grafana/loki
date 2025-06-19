@@ -7,6 +7,8 @@ import (
 	"flag"
 	"io"
 	"math"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
@@ -43,15 +46,19 @@ var (
 )
 
 type Config struct {
-	Enabled       bool   `yaml:"reporting_enabled"`
-	Leader        bool   `yaml:"-"`
-	UsageStatsURL string `yaml:"usage_stats_url"`
+	Enabled       bool             `yaml:"reporting_enabled"`
+	Leader        bool             `yaml:"-"`
+	UsageStatsURL string           `yaml:"usage_stats_url"`
+	ProxyURL      string           `yaml:"proxy_url"`
+	TLSConfig     tls.ClientConfig `yaml:"tls_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enable anonymous usage reporting.")
 	f.StringVar(&cfg.UsageStatsURL, "reporting.usage-stats-url", usageStatsURL, "URL to which reports are sent")
+	f.StringVar(&cfg.ProxyURL, "reporting.proxy-url", "", "URL to the proxy server")
+	cfg.TLSConfig.RegisterFlagsWithPrefix("reporting.tls-config.", f)
 }
 
 type Reporter struct {
@@ -60,6 +67,8 @@ type Reporter struct {
 	reg          prometheus.Registerer
 
 	services.Service
+
+	httpClient *http.Client
 
 	conf       Config
 	kvConfig   kv.Config
@@ -71,12 +80,33 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectCl
 	if !config.Enabled {
 		return nil, nil
 	}
+
+	originalDefaultTransport := http.DefaultTransport.(*http.Transport)
+	tr := originalDefaultTransport.Clone()
+	if config.TLSConfig.CertPath != "" || config.TLSConfig.KeyPath != "" {
+		var err error
+		tr.TLSClientConfig, err = config.TLSConfig.GetTLSConfig()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if config.ProxyURL != "" {
+		proxyURL, err := url.ParseRequestURI(config.ProxyURL)
+		if err != nil {
+			return nil, err
+		}
+		tr.Proxy = http.ProxyURL(proxyURL)
+	}
 	r := &Reporter{
 		logger:       logger,
 		objectClient: objectClient,
 		conf:         config,
 		kvConfig:     kvConfig,
 		reg:          reg,
+		httpClient: &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: tr,
+		},
 	}
 	r.Service = services.NewBasicService(nil, r.running, nil)
 	return r, nil
@@ -265,6 +295,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 		}
 		return nil
 	}
+	setSeed(rep.cluster)
 	rep.startCPUPercentCollection(ctx, time.Minute)
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
@@ -285,7 +316,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 			}
 			level.Debug(rep.logger).Log("msg", "reporting cluster stats", "date", time.Now())
 			if err := rep.reportUsage(ctx, next); err != nil {
-				level.Info(rep.logger).Log("msg", "failed to report usage", "err", err)
+				level.Debug(rep.logger).Log("msg", "failed to report usage", "err", err)
 				continue
 			}
 			rep.lastReport = next
@@ -308,13 +339,11 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 	})
 	var errs multierror.MultiError
 	for backoff.Ongoing() {
-		if err := sendReport(ctx, rep.cluster, interval, rep.conf.UsageStatsURL); err != nil {
-			level.Info(rep.logger).Log("msg", "failed to send usage report", "retries", backoff.NumRetries(), "err", err)
+		if err := sendReport(ctx, rep.cluster, interval, rep.conf.UsageStatsURL, rep.httpClient); err != nil {
 			errs.Add(err)
 			backoff.Wait()
 			continue
 		}
-		level.Debug(rep.logger).Log("msg", "usage report sent with success")
 		return nil
 	}
 	return errs.Err()
@@ -322,9 +351,7 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 
 const cpuUsageKey = "cpu_usage"
 
-var (
-	cpuUsage = NewFloat(cpuUsageKey)
-)
+var cpuUsage = NewFloat(cpuUsageKey)
 
 func (rep *Reporter) startCPUPercentCollection(ctx context.Context, cpuCollectionInterval time.Duration) {
 	proc, err := process.NewProcess(int32(os.Getpid()))

@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,22 +32,58 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on FieldSecurityAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *FieldSecurityAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FieldSecurityAnnotation with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// FieldSecurityAnnotationMultiError, or nil if none found.
+func (m *FieldSecurityAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FieldSecurityAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
+
+	var errors []error
 
 	// no validation rules for ConfigureForUntrustedDownstream
 
 	// no validation rules for ConfigureForUntrustedUpstream
 
+	if len(errors) > 0 {
+		return FieldSecurityAnnotationMultiError(errors)
+	}
+
 	return nil
 }
+
+// FieldSecurityAnnotationMultiError is an error wrapping multiple validation
+// errors returned by FieldSecurityAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type FieldSecurityAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FieldSecurityAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FieldSecurityAnnotationMultiError) AllErrors() []error { return m }
 
 // FieldSecurityAnnotationValidationError is the validation error returned by
 // FieldSecurityAnnotation.Validate if the designated constraints aren't met.

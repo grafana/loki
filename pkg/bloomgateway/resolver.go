@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -61,36 +62,55 @@ func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, inter
 }
 
 func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) []blockWithSeries {
+	slices.SortFunc(series, func(a, b *logproto.GroupedChunkRefs) int { return int(a.Fingerprint - b.Fingerprint) })
+
 	result := make([]blockWithSeries, 0, len(metas))
+	cache := make(map[bloomshipper.BlockRef]int)
 
-	for _, meta := range metas {
-		for _, block := range meta.Blocks {
+	// find the newest block for each series
+	for _, s := range series {
+		var b *bloomshipper.BlockRef
+		var newestTs time.Time
 
-			// skip blocks that are not within time interval
-			if !interval.Overlaps(block.Interval()) {
-				continue
+		for i := range metas {
+			for j := range metas[i].Blocks {
+				block := metas[i].Blocks[j]
+				// To keep backwards compatibility, we can only look at the source at index 0
+				// because in the past the slice had always length 1, see
+				// https://github.com/grafana/loki/blob/b4060154d198e17bef8ba0fbb1c99bb5c93a412d/pkg/bloombuild/builder/builder.go#L418
+				sourceTs := metas[i].Sources[0].TS
+				// Newer metas have len(Sources) == len(Blocks)
+				if len(metas[i].Sources) > j {
+					sourceTs = metas[i].Sources[j].TS
+				}
+				// skip blocks that are not within time interval
+				if !interval.Overlaps(block.Interval()) {
+					continue
+				}
+				// skip blocks that do not contain the series
+				if block.Cmp(s.Fingerprint) != v1.Overlap {
+					continue
+				}
+				// only use the block if it is newer than the previous
+				if sourceTs.After(newestTs) {
+					b = &block
+					newestTs = sourceTs
+				}
 			}
+		}
 
-			min := sort.Search(len(series), func(i int) bool {
-				return block.Cmp(series[i].Fingerprint) > v1.Before
-			})
+		if b == nil {
+			continue
+		}
 
-			max := sort.Search(len(series), func(i int) bool {
-				return block.Cmp(series[i].Fingerprint) == v1.After
-			})
-
-			// All fingerprints fall outside of the consumer's range
-			if min == len(series) || max == 0 || min == max {
-				continue
-			}
-
-			// At least one fingerprint is within bounds of the blocks
-			// so append to results
-			dst := make([]*logproto.GroupedChunkRefs, max-min)
-			_ = copy(dst, series[min:max])
+		idx, ok := cache[*b]
+		if ok {
+			result[idx].series = append(result[idx].series, s)
+		} else {
+			cache[*b] = len(result)
 			result = append(result, blockWithSeries{
-				block:  block,
-				series: dst,
+				block:  *b,
+				series: []*logproto.GroupedChunkRefs{s},
 			})
 		}
 	}

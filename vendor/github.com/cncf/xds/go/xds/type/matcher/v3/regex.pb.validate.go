@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,35 +32,88 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on RegexMatcher with the rules defined in
-// the proto definition for this message. If any rules are violated, an error
-// is returned.
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *RegexMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RegexMatcher with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in RegexMatcherMultiError, or
+// nil if none found.
+func (m *RegexMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RegexMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if utf8.RuneCountInString(m.GetRegex()) < 1 {
-		return RegexMatcherValidationError{
+		err := RegexMatcherValidationError{
 			field:  "Regex",
 			reason: "value length must be at least 1 runes",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
-	switch m.EngineType.(type) {
-
+	oneofEngineTypePresent := false
+	switch v := m.EngineType.(type) {
 	case *RegexMatcher_GoogleRe2:
+		if v == nil {
+			err := RegexMatcherValidationError{
+				field:  "EngineType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofEngineTypePresent = true
 
 		if m.GetGoogleRe2() == nil {
-			return RegexMatcherValidationError{
+			err := RegexMatcherValidationError{
 				field:  "GoogleRe2",
 				reason: "value is required",
 			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
 		}
 
-		if v, ok := interface{}(m.GetGoogleRe2()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetGoogleRe2()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RegexMatcherValidationError{
+						field:  "GoogleRe2",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RegexMatcherValidationError{
+						field:  "GoogleRe2",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetGoogleRe2()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return RegexMatcherValidationError{
 					field:  "GoogleRe2",
@@ -70,15 +124,41 @@ func (m *RegexMatcher) Validate() error {
 		}
 
 	default:
-		return RegexMatcherValidationError{
+		_ = v // ensures v is used
+	}
+	if !oneofEngineTypePresent {
+		err := RegexMatcherValidationError{
 			field:  "EngineType",
 			reason: "value is required",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
+	if len(errors) > 0 {
+		return RegexMatcherMultiError(errors)
 	}
 
 	return nil
 }
+
+// RegexMatcherMultiError is an error wrapping multiple validation errors
+// returned by RegexMatcher.ValidateAll() if the designated constraints aren't met.
+type RegexMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RegexMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RegexMatcherMultiError) AllErrors() []error { return m }
 
 // RegexMatcherValidationError is the validation error returned by
 // RegexMatcher.Validate if the designated constraints aren't met.
@@ -136,14 +216,49 @@ var _ interface {
 
 // Validate checks the field values on RegexMatcher_GoogleRE2 with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *RegexMatcher_GoogleRE2) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RegexMatcher_GoogleRE2 with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// RegexMatcher_GoogleRE2MultiError, or nil if none found.
+func (m *RegexMatcher_GoogleRE2) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RegexMatcher_GoogleRE2) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
+	if len(errors) > 0 {
+		return RegexMatcher_GoogleRE2MultiError(errors)
+	}
+
 	return nil
 }
+
+// RegexMatcher_GoogleRE2MultiError is an error wrapping multiple validation
+// errors returned by RegexMatcher_GoogleRE2.ValidateAll() if the designated
+// constraints aren't met.
+type RegexMatcher_GoogleRE2MultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RegexMatcher_GoogleRE2MultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RegexMatcher_GoogleRE2MultiError) AllErrors() []error { return m }
 
 // RegexMatcher_GoogleRE2ValidationError is the validation error returned by
 // RegexMatcher_GoogleRE2.Validate if the designated constraints aren't met.

@@ -1,19 +1,22 @@
 package logproto
 
 import (
-	"encoding/json"
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
+	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // This is the separator define in the Prometheus Labels.Hash function.
@@ -164,6 +167,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		Status string `json:"status"`
 		Data   []struct {
 			Pattern string    `json:"pattern"`
+			Level   string    `json:"level"`
 			Samples [][]int64 `json:"samples"`
 		} `json:"data"`
 	}
@@ -176,7 +180,7 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 		for _, s := range d.Samples {
 			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
 		}
-		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
+		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Level: d.Level, Samples: samples})
 	}
 	return nil
 }
@@ -191,46 +195,82 @@ func (m *ShardsResponse) Merge(other *ShardsResponse) {
 	m.Statistics.Merge(other.Statistics)
 }
 
-func NewPatternSeries(pattern string, samples []*PatternSample) *PatternSeries {
-	return &PatternSeries{Pattern: pattern, Samples: samples}
+func (m *QueryPatternsRequest) GetSampleQuery() (string, error) {
+	expr, err := syntax.ParseExpr(m.Query)
+	if err != nil {
+		return "", err
+	}
+
+	// Extract matchers from the expression
+	var matchers []*labels.Matcher
+	switch e := expr.(type) {
+	case *syntax.MatchersExpr:
+		matchers = e.Mts
+	case syntax.LogSelectorExpr:
+		matchers = e.Matchers()
+	default:
+		// Cannot extract matchers
+		return "", nil
+	}
+
+	// Find service_name from matchers
+	var serviceName string
+	var serviceMatcher labels.MatchType
+	for i, m := range matchers {
+		if m.Name == "service_name" {
+			matchers = slices.Delete(matchers, i, i+1)
+			serviceName = m.Value
+			serviceMatcher = m.Type
+			break
+		}
+	}
+
+	if serviceName == "" {
+		serviceName = ".+"
+		serviceMatcher = labels.MatchRegexp
+	}
+
+	// Build LogQL query for persisted patterns
+	logqlQuery := buildPatternLogQLQuery(serviceName, serviceMatcher, matchers, m.Step)
+
+	return logqlQuery, nil
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
-// QuerySamplesResponse json representation is different from the proto
-func (r *QuerySamplesResponse) UnmarshalJSON(data []byte) error {
-	return jsonparser.ObjectEach(
-		data,
-		func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
-			if string(key) == "data" {
-				var m []model.SampleStream
-				if err := json.Unmarshal(value, &m); err != nil {
-					return err
-				}
-				series := make([]Series, len(m))
+func buildPatternLogQLQuery(serviceName string, serviceMatcher labels.MatchType, matchers []*labels.Matcher, step int64) string {
+	// Use step duration for sum_over_time window
+	stepDuration := max(time.Duration(step)*time.Millisecond, 10*time.Second)
 
-				for i, s := range m {
-					lbls := FromMetricsToLabels(s.Metric)
+	if len(matchers) == 0 {
+		return buildPatterLogQLQueryString(serviceName, serviceMatcher.String(), "", stepDuration.String())
+	}
 
-					newSeries := Series{
-						Labels:     s.Metric.String(),
-						StreamHash: lbls.Hash(),
-						Samples:    make([]Sample, len(s.Values)),
-					}
+	stringBuilder := strings.Builder{}
+	for i, matcher := range matchers {
+		stringBuilder.WriteString(matcher.String())
+		if i < len(matchers)-1 {
+			stringBuilder.WriteString(" | ")
+		}
+	}
 
-					for j, samplePair := range s.Values {
-						newSeries.Samples[j] = Sample{
-							Timestamp: samplePair.Timestamp.UnixNano(),
-							Value:     float64(samplePair.Value),
-						}
-					}
+	return buildPatterLogQLQueryString(serviceName, serviceMatcher.String(), stringBuilder.String(), stepDuration.String())
+}
 
-					series[i] = newSeries
-				}
+func buildPatterLogQLQueryString(serviceName, serviceMatcher, matchers, step string) string {
+	decodePatternTransform := `label_format decoded_pattern=` + "`{{urldecode .detected_pattern}}`"
 
-				r.Series = series
-			}
+	matchAndTransform := ""
+	if matchers == "" {
+		matchAndTransform = decodePatternTransform
+	} else {
+		matchAndTransform = fmt.Sprintf(`%s | %s`, matchers, decodePatternTransform)
 
-			return nil
-		},
+	}
+	return fmt.Sprintf(
+		`sum by (decoded_pattern, %s) (sum_over_time({__pattern__%s"%s"} | logfmt | %s | unwrap count [%s]))`,
+		constants.LevelLabel,
+		serviceMatcher,
+		serviceName,
+		matchAndTransform,
+		step,
 	)
 }

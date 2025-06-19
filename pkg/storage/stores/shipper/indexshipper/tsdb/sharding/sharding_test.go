@@ -36,11 +36,11 @@ func TestSizedFPs_Sort(t *testing.T) {
 }
 
 func TestSizedFPs_ShardsFor(t *testing.T) {
-	mkShard := func(min, max model.Fingerprint, streams, chks, entries, bytes uint64) logproto.Shard {
+	mkShard := func(minVal, maxVal model.Fingerprint, streams, chks, entries, bytes uint64) logproto.Shard {
 		return logproto.Shard{
 			Bounds: logproto.FPBounds{
-				Min: min,
-				Max: max,
+				Min: minVal,
+				Max: maxVal,
 			},
 			Stats: &stats.Stats{
 				Streams: streams,

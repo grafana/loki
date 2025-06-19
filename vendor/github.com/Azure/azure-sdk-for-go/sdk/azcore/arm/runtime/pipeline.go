@@ -34,18 +34,22 @@ func NewPipeline(module, version string, cred azcore.TokenCredential, plOpts azr
 		InsecureAllowCredentialWithHTTP: options.InsecureAllowCredentialWithHTTP,
 		Scopes:                          []string{conf.Audience + "/.default"},
 	})
+	// we don't want to modify the underlying array in plOpts.PerRetry
 	perRetry := make([]azpolicy.Policy, len(plOpts.PerRetry), len(plOpts.PerRetry)+1)
 	copy(perRetry, plOpts.PerRetry)
-	plOpts.PerRetry = append(perRetry, authPolicy, exported.PolicyFunc(httpTraceNamespacePolicy))
+	perRetry = append(perRetry, authPolicy, exported.PolicyFunc(httpTraceNamespacePolicy))
+	plOpts.PerRetry = perRetry
 	if !options.DisableRPRegistration {
 		regRPOpts := armpolicy.RegistrationOptions{ClientOptions: options.ClientOptions}
 		regPolicy, err := NewRPRegistrationPolicy(cred, &regRPOpts)
 		if err != nil {
 			return azruntime.Pipeline{}, err
 		}
+		// we don't want to modify the underlying array in plOpts.PerCall
 		perCall := make([]azpolicy.Policy, len(plOpts.PerCall), len(plOpts.PerCall)+1)
 		copy(perCall, plOpts.PerCall)
-		plOpts.PerCall = append(perCall, regPolicy)
+		perCall = append(perCall, regPolicy)
+		plOpts.PerCall = perCall
 	}
 	if plOpts.APIVersion.Name == "" {
 		plOpts.APIVersion.Name = "api-version"

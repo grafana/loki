@@ -8,8 +8,9 @@ type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor
 	StageExprVisitor
+	VariantsExprVisitor
 
-	VisitLogRange(*LogRange)
+	VisitLogRange(*LogRangeExpr)
 }
 
 type SampleExprVisitor interface {
@@ -31,15 +32,19 @@ type LogSelectorExprVisitor interface {
 type StageExprVisitor interface {
 	VisitDecolorize(*DecolorizeExpr)
 	VisitDropLabels(*DropLabelsExpr)
-	VisitJSONExpressionParser(*JSONExpressionParser)
+	VisitJSONExpressionParser(*JSONExpressionParserExpr)
 	VisitKeepLabel(*KeepLabelsExpr)
 	VisitLabelFilter(*LabelFilterExpr)
 	VisitLabelFmt(*LabelFmtExpr)
-	VisitLabelParser(*LabelParserExpr)
+	VisitLabelParser(*LineParserExpr)
 	VisitLineFilter(*LineFilterExpr)
 	VisitLineFmt(*LineFmtExpr)
-	VisitLogfmtExpressionParser(*LogfmtExpressionParser)
+	VisitLogfmtExpressionParser(*LogfmtExpressionParserExpr)
 	VisitLogfmtParser(*LogfmtParserExpr)
+}
+
+type VariantsExprVisitor interface {
+	VisitVariants(*MultiVariantExpr)
 }
 
 var _ RootVisitor = &DepthFirstTraversal{}
@@ -48,23 +53,24 @@ type DepthFirstTraversal struct {
 	VisitBinOpFn                  func(v RootVisitor, e *BinOpExpr)
 	VisitDecolorizeFn             func(v RootVisitor, e *DecolorizeExpr)
 	VisitDropLabelsFn             func(v RootVisitor, e *DropLabelsExpr)
-	VisitJSONExpressionParserFn   func(v RootVisitor, e *JSONExpressionParser)
+	VisitJSONExpressionParserFn   func(v RootVisitor, e *JSONExpressionParserExpr)
 	VisitKeepLabelFn              func(v RootVisitor, e *KeepLabelsExpr)
 	VisitLabelFilterFn            func(v RootVisitor, e *LabelFilterExpr)
 	VisitLabelFmtFn               func(v RootVisitor, e *LabelFmtExpr)
-	VisitLabelParserFn            func(v RootVisitor, e *LabelParserExpr)
+	VisitLabelParserFn            func(v RootVisitor, e *LineParserExpr)
 	VisitLabelReplaceFn           func(v RootVisitor, e *LabelReplaceExpr)
 	VisitLineFilterFn             func(v RootVisitor, e *LineFilterExpr)
 	VisitLineFmtFn                func(v RootVisitor, e *LineFmtExpr)
 	VisitLiteralFn                func(v RootVisitor, e *LiteralExpr)
-	VisitLogRangeFn               func(v RootVisitor, e *LogRange)
-	VisitLogfmtExpressionParserFn func(v RootVisitor, e *LogfmtExpressionParser)
+	VisitLogRangeFn               func(v RootVisitor, e *LogRangeExpr)
+	VisitLogfmtExpressionParserFn func(v RootVisitor, e *LogfmtExpressionParserExpr)
 	VisitLogfmtParserFn           func(v RootVisitor, e *LogfmtParserExpr)
 	VisitMatchersFn               func(v RootVisitor, e *MatchersExpr)
 	VisitPipelineFn               func(v RootVisitor, e *PipelineExpr)
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
+	VisitVariantsFn               func(v RootVisitor, e *MultiVariantExpr)
 }
 
 // VisitBinOp implements RootVisitor.
@@ -95,13 +101,13 @@ func (v *DepthFirstTraversal) VisitDropLabels(e *DropLabelsExpr) {
 	if e == nil {
 		return
 	}
-	if v.VisitDecolorizeFn != nil {
+	if v.VisitDropLabelsFn != nil {
 		v.VisitDropLabelsFn(v, e)
 	}
 }
 
 // VisitJSONExpressionParser implements RootVisitor.
-func (v *DepthFirstTraversal) VisitJSONExpressionParser(e *JSONExpressionParser) {
+func (v *DepthFirstTraversal) VisitJSONExpressionParser(e *JSONExpressionParserExpr) {
 	if e == nil {
 		return
 	}
@@ -141,7 +147,7 @@ func (v *DepthFirstTraversal) VisitLabelFmt(e *LabelFmtExpr) {
 }
 
 // VisitLabelParser implements RootVisitor.
-func (v *DepthFirstTraversal) VisitLabelParser(e *LabelParserExpr) {
+func (v *DepthFirstTraversal) VisitLabelParser(e *LineParserExpr) {
 	if e == nil {
 		return
 	}
@@ -198,7 +204,7 @@ func (v *DepthFirstTraversal) VisitLiteral(e *LiteralExpr) {
 }
 
 // VisitLogRange implements RootVisitor.
-func (v *DepthFirstTraversal) VisitLogRange(e *LogRange) {
+func (v *DepthFirstTraversal) VisitLogRange(e *LogRangeExpr) {
 	if e == nil {
 		return
 	}
@@ -210,7 +216,7 @@ func (v *DepthFirstTraversal) VisitLogRange(e *LogRange) {
 }
 
 // VisitLogfmtExpressionParser implements RootVisitor.
-func (v *DepthFirstTraversal) VisitLogfmtExpressionParser(e *LogfmtExpressionParser) {
+func (v *DepthFirstTraversal) VisitLogfmtExpressionParser(e *LogfmtExpressionParserExpr) {
 	if e == nil {
 		return
 	}
@@ -285,5 +291,21 @@ func (v *DepthFirstTraversal) VisitVectorAggregation(e *VectorAggregationExpr) {
 		v.VisitVectorAggregationFn(v, e)
 	} else {
 		e.Left.Accept(v)
+	}
+}
+
+func (v *DepthFirstTraversal) VisitVariants(e *MultiVariantExpr) {
+	if e == nil {
+		return
+	}
+
+	if v.VisitVariantsFn != nil {
+		v.VisitVariantsFn(v, e)
+	} else {
+		e.LogRange().Accept(v)
+		variants := e.Variants()
+		for i := range variants {
+			variants[i].Accept(v)
+		}
 	}
 }

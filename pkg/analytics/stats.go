@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	httpClient    = http.Client{Timeout: 5 * time.Second}
 	usageStatsURL = "https://stats.grafana.org/loki-usage-report"
 	statsPrefix   = "github.com/grafana/loki/"
 	targetKey     = "target"
@@ -73,7 +72,7 @@ type Report struct {
 }
 
 // sendReport sends the report to the stats server
-func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string) error {
+func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string, httpClient *http.Client) error {
 	report := buildReport(seed, interval)
 	out, err := jsoniter.MarshalIndent(report, "", " ")
 	if err != nil {
@@ -313,17 +312,17 @@ func (s *Statistics) String() string {
 func (s *Statistics) Value() map[string]interface{} {
 	stdvar := s.value.Load() / float64(s.count.Load())
 	stddev := math.Sqrt(stdvar)
-	min := s.min.Load()
-	max := s.max.Load()
+	minVal := s.min.Load()
+	maxVal := s.max.Load()
 	result := map[string]interface{}{
 		"avg":   s.avg.Load(),
 		"count": s.count.Load(),
 	}
-	if !math.IsInf(min, 0) {
-		result["min"] = min
+	if !math.IsInf(minVal, 0) {
+		result["min"] = minVal
 	}
-	if !math.IsInf(max, 0) {
-		result["max"] = s.max.Load()
+	if !math.IsInf(maxVal, 0) {
+		result["max"] = maxVal
 	}
 	if !math.IsNaN(stddev) {
 		result["stddev"] = stddev
@@ -336,20 +335,20 @@ func (s *Statistics) Value() map[string]interface{} {
 
 func (s *Statistics) Record(v float64) {
 	for {
-		min := s.min.Load()
-		if min <= v {
+		minVal := s.min.Load()
+		if minVal <= v {
 			break
 		}
-		if s.min.CompareAndSwap(min, v) {
+		if s.min.CompareAndSwap(minVal, v) {
 			break
 		}
 	}
 	for {
-		max := s.max.Load()
-		if max >= v {
+		maxVal := s.max.Load()
+		if maxVal >= v {
 			break
 		}
-		if s.max.CompareAndSwap(max, v) {
+		if s.max.CompareAndSwap(maxVal, v) {
 			break
 		}
 	}

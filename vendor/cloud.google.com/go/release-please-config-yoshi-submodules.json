@@ -33,11 +33,17 @@
         "apigeeregistry": {
             "component": "apigeeregistry"
         },
+        "apihub": {
+            "component": "apihub"
+        },
         "apikeys": {
             "component": "apikeys"
         },
         "appengine": {
             "component": "appengine"
+        },
+        "apphub": {
+            "component": "apphub"
         },
         "apps": {
             "component": "apps"
@@ -56,6 +62,9 @@
         },
         "automl": {
             "component": "automl"
+        },
+        "backupdr": {
+            "component": "backupdr"
         },
         "baremetalsolution": {
             "component": "baremetalsolution"
@@ -78,8 +87,17 @@
         "channel": {
             "component": "channel"
         },
+        "chat": {
+            "component": "chat"
+        },
+        "chronicle": {
+            "component": "chronicle"
+        },
         "cloudbuild": {
             "component": "cloudbuild"
+        },
+        "cloudcontrolspartner": {
+            "component": "cloudcontrolspartner"
         },
         "clouddms": {
             "component": "clouddms"
@@ -147,6 +165,12 @@
         "deploy": {
             "component": "deploy"
         },
+        "developerconnect": {
+            "component": "developerconnect"
+        },
+        "devicestreaming": {
+            "component": "devicestreaming"
+        },
         "dialogflow": {
             "component": "dialogflow"
         },
@@ -177,6 +201,9 @@
         "filestore": {
             "component": "filestore"
         },
+        "financialservices": {
+            "component": "financialservices"
+        },
         "functions": {
             "component": "functions"
         },
@@ -204,6 +231,9 @@
         "iap": {
             "component": "iap"
         },
+        "identitytoolkit": {
+            "component": "identitytoolkit"
+        },
         "ids": {
             "component": "ids"
         },
@@ -222,8 +252,14 @@
         "longrunning": {
             "component": "longrunning"
         },
+        "lustre": {
+            "component": "lustre"
+        },
         "managedidentities": {
             "component": "managedidentities"
+        },
+        "managedkafka": {
+            "component": "managedkafka"
         },
         "maps": {
             "component": "maps"
@@ -234,11 +270,17 @@
         "memcache": {
             "component": "memcache"
         },
+        "memorystore": {
+            "component": "memorystore"
+        },
         "metastore": {
             "component": "metastore"
         },
         "migrationcenter": {
             "component": "migrationcenter"
+        },
+        "modelarmor": {
+            "component": "modelarmor"
         },
         "monitoring": {
             "component": "monitoring"
@@ -255,11 +297,17 @@
         "networksecurity": {
             "component": "networksecurity"
         },
+        "networkservices": {
+            "component": "networkservices"
+        },
         "notebooks": {
             "component": "notebooks"
         },
         "optimization": {
             "component": "optimization"
+        },
+        "oracledatabase": {
+            "component": "oracledatabase"
         },
         "orchestration": {
             "component": "orchestration"
@@ -273,6 +321,12 @@
         "oslogin": {
             "component": "oslogin"
         },
+        "parallelstore": {
+            "component": "parallelstore"
+        },
+        "parametermanager": {
+            "component": "parametermanager"
+        },
         "phishingprotection": {
             "component": "phishingprotection"
         },
@@ -284,6 +338,9 @@
         },
         "privatecatalog": {
             "component": "privatecatalog"
+        },
+        "privilegedaccessmanager": {
+            "component": "privilegedaccessmanager"
         },
         "rapidmigrationassessment": {
             "component": "rapidmigrationassessment"
@@ -302,9 +359,6 @@
         },
         "resourcemanager": {
             "component": "resourcemanager"
-        },
-        "resourcesettings": {
-            "component": "resourcesettings"
         },
         "retail": {
             "component": "retail"
@@ -330,11 +384,17 @@
         "securitycentermanagement": {
             "component": "securitycentermanagement"
         },
+        "securityposture": {
+            "component": "securityposture"
+        },
         "servicecontrol": {
             "component": "servicecontrol"
         },
         "servicedirectory": {
             "component": "servicedirectory"
+        },
+        "servicehealth": {
+            "component": "servicehealth"
         },
         "servicemanagement": {
             "component": "servicemanagement"
@@ -348,14 +408,23 @@
         "shopping": {
             "component": "shopping"
         },
+        "spanner/benchmarks": {
+            "component": "spanner/benchmarks"
+        },
         "speech": {
             "component": "speech"
+        },
+        "storagebatchoperations": {
+            "component": "storagebatchoperations"
         },
         "storageinsights": {
             "component": "storageinsights"
         },
         "storagetransfer": {
             "component": "storagetransfer"
+        },
+        "streetview": {
+            "component": "streetview"
         },
         "support": {
             "component": "support"
@@ -386,6 +455,9 @@
         },
         "vision": {
             "component": "vision"
+        },
+        "visionai": {
+            "component": "visionai"
         },
         "vmmigration": {
             "component": "vmmigration"

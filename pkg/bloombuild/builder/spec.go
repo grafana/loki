@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,28 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
-
-// inclusive range
-type Keyspace struct {
-	min, max model.Fingerprint
-}
-
-func (k Keyspace) Cmp(other Keyspace) v1.BoundsCheck {
-	if other.max < k.min {
-		return v1.Before
-	} else if other.min > k.max {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
-// Store is likely bound within. This allows specifying impls like ShardedStore<Store>
-// to only request the shard-range needed from the existing store.
-type BloomGenerator interface {
-	Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, toClose []io.Closer, results iter.Iterator[*v1.Block], err error)
-}
 
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
@@ -90,8 +68,6 @@ func NewSimpleBloomGenerator(
 		reporter:         reporter,
 
 		tokenizer: v1.NewBloomTokenizer(
-			opts.Schema.NGramLen(),
-			opts.Schema.NGramSkip(),
 			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
 			metrics,
 			log.With(
@@ -161,7 +137,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIt
 		)
 	}
 
-	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.populator(ctx), s.writerReaderFunc, series, s.blocksIter)
+	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.logger, s.populator(ctx), s.writerReaderFunc, series, s.blocksIter)
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds
@@ -170,6 +146,7 @@ type LazyBlockBuilderIterator struct {
 	ctx              context.Context
 	opts             v1.BlockOptions
 	metrics          *v1.Metrics
+	logger           log.Logger
 	populate         v1.BloomPopulatorFunc
 	writerReaderFunc func() (v1.BlockWriter, v1.BlockReader)
 	series           iter.PeekIterator[*v1.Series]
@@ -184,6 +161,7 @@ func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *v1.Metrics,
+	logger log.Logger,
 	populate v1.BloomPopulatorFunc,
 	writerReaderFunc func() (v1.BlockWriter, v1.BlockReader),
 	series iter.PeekIterator[*v1.Series],
@@ -193,6 +171,7 @@ func NewLazyBlockBuilderIterator(
 		ctx:              ctx,
 		opts:             opts,
 		metrics:          metrics,
+		logger:           logger,
 		populate:         populate,
 		writerReaderFunc: writerReaderFunc,
 		series:           series,
@@ -220,7 +199,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics, b.logger)
 	writer, reader := b.writerReaderFunc()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
@@ -247,12 +226,6 @@ func (b *LazyBlockBuilderIterator) At() *v1.Block {
 
 func (b *LazyBlockBuilderIterator) Err() error {
 	return b.err
-}
-
-// IndexLoader loads an index. This helps us do things like
-// load TSDBs for a specific period excluding multitenant (pre-compacted) indices
-type indexLoader interface {
-	Index() (tsdb.Index, error)
 }
 
 // ChunkItersByFingerprint models the chunks belonging to a fingerprint

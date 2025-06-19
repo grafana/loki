@@ -424,6 +424,13 @@ func EmptyPostings() Postings {
 	return emptyPostings
 }
 
+// IsEmptyPostingsType returns true if the postings are an empty postings list.
+// When this function returns false, it doesn't mean that the postings isn't empty
+// (it could be an empty intersection of two non-empty postings, for example).
+func IsEmptyPostingsType(p Postings) bool {
+	return p == emptyPostings
+}
+
 // ErrPostings returns new postings that immediately error.
 func ErrPostings(err error) Postings {
 	return errPostings{err}
@@ -846,11 +853,11 @@ type ShardedPostings struct {
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
 func NewShardedPostings(p Postings, fpFilter FingerprintFilter, offsets FingerprintOffsets) *ShardedPostings {
-	min, max := offsets.Range(fpFilter)
+	minVal, maxVal := offsets.Range(fpFilter)
 	return &ShardedPostings{
 		p:         p,
-		minOffset: min,
-		maxOffset: max,
+		minOffset: minVal,
+		maxOffset: maxVal,
 	}
 }
 

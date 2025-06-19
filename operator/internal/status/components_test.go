@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
@@ -65,6 +65,13 @@ func setupListClient(t *testing.T, stack *lokiv1.LokiStack, componentPods map[st
 }
 
 func TestGenerateComponentStatus(t *testing.T) {
+	empty := lokiv1.PodStatusMap{
+		lokiv1.PodFailed:  []string{},
+		lokiv1.PodPending: []string{},
+		lokiv1.PodRunning: []string{},
+		lokiv1.PodReady:   []string{},
+	}
+
 	tt := []struct {
 		desc                string
 		componentPods       map[string]*corev1.PodList
@@ -83,14 +90,14 @@ func TestGenerateComponentStatus(t *testing.T) {
 				manifests.LabelGatewayComponent:       {},
 			},
 			wantComponentStatus: &lokiv1.LokiStackComponentStatus{
-				Compactor:     lokiv1.PodStatusMap{},
-				Distributor:   lokiv1.PodStatusMap{},
-				IndexGateway:  lokiv1.PodStatusMap{},
-				Ingester:      lokiv1.PodStatusMap{},
-				Querier:       lokiv1.PodStatusMap{},
-				QueryFrontend: lokiv1.PodStatusMap{},
-				Gateway:       lokiv1.PodStatusMap{},
-				Ruler:         lokiv1.PodStatusMap{},
+				Compactor:     empty,
+				Distributor:   empty,
+				IndexGateway:  empty,
+				Ingester:      empty,
+				Querier:       empty,
+				QueryFrontend: empty,
+				Gateway:       empty,
+				Ruler:         empty,
 			},
 		},
 		{
@@ -116,10 +123,32 @@ func TestGenerateComponentStatus(t *testing.T) {
 				Ruler:         lokiv1.PodStatusMap{lokiv1.PodRunning: {"ruler-pod-0"}},
 			},
 		},
+		{
+			desc: "all pods without ruler",
+			componentPods: map[string]*corev1.PodList{
+				manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, false, corev1.PodRunning),
+				manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, false, corev1.PodRunning),
+				manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, false, corev1.PodRunning),
+				manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, false, corev1.PodRunning),
+				manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, false, corev1.PodRunning),
+				manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, false, corev1.PodRunning),
+				manifests.LabelRulerComponent:         {},
+				manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, false, corev1.PodRunning),
+			},
+			wantComponentStatus: &lokiv1.LokiStackComponentStatus{
+				Compactor:     lokiv1.PodStatusMap{lokiv1.PodRunning: {"compactor-pod-0"}},
+				Distributor:   lokiv1.PodStatusMap{lokiv1.PodRunning: {"distributor-pod-0"}},
+				IndexGateway:  lokiv1.PodStatusMap{lokiv1.PodRunning: {"index-gateway-pod-0"}},
+				Ingester:      lokiv1.PodStatusMap{lokiv1.PodRunning: {"ingester-pod-0"}},
+				Querier:       lokiv1.PodStatusMap{lokiv1.PodRunning: {"querier-pod-0"}},
+				QueryFrontend: lokiv1.PodStatusMap{lokiv1.PodRunning: {"query-frontend-pod-0"}},
+				Gateway:       lokiv1.PodStatusMap{lokiv1.PodRunning: {"lokistack-gateway-pod-0"}},
+				Ruler:         empty,
+			},
+		},
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

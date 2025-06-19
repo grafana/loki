@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -32,7 +31,7 @@ const (
 var errIndexListCacheTooStale = fmt.Errorf("index list cache too stale")
 
 type IndexSet interface {
-	Init(forQuerying bool) error
+	Init(forQuerying bool, logger log.Logger) error
 	Close()
 	ForEach(ctx context.Context, callback index.ForEachIndexCallback) error
 	ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error
@@ -94,13 +93,11 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 }
 
 // Init downloads all the db files for the table from object storage.
-func (t *indexSet) Init(forQuerying bool) (err error) {
+func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx := context.Background()
 	ctx, t.cancelFunc = context.WithTimeout(ctx, downloadTimeout)
-
-	logger, ctx := spanlogger.NewWithLogger(ctx, t.logger, "indexSet.Init")
 
 	defer func() {
 		if err != nil {
@@ -186,7 +183,7 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 	defer t.indexMtx.rUnlock()
 
-	logger := util_log.WithContext(ctx, t.logger)
+	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for _, idx := range t.index {
@@ -205,7 +202,7 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 	}
 	defer t.indexMtx.rUnlock()
 
-	logger := util_log.WithContext(ctx, t.logger)
+	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	if len(t.index) == 0 {
@@ -286,6 +283,11 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
+	if !t.indexMtx.isReady() {
+		level.Info(t.logger).Log("msg", "skip sync since the index set is not ready")
+		return nil
+	}
+
 	return t.syncWithRetry(ctx, true, false)
 }
 

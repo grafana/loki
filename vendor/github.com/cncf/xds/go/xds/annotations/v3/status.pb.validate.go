@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,20 +32,56 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on FileStatusAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *FileStatusAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FileStatusAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// FileStatusAnnotationMultiError, or nil if none found.
+func (m *FileStatusAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FileStatusAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	// no validation rules for WorkInProgress
+
+	if len(errors) > 0 {
+		return FileStatusAnnotationMultiError(errors)
+	}
 
 	return nil
 }
+
+// FileStatusAnnotationMultiError is an error wrapping multiple validation
+// errors returned by FileStatusAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type FileStatusAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FileStatusAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FileStatusAnnotationMultiError) AllErrors() []error { return m }
 
 // FileStatusAnnotationValidationError is the validation error returned by
 // FileStatusAnnotation.Validate if the designated constraints aren't met.
@@ -104,16 +141,51 @@ var _ interface {
 
 // Validate checks the field values on MessageStatusAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *MessageStatusAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on MessageStatusAnnotation with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// MessageStatusAnnotationMultiError, or nil if none found.
+func (m *MessageStatusAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *MessageStatusAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	// no validation rules for WorkInProgress
+
+	if len(errors) > 0 {
+		return MessageStatusAnnotationMultiError(errors)
+	}
 
 	return nil
 }
+
+// MessageStatusAnnotationMultiError is an error wrapping multiple validation
+// errors returned by MessageStatusAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type MessageStatusAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m MessageStatusAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m MessageStatusAnnotationMultiError) AllErrors() []error { return m }
 
 // MessageStatusAnnotationValidationError is the validation error returned by
 // MessageStatusAnnotation.Validate if the designated constraints aren't met.
@@ -173,16 +245,51 @@ var _ interface {
 
 // Validate checks the field values on FieldStatusAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *FieldStatusAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FieldStatusAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// FieldStatusAnnotationMultiError, or nil if none found.
+func (m *FieldStatusAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FieldStatusAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	// no validation rules for WorkInProgress
+
+	if len(errors) > 0 {
+		return FieldStatusAnnotationMultiError(errors)
+	}
 
 	return nil
 }
+
+// FieldStatusAnnotationMultiError is an error wrapping multiple validation
+// errors returned by FieldStatusAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type FieldStatusAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FieldStatusAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FieldStatusAnnotationMultiError) AllErrors() []error { return m }
 
 // FieldStatusAnnotationValidationError is the validation error returned by
 // FieldStatusAnnotation.Validate if the designated constraints aren't met.
@@ -241,19 +348,54 @@ var _ interface {
 } = FieldStatusAnnotationValidationError{}
 
 // Validate checks the field values on StatusAnnotation with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *StatusAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on StatusAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// StatusAnnotationMultiError, or nil if none found.
+func (m *StatusAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *StatusAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
+
+	var errors []error
 
 	// no validation rules for WorkInProgress
 
 	// no validation rules for PackageVersionStatus
 
+	if len(errors) > 0 {
+		return StatusAnnotationMultiError(errors)
+	}
+
 	return nil
 }
+
+// StatusAnnotationMultiError is an error wrapping multiple validation errors
+// returned by StatusAnnotation.ValidateAll() if the designated constraints
+// aren't met.
+type StatusAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m StatusAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m StatusAnnotationMultiError) AllErrors() []error { return m }
 
 // StatusAnnotationValidationError is the validation error returned by
 // StatusAnnotation.Validate if the designated constraints aren't met.

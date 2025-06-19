@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
@@ -136,7 +137,7 @@ func (c *CompactedIndex) setupIndexProcessors() error {
 	return nil
 }
 
-func (c *CompactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
+func (c *CompactedIndex) ForEachSeries(ctx context.Context, callback retention.SeriesCallback) error {
 	if err := c.setupIndexProcessors(); err != nil {
 		return err
 	}
@@ -146,7 +147,7 @@ func (c *CompactedIndex) ForEachChunk(ctx context.Context, callback retention.Ch
 		return fmt.Errorf("required boltdb bucket not found")
 	}
 
-	return ForEachChunk(ctx, bucket, c.periodConfig, callback)
+	return ForEachSeries(ctx, bucket, c.periodConfig, callback)
 }
 
 func (c *CompactedIndex) IndexChunk(chunk chunk.Chunk) (bool, error) {
@@ -163,6 +164,14 @@ func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error 
 	}
 
 	return c.seriesCleaner.CleanupSeries(userID, lbls)
+}
+
+func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+	if err := c.setupIndexProcessors(); err != nil {
+		return err
+	}
+
+	return c.seriesCleaner.RemoveChunk(from, through, userID, labels, chunkID)
 }
 
 func (c *CompactedIndex) ToIndexFile() (shipperindex.Index, error) {

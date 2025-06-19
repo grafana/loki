@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -56,6 +57,21 @@ func (es MetricSlice) At(i int) Metric {
 	return newMetric((*es.orig)[i], es.state)
 }
 
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es MetricSlice) All() iter.Seq2[int, Metric] {
+	return func(yield func(int, Metric) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
 // 1. If the newCap <= cap then no change in capacity.
 // 2. If the newCap > cap then the slice capacity will be expanded to equal newCap.
@@ -93,6 +109,10 @@ func (es MetricSlice) AppendEmpty() Metric {
 func (es MetricSlice) MoveAndAppendTo(dest MetricSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig

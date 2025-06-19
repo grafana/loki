@@ -9,8 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -48,8 +46,6 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		return WriteVolumeResponseJSON(result, w)
 	case *logproto.QueryPatternsResponse:
 		return WriteQueryPatternsResponseJSON(result, w)
-	case *logproto.QuerySamplesResponse:
-		return WriteQuerySamplesResponseJSON(result, w)
 	}
 	return fmt.Errorf("unknown response type %T", v)
 }
@@ -130,8 +126,9 @@ func WriteSeriesResponseJSON(series []logproto.SeriesIdentifier, w io.Writer) er
 	}
 
 	for _, series := range series {
-		m := make(map[string]string, 0)
-		for _, pair := range series.GetLabels() {
+		labels := series.GetLabels()
+		m := make(map[string]string, len(labels))
+		for _, pair := range labels {
 			m[pair.Key] = pair.Value
 		}
 		adapter.Data = append(adapter.Data, m)
@@ -209,6 +206,9 @@ func WriteQueryPatternsResponseJSON(r *logproto.QueryPatternsResponse, w io.Writ
 			s.WriteObjectField("pattern")
 			s.WriteStringWithHTMLEscaped(series.Pattern)
 			s.WriteMore()
+			s.WriteObjectField("level")
+			s.WriteString(series.Level)
+			s.WriteMore()
 			s.WriteObjectField("samples")
 			s.WriteArrayStart()
 			for j, sample := range series.Samples {
@@ -242,48 +242,4 @@ func WriteDetectedLabelsResponseJSON(r *logproto.DetectedLabelsResponse, w io.Wr
 	s.WriteVal(r)
 	s.WriteRaw("\n")
 	return s.Flush()
-}
-
-// WriteQuerySamplesResponseJSON marshals a logproto.QuerySamplesResponse to JSON and then
-// writes it to the provided io.Writer.
-func WriteQuerySamplesResponseJSON(r *logproto.QuerySamplesResponse, w io.Writer) error {
-	s := jsoniter.ConfigFastest.BorrowStream(w)
-	defer jsoniter.ConfigFastest.ReturnStream(s)
-
-	matrix, err := logprotoSeriesToPromQLMatrix(r.Series)
-	if err != nil {
-		return fmt.Errorf("could not convert logproto series to promql matrix: %w", err)
-	}
-
-	// TODO(twhitney): add stats
-	err = EncodeResult(matrix, nil, stats.Result{}, s, nil)
-	if err != nil {
-		return fmt.Errorf("could not write JSON response: %w", err)
-	}
-
-	s.WriteRaw("\n")
-	s.Flush()
-	return nil
-}
-
-func logprotoSeriesToPromQLMatrix(series []logproto.Series) (promql.Matrix, error) {
-	promMatrix := make(promql.Matrix, len(series))
-	for i, s := range series {
-		lbls, err := parser.ParseMetric(s.Labels)
-		if err != nil {
-			return nil, err
-		}
-
-		promSeries := promql.Series{
-			Metric: lbls,
-			Floats: make([]promql.FPoint, len(s.Samples)),
-		}
-		for i, sample := range s.Samples {
-			t := model.TimeFromUnixNano(sample.Timestamp)
-			promSeries.Floats[i] = promql.FPoint{T: int64(t), F: sample.Value}
-		}
-		promMatrix[i] = promSeries
-	}
-
-	return promMatrix, nil
 }

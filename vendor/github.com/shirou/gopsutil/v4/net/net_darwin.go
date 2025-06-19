@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	errNetstatHeader  = errors.New("Can't parse header of netstat output")
+	errNetstatHeader  = errors.New("can't parse header of netstat output")
 	netstatLinkRegexp = regexp.MustCompile(`^<Link#(\d+)>$`)
 )
 
@@ -29,15 +29,14 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 	)
 
 	if columns[0] == "Name" {
-		err = errNetstatHeader
-		return
+		return nil, nil, errNetstatHeader
 	}
 
 	// try to extract the numeric value from <Link#123>
 	if subMatch := netstatLinkRegexp.FindStringSubmatch(columns[2]); len(subMatch) == 2 {
 		numericValue, err = strconv.ParseUint(subMatch[1], 10, 64)
 		if err != nil {
-			return
+			return nil, nil, err
 		}
 		linkIDUint := uint(numericValue)
 		linkID = &linkIDUint
@@ -50,8 +49,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		base = 0
 	}
 	if numberColumns < 11 || numberColumns > 13 {
-		err = fmt.Errorf("Line %q do have an invalid number of columns %d", line, numberColumns)
-		return
+		return nil, nil, fmt.Errorf("line %q do have an invalid number of columns %d", line, numberColumns)
 	}
 
 	parsed := make([]uint64, 0, 7)
@@ -74,7 +72,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 		}
 
 		if numericValue, err = strconv.ParseUint(target, 10, 64); err != nil {
-			return
+			return nil, nil, err
 		}
 		parsed = append(parsed, numericValue)
 	}
@@ -91,7 +89,7 @@ func parseNetstatLine(line string) (stat *IOCountersStat, linkID *uint, err erro
 	if len(parsed) == 7 {
 		stat.Dropout = parsed[6]
 	}
-	return
+	return stat, linkID, nil
 }
 
 type netstatInterface struct {
@@ -143,8 +141,8 @@ func newMapInterfaceNameUsage(ifaces []netstatInterface) mapInterfaceNameUsage {
 	return output
 }
 
-func (min mapInterfaceNameUsage) isTruncated() bool {
-	for _, usage := range min {
+func (mapi mapInterfaceNameUsage) isTruncated() bool {
+	for _, usage := range mapi {
 		if usage > 1 {
 			return true
 		}
@@ -152,9 +150,9 @@ func (min mapInterfaceNameUsage) isTruncated() bool {
 	return false
 }
 
-func (min mapInterfaceNameUsage) notTruncated() []string {
+func (mapi mapInterfaceNameUsage) notTruncated() []string {
 	output := make([]string, 0)
-	for ifaceName, usage := range min {
+	for ifaceName, usage := range mapi {
 		if usage == 1 {
 			output = append(output, ifaceName)
 		}
@@ -162,15 +160,16 @@ func (min mapInterfaceNameUsage) notTruncated() []string {
 	return output
 }
 
+// Deprecated: use process.PidsWithContext instead
+func PidsWithContext(_ context.Context) ([]int32, error) {
+	return nil, common.ErrNotImplementedError
+}
+
 // example of `netstat -ibdnW` output on yosemite
 // Name  Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts Oerrs     Obytes  Coll Drop
 // lo0   16384 <Link#1>                        869107     0  169411755   869107     0  169411755     0   0
 // lo0   16384 ::1/128     ::1                 869107     -  169411755   869107     -  169411755     -   -
 // lo0   16384 127           127.0.0.1         869107     -  169411755   869107     -  169411755     -   -
-func IOCounters(pernic bool) ([]IOCountersStat, error) {
-	return IOCountersWithContext(context.Background(), pernic)
-}
-
 func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, error) {
 	var (
 		ret      []IOCountersStat
@@ -247,45 +246,24 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 		}
 	}
 
-	if pernic == false {
-		return getIOCountersAll(ret)
+	if !pernic {
+		return getIOCountersAll(ret), nil
 	}
 	return ret, nil
 }
 
-// IOCountersByFile exists just for compatibility with Linux.
-func IOCountersByFile(pernic bool, filename string) ([]IOCountersStat, error) {
-	return IOCountersByFileWithContext(context.Background(), pernic, filename)
-}
-
-func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename string) ([]IOCountersStat, error) {
+func IOCountersByFileWithContext(ctx context.Context, pernic bool, _ string) ([]IOCountersStat, error) {
 	return IOCountersWithContext(ctx, pernic)
 }
 
-func FilterCounters() ([]FilterStat, error) {
-	return FilterCountersWithContext(context.Background())
-}
-
-func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
+func FilterCountersWithContext(_ context.Context) ([]FilterStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConntrackStats(percpu bool) ([]ConntrackStat, error) {
-	return ConntrackStatsWithContext(context.Background(), percpu)
-}
-
-func ConntrackStatsWithContext(ctx context.Context, percpu bool) ([]ConntrackStat, error) {
+func ConntrackStatsWithContext(_ context.Context, _ bool) ([]ConntrackStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-// ProtoCounters returns network statistics for the entire system
-// If protocols is empty then all protocols are returned, otherwise
-// just the protocols in the list are returned.
-// Not Implemented for Darwin
-func ProtoCounters(protocols []string) ([]ProtoCountersStat, error) {
-	return ProtoCountersWithContext(context.Background(), protocols)
-}
-
-func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
+func ProtoCountersWithContext(_ context.Context, _ []string) ([]ProtoCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }

@@ -8,12 +8,13 @@ import (
 
 	"github.com/buger/jsonparser"
 	gologfmt "github.com/go-logfmt/logfmt"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
 type LineTokenizer interface {
-	Tokenize(line string, tokens []string, state interface{}) ([]string, interface{})
+	Tokenize(line string, tokens []string, state interface{}, linesDropped *prometheus.CounterVec) ([]string, interface{})
 	Join(tokens []string, state interface{}) string
 	Clone(tokens []string, state interface{}) ([]string, interface{})
 }
@@ -37,9 +38,10 @@ func (spacesTokenizer) Clone(tokens []string, _ interface{}) ([]string, interfac
 type punctuationTokenizer struct {
 	includeDelimiters [128]rune
 	excludeDelimiters [128]rune
+	maxLineLength     int
 }
 
-func newPunctuationTokenizer() *punctuationTokenizer {
+func newPunctuationTokenizer(maxLineLength int) *punctuationTokenizer {
 	var included [128]rune
 	var excluded [128]rune
 	included['='] = 1
@@ -51,10 +53,23 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 	return &punctuationTokenizer{
 		includeDelimiters: included,
 		excludeDelimiters: excluded,
+		maxLineLength:     maxLineLength,
 	}
 }
 
-func (p *punctuationTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+func (p *punctuationTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	state interface{},
+	linesDropped *prometheus.CounterVec,
+) ([]string, interface{}) {
+	if len(line) > p.maxLineLength {
+		if linesDropped != nil {
+			linesDropped.WithLabelValues(LineTooLong).Inc()
+		}
+		return nil, nil
+	}
+
 	if cap(tokens) == 0 {
 		tokens = make([]string, 0, 128)
 	}
@@ -125,7 +140,12 @@ func (p *punctuationTokenizer) Clone(tokens []string, state interface{}) ([]stri
 
 type splittingTokenizer struct{}
 
-func (splittingTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+func (splittingTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	state interface{},
+	_ *prometheus.CounterVec,
+) ([]string, interface{}) {
 	numEquals := strings.Count(line, "=")
 	numColons := strings.Count(line, ":")
 	numSpaces := strings.Count(line, " ")
@@ -190,18 +210,32 @@ func (splittingTokenizer) Clone(tokens []string, state interface{}) ([]string, i
 }
 
 type logfmtTokenizer struct {
-	dec        *logfmt.Decoder
-	varReplace string
+	dec           *logfmt.Decoder
+	varReplace    string
+	maxLineLength int
 }
 
-func newLogfmtTokenizer(varReplace string) *logfmtTokenizer {
+func newLogfmtTokenizer(varReplace string, maxLineLength int) *logfmtTokenizer {
 	return &logfmtTokenizer{
-		dec:        logfmt.NewDecoder(nil),
-		varReplace: varReplace,
+		dec:           logfmt.NewDecoder(nil),
+		varReplace:    varReplace,
+		maxLineLength: maxLineLength,
 	}
 }
 
-func (t *logfmtTokenizer) Tokenize(line string, tokens []string, _ interface{}) ([]string, interface{}) {
+func (t *logfmtTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	_ interface{},
+	linesDropped *prometheus.CounterVec,
+) ([]string, interface{}) {
+	if len(line) > t.maxLineLength {
+		if linesDropped != nil {
+			linesDropped.WithLabelValues(LineTooLong).Inc()
+		}
+		return nil, nil
+	}
+
 	if cap(tokens) == 0 {
 		tokens = make([]string, 0, 64)
 	}
@@ -251,16 +285,28 @@ func (t *logfmtTokenizer) Clone(tokens []string, _ interface{}) ([]string, inter
 
 type jsonTokenizer struct {
 	*punctuationTokenizer
-	varReplace string
+	varReplace       string
+	maxLineLength    int
+	fieldsToTokenize []string
 }
 
-func newJSONTokenizer(varReplace string) *jsonTokenizer {
-	return &jsonTokenizer{newPunctuationTokenizer(), varReplace}
+func newJSONTokenizer(varReplace string, maxLineLength int, fieldsToTokenize []string) *jsonTokenizer {
+	return &jsonTokenizer{
+		punctuationTokenizer: newPunctuationTokenizer(maxLineLength),
+		varReplace:           varReplace,
+		maxLineLength:        maxLineLength,
+		fieldsToTokenize:     fieldsToTokenize,
+	}
 }
 
-func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+func (t *jsonTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	state interface{},
+	linesDropped *prometheus.CounterVec,
+) ([]string, interface{}) {
 	var found []byte
-	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
+	for _, key := range t.fieldsToTokenize {
 		msg, ty, _, err := jsonparser.Get(unsafeBytes(line), key)
 		if err == nil && ty == jsonparser.String {
 			found = msg
@@ -272,7 +318,13 @@ func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}
 		return nil, nil
 	}
 
-	return t.punctuationTokenizer.Tokenize(unsafeString(found), tokens, state)
+	foundLine := unsafeString(found)
+
+	if len(foundLine) > t.maxLineLength {
+		return nil, nil
+	}
+
+	return t.punctuationTokenizer.Tokenize(foundLine, tokens, state, linesDropped)
 }
 
 func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {

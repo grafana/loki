@@ -11,7 +11,13 @@ import (
 )
 
 const (
-	ReasonLabel = "reason"
+	ReasonLabel            = "reason"
+	MissingStreamsErrorMsg = "error at least one valid stream is required for ingestion"
+
+	// RequestBodyTooLarge is a reason when decompressing the request body is too large.
+	RequestBodyTooLarge         = "request_body_too_large"
+	RequestBodyTooLargeErrorMsg = "request body too large: %d bytes, limit: %d bytes"
+
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
 	MissingLabels = "missing_labels"
@@ -67,6 +73,12 @@ const (
 	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it."
 	StructuredMetadataTooMany            = "structured_metadata_too_many"
 	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
+	BlockedIngestion                     = "blocked_ingestion"
+	BlockedIngestionErrorMsg             = "ingestion blocked for user %s until '%s' with status code '%d'"
+	BlockedIngestionPolicy               = "blocked_ingestion_policy"
+	BlockedIngestionPolicyErrorMsg       = "ingestion blocked for user %s until '%s' with status code '%d'"
+	MissingEnforcedLabels                = "missing_enforced_labels"
+	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s for stream %s"
 )
 
 type ErrStreamRateLimit struct {
@@ -109,7 +121,7 @@ var DiscardedBytes = promauto.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant", "retention_hours", "policy"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -119,7 +131,7 @@ var DiscardedSamples = promauto.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant", "retention_hours", "policy"},
 )
 
 var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{

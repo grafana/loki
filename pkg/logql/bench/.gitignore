@@ -1,0 +1,8 @@
+# Ignore generated data directory
+data/
+*.prof
+bench.test
+trace.out
+result.new.txt
+result.old.txt
+debug.log

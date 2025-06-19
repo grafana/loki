@@ -21,9 +21,10 @@ type deltaProfiler interface {
 }
 
 func init() {
-	http.HandleFunc("/debug/pprof/delta_heap", Heap)
-	http.HandleFunc("/debug/pprof/delta_block", Block)
-	http.HandleFunc("/debug/pprof/delta_mutex", Mutex)
+	prefix := routePrefix()
+	http.HandleFunc(prefix+"/debug/pprof/delta_heap", Heap)
+	http.HandleFunc(prefix+"/debug/pprof/delta_block", Block)
+	http.HandleFunc(prefix+"/debug/pprof/delta_mutex", Mutex)
 }
 
 func Heap(w http.ResponseWriter, r *http.Request) {

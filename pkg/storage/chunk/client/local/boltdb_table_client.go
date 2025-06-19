@@ -20,7 +20,7 @@ func NewTableClient(directory string) (index.TableClient, error) {
 
 func (c *TableClient) ListTables(_ context.Context) ([]string, error) {
 	boltDbFiles := []string{}
-	err := filepath.Walk(c.directory, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(c.directory, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

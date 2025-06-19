@@ -53,6 +53,8 @@ type BasicLifecyclerConfig struct {
 	HeartbeatTimeout    time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
+	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
+	HideTokensInStatusPage bool
 
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
@@ -73,6 +75,8 @@ Rather, it's the delegate's responsibility to call [BasicLifecycler.ChangeState]
   - The lifecycler will then periodically, based on the [ring.BasicLifecyclerConfig.TokensObservePeriod], attempt to verify that its tokens have been added to the ring, after which it will call [ring.BasicLifecyclerDelegate.OnRingInstanceTokens].
   - The lifecycler will update they key/value store with heartbeats and state changes based on the [ring.BasicLifecyclerConfig.HeartbeatPeriod], calling [ring.BasicLifecyclerDelegate.OnRingInstanceHeartbeat] each time.
   - When the BasicLifecycler is stopped, it will call [ring.BasicLifecyclerDelegate.OnRingInstanceStopping].
+
+BasicLifecycler does not support read only instances for now.
 */
 type BasicLifecycler struct {
 	*services.BasicService
@@ -292,7 +296,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		var exists bool
 		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
 		if exists {
-			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
+			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String(), "last_heartbeat_at", instanceDesc.GetLastHeartbeatAt().String())
 		} else {
 			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ring", l.ringName)
 		}
@@ -316,7 +320,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		// Always overwrite the instance in the ring (even if already exists) because some properties
 		// may have changed (stated, tokens, zone, address) and even if they didn't the heartbeat at
 		// least did.
-		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt)
+		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt, false, time.Time{})
 		return ringDesc, true, nil
 	})
 
@@ -443,7 +447,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 			// a resharding of tenants among instances: to guarantee query correctness we need to update the
 			// registration timestamp to current time.
 			registeredAt := time.Now()
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt)
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt, false, time.Time{})
 		}
 
 		prevTimestamp := instanceDesc.Timestamp
@@ -544,5 +548,5 @@ func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(l, l.cfg.HeartbeatTimeout).handle(w, req)
+	newRingPageHandler(l, l.cfg.HeartbeatTimeout, l.cfg.HideTokensInStatusPage).handle(w, req)
 }

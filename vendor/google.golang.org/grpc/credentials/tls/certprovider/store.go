@@ -19,8 +19,10 @@
 package certprovider
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // provStore is the global singleton certificate provider store.
@@ -53,6 +55,22 @@ type wrappedProvider struct {
 	store    *store
 }
 
+// closedProvider always returns errProviderClosed error.
+type closedProvider struct{}
+
+func (c closedProvider) KeyMaterial(context.Context) (*KeyMaterial, error) {
+	return nil, errProviderClosed
+}
+
+func (c closedProvider) Close() {
+}
+
+// singleCloseWrappedProvider wraps a provider instance with a reference count
+// to properly handle multiple calls to Close.
+type singleCloseWrappedProvider struct {
+	provider atomic.Pointer[Provider]
+}
+
 // store is a collection of provider instances, safe for concurrent access.
 type store struct {
 	mu        sync.Mutex
@@ -73,6 +91,28 @@ func (wp *wrappedProvider) Close() {
 		wp.Provider.Close()
 		delete(ps.providers, wp.storeKey)
 	}
+}
+
+// Close overrides the Close method of the embedded provider to avoid release the
+// already released reference.
+func (w *singleCloseWrappedProvider) Close() {
+	newProvider := Provider(closedProvider{})
+	oldProvider := w.provider.Swap(&newProvider)
+	(*oldProvider).Close()
+}
+
+// KeyMaterial returns the key material sourced by the Provider.
+// Callers are expected to use the returned value as read-only.
+func (w *singleCloseWrappedProvider) KeyMaterial(ctx context.Context) (*KeyMaterial, error) {
+	return (*w.provider.Load()).KeyMaterial(ctx)
+}
+
+// newSingleCloseWrappedProvider create wrapper a provider instance with a reference count
+// to properly handle multiple calls to Close.
+func newSingleCloseWrappedProvider(provider Provider) *singleCloseWrappedProvider {
+	w := &singleCloseWrappedProvider{}
+	w.provider.Store(&provider)
+	return w
 }
 
 // BuildableConfig wraps parsed provider configuration and functionality to
@@ -112,7 +152,7 @@ func (bc *BuildableConfig) Build(opts BuildOptions) (Provider, error) {
 	}
 	if wp, ok := provStore.providers[sk]; ok {
 		wp.refCount++
-		return wp, nil
+		return newSingleCloseWrappedProvider(wp), nil
 	}
 
 	provider := bc.starter(opts)
@@ -126,7 +166,7 @@ func (bc *BuildableConfig) Build(opts BuildOptions) (Provider, error) {
 		store:    provStore,
 	}
 	provStore.providers[sk] = wp
-	return wp, nil
+	return newSingleCloseWrappedProvider(wp), nil
 }
 
 // String returns the provider name and config as a colon separated string.

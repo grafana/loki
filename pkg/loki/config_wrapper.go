@@ -244,21 +244,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-	}
-
-	if mergeWithExisting {
-		r.IngesterRF1.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.IngesterRF1.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.IngesterRF1.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.IngesterRF1.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.IngesterRF1.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.IngesterRF1.LifecyclerConfig.ID = rc.InstanceID
-		r.IngesterRF1.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.IngesterRF1.LifecyclerConfig.Port = rc.InstancePort
-		r.IngesterRF1.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.IngesterRF1.LifecyclerConfig.Zone = rc.InstanceZone
-		r.IngesterRF1.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.IngesterRF1.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
 	}
 
 	if mergeWithExisting {
@@ -274,6 +260,38 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	// IngestLimits
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimits.LifecyclerConfig.RingConfig, defaults.IngestLimits.LifecyclerConfig.RingConfig) {
+		r.IngestLimits.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimits.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimits.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimits.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimits.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimits.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimits.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimits.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimits.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimits.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimits.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimits.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	// IngestLimitsFrontend
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimitsFrontend.LifecyclerConfig.RingConfig, defaults.IngestLimitsFrontend.LifecyclerConfig.RingConfig) {
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimitsFrontend.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimitsFrontend.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimitsFrontend.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimitsFrontend.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimitsFrontend.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimitsFrontend.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimitsFrontend.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimitsFrontend.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -336,20 +354,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
-
-	// BloomCompactor
-	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
-		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
-		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
-		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
-		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomCompactor.Ring.KVStore = rc.KVStore
-		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -359,6 +363,20 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Ingester.LifecyclerConfig.TokensFilePath = f
+
+	// IngestLimits
+	f, err = tokensFile(cfg, "ingestlimits.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IngestLimits.LifecyclerConfig.TokensFilePath = f
+
+	// IngestLimitsFrontend
+	f, err = tokensFile(cfg, "ingestlimitsfrontend.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath = f
 
 	// Compactor
 	f, err = tokensFile(cfg, "compactor.tokens")
@@ -380,13 +398,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
-
-	// Bloom-Compactor
-	f, err = tokensFile(cfg, "bloom-compactor.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.BloomCompactor.Ring.TokensFilePath = f
 
 	// Pattern
 	f, err = tokensFile(cfg, "pattern.tokens")
@@ -449,6 +460,15 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.IngestLimits.LifecyclerConfig.InfNames, defaults.IngestLimits.LifecyclerConfig.InfNames) {
+		cfg.IngestLimits.LifecyclerConfig.InfNames = append(cfg.IngestLimits.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames, defaults.IngestLimitsFrontend.LifecyclerConfig.InfNames) {
+		cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames = append(cfg.IngestLimitsFrontend.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
 	if reflect.DeepEqual(cfg.Pattern.LifecyclerConfig.InfNames, defaults.Pattern.LifecyclerConfig.InfNames) {
 		cfg.Pattern.LifecyclerConfig.InfNames = append(cfg.Pattern.LifecyclerConfig.InfNames, loopbackIface)
 	}
@@ -480,10 +500,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
-		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -492,13 +508,14 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Pattern.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 	r.Ruler.Ring.KVStore.Store = memberlistStr
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -581,9 +598,35 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.AlibabaCloud, defaults.StorageConfig.AlibabaStorageConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "alibaba"
+			r.Ruler.StoreConfig.AlibabaCloud = r.Common.Storage.AlibabaCloud
+			r.StorageConfig.AlibabaStorageConfig = r.Common.Storage.AlibabaCloud
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.COS, defaults.StorageConfig.COSConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "cos"
+			r.Ruler.StoreConfig.COS = r.Common.Storage.COS
+			r.StorageConfig.COSConfig = r.Common.Storage.COS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 
@@ -684,7 +727,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-	cfg.IngesterRF1.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured

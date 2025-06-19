@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func parseKinesisEvent(ctx context.Context, b *batch, ev *events.KinesisEvent) error {
@@ -69,7 +69,7 @@ func isGzipped(data []byte) bool {
 	return len(data) >= 2 && data[0] == 0x1F && data[1] == 0x8B
 }
 
-// unzipData decompress the gzipped data
+// ungzipData decompress the gzipped data
 func ungzipData(data []byte) ([]byte, error) {
 	reader, err := gzip.NewReader(bytes.NewBuffer(data))
 	if err != nil {

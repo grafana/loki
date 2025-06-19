@@ -9,10 +9,7 @@ You can access the CPU information by accessing the shared CPU variable of the c
 Package home: https://github.com/klauspost/cpuid
 
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/klauspost/cpuid)](https://pkg.go.dev/github.com/klauspost/cpuid/v2)
-[![Build Status][3]][4]
-
-[3]: https://travis-ci.org/klauspost/cpuid.svg?branch=master
-[4]: https://travis-ci.org/klauspost/cpuid
+[![Go](https://github.com/klauspost/cpuid/actions/workflows/go.yml/badge.svg)](https://github.com/klauspost/cpuid/actions/workflows/go.yml)
 
 ## installing
 
@@ -284,8 +281,16 @@ Exit Code 1
 | AMXBF16            | Tile computational operations on BFLOAT16 numbers                                                                                                                                  |
 | AMXINT8            | Tile computational operations on 8-bit integers                                                                                                                                    |
 | AMXFP16            | Tile computational operations on FP16 numbers                                                                                                                                      |
+| AMXFP8             | Tile computational operations on FP8 numbers                                                                                                                                      |
+| AMXCOMPLEX         | Tile computational operations on complex numbers                                                                                                                                   |
 | AMXTILE            | Tile architecture                                                                                                                                                                  |
+| AMXTF32            | Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile                                                                                                              |
+| APX_F              | Intel APX                                                                                                                                                                          |
 | AVX                | AVX functions                                                                                                                                                                      |
+| AVX10              | If set the Intel AVX10 Converged Vector ISA is supported                                                                                                                           |
+| AVX10_128          | If set indicates that AVX10 128-bit vector support is present                                                                                                                      |
+| AVX10_256          | If set indicates that AVX10 256-bit vector support is present                                                                                                                      |
+| AVX10_512          | If set indicates that AVX10 512-bit vector support is present                                                                                                                      |
 | AVX2               | AVX2 functions                                                                                                                                                                     |
 | AVX512BF16         | AVX-512 BFLOAT16 Instructions                                                                                                                                                      |
 | AVX512BITALG       | AVX-512 Bit Algorithms                                                                                                                                                             |
@@ -308,6 +313,7 @@ Exit Code 1
 | AVXSLOW            | Indicates the CPU performs 2 128 bit operations instead of one                                                                                                                     |
 | AVXVNNI            | AVX (VEX encoded) VNNI neural network instructions                                                                                                                                 |
 | AVXVNNIINT8        | AVX-VNNI-INT8 instructions                                                                                                                                                         |
+| AVXVNNIINT16       | AVX-VNNI-INT16 instructions                                                                                                                                                        |
 | BHI_CTRL           | Branch History Injection and Intra-mode Branch Target Injection / CVE-2022-0001, CVE-2022-0002 / INTEL-SA-00598                                                                    |
 | BMI1               | Bit Manipulation Instruction Set 1                                                                                                                                                 |
 | BMI2               | Bit Manipulation Instruction Set 2                                                                                                                                                 |
@@ -365,6 +371,8 @@ Exit Code 1
 | IDPRED_CTRL        | IPRED_DIS                                                                                                                                                                          |
 | INT_WBINVD         | WBINVD/WBNOINVD are interruptible.                                                                                                                                                 |
 | INVLPGB            | NVLPGB and TLBSYNC instruction supported                                                                                                                                           |
+| KEYLOCKER          | Key locker                                                                                                                                                                         |
+| KEYLOCKERW         | Key locker wide                                                                                                                                                                    |
 | LAHF               | LAHF/SAHF in long mode                                                                                                                                                             |
 | LAM                | If set, CPU supports Linear Address Masking                                                                                                                                        |
 | LBRVIRT            | LBR virtualization                                                                                                                                                                 |
@@ -380,7 +388,7 @@ Exit Code 1
 | MOVDIRI            | Move Doubleword as Direct Store                                                                                                                                                    |
 | MOVSB_ZL           | Fast Zero-Length MOVSB                                                                                                                                                             |
 | MPX                | Intel MPX (Memory Protection Extensions)                                                                                                                                           |
-| MOVU               | MOVU SSE instructions are more efficient and should be preferred to SSE	MOVL/MOVH. MOVUPS is more efficient than MOVLPS/MOVHPS. MOVUPD is more efficient than MOVLPD/MOVHPD       |
+| MOVU               | MOVU SSE instructions are more efficient and should be preferred to SSE	MOVL/MOVH. MOVUPS is more efficient than MOVLPS/MOVHPS. MOVUPD is more efficient than MOVLPD/MOVHPD        |
 | MSRIRC             | Instruction Retired Counter MSR available                                                                                                                                          |
 | MSRLIST            | Read/Write List of Model Specific Registers                                                                                                                                        |
 | MSR_PAGEFLUSH      | Page Flush MSR available                                                                                                                                                           |
@@ -474,12 +482,16 @@ Exit Code 1
 | DCPOP        | Data cache clean to Point of Persistence (DC CVAP)               |
 | EVTSTRM      | Generic timer                                                    |
 | FCMA         | Floatin point complex number addition and multiplication         |
+| FHM          | FMLAL and FMLSL instructions                                     |
 | FP           | Single-precision and double-precision floating point             |
 | FPHP         | Half-precision floating point                                    |
 | GPA          | Generic Pointer Authentication                                   |
 | JSCVT        | Javascript-style double->int convert (FJCVTZS)                   |
 | LRCPC        | Weaker release consistency (LDAPR, etc)                          |
 | PMULL        | Polynomial Multiply instructions (PMULL/PMULL2)                  |
+| RNDR         | Random Number instructions                                       |
+| TLB          | Outer Shareable and TLB range maintenance instructions           |
+| TS           | Flag manipulation instructions                                   |
 | SHA1         | SHA-1 instructions (SHA1C, etc)                                  |
 | SHA2         | SHA-2 instructions (SHA256H, etc)                                |
 | SHA3         | SHA-3 instructions (EOR3, RAXI, XAR, BCAX)                       |

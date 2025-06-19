@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,7 +16,11 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/context/ctxhttp"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
@@ -227,11 +230,11 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 			if err := user.InjectOrgIDIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}
-			// Jaeger complains the passed-in context has an invalid span ID, so start a new root span
-			sp := ot.GlobalTracer().StartSpan("notify", ot.Tag{Key: "organization", Value: userID})
-			defer sp.Finish()
-			ctx = ot.ContextWithSpan(ctx, sp)
-			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
+
+			_, sp := tracer.Start(context.Background(), "notify", trace.WithAttributes(attribute.String("organization", userID)))
+			defer sp.End()
+			ctx = trace.ContextWithSpan(ctx, sp)
+			otelhttptrace.Inject(ctx, req)
 			return ctxhttp.Do(ctx, client, req)
 		},
 	}, log.With(r.logger, "user", userID))
@@ -298,12 +301,17 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate() {
+		ruleNode := rulefmt.RuleNode{
+			Record: yaml.Node{Value: r.Record},
+			Alert:  yaml.Node{Value: r.Alert},
+			Expr:   yaml.Node{Value: r.Expr},
+		}
+		for _, err := range r.Validate(ruleNode) {
 			var ruleName string
-			if r.Alert.Value != "" {
-				ruleName = r.Alert.Value
+			if r.Alert != "" {
+				ruleName = r.Alert
 			} else {
-				ruleName = r.Record.Value
+				ruleName = r.Record
 			}
 			errs = append(errs, &rulefmt.Error{
 				Group:    g.Name,

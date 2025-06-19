@@ -60,7 +60,7 @@ func (i Interval) Within(target Interval) bool {
 	return i.Start >= target.Start && i.End <= target.End
 }
 
-// ParseBoundsFromAddr parses a fingerprint bounds from a string
+// ParseIntervalFromAddr parses a fingerprint bounds from a string
 // Does not support negative times (times prior to Unix epoch).
 func ParseIntervalFromAddr(s string) (Interval, error) {
 	parts := strings.Split(s, "-")

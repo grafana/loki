@@ -246,7 +246,7 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	// Explicitly set pickfirst as the balancer.
 	dopts = append(dopts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"pick_first"}`))
 	dopts = append(dopts, grpc.WithResolvers(lb.manualResolver))
-	dopts = append(dopts, grpc.WithChannelzParentID(lb.opt.ChannelzParentID))
+	dopts = append(dopts, grpc.WithChannelzParentID(lb.opt.ChannelzParent))
 
 	// Enable Keepalive for grpclb client.
 	dopts = append(dopts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -260,10 +260,11 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	// The grpclb server addresses will set field ServerName, and creds will
 	// receive ServerName as authority.
 	target := lb.manualResolver.Scheme() + ":///grpclb.subClientConn"
-	cc, err := grpc.Dial(target, dopts...)
+	cc, err := grpc.NewClient(target, dopts...)
 	if err != nil {
-		return fmt.Errorf("grpc.Dial(%s): %v", target, err)
+		return fmt.Errorf("grpc.NewClient(%s): %v", target, err)
 	}
+	cc.Connect()
 	ccw := &remoteBalancerCCWrapper{
 		cc:      cc,
 		lb:      lb,

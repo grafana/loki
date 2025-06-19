@@ -6,14 +6,18 @@ package process
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
-	cpu "github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/internal/common"
-	net "github.com/shirou/gopsutil/v4/net"
 	"golang.org/x/sys/unix"
+
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/internal/common"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 func pidsWithContext(ctx context.Context) ([]int32, error) {
@@ -30,7 +34,7 @@ func pidsWithContext(ctx context.Context) ([]int32, error) {
 	return ret, nil
 }
 
-func (p *Process) PpidWithContext(ctx context.Context) (int32, error) {
+func (p *Process) PpidWithContext(_ context.Context) (int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -62,11 +66,28 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 	return name, nil
 }
 
-func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
-	return "", common.ErrNotImplementedError
+func (p *Process) CwdWithContext(_ context.Context) (string, error) {
+	mib := []int32{CTLKern, KernProc, KernProcCwd, p.Pid}
+	buf, length, err := common.CallSyscall(mib)
+	if err != nil {
+		return "", err
+	}
+
+	if length != sizeOfKinfoFile {
+		return "", errors.New("unexpected size of KinfoFile")
+	}
+
+	var k kinfoFile
+	br := bytes.NewReader(buf)
+	if err := common.Read(br, binary.LittleEndian, &k); err != nil {
+		return "", err
+	}
+	cwd := common.IntToString(k.Path[:])
+
+	return cwd, nil
 }
 
-func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
+func (p *Process) ExeWithContext(_ context.Context) (string, error) {
 	mib := []int32{CTLKern, KernProc, KernProcPathname, p.Pid}
 	buf, _, err := common.CallSyscall(mib)
 	if err != nil {
@@ -76,23 +97,20 @@ func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
 	return strings.Trim(string(buf), "\x00"), nil
 }
 
-func (p *Process) CmdlineWithContext(ctx context.Context) (string, error) {
+func (p *Process) CmdlineWithContext(_ context.Context) (string, error) {
 	mib := []int32{CTLKern, KernProc, KernProcArgs, p.Pid}
 	buf, _, err := common.CallSyscall(mib)
 	if err != nil {
 		return "", err
 	}
 	ret := strings.FieldsFunc(string(buf), func(r rune) bool {
-		if r == '\u0000' {
-			return true
-		}
-		return false
+		return r == '\u0000'
 	})
 
 	return strings.Join(ret, " "), nil
 }
 
-func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error) {
+func (p *Process) CmdlineSliceWithContext(_ context.Context) ([]string, error) {
 	mib := []int32{CTLKern, KernProc, KernProcArgs, p.Pid}
 	buf, _, err := common.CallSyscall(mib)
 	if err != nil {
@@ -113,7 +131,7 @@ func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error)
 	return strParts, nil
 }
 
-func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
+func (p *Process) createTimeWithContext(_ context.Context) (int64, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -121,7 +139,7 @@ func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 	return int64(k.Start.Sec)*1000 + int64(k.Start.Usec)/1000, nil
 }
 
-func (p *Process) StatusWithContext(ctx context.Context) ([]string, error) {
+func (p *Process) StatusWithContext(_ context.Context) ([]string, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return []string{""}, err
@@ -157,7 +175,7 @@ func (p *Process) ForegroundWithContext(ctx context.Context) (bool, error) {
 	return strings.IndexByte(string(out), '+') != -1, nil
 }
 
-func (p *Process) UidsWithContext(ctx context.Context) ([]uint32, error) {
+func (p *Process) UidsWithContext(_ context.Context) ([]uint32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -170,7 +188,7 @@ func (p *Process) UidsWithContext(ctx context.Context) ([]uint32, error) {
 	return uids, nil
 }
 
-func (p *Process) GidsWithContext(ctx context.Context) ([]uint32, error) {
+func (p *Process) GidsWithContext(_ context.Context) ([]uint32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -182,7 +200,7 @@ func (p *Process) GidsWithContext(ctx context.Context) ([]uint32, error) {
 	return gids, nil
 }
 
-func (p *Process) GroupsWithContext(ctx context.Context) ([]uint32, error) {
+func (p *Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -196,7 +214,7 @@ func (p *Process) GroupsWithContext(ctx context.Context) ([]uint32, error) {
 	return groups, nil
 }
 
-func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
+func (p *Process) TerminalWithContext(_ context.Context) (string, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return "", err
@@ -212,7 +230,7 @@ func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
 	return termmap[ttyNr], nil
 }
 
-func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
+func (p *Process) NiceWithContext(_ context.Context) (int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -220,7 +238,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	return int32(k.Nice), nil
 }
 
-func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, error) {
+func (p *Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -231,7 +249,7 @@ func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, e
 	}, nil
 }
 
-func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
+func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -240,7 +258,7 @@ func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
 	return k.Numthreads, nil
 }
 
-func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) {
+func (p *Process) TimesWithContext(_ context.Context) (*cpu.TimesStat, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -252,7 +270,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 	}, nil
 }
 
-func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, error) {
+func (p *Process) MemoryInfoWithContext(_ context.Context) (*MemoryInfoStat, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -270,18 +288,21 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 }
 
 func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
-	pids, err := common.CallPgrepWithContext(ctx, invoke, p.Pid)
+	procs, err := ProcessesWithContext(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil
 	}
-	ret := make([]*Process, 0, len(pids))
-	for _, pid := range pids {
-		np, err := NewProcessWithContext(ctx, pid)
+	ret := make([]*Process, 0, len(procs))
+	for _, proc := range procs {
+		ppid, err := proc.PpidWithContext(ctx)
 		if err != nil {
-			return nil, err
+			continue
 		}
-		ret = append(ret, np)
+		if ppid == p.Pid {
+			ret = append(ret, proc)
+		}
 	}
+	sort.Slice(ret, func(i, j int) bool { return ret[i].Pid < ret[j].Pid })
 	return ret, nil
 }
 
@@ -289,8 +310,8 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
-	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, max)
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
+	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, maxConn)
 }
 
 func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
@@ -331,7 +352,7 @@ func (p *Process) getKProc() (*KinfoProc, error) {
 		return nil, err
 	}
 	if length != sizeOfKinfoProc {
-		return nil, err
+		return nil, errors.New("unexpected size of KinfoProc")
 	}
 
 	k, err := parseKinfoProc(buf)

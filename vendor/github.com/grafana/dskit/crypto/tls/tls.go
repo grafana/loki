@@ -109,6 +109,24 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 		config.RootCAs = caCertPool
 	}
 
+	loadCert := func() (tls.Certificate, error) {
+		cert, err := reader.ReadSecret(cfg.CertPath)
+		if err != nil {
+			return tls.Certificate{}, errors.Wrapf(err, "error loading client cert: %s", cfg.CertPath)
+		}
+		key, err := reader.ReadSecret(cfg.KeyPath)
+		if err != nil {
+			return tls.Certificate{}, errors.Wrapf(err, "error loading client key: %s", cfg.KeyPath)
+		}
+
+		clientCert, err := tls.X509KeyPair(cert, key)
+		if err != nil {
+			return tls.Certificate{}, errors.Wrapf(err, "failed to load TLS certificate %s,%s", cfg.CertPath, cfg.KeyPath)
+		}
+		return clientCert, nil
+
+	}
+
 	// Read Client Certificate
 	if cfg.CertPath != "" || cfg.KeyPath != "" {
 		if cfg.CertPath == "" {
@@ -117,21 +135,23 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 		if cfg.KeyPath == "" {
 			return nil, errKeyMissing
 		}
-
-		cert, err := reader.ReadSecret(cfg.CertPath)
+		// Confirm that certificate and key paths are valid.
+		cert, err := loadCert()
 		if err != nil {
-			return nil, errors.Wrapf(err, "error loading client cert: %s", cfg.CertPath)
-		}
-		key, err := reader.ReadSecret(cfg.KeyPath)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error loading client key: %s", cfg.KeyPath)
+			return nil, err
 		}
 
-		clientCert, err := tls.X509KeyPair(cert, key)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to load TLS certificate %s,%s", cfg.CertPath, cfg.KeyPath)
+		config.GetClientCertificate = func(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			c, err := loadCert()
+			if err != nil {
+				return nil, err
+			}
+			return &c, err
 		}
-		config.Certificates = []tls.Certificate{clientCert}
+		// Allow fallback for callers using this config also for server purposes (i.e., kv/memberlist).
+		// Clients will prefer GetClientCertificate, but servers can use Certificates.
+		config.Certificates = []tls.Certificate{cert}
+
 	}
 
 	if cfg.MinVersion != "" {

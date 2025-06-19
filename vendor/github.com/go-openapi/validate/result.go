@@ -15,7 +15,7 @@
 package validate
 
 import (
-	"fmt"
+	stderrors "errors"
 	"reflect"
 	"strings"
 
@@ -52,8 +52,8 @@ type Result struct {
 	// Schemata for slice items
 	itemSchemata []itemSchemata
 
-	cachedFieldSchemta map[FieldKey][]*spec.Schema
-	cachedItemSchemata map[ItemKey][]*spec.Schema
+	cachedFieldSchemata map[FieldKey][]*spec.Schema
+	cachedItemSchemata  map[ItemKey][]*spec.Schema
 
 	wantsRedeemOnMerge bool
 }
@@ -121,7 +121,7 @@ func (r *Result) Merge(others ...*Result) *Result {
 		r.mergeWithoutRootSchemata(other)
 		r.rootObjectSchemata.Append(other.rootObjectSchemata)
 		if other.wantsRedeemOnMerge {
-			poolOfResults.RedeemResult(other)
+			pools.poolOfResults.RedeemResult(other)
 		}
 	}
 	return r
@@ -140,8 +140,8 @@ func (r *Result) RootObjectSchemata() []*spec.Schema {
 
 // FieldSchemata returns the schemata which apply to fields in objects.
 func (r *Result) FieldSchemata() map[FieldKey][]*spec.Schema {
-	if r.cachedFieldSchemta != nil {
-		return r.cachedFieldSchemta
+	if r.cachedFieldSchemata != nil {
+		return r.cachedFieldSchemata
 	}
 
 	ret := make(map[FieldKey][]*spec.Schema, len(r.fieldSchemata))
@@ -153,7 +153,8 @@ func (r *Result) FieldSchemata() map[FieldKey][]*spec.Schema {
 			ret[key] = append(ret[key], fs.schemata.multiple...)
 		}
 	}
-	r.cachedFieldSchemta = ret
+	r.cachedFieldSchemata = ret
+
 	return ret
 }
 
@@ -177,7 +178,7 @@ func (r *Result) ItemSchemata() map[ItemKey][]*spec.Schema {
 }
 
 func (r *Result) resetCaches() {
-	r.cachedFieldSchemta = nil
+	r.cachedFieldSchemata = nil
 	r.cachedItemSchemata = nil
 }
 
@@ -194,14 +195,15 @@ func (r *Result) mergeForField(obj map[string]interface{}, field string, other *
 		if r.fieldSchemata == nil {
 			r.fieldSchemata = make([]fieldSchemata, len(obj))
 		}
+		// clone other schemata, as other is about to be redeemed to the pool
 		r.fieldSchemata = append(r.fieldSchemata, fieldSchemata{
 			obj:      obj,
 			field:    field,
-			schemata: other.rootObjectSchemata,
+			schemata: other.rootObjectSchemata.Clone(),
 		})
 	}
 	if other.wantsRedeemOnMerge {
-		poolOfResults.RedeemResult(other)
+		pools.poolOfResults.RedeemResult(other)
 	}
 
 	return r
@@ -220,14 +222,16 @@ func (r *Result) mergeForSlice(slice reflect.Value, i int, other *Result) *Resul
 		if r.itemSchemata == nil {
 			r.itemSchemata = make([]itemSchemata, slice.Len())
 		}
+		// clone other schemata, as other is about to be redeemed to the pool
 		r.itemSchemata = append(r.itemSchemata, itemSchemata{
 			slice:    slice,
 			index:    i,
-			schemata: other.rootObjectSchemata,
+			schemata: other.rootObjectSchemata.Clone(),
 		})
 	}
+
 	if other.wantsRedeemOnMerge {
-		poolOfResults.RedeemResult(other)
+		pools.poolOfResults.RedeemResult(other)
 	}
 
 	return r
@@ -272,17 +276,21 @@ func (r *Result) mergeWithoutRootSchemata(other *Result) {
 
 	if other.fieldSchemata != nil {
 		if r.fieldSchemata == nil {
-			r.fieldSchemata = other.fieldSchemata
-		} else {
-			r.fieldSchemata = append(r.fieldSchemata, other.fieldSchemata...)
+			r.fieldSchemata = make([]fieldSchemata, 0, len(other.fieldSchemata))
+		}
+		for _, field := range other.fieldSchemata {
+			field.schemata = field.schemata.Clone()
+			r.fieldSchemata = append(r.fieldSchemata, field)
 		}
 	}
 
 	if other.itemSchemata != nil {
 		if r.itemSchemata == nil {
-			r.itemSchemata = other.itemSchemata
-		} else {
-			r.itemSchemata = append(r.itemSchemata, other.itemSchemata...)
+			r.itemSchemata = make([]itemSchemata, 0, len(other.itemSchemata))
+		}
+		for _, field := range other.itemSchemata {
+			field.schemata = field.schemata.Clone()
+			r.itemSchemata = append(r.itemSchemata, field)
 		}
 	}
 }
@@ -298,7 +306,7 @@ func (r *Result) MergeAsErrors(others ...*Result) *Result {
 			r.AddErrors(other.Warnings...)
 			r.MatchCount += other.MatchCount
 			if other.wantsRedeemOnMerge {
-				poolOfResults.RedeemResult(other)
+				pools.poolOfResults.RedeemResult(other)
 			}
 		}
 	}
@@ -316,7 +324,7 @@ func (r *Result) MergeAsWarnings(others ...*Result) *Result {
 			r.AddWarnings(other.Warnings...)
 			r.MatchCount += other.MatchCount
 			if other.wantsRedeemOnMerge {
-				poolOfResults.RedeemResult(other)
+				pools.poolOfResults.RedeemResult(other)
 			}
 		}
 	}
@@ -379,18 +387,18 @@ func (r *Result) keepRelevantErrors() *Result {
 	strippedErrors := []error{}
 	for _, e := range r.Errors {
 		if strings.HasPrefix(e.Error(), "IMPORTANT!") {
-			strippedErrors = append(strippedErrors, fmt.Errorf(strings.TrimPrefix(e.Error(), "IMPORTANT!")))
+			strippedErrors = append(strippedErrors, stderrors.New(strings.TrimPrefix(e.Error(), "IMPORTANT!")))
 		}
 	}
 	strippedWarnings := []error{}
 	for _, e := range r.Warnings {
 		if strings.HasPrefix(e.Error(), "IMPORTANT!") {
-			strippedWarnings = append(strippedWarnings, fmt.Errorf(strings.TrimPrefix(e.Error(), "IMPORTANT!")))
+			strippedWarnings = append(strippedWarnings, stderrors.New(strings.TrimPrefix(e.Error(), "IMPORTANT!")))
 		}
 	}
 	var strippedResult *Result
 	if r.wantsRedeemOnMerge {
-		strippedResult = poolOfResults.BorrowResult()
+		strippedResult = pools.poolOfResults.BorrowResult()
 	} else {
 		strippedResult = new(Result)
 	}
@@ -465,8 +473,8 @@ func (r *Result) cleared() *Result {
 	r.rootObjectSchemata.multiple = r.rootObjectSchemata.multiple[:0]
 	r.fieldSchemata = r.fieldSchemata[:0]
 	r.itemSchemata = r.itemSchemata[:0]
-	for k := range r.cachedFieldSchemta {
-		delete(r.cachedFieldSchemta, k)
+	for k := range r.cachedFieldSchemata {
+		delete(r.cachedFieldSchemata, k)
 	}
 	for k := range r.cachedItemSchemata {
 		delete(r.cachedItemSchemata, k)
@@ -502,7 +510,7 @@ func (s *schemata) Slice() []*spec.Schema {
 	return s.multiple
 }
 
-// appendSchemata appends the schemata in other to s. It mutated s in-place.
+// appendSchemata appends the schemata in other to s. It mutates s in-place.
 func (s *schemata) Append(other schemata) {
 	if other.one == nil && len(other.multiple) == 0 {
 		return
@@ -532,4 +540,24 @@ func (s *schemata) Append(other schemata) {
 			}
 		}
 	}
+}
+
+func (s schemata) Clone() schemata {
+	var clone schemata
+
+	if s.one != nil {
+		clone.one = new(spec.Schema)
+		*clone.one = *s.one
+	}
+
+	if len(s.multiple) > 0 {
+		clone.multiple = make([]*spec.Schema, len(s.multiple))
+		for idx := 0; idx < len(s.multiple); idx++ {
+			sp := new(spec.Schema)
+			*sp = *s.multiple[idx]
+			clone.multiple[idx] = sp
+		}
+	}
+
+	return clone
 }

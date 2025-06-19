@@ -36,6 +36,11 @@ func (b *PrefixedBucketClient) Upload(ctx context.Context, name string, r io.Rea
 	return
 }
 
+// GetAndReplace is a helper function that gets an object from the bucket and replaces it with a new reader.
+func (b *PrefixedBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+	return b.bucket.GetAndReplace(ctx, b.fullName(name), fn)
+}
+
 // Delete removes the object with the given name.
 func (b *PrefixedBucketClient) Delete(ctx context.Context, name string) error {
 	return b.bucket.Delete(ctx, b.fullName(name))
@@ -44,12 +49,29 @@ func (b *PrefixedBucketClient) Delete(ctx context.Context, name string) error {
 // Name returns the bucket name for the provider.
 func (b *PrefixedBucketClient) Name() string { return b.bucket.Name() }
 
+// SupportedIterOptions returns a list of supported IterOptions by the underlying provider.
+func (b *PrefixedBucketClient) SupportedIterOptions() []objstore.IterOptionType {
+	return b.bucket.SupportedIterOptions()
+}
+
 // Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 // object name including the prefix of the inspected directory. The configured prefix will be stripped
 // before supplied function is applied.
 func (b *PrefixedBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, b.fullName(dir), func(s string) error {
 		return f(strings.TrimPrefix(s, b.prefix+objstore.DirDelim))
+	}, options...)
+}
+
+// IterWithAttributes calls f for each entry in the given directory similar to Iter.
+// In addition to Name, it also includes requested object attributes in the argument to f.
+//
+// Attributes can be requested using IterOption.
+// Not all IterOptions are supported by all providers, requesting for an unsupported option will fail with ErrOptionNotSupported.
+func (b *PrefixedBucketClient) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.bucket.IterWithAttributes(ctx, b.fullName(dir), func(attrs objstore.IterObjectAttributes) error {
+		attrs.Name = strings.TrimPrefix(attrs.Name, b.prefix+objstore.DirDelim)
+		return f(attrs)
 	}, options...)
 }
 
@@ -87,6 +109,11 @@ func (b *PrefixedBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExp
 // IsAccessDeniedErr returns true if access to object is denied.
 func (b *PrefixedBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
+}
+
+// Provider returns the provider of the bucket.
+func (b *PrefixedBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
 }
 
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment

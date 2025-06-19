@@ -40,6 +40,27 @@ type Config struct {
 	WAL             wal.Config            `yaml:"wal"`
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// We want to set c to the defaults and then overwrite it with the input.
+	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
+	// again, we have to hide it using a type indirection.
+	type plain Config
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+
+	// Validate unique names.
+	jobNames := map[string]struct{}{}
+	for _, j := range c.ScrapeConfig {
+		if _, ok := jobNames[j.JobName]; ok {
+			return fmt.Errorf("found multiple scrape configs with job name %q", j.JobName)
+		}
+		jobNames[j.JobName] = struct{}{}
+	}
+	return nil
+}
+
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

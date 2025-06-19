@@ -39,6 +39,10 @@ func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ 
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
@@ -131,6 +135,20 @@ func (r *readRingMock) ZonesCount() int {
 		uniqueZone[instance.Zone] = nil
 	}
 	return len(uniqueZone)
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
 }
 
 type readLifecyclerMock struct {

@@ -10,7 +10,7 @@ package armcompute
 
 const (
 	moduleName    = "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	moduleVersion = "v5.5.0"
+	moduleVersion = "v5.7.0"
 )
 
 type AccessLevel string
@@ -333,15 +333,17 @@ func PossibleDiffDiskOptionsValues() []DiffDiskOptions {
 }
 
 // DiffDiskPlacement - Specifies the ephemeral disk placement for operating system disk. This property can be used by user
-// in the request to choose the location i.e, cache disk or resource disk space for Ephemeral OS disk
-// provisioning. For more information on Ephemeral OS disk size requirements, please refer Ephemeral OS disk size requirements
-// for Windows VM at
+// in the request to choose the location i.e, cache disk, resource disk or nvme disk space for
+// Ephemeral OS disk provisioning. For more information on Ephemeral OS disk size requirements, please refer Ephemeral OS
+// disk size requirements for Windows VM at
 // https://docs.microsoft.com/azure/virtual-machines/windows/ephemeral-os-disks#size-requirements and Linux VM at
-// https://docs.microsoft.com/azure/virtual-machines/linux/ephemeral-os-disks#size-requirements
+// https://docs.microsoft.com/azure/virtual-machines/linux/ephemeral-os-disks#size-requirements. Minimum api-version for NvmeDisk:
+// 2024-03-01.
 type DiffDiskPlacement string
 
 const (
 	DiffDiskPlacementCacheDisk    DiffDiskPlacement = "CacheDisk"
+	DiffDiskPlacementNvmeDisk     DiffDiskPlacement = "NvmeDisk"
 	DiffDiskPlacementResourceDisk DiffDiskPlacement = "ResourceDisk"
 )
 
@@ -349,6 +351,7 @@ const (
 func PossibleDiffDiskPlacementValues() []DiffDiskPlacement {
 	return []DiffDiskPlacement{
 		DiffDiskPlacementCacheDisk,
+		DiffDiskPlacementNvmeDisk,
 		DiffDiskPlacementResourceDisk,
 	}
 }
@@ -425,25 +428,31 @@ func PossibleDiskCreateOptionValues() []DiskCreateOption {
 	}
 }
 
-// DiskCreateOptionTypes - Specifies how the virtual machine should be created. Possible values are: Attach. This value is
-// used when you are using a specialized disk to create the virtual machine. FromImage. This value is used
-// when you are using an image to create the virtual machine. If you are using a platform image, you also use the imageReference
-// element described above. If you are using a marketplace image, you also
-// use the plan element previously described.
+// DiskCreateOptionTypes - Specifies how the virtual machine disk should be created. Possible values are Attach: This value
+// is used when you are using a specialized disk to create the virtual machine. FromImage: This value is
+// used when you are using an image to create the virtual machine. If you are using a platform image, you should also use
+// the imageReference element described above. If you are using a marketplace image,
+// you should also use the plan element previously described. Empty: This value is used when creating an empty data disk.
+// Copy: This value is used to create a data disk from a snapshot or another disk.
+// Restore: This value is used to create a data disk from a disk restore point.
 type DiskCreateOptionTypes string
 
 const (
 	DiskCreateOptionTypesAttach    DiskCreateOptionTypes = "Attach"
+	DiskCreateOptionTypesCopy      DiskCreateOptionTypes = "Copy"
 	DiskCreateOptionTypesEmpty     DiskCreateOptionTypes = "Empty"
 	DiskCreateOptionTypesFromImage DiskCreateOptionTypes = "FromImage"
+	DiskCreateOptionTypesRestore   DiskCreateOptionTypes = "Restore"
 )
 
 // PossibleDiskCreateOptionTypesValues returns the possible values for the DiskCreateOptionTypes const type.
 func PossibleDiskCreateOptionTypesValues() []DiskCreateOptionTypes {
 	return []DiskCreateOptionTypes{
 		DiskCreateOptionTypesAttach,
+		DiskCreateOptionTypesCopy,
 		DiskCreateOptionTypesEmpty,
 		DiskCreateOptionTypesFromImage,
+		DiskCreateOptionTypesRestore,
 	}
 }
 
@@ -1675,6 +1684,23 @@ func PossibleReplicationStatusTypesValues() []ReplicationStatusTypes {
 	return []ReplicationStatusTypes{
 		ReplicationStatusTypesReplicationStatus,
 		ReplicationStatusTypesUefiSettings,
+	}
+}
+
+type ResourceIDOptionsForGetCapacityReservationGroups string
+
+const (
+	ResourceIDOptionsForGetCapacityReservationGroupsAll                    ResourceIDOptionsForGetCapacityReservationGroups = "All"
+	ResourceIDOptionsForGetCapacityReservationGroupsCreatedInSubscription  ResourceIDOptionsForGetCapacityReservationGroups = "CreatedInSubscription"
+	ResourceIDOptionsForGetCapacityReservationGroupsSharedWithSubscription ResourceIDOptionsForGetCapacityReservationGroups = "SharedWithSubscription"
+)
+
+// PossibleResourceIDOptionsForGetCapacityReservationGroupsValues returns the possible values for the ResourceIDOptionsForGetCapacityReservationGroups const type.
+func PossibleResourceIDOptionsForGetCapacityReservationGroupsValues() []ResourceIDOptionsForGetCapacityReservationGroups {
+	return []ResourceIDOptionsForGetCapacityReservationGroups{
+		ResourceIDOptionsForGetCapacityReservationGroupsAll,
+		ResourceIDOptionsForGetCapacityReservationGroupsCreatedInSubscription,
+		ResourceIDOptionsForGetCapacityReservationGroupsSharedWithSubscription,
 	}
 }
 

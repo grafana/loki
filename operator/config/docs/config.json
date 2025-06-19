@@ -30,15 +30,15 @@
             "docsURLTemplate": "https://pkg.go.dev/k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1#JSON"
         },
         {
-            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/v1",
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/api/loki/v1",
             "docsURLTemplate": "../v1/api.md#loki.grafana.com/v1.{{ .TypeIdentifier}}"
         },
         {
-            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/v1beta1",
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/api/loki/v1beta1",
             "docsURLTemplate": "../v1beta1/api.md#loki-grafana.com-v1beta1-{{ .TypeIdentifier}}"
         },
         {
-            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/apis/loki/config/v1",
+            "typeMatchPrefix": "^github\\.com/grafana/loki/operator/api/loki/config/v1",
             "docsURLTemplate": "../v1/feature-gates.md#loki-grafana-com-v1-{{ .TypeIdentifier}}"
         },
         {
@@ -51,9 +51,9 @@
         "k8s.io/apimachinery/pkg/apis/": "Kubernetes ",
         "k8s.io/component-base/config/": "Kubernetes ",
         "sigs.k8s.io/controller-runtime/pkg/config/": "K8S Controller-runtime ",
-        "github.com/grafana/loki/operator/apis/loki/v1": "Loki Operator v1",
-        "github.com/grafana/loki/operator/apis/loki/v1beta1": "Loki Operator v1beta1",
-        "github.com/grafana/loki/operator/apis/loki/config/v1": "Feature Gates"
+        "github.com/grafana/loki/operator/api/loki/v1": "Loki Operator v1",
+        "github.com/grafana/loki/operator/api/loki/v1beta1": "Loki Operator v1beta1",
+        "github.com/grafana/loki/operator/api/loki/config/v1": "Feature Gates"
     },
     "markdownDisabled": false
 }

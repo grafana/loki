@@ -1,38 +1,32 @@
 package pprof
 
 import (
-	"io"
 	"math"
 	"runtime"
 	"strings"
 )
 
+type heapPrevValue struct {
+	allocObjects int64
+}
+
+type heapAccValue struct {
+	allocObjects int64
+	inuseObjects int64
+}
+
 type DeltaHeapProfiler struct {
-	m       profMap
-	mem     []memMap
-	Options ProfileBuilderOptions
+	m profMap[heapPrevValue, heapAccValue]
+	//todo consider adding an option to remove block size label and merge allocations of different size
 }
 
 // WriteHeapProto writes the current heap profile in protobuf format to w.
-func (d *DeltaHeapProfiler) WriteHeapProto(w io.Writer, p []runtime.MemProfileRecord, rate int64, defaultSampleType string) error {
-	if d.mem == nil || !d.Options.LazyMapping {
-		d.mem = readMapping()
-	}
-	b := newProfileBuilder(w, d.Options, d.mem)
-	b.pbValueType(tagProfile_PeriodType, "space", "bytes")
-	b.pb.int64Opt(tagProfile_Period, rate)
-	b.pbValueType(tagProfile_SampleType, "alloc_objects", "count")
-	b.pbValueType(tagProfile_SampleType, "alloc_space", "bytes")
-	b.pbValueType(tagProfile_SampleType, "inuse_objects", "count")
-	b.pbValueType(tagProfile_SampleType, "inuse_space", "bytes")
-	if defaultSampleType != "" {
-		b.pb.int64Opt(tagProfile_DefaultSampleType, b.stringIndex(defaultSampleType))
-	}
-
+func (d *DeltaHeapProfiler) WriteHeapProto(b ProfileBuilder, p []runtime.MemProfileRecord, rate int64) error {
 	values := []int64{0, 0, 0, 0}
 	var locs []uint64
-	for _, r := range p {
-		// do the delta
+	// deduplicate: accumulate allocObjects and inuseObjects in entry.acc for equal stacks
+	for i := range p {
+		r := &p[i]
 		if r.AllocBytes == 0 && r.AllocObjects == 0 && r.FreeObjects == 0 && r.FreeBytes == 0 {
 			// it is a fresh bucket and it will be published after next 1-2 gc cycles
 			continue
@@ -42,17 +36,42 @@ func (d *DeltaHeapProfiler) WriteHeapProto(w io.Writer, p []runtime.MemProfileRe
 			blockSize = r.AllocBytes / r.AllocObjects
 		}
 		entry := d.m.Lookup(r.Stack(), uintptr(blockSize))
-
-		if (r.AllocObjects - entry.count.v1) < 0 {
+		entry.acc.allocObjects += r.AllocObjects
+		entry.acc.inuseObjects += r.InUseObjects()
+	}
+	// do the delta using the accumulated values and previous values
+	for i := range p {
+		r := &p[i]
+		if r.AllocBytes == 0 && r.AllocObjects == 0 && r.FreeObjects == 0 && r.FreeBytes == 0 {
+			// it is a fresh bucket and it will be published after next 1-2 gc cycles
 			continue
 		}
-		AllocObjects := r.AllocObjects - entry.count.v1
-		AllocBytes := r.AllocBytes - entry.count.v2
-		entry.count.v1 = r.AllocObjects
-		entry.count.v2 = r.AllocBytes
+		var blockSize int64
+		if r.AllocObjects > 0 {
+			blockSize = r.AllocBytes / r.AllocObjects
+		}
+		entry := d.m.Lookup(r.Stack(), uintptr(blockSize))
+		if entry.acc == (heapAccValue{}) {
+			continue
+		}
 
-		values[0], values[1] = scaleHeapSample(AllocObjects, AllocBytes, rate)
-		values[2], values[3] = scaleHeapSample(r.InUseObjects(), r.InUseBytes(), rate)
+		allocObjects := entry.acc.allocObjects - entry.prev.allocObjects
+		if allocObjects < 0 {
+			continue
+		}
+
+		// allocBytes, inuseBytes is calculated as multiplication of number of objects by blockSize
+		// This is done to reduce the size of the map entry (i.e. heapAccValue for deduplication and
+		// heapPrevValue for keeping the delta).
+
+		allocBytes := allocObjects * blockSize
+		entry.prev.allocObjects = entry.acc.allocObjects
+		inuseBytes := entry.acc.inuseObjects * blockSize
+
+		values[0], values[1] = ScaleHeapSample(allocObjects, allocBytes, rate)
+		values[2], values[3] = ScaleHeapSample(entry.acc.inuseObjects, inuseBytes, rate)
+
+		entry.acc = heapAccValue{}
 
 		if values[0] == 0 && values[1] == 0 && values[2] == 0 && values[3] == 0 {
 			continue
@@ -74,24 +93,20 @@ func (d *DeltaHeapProfiler) WriteHeapProto(w io.Writer, p []runtime.MemProfileRe
 					break
 				}
 			}
-			locs = b.appendLocsForStack(locs[:0], stk)
+			locs = b.LocsForStack(stk)
 			if len(locs) > 0 {
 				break
 			}
 			hideRuntime = false // try again, and show all frames next time.
 		}
 
-		b.pbSample(values, locs, func() {
-			if blockSize != 0 {
-				b.pbLabel(tagSample_Label, "bytes", "", blockSize)
-			}
-		})
+		b.Sample(values, locs, blockSize)
 	}
-	b.build()
+	b.Build()
 	return nil
 }
 
-// scaleHeapSample adjusts the data from a heap Sample to
+// ScaleHeapSample adjusts the data from a heap Sample to
 // account for its probability of appearing in the collected
 // data. heap profiles are a sampling of the memory allocations
 // requests in a program. We estimate the unsampled value by dividing
@@ -100,7 +115,7 @@ func (d *DeltaHeapProfiler) WriteHeapProto(w io.Writer, p []runtime.MemProfileRe
 // which samples to collect, based on the desired average collection
 // rate R. The probability of a sample of size S to appear in that
 // profile is 1-exp(-S/R).
-func scaleHeapSample(count, size, rate int64) (int64, int64) {
+func ScaleHeapSample(count, size, rate int64) (int64, int64) {
 	if count == 0 || size == 0 {
 		return 0, 0
 	}
@@ -115,4 +130,18 @@ func scaleHeapSample(count, size, rate int64) (int64, int64) {
 	scale := 1 / (1 - math.Exp(-avgSize/float64(rate)))
 
 	return int64(float64(count) * scale), int64(float64(size) * scale)
+}
+
+func HeapProfileConfig(rate int64) ProfileConfig {
+	return ProfileConfig{
+		PeriodType: ValueType{Typ: "space", Unit: "bytes"},
+		Period:     rate,
+		SampleType: []ValueType{
+			{"alloc_objects", "count"},
+			{"alloc_space", "bytes"},
+			{"inuse_objects", "count"},
+			{"inuse_space", "bytes"},
+		},
+		DefaultSampleType: "",
+	}
 }

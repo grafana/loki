@@ -5,13 +5,13 @@ import (
 	"io"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/middleware"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
@@ -63,13 +63,16 @@ func NewClient(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(&cfg))
+	unaryInterceptors, streamInterceptors := instrumentation(&cfg)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}
 
+	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	opts = append(opts, dialOpts...)
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -85,7 +88,6 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
-	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	}
@@ -94,7 +96,6 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
-	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	}
