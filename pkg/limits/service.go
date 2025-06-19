@@ -28,10 +28,10 @@ const (
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
 
-	// The maximum number of consecutive checks to [Service.CheckReady]
-	// before giving up waiting to be assigned some partitions and going
-	// ready.
-	maxPartitionReadinessWaitAssignChecks = 10
+	// The maximum amount of time to wait to join the consumer group and be
+	// assigned some partitions before giving up and going ready in
+	// [Service.CheckReady].
+	partitionReadinessWaitAssignPeriod = 30 * time.Second
 )
 
 // Service is a service that manages stream metadata limits.
@@ -54,10 +54,10 @@ type Service struct {
 	// Metrics.
 	streamEvictionsTotal *prometheus.CounterVec
 
-	// Readiness check
-	partitionReadinessWaitAssignChecks int
-	partitionReadinessPassed           bool
-	partitionReadinessMtx              sync.Mutex
+	// Readiness check, see [Service.CheckReady].
+	partitionReadinessPassed          bool
+	partitionReadinessMtx             sync.Mutex
+	partitionReadinessWaitAssignSince time.Time
 
 	// Used for tests.
 	clock quartz.Clock
@@ -208,20 +208,39 @@ func (s *Service) CheckReady(ctx context.Context) error {
 			// trying to become ready for the first time. If we do not have
 			// any assigned partitions we should wait some time in case we
 			// eventually get assigned some partitions, and if not, we give
-			// give up and become ready to guarantee liveness.
-			s.partitionReadinessWaitAssignChecks++
-			if s.partitionReadinessWaitAssignChecks > maxPartitionReadinessWaitAssignChecks {
-				level.Warn(s.logger).Log("msg", "no partitions assigned, going ready")
-				s.partitionReadinessPassed = true
-				return nil
-			}
-			return fmt.Errorf("waiting initial period to be assigned some partitions")
+			// up and become ready to guarantee liveness.
+			return s.checkPartitionsAssigned(ctx)
 		}
-		if !s.partitionManager.CheckReady() {
-			return fmt.Errorf("partitions are not ready")
-		}
-		s.partitionReadinessPassed = true
+		return s.checkPartitionsReady(ctx)
 	}
+	return nil
+}
+
+// checkPartitionsAssigned checks if we either have been assigned some
+// partitions or the wait assign period has elapsed. It must not be called
+// without a lock on partitionReadinessMtx.
+func (s *Service) checkPartitionsAssigned(ctx context.Context) error {
+	if s.partitionReadinessWaitAssignSince == (time.Time{}) {
+		s.partitionReadinessWaitAssignSince = s.clock.Now()
+	}
+	if s.clock.Since(s.partitionReadinessWaitAssignSince) < partitionReadinessWaitAssignPeriod {
+		return errors.New("waiting to be assigned some partitions")
+	}
+	level.Warn(s.logger).Log("msg", "no partitions assigned, going ready")
+	s.partitionReadinessPassed = true
+	return nil
+}
+
+// checkPartitionsReady checks if all our assigned partitions are ready.
+// It must not be called without a lock on partitionReadinessMtx.
+func (s *Service) checkPartitionsReady(ctx context.Context) error {
+	// If we lose our assigned partitions while replaying them we want to
+	// wait another complete wait assign period.
+	s.partitionReadinessWaitAssignSince = time.Time{}
+	if !s.partitionManager.CheckReady() {
+		return errors.New("partitions are not ready")
+	}
+	s.partitionReadinessPassed = true
 	return nil
 }
 
