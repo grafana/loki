@@ -2,24 +2,21 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -73,8 +70,6 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	start := time.Now()
 
-	builder := newResultBuilder()
-
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "engine", "v2")
 
@@ -83,7 +78,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		return builder.empty(), ErrNotSupported
+		return logqlmodel.Result{}, ErrNotSupported
 	}
 	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
 	durLogicalPlanning := time.Since(t)
@@ -95,13 +90,13 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		return builder.empty(), ErrNotSupported
+		return logqlmodel.Result{}, ErrNotSupported
 	}
 	plan, err = planner.Optimize(plan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		return builder.empty(), ErrNotSupported
+		return logqlmodel.Result{}, ErrNotSupported
 	}
 	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
 	durPhysicalPlanning := time.Since(t)
@@ -116,13 +111,25 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	pipeline := executor.Run(ctx, cfg, plan)
 	defer pipeline.Close()
 
+	var builder ResultBuilder
+	switch params.GetExpression().(type) {
+	case syntax.LogSelectorExpr:
+		builder = newStreamsResultBuilder()
+	case syntax.SampleExpr:
+		// assume instant query since logical planning would fail for range queries.
+		builder = newVectorResultBuilder()
+	default:
+		// should never happen as we already check the expression type in the logical planner
+		panic(fmt.Sprintf("failed to execute. Invalid exprression type (%T)", params.GetExpression()))
+	}
+
 	if err := collectResult(ctx, pipeline, builder); err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		return builder.empty(), err
+		return logqlmodel.Result{}, err
 	}
 
 	statsCtx := stats.FromContext(ctx)
-	builder.setStats(statsCtx.Result(time.Since(start), 0, builder.len()))
+	builder.SetStats(statsCtx.Result(time.Since(start), 0, builder.Len()))
 
 	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
 	e.metrics.execution.Observe(time.Since(t).Seconds())
@@ -136,10 +143,10 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		"execution", durExecution,
 	)
 
-	return builder.build(), nil
+	return builder.Build(), nil
 }
 
-func collectResult(_ context.Context, pipeline executor.Pipeline, result *resultBuilder) error {
+func collectResult(_ context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
 	for {
 		if err := pipeline.Read(); err != nil {
 			if errors.Is(err, executor.EOF) {
@@ -147,84 +154,16 @@ func collectResult(_ context.Context, pipeline executor.Pipeline, result *result
 			}
 			return err
 		}
-		if err := collectRecord(pipeline, result); err != nil {
+
+		rec, err := pipeline.Value()
+		if err != nil {
 			return err
 		}
+
+		builder.CollectRecord(rec)
+		rec.Release()
 	}
 	return nil
-}
-
-func collectRecord(pipeline executor.Pipeline, result *resultBuilder) error {
-	rec, err := pipeline.Value()
-	if err != nil {
-		return err
-	}
-	defer rec.Release()
-	for rowIdx := range int(rec.NumRows()) {
-		collectRow(rec, rowIdx, result)
-	}
-	return nil
-}
-
-func collectRow(rec arrow.Record, i int, result *resultBuilder) {
-	var entry logproto.Entry
-	lbs := labels.NewBuilder(labels.EmptyLabels())
-	metadata := labels.NewBuilder(labels.EmptyLabels())
-
-	for colIdx := range int(rec.NumCols()) {
-		col := rec.Column(colIdx)
-		colName := rec.ColumnName(colIdx)
-
-		// TODO(chaudum): We need to add metadata to columns to identify builtins, labels, metadata, and parsed.
-		field := rec.Schema().Field(colIdx)
-		colType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
-
-		// Ignore column values that are NULL or invalid or don't have a column typ
-		if col.IsNull(i) || !col.IsValid(i) || !ok {
-			continue
-		}
-
-		// Extract line
-		if colName == types.ColumnNameBuiltinMessage && colType == types.ColumnTypeBuiltin.String() {
-			entry.Line = col.(*array.String).Value(i)
-			continue
-		}
-
-		// Extract timestamp
-		if colName == types.ColumnNameBuiltinTimestamp && colType == types.ColumnTypeBuiltin.String() {
-			entry.Timestamp = time.Unix(0, int64(col.(*array.Timestamp).Value(i)))
-			continue
-		}
-
-		// Extract label
-		if colType == types.ColumnTypeLabel.String() {
-			switch arr := col.(type) {
-			case *array.String:
-				lbs.Set(colName, arr.Value(i))
-			}
-			continue
-		}
-
-		// Extract metadata
-		if colType == types.ColumnTypeMetadata.String() {
-			switch arr := col.(type) {
-			case *array.String:
-				metadata.Set(colName, arr.Value(i))
-			}
-			continue
-		}
-	}
-	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
-
-	stream := lbs.Labels()
-
-	// Ignore rows that don't have stream labels, log line, or timestamp
-	if stream.Len() == 0 || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
-		return
-	}
-
-	// Finally, add newly created entry to builder
-	result.add(stream, entry)
 }
 
 var _ logql.Engine = (*QueryEngine)(nil)
