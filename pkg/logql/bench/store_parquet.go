@@ -99,7 +99,7 @@ func (s *ParquetStore) Write(_ context.Context, streams []logproto.Stream) error
 		}
 	}
 
-	if len(s.logLineBuf) > 500_000 {
+	if len(s.logLineBuf) > 400_000 {
 		if err := s.flush(); err != nil {
 			return fmt.Errorf("failed to flush: %w", err)
 		}
@@ -130,15 +130,16 @@ func (s *ParquetStore) flush() error {
 	// Define the schema
 	group := parquet.Group{}
 	for k := range keys {
-		group[fmt.Sprintf("label$%s", k)] = parquet.String()
+		group[fmt.Sprintf("label$%s", k)] = parquet.Compressed(parquet.String(), &parquet.Zstd)
 	}
 	for m := range md {
-		group[fmt.Sprintf("md$%s", m)] = parquet.String()
+		group[fmt.Sprintf("md$%s", m)] = parquet.Compressed(parquet.String(), &parquet.Zstd)
 	}
-	group["timestamp"] = parquet.Int(64)
-	group["line"] = parquet.String()
+	group["timestamp"] = parquet.Encoded(parquet.Int(64), &parquet.DeltaBinaryPacked)
+	group["line"] = parquet.Compressed(parquet.String(), &parquet.Zstd)
+
 	schema := parquet.NewSchema("root", group)
-	config, err := parquet.NewWriterConfig(parquet.WriteBufferSize(1024 * 1024 * 32))
+	config, err := parquet.NewWriterConfig()
 	if err != nil {
 		return fmt.Errorf("failed to create writer config: %w", err)
 	}
@@ -182,9 +183,12 @@ func (s *ParquetStore) flush() error {
 			vals = append(vals, row[i])
 		}
 
-		_, err := writer.WriteRowValues(vals)
-		if err != nil {
-			return fmt.Errorf("failed to write row values: %w", err)
+		for i := 0; i < len(vals); i += 10000 {
+			_, err := writer.WriteRowValues(vals[i:min(i+10000, len(vals))])
+			if err != nil {
+				name := schema.Columns()[0]
+				return fmt.Errorf("failed to write row values: %w, column: %s", err, name)
+			}
 		}
 	}
 	columnWriter.Flush()

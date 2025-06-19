@@ -354,6 +354,8 @@ func (g *Generator) generateEntriesForStream(meta StreamMetadata) []logproto.Ent
 			numEntries = 10 // 10x more logs during dense periods
 		}
 
+		padding := strings.Repeat("A", 1024*1) // 1KB padding
+
 		for range numEntries {
 			// Add small jitter within spread interval
 			jitter := time.Duration(g.rnd.Int63n(int64(spreadInterval)))
@@ -372,7 +374,7 @@ func (g *Generator) generateEntriesForStream(meta StreamMetadata) []logproto.Ent
 			}
 
 			// Generate log line using the application's generators for the selected format
-			line := app.LogGenerator(level, entryTs, faker)
+			line := app.LogGenerator(level, entryTs, faker) + padding
 
 			// Create metadata in a deterministic order
 			var metadata []logproto.LabelAdapter

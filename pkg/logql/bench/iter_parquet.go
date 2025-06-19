@@ -152,25 +152,25 @@ func newEntryIterator(ctx context.Context,
 	logFilters, _ := buildFilters(req.Plan.AST)
 	filters = append(filters, logFilters...)
 
-	validRows, err := parquetReader.FilterWithMultipleColumns(filters)
+	filterResult, err := parquetReader.FilterWithMultipleColumns(filters)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Found %d rows matching all filters using %s bytes\n", len(validRows), humanize.Bytes(uint64(parquetReader.ctx.Store().Chunk.DecompressedBytes)))
-	if len(validRows) == 0 {
+	fmt.Printf("Found %d rows matching all filters using %s bytes\n", len(filterResult.Records), humanize.Bytes(uint64(parquetReader.ctx.Store().Chunk.DecompressedBytes)))
+	if len(filterResult.Records) == 0 {
 		return heapIterator(&top), nil
 	}
 
 	// Read only the needed columns for the valid rows
 	columnNames := []string{"timestamp", "line"}
 	for lb := range labelColumns {
-		columnNames = append(columnNames, fmt.Sprintf("label$%s", lb))
+		columnNames = append(columnNames, lb)
 	}
 	for md := range mdColumns {
-		columnNames = append(columnNames, fmt.Sprintf("md$%s", md))
+		columnNames = append(columnNames, md)
 	}
-	records, err := parquetReader.ReadSpecificRows(validRows, columnNames)
+	records, err := parquetReader.ReadRemainingColumns(filterResult, columnNames)
 	if err != nil {
 		return nil, err
 	}
@@ -319,13 +319,13 @@ func newSampleIterator(ctx context.Context,
 	logFilters, projectionColumns := buildFilters(expr)
 	filters = append(filters, logFilters...)
 
-	validRows, err := parquetReader.FilterWithMultipleColumns(filters)
+	filterResult, err := parquetReader.FilterWithMultipleColumns(filters)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Found %d rows matching all %d filters using %s bytes (cumulative)\n", len(validRows), len(filters), humanize.Bytes(uint64(parquetReader.ctx.Store().Chunk.DecompressedBytes)))
-	if len(validRows) == 0 {
+	fmt.Printf("Found %d rows matching all %d filters using %s bytes (cumulative)\n", len(filterResult.Records), len(filters), humanize.Bytes(uint64(parquetReader.ctx.Store().Chunk.DecompressedBytes)))
+	if len(filterResult.Records) == 0 {
 		return iter.NoopSampleIterator, nil
 	}
 
@@ -343,7 +343,7 @@ func newSampleIterator(ctx context.Context,
 		}
 	}
 
-	records, err := parquetReader.ReadSpecificRows(validRows, columnNames)
+	records, err := parquetReader.ReadRemainingColumns(filterResult, columnNames)
 	if err != nil {
 		return nil, err
 	}

@@ -62,9 +62,9 @@ func TestParquetQuerierSamples(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	for iterator.Next() {
+	/* 	for iterator.Next() {
 		entry := iterator.At()
 		fmt.Println(entry.Timestamp, entry.Value)
-	}
+	} */
 	require.NoError(t, iterator.Err())
 }
