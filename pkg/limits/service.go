@@ -219,7 +219,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 // checkPartitionsAssigned checks if we either have been assigned some
 // partitions or the wait assign period has elapsed. It must not be called
 // without a lock on partitionReadinessMtx.
-func (s *Service) checkPartitionsAssigned(ctx context.Context) error {
+func (s *Service) checkPartitionsAssigned(_ context.Context) error {
 	if s.partitionReadinessWaitAssignSince == (time.Time{}) {
 		s.partitionReadinessWaitAssignSince = s.clock.Now()
 	}
@@ -233,7 +233,7 @@ func (s *Service) checkPartitionsAssigned(ctx context.Context) error {
 
 // checkPartitionsReady checks if all our assigned partitions are ready.
 // It must not be called without a lock on partitionReadinessMtx.
-func (s *Service) checkPartitionsReady(ctx context.Context) error {
+func (s *Service) checkPartitionsReady(_ context.Context) error {
 	// If we lose our assigned partitions while replaying them we want to
 	// wait another complete wait assign period.
 	s.partitionReadinessWaitAssignSince = time.Time{}
