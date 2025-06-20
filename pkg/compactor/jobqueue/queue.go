@@ -245,13 +245,13 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 
 			pj.lastAttemptFailed = true
 			return nil
-		} else {
-			level.Error(util_log.Logger).Log(
-				"msg", "job failed after max attempts",
-				"job_id", result.JobId,
-				"job_type", result.JobType,
-			)
 		}
+
+		level.Error(util_log.Logger).Log(
+			"msg", "job failed after max attempts",
+			"job_id", result.JobId,
+			"job_type", result.JobType,
+		)
 	} else {
 		level.Debug(util_log.Logger).Log(
 			"msg", "job execution succeeded",
