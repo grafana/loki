@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -76,7 +75,6 @@ func (w *WorkerManager) Stop() {
 type worker struct {
 	grpcClient CompactorClient
 	jobRunners map[grpc.JobType]JobRunner
-	running    atomic.Bool
 }
 
 func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner) *worker {
@@ -87,9 +85,6 @@ func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner
 }
 
 func (w *worker) start(ctx context.Context) {
-	w.running.Store(true)
-	defer w.running.Store(false)
-
 	client := w.grpcClient.JobQueueClient()
 
 	backoff := backoff.New(ctx, connBackoffConfig)

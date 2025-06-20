@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
@@ -157,10 +158,17 @@ func TestWorker_StreamClosure(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var running atomic.Bool
 	// start the worker and ensure that it is running
-	go worker.start(ctx)
+	go func() {
+		running.Store(true)
+		defer running.Store(false)
+
+		worker.start(ctx)
+	}()
+
 	require.Eventually(t, func() bool {
-		return worker.running.Load()
+		return running.Load()
 	}, time.Second, time.Millisecond*100)
 
 	// close the queue so that it closes the stream
@@ -168,5 +176,5 @@ func TestWorker_StreamClosure(t *testing.T) {
 
 	// sleep for a while and ensure that the worker is still running
 	time.Sleep(100 * time.Millisecond)
-	require.True(t, worker.running.Load())
+	require.True(t, running.Load())
 }
