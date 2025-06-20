@@ -19,11 +19,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
@@ -542,15 +545,15 @@ func legacyWalPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool) error {
+func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool, logger log.Logger) error {
 	for _, id := range wals {
-		// use anonymous function for ease of cleanup
-		if err := func(id WALIdentifier) error {
-			walPath := walPath(name, dir, id.ts)
-			if legacy {
-				walPath = legacyWalPath(dir, id.ts)
-			}
+		walPath := walPath(name, dir, id.ts)
+		if legacy {
+			walPath = legacyWalPath(dir, id.ts)
+		}
 
+		// use anonymous function for ease of cleanup
+		if werr := func(walPath string) error {
 			reader, closer, err := wal.NewWalReader(walPath, -1)
 			if err != nil {
 				return err
@@ -599,14 +602,30 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 			}
 			return reader.Err()
 
-		}(id); err != nil {
-			return errors.Wrap(
-				err,
-				"error recovering from TSDB WAL",
-			)
+		}(walPath); werr != nil {
+			// Try to repair the WAL if it's a corruption error.
+			var cerr *wlog.CorruptionErr
+			if !errors.As(werr, &cerr) {
+				return fmt.Errorf("error recovering head from TSDB WAL: %w", werr)
+			}
+
+			level.Error(logger).Log("msg", "error recovering from TSDB WAL, will try repairing", "error", werr)
+			if err := repairWAL(werr, walPath, logger); err != nil {
+				return fmt.Errorf("repairing WAL failed: %w", err)
+			}
 		}
 	}
 	return nil
+}
+
+func repairWAL(walErr error, walPath string, logger log.Logger) error {
+	wl, err := wlog.New(util_log.SlogFromGoKit(logger), nil, walPath, compression.None)
+	if err != nil {
+		return fmt.Errorf("creating wlog for repair: %w", err)
+	}
+	defer wl.Close()
+
+	return wl.Repair(walErr)
 }
 
 type WALIdentifier struct {
