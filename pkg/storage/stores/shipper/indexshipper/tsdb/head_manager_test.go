@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -265,6 +266,61 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
+}
+
+// test head recover from corrupted wal
+func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
+	// so ensure our dirs exist
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+
+	// Call Rotate() to ensure the new head tenant heads exist, etc
+	require.Nil(t, mgr.Rotate(now))
+
+	// now build a WAL independently to test recovery
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+	require.Nil(t, err)
+
+	// write enough records to fill a WAL page.
+	for i := 0; i < 1000; i++ {
+		require.Nil(t, w.Log(&WALRecord{
+			UserID:      "tenant1",
+			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+			Series: record.RefSeries{
+				Ref:    chunks.HeadSeriesRef(i),
+				Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			},
+			Chks: ChunkMetasRecord{
+				Chks: []index.ChunkMeta{
+					{
+						MinTime:  1,
+						MaxTime:  10,
+						Checksum: 3,
+					},
+				},
+				Ref: uint64(i),
+			},
+		}))
+	}
+
+	require.Nil(t, w.Stop())
+
+	// truncate the WAL file to 100 bytes.
+	segmentFile := filepath.Join(walPath(mgr.name, mgr.dir, now), "00000001")
+	require.Nil(t, os.Truncate(segmentFile, 32*1024))
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
 }
 
 // test head still serves data for the most recently rotated period.
