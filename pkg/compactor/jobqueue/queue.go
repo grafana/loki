@@ -43,17 +43,18 @@ type Queue struct {
 	processingJobs    map[string]*processingJob
 	processingJobsMtx sync.RWMutex
 	jobTimeout        time.Duration
-	maxRetries        int
+	maxAttempts       int
 }
 
 type processingJob struct {
-	job        *grpc.Job
-	dequeued   time.Time
-	retryCount int
+	job               *grpc.Job
+	dequeued          time.Time
+	attemptsLeft      int
+	lastAttemptFailed bool
 }
 
-// New creates a new job queue
-func New() *Queue {
+// NewQueue creates a new job queue
+func NewQueue() *Queue {
 	return newQueue(time.Minute)
 }
 
@@ -65,14 +66,14 @@ func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 		stop:                      make(chan struct{}),
 		checkTimedOutJobsInterval: checkTimedOutJobsInterval,
 		processingJobs:            make(map[string]*processingJob),
-		// ToDo(Sandeep): make jobTimeout and maxRetries configurable(possibly job specific)
-		jobTimeout: 15 * time.Minute,
-		maxRetries: 3,
+		// ToDo(Sandeep): make jobTimeout and maxAttempts configurable(possibly job specific)
+		jobTimeout:  15 * time.Minute,
+		maxAttempts: 3,
 	}
 
 	// Start the job timeout checker
 	q.wg.Add(1)
-	go q.checkJobTimeouts()
+	go q.retryFailedJobs()
 
 	return q
 }
@@ -96,13 +97,6 @@ func (q *Queue) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops all builders
-func (q *Queue) Stop() error {
-	close(q.stop)
-	q.wg.Wait()
-	return nil
-}
-
 func (q *Queue) startBuilder(ctx context.Context, builder Builder) {
 	defer q.wg.Done()
 
@@ -123,7 +117,8 @@ func (q *Queue) startBuilder(ctx context.Context, builder Builder) {
 	}
 }
 
-func (q *Queue) checkJobTimeouts() {
+// retryFailedJobs retries the jobs which are failed. It includes jobs which have hit a timeout.
+func (q *Queue) retryFailedJobs() {
 	defer q.wg.Done()
 
 	ticker := time.NewTicker(q.checkTimedOutJobsInterval)
@@ -137,20 +132,32 @@ func (q *Queue) checkJobTimeouts() {
 			q.processingJobsMtx.Lock()
 			now := time.Now()
 			for jobID, pj := range q.processingJobs {
-				if now.Sub(pj.dequeued) > q.jobTimeout {
+				if pj.attemptsLeft <= 0 {
+					delete(q.processingJobs, jobID)
+					continue
+				}
+				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > q.jobTimeout {
 					// Requeue the job
 					select {
 					case <-q.stop:
 						return
 					case q.queue <- pj.job:
+						reason := "timeout"
+						if pj.lastAttemptFailed {
+							reason = "failed"
+						}
 						level.Warn(util_log.Logger).Log(
-							"msg", "job timed out, requeuing",
+							"msg", "requeued job",
 							"job_id", jobID,
 							"job_type", pj.job.Type,
 							"timeout", q.jobTimeout,
+							"reason", reason,
 						)
+						// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
+						q.processingJobs[jobID].dequeued = time.Now()
+						q.processingJobs[jobID].lastAttemptFailed = false
+						q.processingJobs[jobID].attemptsLeft--
 					}
-					delete(q.processingJobs, jobID)
 				}
 			}
 			q.processingJobsMtx.Unlock()
@@ -161,6 +168,7 @@ func (q *Queue) checkJobTimeouts() {
 func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 	for {
 		var job *grpc.Job
+		var ok bool
 		ctx := s.Context()
 
 		select {
@@ -168,15 +176,20 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 			return ctx.Err()
 		case <-q.stop:
 			return nil
-		case job = <-q.queue:
+		case job, ok = <-q.queue:
+			if !ok {
+				return nil
+			}
 		}
 
 		// Track the job as being processed
 		q.processingJobsMtx.Lock()
-		q.processingJobs[job.Id] = &processingJob{
-			job:        job,
-			dequeued:   time.Now(),
-			retryCount: 0,
+		if _, ok := q.processingJobs[job.Id]; !ok {
+			q.processingJobs[job.Id] = &processingJob{
+				job:          job,
+				dequeued:     time.Now(),
+				attemptsLeft: q.maxAttempts - 1,
+			}
 		}
 		q.processingJobsMtx.Unlock()
 
@@ -191,15 +204,19 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 			return err
 		}
 
-		if err := q.reportJobResult(ctx, resp); err != nil {
+		if err := q.reportJobResult(resp); err != nil {
 			return err
 		}
 	}
 }
 
-func (q *Queue) reportJobResult(ctx context.Context, result *grpc.JobResult) error {
+func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 	if result == nil {
 		return status.Error(codes.InvalidArgument, "result cannot be nil")
+	}
+
+	if _, ok := q.builders[result.JobType]; !ok {
+		return status.Error(codes.InvalidArgument, "unknown job type")
 	}
 
 	q.processingJobsMtx.Lock()
@@ -215,32 +232,24 @@ func (q *Queue) reportJobResult(ctx context.Context, result *grpc.JobResult) err
 			"job_id", result.JobId,
 			"job_type", result.JobType,
 			"error", result.Error,
-			"retry_count", pj.retryCount,
 		)
 
 		// Check if we should retry the job
-		if pj.retryCount < q.maxRetries {
-			pj.retryCount++
+		if pj.attemptsLeft > 0 {
 			level.Info(util_log.Logger).Log(
 				"msg", "retrying failed job",
 				"job_id", result.JobId,
 				"job_type", result.JobType,
-				"retry_count", pj.retryCount,
-				"max_retries", q.maxRetries,
+				"attempts_left", pj.attemptsLeft,
 			)
 
-			// Requeue the job
-			select {
-			case <-ctx.Done():
-			case q.queue <- pj.job:
-				return nil
-			}
+			pj.lastAttemptFailed = true
+			return nil
 		} else {
 			level.Error(util_log.Logger).Log(
-				"msg", "job failed after max retries",
+				"msg", "job failed after max attempts",
 				"job_id", result.JobId,
 				"job_type", result.JobType,
-				"max_retries", q.maxRetries,
 			)
 		}
 	} else {
@@ -261,7 +270,9 @@ func (q *Queue) reportJobResult(ctx context.Context, result *grpc.JobResult) err
 // Close closes the queue and releases all resources
 func (q *Queue) Close() {
 	if !q.closed.Load() {
-		close(q.queue)
 		q.closed.Store(true)
+		close(q.stop)
+		q.wg.Wait()
+		close(q.queue)
 	}
 }

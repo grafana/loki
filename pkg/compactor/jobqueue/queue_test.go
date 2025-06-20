@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -18,10 +18,19 @@ import (
 
 // mockBuilder implements the Builder interface for testing
 type mockBuilder struct {
-	jobsToBuild []*compactor_grpc.Job
+	jobsToBuild   []*compactor_grpc.Job
+	jobsSentCount atomic.Int32
+	jobsSucceeded atomic.Int32
+	jobsFailed    atomic.Int32
 }
 
-func (m *mockBuilder) OnJobResponse(_ *compactor_grpc.JobResult) {}
+func (m *mockBuilder) OnJobResponse(res *compactor_grpc.JobResult) {
+	if res.Error != "" {
+		m.jobsFailed.Inc()
+	} else {
+		m.jobsSucceeded.Inc()
+	}
+}
 
 func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_grpc.Job) {
 	for _, job := range m.jobsToBuild {
@@ -29,6 +38,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 		case <-ctx.Done():
 			return
 		case jobsChan <- job:
+			m.jobsSentCount.Inc()
 		}
 	}
 
@@ -36,7 +46,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 	<-ctx.Done()
 }
 
-func server(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
+func setupGRPC(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 	buffer := 101024 * 1024
 	lis := bufconn.Listen(buffer)
 
@@ -65,7 +75,7 @@ func server(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 }
 
 func TestQueue_RegisterBuilder(t *testing.T) {
-	q := New()
+	q := NewQueue()
 	builder := &mockBuilder{}
 
 	// Register builder successfully
@@ -78,9 +88,9 @@ func TestQueue_RegisterBuilder(t *testing.T) {
 }
 
 func TestQueue_Loop(t *testing.T) {
-	q := New()
+	q := NewQueue()
 
-	conn, closer := server(t, q)
+	conn, closer := setupGRPC(t, q)
 	defer closer()
 
 	// Create a couple of test jobs
@@ -115,7 +125,7 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 1, len(q.processingJobs))
 	require.Equal(t, jobs[0], q.processingJobs[jobs[0].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[0].Id].retryCount)
+	require.Equal(t, 2, q.processingJobs[jobs[0].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 
 	// another Recv call on client1Stream without calling the Send call should get blocked
@@ -140,9 +150,9 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 2, len(q.processingJobs))
 	require.Equal(t, jobs[0], q.processingJobs[jobs[0].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[0].Id].retryCount)
+	require.Equal(t, 2, q.processingJobs[jobs[0].Id].attemptsLeft)
 	require.Equal(t, jobs[1], q.processingJobs[jobs[1].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[1].Id].retryCount)
+	require.Equal(t, 2, q.processingJobs[jobs[1].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 
 	// sending a response on client1Stream should get it unblocked to Recv the next job
@@ -159,15 +169,14 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 2, len(q.processingJobs))
 	require.Equal(t, jobs[1], q.processingJobs[jobs[1].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[1].Id].retryCount)
+	require.Equal(t, 2, q.processingJobs[jobs[1].Id].attemptsLeft)
 	require.Equal(t, jobs[2], q.processingJobs[jobs[2].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[2].Id].retryCount)
+	require.Equal(t, 2, q.processingJobs[jobs[2].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 }
 
 func TestQueue_ReportJobResult(t *testing.T) {
-	ctx := context.Background()
-	q := New()
+	q := newQueue(time.Second)
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}))
 
 	// Create a test job
@@ -179,14 +188,14 @@ func TestQueue_ReportJobResult(t *testing.T) {
 	// Add job to processing jobs
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now(),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now(),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
 	// Test successful response
-	err := q.reportJobResult(ctx, &compactor_grpc.JobResult{
+	err := q.reportJobResult(&compactor_grpc.JobResult{
 		JobId:   job.Id,
 		JobType: job.Type,
 	})
@@ -202,25 +211,18 @@ func TestQueue_ReportJobResult(t *testing.T) {
 	job.Id = "retry-job"
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now(),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now(),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		err := q.reportJobResult(ctx, &compactor_grpc.JobResult{
-			JobId:   job.Id,
-			JobType: job.Type,
-			Error:   "test error",
-		})
-		require.NoError(t, err)
-	}()
+	err = q.reportJobResult(&compactor_grpc.JobResult{
+		JobId:   job.Id,
+		JobType: job.Type,
+		Error:   "test error",
+	})
+	require.NoError(t, err)
 
 	// Verify job is requeued with timeout
 	select {
@@ -230,14 +232,12 @@ func TestQueue_ReportJobResult(t *testing.T) {
 		t.Fatal("job was not requeued")
 	}
 
-	wg.Wait()
-
 	// Verify retry count is incremented
 	q.processingJobsMtx.RLock()
 	pj, exists := q.processingJobs[job.Id]
 	q.processingJobsMtx.RUnlock()
 	require.True(t, exists)
-	require.Equal(t, 1, pj.retryCount)
+	require.Equal(t, 1, pj.attemptsLeft)
 }
 
 func TestQueue_JobTimeout(t *testing.T) {
@@ -253,9 +253,9 @@ func TestQueue_JobTimeout(t *testing.T) {
 	// Add job to processing jobs with old dequeued time
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now().Add(-200 * time.Millisecond),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now().Add(-200 * time.Millisecond),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
@@ -272,13 +272,14 @@ func TestQueue_JobTimeout(t *testing.T) {
 
 	// Verify job is removed from processing jobs
 	q.processingJobsMtx.RLock()
-	_, exists := q.processingJobs[job.Id]
+	pj, exists := q.processingJobs[job.Id]
 	q.processingJobsMtx.RUnlock()
-	require.False(t, exists)
+	require.True(t, exists)
+	require.Equal(t, 1, pj.attemptsLeft)
 }
 
 func TestQueue_Close(t *testing.T) {
-	q := New()
+	q := NewQueue()
 
 	// Close the queue
 	q.Close()
