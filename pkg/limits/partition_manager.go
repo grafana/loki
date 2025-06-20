@@ -24,7 +24,9 @@ var (
 type partitionState int
 
 const (
-	partitionPending partitionState = iota
+	// partitionUnknown is the zero value.
+	partitionUnknown partitionState = iota
+	partitionPending
 	partitionReplaying
 	partitionReady
 )
