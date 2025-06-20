@@ -25,7 +25,7 @@ type partitionState int
 
 const (
 	// partitionUnknown is the zero value.
-	paritionUnknown partitionState = iota
+	partitionUnknown partitionState = iota
 	partitionPending
 	partitionReplaying
 	partitionReady
