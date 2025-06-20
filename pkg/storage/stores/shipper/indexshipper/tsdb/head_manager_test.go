@@ -276,7 +276,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 		expectErr bool
 	}{
 		{
-			name: "las record torn",
+			name: "last record torn",
 			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
 				// write enough records to fill a WAL page.
 				for i := 0; i < 1000; i++ {
