@@ -99,7 +99,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}),
 		walCorruptionsRepairs: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_tsdb",
-			Name:      "wal_corruptions_repair_total",
+			Name:      "wal_corruptions_repairs_total",
 			Help:      "Total number of WAL corruptions repairs partitioned by status",
 		}, []string{statusLabel}),
 	}
