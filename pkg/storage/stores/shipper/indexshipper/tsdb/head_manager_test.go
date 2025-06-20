@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/tsdbwalsegment"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -265,6 +266,55 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
+}
+
+// test head recover from a corrupted wal that ends with a torn record
+func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+
+	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
+	// so ensure our dirs exist
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+
+	// create a corrupted segment that ends with a torn record
+	mgr.Rotate(now)
+
+	// Use our tsdbwalsegment package to create a WAL segment with a torn record
+	segmentFile := walPath(mgr.name, mgr.dir, now) + "/00000000"
+	writer, err := tsdbwalsegment.NewSegmentWriter(segmentFile)
+	require.NoError(t, err)
+
+	// Now create the torn record scenario:
+	// This record spans exactly one WAL page (32KB).
+	tornData := make([]byte, tsdbwalsegment.PageSize-tsdbwalsegment.RecordHeaderSize) // 32KB - 7 bytes (header)
+	err = writer.WriteFullRecord(&tsdbwalsegment.Record{
+		Type:         tsdbwalsegment.RecordFirst, // This indicates more fragments should follow
+		Data:         tornData,
+		IsCompressed: false,
+		IsSnappy:     false,
+		IsZstd:       false,
+	})
+	require.NoError(t, err)
+
+	// Close the writer - this leaves the WAL ending with a RecordFirst fragment
+	// When the Prometheus WAL reader reaches EOF after reading RecordFirst,
+	// it will fail with "last record is torn" error.
+	err = writer.Close()
+	require.NoError(t, err)
+
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+	require.Nil(t, err)
+	require.True(t, ok)
+	require.Equal(t, 1, len(grp.wals))
+
+	err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false)
+	require.NoError(t, err)
 }
 
 // test head still serves data for the most recently rotated period.
