@@ -335,7 +335,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 		},
 		{
 			name: "invalid Loki WAL record",
-			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
+			setupFunc: func(t *testing.T, _ string, w *headWAL) {
 				require.Nil(t, w.wal.Log([]byte("not a valid Loki WAL record")))
 				require.Nil(t, w.Stop())
 			},
