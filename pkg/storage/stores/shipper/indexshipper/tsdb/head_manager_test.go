@@ -49,7 +49,7 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 }
 
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
-	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false, log.NewNopLogger())
+	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
 }
 func (m noopTSDBManager) Start() error { return nil }
 
@@ -252,7 +252,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger()))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -371,7 +371,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, 1, len(grp.wals))
 
-			err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger())
+			err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
 			if tc.expectErr {
 				require.Error(t, err)
 			} else {
