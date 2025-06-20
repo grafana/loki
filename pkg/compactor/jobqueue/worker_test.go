@@ -53,7 +53,7 @@ func TestWorkerManager(t *testing.T) {
 	// register the job builder with the queue and start the queue
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder))
 	require.NoError(t, q.Start(context.Background()))
-	require.Equal(t, 0, mockJobBuilder.jobsSentCount)
+	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	jobRunner := &mockJobRunner{}
 	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, nil)
@@ -70,7 +70,7 @@ func TestWorkerManager(t *testing.T) {
 
 	// verify that the job builder got to send the job and that it got processed successfully
 	require.Eventually(t, func() bool {
-		if mockJobBuilder.jobsSentCount != 1 {
+		if mockJobBuilder.jobsSentCount.Load() != 1 {
 			return false
 		}
 		if mockJobBuilder.jobsSucceeded.Load() != 1 {
@@ -114,7 +114,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 	// register the job builder with the queue and start the queue
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder))
 	require.NoError(t, q.Start(context.Background()))
-	require.Equal(t, 0, mockJobBuilder.jobsSentCount)
+	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	// build a worker and start it
 	ctx, cancel := context.WithCancel(context.Background())
@@ -126,7 +126,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 
 	// verify that the job builder got to send all 3 jobs and that both the valid jobs got processed
 	require.Eventually(t, func() bool {
-		if mockJobBuilder.jobsSentCount != 3 {
+		if mockJobBuilder.jobsSentCount.Load() != 3 {
 			return false
 		}
 		if mockJobBuilder.jobsSucceeded.Load() != 1 {

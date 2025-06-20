@@ -19,7 +19,7 @@ import (
 // mockBuilder implements the Builder interface for testing
 type mockBuilder struct {
 	jobsToBuild   []*compactor_grpc.Job
-	jobsSentCount int
+	jobsSentCount atomic.Int32
 	jobsSucceeded atomic.Int32
 	jobsFailed    atomic.Int32
 }
@@ -38,7 +38,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 		case <-ctx.Done():
 			return
 		case jobsChan <- job:
-			m.jobsSentCount++
+			m.jobsSentCount.Inc()
 		}
 	}
 
