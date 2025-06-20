@@ -546,7 +546,7 @@ func legacyWalPath(parent string, t time.Time) string {
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool, logger log.Logger, metric *prometheus.CounterVec) error {
+func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool, logger log.Logger, repairsCounter *prometheus.CounterVec) error {
 	for _, id := range wals {
 		walPath := walPath(name, dir, id.ts)
 		if legacy {
@@ -612,10 +612,10 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 
 			level.Error(logger).Log("msg", "error recovering from TSDB WAL, will try repairing", "error", werr)
 			if err := repairWAL(werr, walPath, logger); err != nil {
-				metric.WithLabelValues(statusFailure).Inc()
+				repairsCounter.WithLabelValues(statusFailure).Inc()
 				return fmt.Errorf("repairing WAL failed: %w", err)
 			}
-			metric.WithLabelValues(statusSuccess).Inc()
+			repairsCounter.WithLabelValues(statusSuccess).Inc()
 		}
 	}
 	return nil
