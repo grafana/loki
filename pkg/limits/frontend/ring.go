@@ -32,8 +32,8 @@ var (
 	}
 )
 
-// ringGatherer uses a ring to find limits instances.
-type ringGatherer struct {
+// ringLimitsClient uses a ring to find limits instances.
+type ringLimitsClient struct {
 	logger                  log.Logger
 	ring                    ring.ReadRing
 	pool                    *ring_client.Pool
@@ -45,16 +45,16 @@ type ringGatherer struct {
 	partitionsMissing *prometheus.CounterVec
 }
 
-// newRingGatherer returns a new ringGatherer.
-func newRingGatherer(
+// newRingLimitsClient returns a new ringLimitsClient.
+func newRingLimitsClient(
 	ring ring.ReadRing,
 	pool *ring_client.Pool,
 	numPartitions int,
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse],
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *ringGatherer {
-	return &ringGatherer{
+) *ringLimitsClient {
+	return &ringLimitsClient{
 		logger:                  logger,
 		ring:                    ring,
 		pool:                    pool,
@@ -72,7 +72,7 @@ func newRingGatherer(
 }
 
 // ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -143,7 +143,7 @@ func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	return responses, nil
 }
 
-func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
+func (r *ringLimitsClient) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
 	// For each stream, figure out which instance consume its partition.
 	instancesForStreams := make(map[string][]*proto.StreamMetadata)
 	for _, stream := range streams {
@@ -204,7 +204,7 @@ type zonePartitionConsumersResult struct {
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
-func (r *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
+func (r *ringLimitsClient) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
@@ -257,7 +257,7 @@ type getAssignedPartitionsResponse struct {
 // should be called once for each zone, and instances should be filtered to
 // the respective zone. Alternatively, you can pass all instances for all zones
 // to find the most up to date consumer for each partition across all zones.
-func (r *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
+func (r *ringLimitsClient) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responseCh := make(chan getAssignedPartitionsResponse, len(instances))
 	for _, instance := range instances {
