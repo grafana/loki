@@ -23,6 +23,7 @@ type Config struct {
 	ClusterName         string        `yaml:"cluster_name"`           // Name to prevent nodes without this identifier from joining the cluster.
 	EnableIPv6          bool          `yaml:"enable_ipv6"`
 	Debug               bool          `yaml:"debug"`
+	EnableGoldfish      bool          `yaml:"enable_goldfish"`                    // Whether to enable the Goldfish query comparison feature.
 	Discovery           struct {
 		JoinPeers []string `yaml:"join_peers"`
 	} `yaml:"discovery"`
@@ -51,6 +52,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableIPv6, "ui.enable-ipv6", false, "Enable using a IPv6 instance address.")
 	f.Var((*flagext.StringSlice)(&cfg.Discovery.JoinPeers), "ui.discovery.join-peers", "List of peers to join the cluster. Supports multiple values separated by commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA and SRV records).")
 	f.BoolVar(&cfg.Debug, "ui.debug", false, "Enable debug logging for the UI.")
+	f.BoolVar(&cfg.EnableGoldfish, "ui.enable-goldfish", false, "Enable the Goldfish query comparison feature.")
 }
 
 func (cfg Config) Validate() error {
