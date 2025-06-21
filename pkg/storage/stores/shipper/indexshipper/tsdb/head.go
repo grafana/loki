@@ -62,11 +62,12 @@ guaranteeing we maintain querying consistency for the entire data lifecycle.
 
 // TODO(owen-d)
 type Metrics struct {
-	seriesNotFound       prometheus.Counter
-	headRotations        *prometheus.CounterVec
-	walTruncations       *prometheus.CounterVec
-	tsdbBuilds           *prometheus.CounterVec
-	tsdbBuildLastSuccess prometheus.Gauge
+	seriesNotFound        prometheus.Counter
+	headRotations         *prometheus.CounterVec
+	walTruncations        *prometheus.CounterVec
+	tsdbBuilds            *prometheus.CounterVec
+	tsdbBuildLastSuccess  prometheus.Gauge
+	walCorruptionsRepairs *prometheus.CounterVec
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -96,6 +97,11 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "build_index_last_successful_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful tsdb index build",
 		}),
+		walCorruptionsRepairs: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_tsdb",
+			Name:      "wal_corruptions_repairs_total",
+			Help:      "Total number of WAL corruptions repairs partitioned by status",
+		}, []string{statusLabel}),
 	}
 }
 
