@@ -1,5 +1,12 @@
 # Release History
 
+## 1.10.0 (2025-05-14)
+
+### Features Added
+- `DefaultAzureCredential` reads environment variable `AZURE_TOKEN_CREDENTIALS` to enable a subset of its credentials:
+  - `dev` selects `AzureCLICredential` and `AzureDeveloperCLICredential`
+  - `prod` selects `EnvironmentCredential`, `WorkloadIdentityCredential` and `ManagedIdentityCredential`
+
 ## 1.9.0 (2025-04-08)
 
 ### Features Added

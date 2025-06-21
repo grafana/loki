@@ -1,4 +1,7 @@
 # Azure Blob Storage module for Go
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/Azure/azure-sdk-for-go/sdk/azblob)](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob)
+[![Build Status](https://dev.azure.com/azure-sdk/public/_apis/build/status/go/go%20-%20azdatalake%20-%20ci?branchName=main)](https://dev.azure.com/azure-sdk/public/_build/latest?definitionId=2854&branchName=main)
+[![Code Coverage](https://img.shields.io/azure-devops/coverage/azure-sdk/public/2854/main)](https://img.shields.io/azure-devops/coverage/azure-sdk/public/2854/main)
 
 > Service Version: 2023-11-03
 

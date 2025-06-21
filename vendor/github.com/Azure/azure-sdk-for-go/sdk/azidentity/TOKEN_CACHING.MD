@@ -49,7 +49,6 @@ The following table indicates the state of in-memory and persistent caching in e
 | `InteractiveBrowserCredential` | Supported                                                           | Supported                |
 | `ManagedIdentityCredential`    | Supported                                                           | Not Supported            |
 | `OnBehalfOfCredential`         | Supported                                                           | Not Supported            |
-| `UsernamePasswordCredential`   | Supported                                                           | Supported                |
 | `WorkloadIdentityCredential`   | Supported                                                           | Supported                |
 
 [sp_example]: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#example-package-PersistentServicePrincipalAuthentication
