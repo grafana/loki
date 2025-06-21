@@ -249,10 +249,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 	defer rb.Release()
 
-	records := heap.PopAll()
-	slices.Reverse(records)
-
-	for _, record := range records {
+	for _, record := range heap.PopAll() {
 		for i := 0; i < schema.NumFields(); i++ {
 			field, builder := rb.Schema().Field(i), rb.Field(i)
 			s.appendToBuilder(builder, &field, &record)
