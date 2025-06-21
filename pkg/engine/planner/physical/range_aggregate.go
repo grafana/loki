@@ -16,7 +16,7 @@ type RangeAggregation struct {
 	Operation types.RangeAggregationType
 	Start     time.Time
 	End       time.Time
-	Step      *time.Duration // optional for instant queries
+	Step      time.Duration // optional for instant queries
 	Range     time.Duration
 }
 

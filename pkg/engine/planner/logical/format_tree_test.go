@@ -128,7 +128,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC), // End Time
-		nil,
+		time.Minute,
 		time.Minute*5, // Range
 	)
 
@@ -143,7 +143,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01 00:00:00 +0000 UTC end_ts=1970-01-01 01:00:00 +0000 UTC range=5m0s partition_by=(ambiguous.label1, ambiguous.label2)
+RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01T00:00:00Z end_ts=1970-01-01T01:00:00Z step=1m0s range=5m0s partition_by=(ambiguous.label1, ambiguous.label2)
 │   ├── ColumnRef column=label1 type=ambiguous
 │   └── ColumnRef column=label2 type=ambiguous
 └── SELECT <%4> table=%2 predicate=%3

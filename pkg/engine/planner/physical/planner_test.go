@@ -15,7 +15,7 @@ type catalog struct {
 }
 
 // ResolveDataObj implements Catalog.
-func (t *catalog) ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, error) {
+func (t *catalog) ResolveDataObj(Expression, time.Duration) ([]DataObjLocation, [][]int64, error) {
 	objects := make([]DataObjLocation, 0, len(t.streamsByObject))
 	streams := make([][]int64, 0, len(t.streamsByObject))
 	for o, s := range t.streamsByObject {
@@ -103,7 +103,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		nil,           // Step
+		0,             // Step
 		time.Minute*5, // Range
 	)
 
