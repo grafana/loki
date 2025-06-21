@@ -156,7 +156,7 @@ locals {
 resource "null_resource" "function_binary" {
   count = var.lambda_promtail_image == "" ? 1 : 0
   triggers = {
-    always_run = timestamp()
+    rebuild_if_changed = var.lambda_code_version != "" ? var.lambda_code_version : timestamp()
   }
 
   provisioner "local-exec" {
