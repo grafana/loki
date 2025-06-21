@@ -6875,6 +6875,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memcached.customReadinessProbe</td>
+			<td>object</td>
+			<td>custom Readiness probe for memcached pods that overrides the default one</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.image.pullPolicy</td>
 			<td>string</td>
 			<td>Memcached Docker image pull policy</td>
@@ -6921,6 +6930,21 @@ false
 			<td>The name of the PriorityClass for memcached pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>

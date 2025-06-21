@@ -124,6 +124,17 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
+          {{- if $.ctx.Values.memcached.customReadinessProbe }}
+          readinessProbe: 
+            {{- toYaml $.ctx.Values.memcached.customReadinessProbe | nindent 12 }}
+          {{- else if $.ctx.Values.memcached.readinessProbe.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .port }}
+            {{- with omit $.ctx.Values.memcached.readinessProbe "enabled" }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
