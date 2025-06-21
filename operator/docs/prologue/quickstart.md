@@ -16,7 +16,7 @@ One page summary on how to start with Loki Operator and LokiStack.
 
 ## Requirements
 
-The easiest way to start with the Loki Operator is to use Kubernetes [kind](sigs.k8s.io/kind).
+The easiest way to start with the Loki Operator is to use Kubernetes [kind](https://github.com/kubernetes-sigs/kind).
 
 ## Deploy from Github repository
 
@@ -26,7 +26,7 @@ The simplest form to deploy the Loki Operator and a LokiStack for demo purposes 
 make quickstart
 ```
 
-If you want to test local changes from your repository fork, you need to provide an image registry organization that you own that has an image repository name `loki-operator`, e.g. `quay.io/my-company-org/loki-operator`. The command to use your custom images is:
+If you want to test local changes from your repository fork, you need to provide an image registry organization that you own that has an image repository name `loki-operator`(e.g., `quay.io/my-company-org/loki-operator`). The command to use your custom images is:
 
 ```shell
 make quickstart REGISTRY_BASE=quay.io/my-company-org
