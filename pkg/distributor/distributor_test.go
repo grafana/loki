@@ -2459,10 +2459,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
@@ -2496,7 +2496,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
@@ -2524,7 +2524,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {

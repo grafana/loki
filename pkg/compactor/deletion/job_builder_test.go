@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
@@ -20,7 +20,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		setupManifest func(client client.ObjectClient)
-		expectedJobs  []jobqueue.Job
+		expectedJobs  []grpc.Job
 	}{
 		{
 			name:          "no manifests in storage",
@@ -47,10 +47,10 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -88,10 +88,10 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -108,7 +108,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Id:   "0_1",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -154,10 +154,10 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -175,7 +175,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Id:   "1_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -227,10 +227,10 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
 						UserID:    user1,
@@ -247,7 +247,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table2,
 						UserID:    user1,
@@ -273,13 +273,13 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			tc.setupManifest(objectClient)
 
 			builder := NewJobBuilder(objectClient)
-			jobsChan := make(chan *jobqueue.Job)
+			jobsChan := make(chan *grpc.Job)
 
-			var jobsBuilt []jobqueue.Job
+			var jobsBuilt []grpc.Job
 			go func() {
 				for job := range jobsChan {
 					jobsBuilt = append(jobsBuilt, *job)
-					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
+					builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
 					})
@@ -342,10 +342,10 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			err = objectClient.PutObject(context.Background(), "test-manifest/1.json", bytes.NewReader(segmentData))
 			require.NoError(t, err)
 
-			jobsChan := make(chan *jobqueue.Job)
+			jobsChan := make(chan *grpc.Job)
 			go func() {
 				for job := range jobsChan {
-					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
+					builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
 						Error:   tc.jobProcessingError,

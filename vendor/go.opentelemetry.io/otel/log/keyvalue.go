@@ -301,7 +301,7 @@ func (v Value) String() string {
 	case KindBool:
 		return strconv.FormatBool(v.asBool())
 	case KindBytes:
-		return fmt.Sprint(v.asBytes())
+		return fmt.Sprint(v.asBytes()) // nolint:staticcheck  // Use fmt.Sprint to encode as slice.
 	case KindMap:
 		return fmt.Sprint(v.asMap())
 	case KindSlice:

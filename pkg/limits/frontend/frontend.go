@@ -14,7 +14,9 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_client "github.com/grafana/loki/v3/pkg/limits/client"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
@@ -32,6 +34,11 @@ type Frontend struct {
 	subservicesWatcher      *services.FailureWatcher
 	lifecycler              *ring.Lifecycler
 	lifecyclerWatcher       *services.FailureWatcher
+
+	// Metrics.
+	streams         prometheus.Counter
+	streamsFailed   prometheus.Counter
+	streamsRejected prometheus.Counter
 }
 
 // New returns a new Frontend.
@@ -62,6 +69,24 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 		logger:                  logger,
 		gatherer:                gatherer,
 		assignedPartitionsCache: assignedPartitionsCache,
+		streams: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_total",
+				Help: "The total number of received streams.",
+			},
+		),
+		streamsFailed: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_failed_total",
+				Help: "The total number of received streams that could not be checked.",
+			},
+		),
+		streamsRejected: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_rejected_total",
+				Help: "The total number of rejected streams.",
+			},
+		),
 	}
 
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
@@ -89,13 +114,32 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 
 // ExceedsLimits implements proto.IngestLimitsFrontendClient.
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+	f.streams.Add(float64(len(req.Streams)))
+	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
 	resps, err := f.gatherer.ExceedsLimits(ctx, req)
 	if err != nil {
-		return nil, err
-	}
-	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	for _, resp := range resps {
-		results = append(results, resp.Results...)
+		// If the entire call failed, then all streams failed.
+		for _, stream := range req.Streams {
+			results = append(results, &proto.ExceedsLimitsResult{
+				StreamHash: stream.StreamHash,
+				Reason:     uint32(limits.ReasonFailed),
+			})
+		}
+		f.streamsFailed.Add(float64(len(req.Streams)))
+		level.Error(f.logger).Log("msg", "failed to check request against limits", "err", err)
+	} else {
+		for _, resp := range resps {
+			for _, res := range resp.Results {
+				// Even if the call succeeded, some (or all) streams might
+				// still have failed.
+				if res.Reason == uint32(limits.ReasonFailed) {
+					f.streamsFailed.Inc()
+				} else {
+					f.streamsRejected.Inc()
+				}
+			}
+			results = append(results, resp.Results...)
+		}
 	}
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
