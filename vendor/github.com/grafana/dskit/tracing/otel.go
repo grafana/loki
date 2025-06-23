@@ -8,233 +8,139 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	otelpyroscope "github.com/grafana/otel-profiling-go"
-	"github.com/pkg/errors"
+	"go.opentelemetry.io/contrib/exporters/autoexport"
 	jaegerpropagator "go.opentelemetry.io/contrib/propagators/jaeger"
 	"go.opentelemetry.io/contrib/samplers/jaegerremote"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/sdk/resource"
-
-	//nolint:staticcheck
-	jaegerotel "go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/trace"
+
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 var tracer = otel.Tracer("dskit/tracing")
 
-const (
-	envJaegerAgentHost                 = "JAEGER_AGENT_HOST"
-	envJaegerTags                      = "JAEGER_TAGS"
-	envJaegerSamplerManagerHostPort    = "JAEGER_SAMPLER_MANAGER_HOST_PORT"
-	envJaegerSamplerParam              = "JAEGER_SAMPLER_PARAM"
-	envJaegerEndpoint                  = "JAEGER_ENDPOINT"
-	envJaegerAgentPort                 = "JAEGER_AGENT_PORT"
-	envJaegerSamplerType               = "JAEGER_SAMPLER_TYPE"
-	envJaegerSamplingEndpoint          = "JAEGER_SAMPLING_ENDPOINT"
-	envJaegerDefaultSamplingServerPort = 5778
-	envJaegerDefaultUDPSpanServerHost  = "localhost"
-	envJaegerDefaultUDPSpanServerPort  = "6831"
-)
+// NewOTelFromEnv is a convenience function to allow OpenTelemetry tracing configuration via environment variables.
+// Refer to official OTel SDK configuration docs to see the available options.
+// https://opentelemetry.io/docs/languages/sdk-configuration/general/
+func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (io.Closer, error) {
+	level.Info(logger).Log("msg", "initialising OpenTelemetry tracer")
 
-// NewOTelFromJaegerEnv is a convenience function to allow OTel tracing configuration via Jaeger environment variables
-//
-// Tracing will be enabled if one (or more) of the following environment variables is used to configure trace reporting:
-// - JAEGER_AGENT_HOST
-// - JAEGER_SAMPLER_MANAGER_HOST_PORT
-func NewOTelFromJaegerEnv(serviceName string) (io.Closer, error) {
-	cfg, err := parseOTelConfig()
+	exp, err := autoexport.NewSpanExporter(context.Background())
 	if err != nil {
-		return nil, errors.Wrap(err, "could not load jaeger tracer configuration")
-	}
-	if cfg.samplingServerURL == "" && cfg.agentHostPort == "" && cfg.jaegerEndpoint == "" {
-		return nil, ErrBlankTraceConfiguration
-	}
-	return cfg.initJaegerTracerProvider(serviceName)
-}
-
-// parseJaegerTags Parse Jaeger tags from env var JAEGER_TAGS, example of TAGs format: key1=value1,key2=${value2:value3} where value2 is an env var
-// and value3 is the default value, which is optional.
-func parseJaegerTags(sTags string) ([]attribute.KeyValue, error) {
-	pairs := strings.Split(sTags, ",")
-	res := make([]attribute.KeyValue, 0, len(pairs))
-	for _, p := range pairs {
-		k, v, found := strings.Cut(p, "=")
-		if found {
-			k, v := strings.TrimSpace(k), strings.TrimSpace(v)
-			if strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") {
-				e, d, _ := strings.Cut(v[2:len(v)-1], ":")
-				v = os.Getenv(e)
-				if v == "" && d != "" {
-					v = d
-				}
-			}
-			if v == "" {
-				return nil, errors.Errorf("invalid tag %q, expected key=value", p)
-			}
-			res = append(res, attribute.String(k, v))
-		} else if p != "" {
-			return nil, errors.Errorf("invalid tag %q, expected key=value", p)
-		}
-	}
-	return res, nil
-}
-
-type otelConfig struct {
-	agentHost         string
-	jaegerEndpoint    string
-	agentPort         string
-	samplerType       string
-	samplingServerURL string
-	samplerParam      float64
-	jaegerTags        []attribute.KeyValue
-	agentHostPort     string
-}
-
-// parseOTelConfig facilitates initialization that is compatible with Jaeger's InitGlobalTracer method.
-func parseOTelConfig() (otelConfig, error) {
-	cfg := otelConfig{}
-	var err error
-
-	// Parse reporting agent configuration
-	if e := os.Getenv(envJaegerEndpoint); e != "" {
-		u, err := url.ParseRequestURI(e)
-		if err != nil {
-			return cfg, errors.Wrapf(err, "cannot parse env var %s=%s", envJaegerEndpoint, e)
-		}
-		cfg.jaegerEndpoint = u.String()
-	} else {
-		useEnv := false
-		host := envJaegerDefaultUDPSpanServerHost
-		if e := os.Getenv(envJaegerAgentHost); e != "" {
-			host = e
-			useEnv = true
-		}
-
-		port := envJaegerDefaultUDPSpanServerPort
-		if e := os.Getenv(envJaegerAgentPort); e != "" {
-			port = e
-			useEnv = true
-		}
-
-		if useEnv || cfg.agentHostPort == "" {
-			cfg.agentHost = host
-			cfg.agentPort = port
-			cfg.agentHostPort = net.JoinHostPort(host, port)
-		}
+		return nil, fmt.Errorf("failed to create OTEL exporter: %w", err)
 	}
 
-	// Then parse the sampler Configuration
-	if e := os.Getenv(envJaegerSamplerType); e != "" {
-		cfg.samplerType = e
+	var cfg config
+	for _, opt := range opts {
+		opt.apply(&cfg)
 	}
 
-	if e := os.Getenv(envJaegerSamplerParam); e != "" {
-		if value, err := strconv.ParseFloat(e, 64); err == nil {
-			cfg.samplerParam = value
-		} else {
-			return cfg, errors.Wrapf(err, "cannot parse env var %s=%s", envJaegerSamplerParam, e)
-		}
-	}
-
-	if e := os.Getenv(envJaegerSamplingEndpoint); e != "" {
-		cfg.samplingServerURL = e
-	} else if e := os.Getenv(envJaegerSamplerManagerHostPort); e != "" {
-		cfg.samplingServerURL = e
-	} else if e := os.Getenv(envJaegerAgentHost); e != "" {
-		// Fallback if we know the agent host - try the sampling endpoint there
-		cfg.samplingServerURL = fmt.Sprintf("http://%s:%d/sampling", e, envJaegerDefaultSamplingServerPort)
-	}
-
-	// When sampling server URL is set, we use the remote sampler
-	if cfg.samplingServerURL != "" && cfg.samplerType == "" {
-		cfg.samplerType = "remote"
-	}
-
-	// Parse tags
-	cfg.jaegerTags, err = parseJaegerTags(os.Getenv(envJaegerTags))
+	resource, err := NewResource(serviceName, cfg.resourceAttributes)
 	if err != nil {
-		return cfg, errors.Wrapf(err, "could not parse %s", envJaegerTags)
-	}
-	return cfg, nil
-}
-
-// initJaegerTracerProvider initializes a new Jaeger Tracer Provider.
-func (cfg otelConfig) initJaegerTracerProvider(serviceName string) (io.Closer, error) {
-	// Read environment variables to configure Jaeger
-	var ep jaegerotel.EndpointOption
-	// Create the jaeger exporter: address can be either agent address (host:port) or collector Endpoint.
-	if cfg.agentHostPort != "" {
-		ep = jaegerotel.WithAgentEndpoint(
-			jaegerotel.WithAgentHost(cfg.agentHost),
-			jaegerotel.WithAgentPort(cfg.agentPort))
-	} else {
-		ep = jaegerotel.WithCollectorEndpoint(
-			jaegerotel.WithEndpoint(cfg.jaegerEndpoint))
-	}
-	exp, err := jaegerotel.New(ep)
-
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialise trace resource: %w", err)
 	}
 
-	// Configure sampling strategy
-	sampler := tracesdk.AlwaysSample()
-	if cfg.samplerType == "const" {
-		if cfg.samplerParam == 0 {
-			sampler = tracesdk.NeverSample()
-		}
-	} else if cfg.samplerType == "probabilistic" {
-		tracesdk.TraceIDRatioBased(cfg.samplerParam)
-	} else if cfg.samplerType == "remote" {
-		sampler = jaegerremote.New(serviceName, jaegerremote.WithSamplingServerURL(cfg.samplingServerURL),
-			jaegerremote.WithInitialSampler(tracesdk.TraceIDRatioBased(cfg.samplerParam)))
-	} else if cfg.samplerType != "" {
-		return nil, errors.Errorf("unknown sampler type %q", cfg.samplerType)
-	}
-	customAttrs := cfg.jaegerTags
-	customAttrs = append(customAttrs,
-		attribute.String("samplerType", cfg.samplerType),
-		attribute.Float64("samplerParam", cfg.samplerParam),
-		attribute.String("samplingServerURL", cfg.samplingServerURL),
-	)
-	res, err := NewResource(serviceName, customAttrs)
-	if err != nil {
-		return nil, err
-	}
-
-	tp := tracesdk.NewTracerProvider(
+	options := []tracesdk.TracerProviderOption{
 		tracesdk.WithBatcher(exp),
-		tracesdk.WithResource(res),
-		tracesdk.WithSampler(sampler),
-	)
+		tracesdk.WithResource(resource),
+	}
+	if jaegerRemoteSampler, ok, err := MaybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
+		return nil, fmt.Errorf("failed to create Jaeger remote sampler: %w", err)
+	} else if ok {
+		options = append(options, tracesdk.WithSampler(jaegerRemoteSampler))
+	}
+	options = append(options, cfg.tracerProviderOptions...)
 
-	// Set TracerProvider with pyroscope profiling.
-	otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
+	level.Debug(logger).Log("msg", "OpenTelemetry tracer provider initialized from OTel environment variables")
+	tpsdk := tracesdk.NewTracerProvider(options...)
+	tp := trace.TracerProvider(tpsdk)
+	if !cfg.pyroscopeDisabled {
+		tp = otelpyroscope.NewTracerProvider(tp)
+	}
 
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator([]propagation.TextMapPropagator{
-		// w3c Propagator is the default propagator for opentelemetry
-		propagation.TraceContext{}, propagation.Baggage{},
-		// jaeger Propagator is for opentracing backwards compatibility
-		jaegerpropagator.Jaeger{},
-	}...))
-	return &Closer{tp}, nil
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(OTelPropagatorsFromEnv()...))
+	otel.SetErrorHandler(otelErrorHandlerFunc(func(err error) {
+		level.Error(logger).Log("msg", "OpenTelemetry.ErrorHandler", "err", err)
+	}))
+
+	return ioCloser(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tpsdk.Shutdown(ctx); err != nil {
+			level.Error(logger).Log("msg", "OpenTelemetry trace provider failed to shutdown", "err", err)
+			return err
+		}
+		return nil
+	}), nil
 }
 
-type Closer struct {
-	*tracesdk.TracerProvider
+type config struct {
+	resourceAttributes    []attribute.KeyValue
+	tracerProviderOptions []tracesdk.TracerProviderOption
+	pyroscopeDisabled     bool
 }
 
-func (c Closer) Close() error {
-	return c.Shutdown(context.Background())
+type OTelOption interface {
+	apply(*config)
+}
+
+// WithResourceAttributes allows to add custom attributes to the OpenTelemetry resource.
+// This is useful to set, for example, the service version.
+// Service name is already set by default.
+func WithResourceAttributes(attrs ...attribute.KeyValue) OTelOption {
+	return resourceAttributesOption(attrs)
+}
+
+type resourceAttributesOption []attribute.KeyValue
+
+func (o resourceAttributesOption) apply(cfg *config) {
+	cfg.resourceAttributes = append(cfg.resourceAttributes, o...)
+}
+
+// WithTracerProviderOptions allows to pass additional options to the OpenTelemetry TracerProvider.
+func WithTracerProviderOptions(opts ...tracesdk.TracerProviderOption) OTelOption {
+	return tracerProviderOptionsOption(opts)
+}
+
+type tracerProviderOptionsOption []tracesdk.TracerProviderOption
+
+func (o tracerProviderOptionsOption) apply(cfg *config) {
+	cfg.tracerProviderOptions = append(cfg.tracerProviderOptions, o...)
+}
+
+// WithPyroscopeDisabled disables pyroscope profiling in the OpenTelemetry tracer.
+func WithPyroscopeDisabled() OTelOption {
+	return pyroscopeDisabledOption{}
+}
+
+type pyroscopeDisabledOption struct{}
+
+func (o pyroscopeDisabledOption) apply(cfg *config) {
+	cfg.pyroscopeDisabled = true
+}
+
+type ioCloser func() error
+
+func (c ioCloser) Close() error { return c() }
+
+type otelErrorHandlerFunc func(error)
+
+// Handle implements otel.ErrorHandler
+func (f otelErrorHandlerFunc) Handle(err error) {
+	f(err)
 }
 
 // NewResource creates a new OpenTelemetry resource using the provided service name and custom attributes.
@@ -252,4 +158,133 @@ func NewResource(serviceName string, customAttributes []attribute.KeyValue) (*re
 			customAttributes...,
 		),
 	)
+}
+
+// MaybeJaegerRemoteSamplerFromEnv checks the environment variables to see
+// if `jaeger_remote` or `parentbased_jaeger_remote` sampler is configured through OTEL_TRACES_SAMPLER.
+//
+// This extends go.opentelemetry.io/otel/sdk/trace/sampler_env.go `samplerFromEnv()` with support for Jaeger remote samplers as per docs in:
+// https://opentelemetry.io/docs/languages/sdk-configuration/general/
+// It is not planned to implement this in OTel SDK: https://github.com/open-telemetry/opentelemetry-go/issues/6296#issuecomment-2648125926
+//
+// If the environment variable is set to "jaeger_remote" or "parentbased_jaeger_remote",
+// but `OTEL_TRACES_SAMPLER_ARG` is not in the correct format (according to the docs mentioned above), then an error is returned.
+func MaybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool, error) {
+	samplerName, ok := os.LookupEnv("OTEL_TRACES_SAMPLER")
+	if !ok {
+		return nil, false, nil
+	}
+	parentBased := false
+	switch samplerName {
+	case "jaeger_remote":
+	case "parentbased_jaeger_remote":
+		parentBased = true
+	default:
+		// Something else is configured, not a Jaeger remote sampler.
+		// If it's something known, trace provider already configured it through samplerFromEnv() function in the SDK.
+		return nil, false, nil
+	}
+
+	args, ok := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
+	if !ok || args == "" {
+		return nil, false, fmt.Errorf("OTEL_TRACES_SAMPLER_ARG is not set for Jaeger remote sampler %s", samplerName)
+	}
+
+	// Parse the OTEL_TRACES_SAMPLER_ARG environment variable.
+	// It should be in the format "endpoint=http://localhost:14250,pollingIntervalMs=5000,initialSamplingRate=0.25"
+	parts := strings.Split(args, ",")
+	var endpoint string
+	var pollingInterval time.Duration
+	var initialSamplingRate float64
+	var initialSamplingRateSet bool
+	var endpointSet bool
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "endpoint=") {
+			endpoint = strings.TrimPrefix(part, "endpoint=")
+			endpointSet = true
+		}
+		if strings.HasPrefix(part, "pollingIntervalMs=") {
+			pollingIntervalStr := strings.TrimPrefix(part, "pollingIntervalMs=")
+			pollingIntervalMs, err := strconv.Atoi(pollingIntervalStr)
+			if err != nil {
+				return nil, false, fmt.Errorf("invalid pollingIntervalMs value in OTEL_TRACES_SAMPLER_ARG: %w", err)
+			}
+			pollingInterval = time.Duration(pollingIntervalMs) * time.Millisecond
+		}
+		if strings.HasPrefix(part, "initialSamplingRate=") {
+			var err error
+			initialSamplingRate, err = strconv.ParseFloat(strings.TrimPrefix(part, "initialSamplingRate="), 64)
+			if err != nil {
+				return nil, false, fmt.Errorf("invalid initialSamplingRate value in OTEL_TRACES_SAMPLER_ARG: %w", err)
+			}
+			if initialSamplingRate < 0 || initialSamplingRate > 1 {
+				return nil, false, fmt.Errorf("initialSamplingRate value set in OTEL_TRACES_SAMPLER_ARG must be between 0 and 1, got %f", initialSamplingRate)
+			}
+			initialSamplingRateSet = true
+		}
+	}
+	if !endpointSet {
+		return nil, false, fmt.Errorf("endpoint is not set in OTEL_TRACES_SAMPLER_ARG for Jaeger remote sampler %s", samplerName)
+	}
+
+	options := []jaegerremote.Option{
+		jaegerremote.WithSamplingServerURL(endpoint),
+	}
+	if pollingInterval > 0 {
+		options = append(options, jaegerremote.WithSamplingRefreshInterval(pollingInterval))
+	}
+	if initialSamplingRateSet {
+		options = append(options, jaegerremote.WithInitialSampler(tracesdk.TraceIDRatioBased(initialSamplingRate)))
+	}
+
+	sampler := jaegerremote.New(serviceName, options...)
+
+	if parentBased {
+		return closableParentBasedSampler{tracesdk.ParentBased(sampler), sampler}, true, nil
+	}
+
+	return sampler, true, nil
+}
+
+type closableParentBasedSampler struct {
+	tracesdk.Sampler
+	closer interface{ Close() }
+}
+
+func (c closableParentBasedSampler) Close() { c.closer.Close() }
+
+// OTelPropagatorsFromEnv returns a slice of OpenTelemetry TextMapPropagators based on the OTEL_PROPAGATORS environment variable.
+// If the environment variable is not set, it defaults to using TraceContext, Baggage, and Jaeger propagators.
+// This implementation supports only `tracecontext`, `baggage`, and `jaeger` and `none` propagators.
+// See docs in:
+// https://opentelemetry.io/docs/languages/sdk-configuration/general/
+func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
+	// If OTEL_PROPAGATORS is not set, use the default propagators.
+	if os.Getenv("OTEL_PROPAGATORS") == "" {
+		return []propagation.TextMapPropagator{
+			propagation.TraceContext{},
+			propagation.Baggage{},
+			jaegerpropagator.Jaeger{},
+		}
+	}
+
+	// Parse the OTEL_PROPAGATORS environment variable.
+	propagators := strings.Split(os.Getenv("OTEL_PROPAGATORS"), ",")
+	var result []propagation.TextMapPropagator
+	for _, p := range propagators {
+		switch strings.TrimSpace(p) {
+		case "tracecontext":
+			result = append(result, propagation.TraceContext{})
+		case "baggage":
+			result = append(result, propagation.Baggage{})
+		case "jaeger":
+			result = append(result, jaegerpropagator.Jaeger{})
+		case "none":
+			return nil
+		default:
+			fmt.Printf("Unknown propagator: %s\n", p)
+		}
+	}
+	return result
 }

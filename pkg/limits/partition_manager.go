@@ -1,7 +1,6 @@
 package limits
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"sync"
@@ -25,7 +24,9 @@ var (
 type partitionState int
 
 const (
-	partitionPending partitionState = iota
+	// partitionUnknown is the zero value.
+	partitionUnknown partitionState = iota
+	partitionPending
 	partitionReplaying
 	partitionReady
 )
@@ -48,7 +49,7 @@ func (s partitionState) String() string {
 // each partition a timestamp of when it was assigned.
 type partitionManager struct {
 	partitions map[int32]partitionEntry
-	mtx        sync.Mutex
+	mtx        sync.RWMutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -74,7 +75,7 @@ func newPartitionManager(reg prometheus.Registerer) (*partitionManager, error) {
 }
 
 // Assign assigns the partitions.
-func (m *partitionManager) Assign(_ context.Context, partitions []int32) {
+func (m *partitionManager) Assign(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -85,11 +86,30 @@ func (m *partitionManager) Assign(_ context.Context, partitions []int32) {
 	}
 }
 
+// CheckReady returns true if all partitions are ready.
+func (m *partitionManager) CheckReady() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	for _, entry := range m.partitions {
+		if entry.state != partitionReady {
+			return false
+		}
+	}
+	return true
+}
+
+// Count returns the number of assigned partitions.
+func (m *partitionManager) Count() int {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	return len(m.partitions)
+}
+
 // GetState returns the current state of the partition. It returns false
 // if the partition does not exist.
 func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	return entry.state, ok
 }
@@ -97,8 +117,8 @@ func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
 // TargetOffsetReached returns true if the partition is replaying and the
 // target offset has been reached.
 func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	if ok {
 		return entry.state == partitionReplaying && entry.targetOffset <= offset
@@ -108,8 +128,8 @@ func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bo
 
 // Has returns true if the partition is assigned, otherwise false.
 func (m *partitionManager) Has(partition int32) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	_, ok := m.partitions[partition]
 	return ok
 }
@@ -117,8 +137,8 @@ func (m *partitionManager) Has(partition int32) bool {
 // List returns a map of all assigned partitions and the timestamp of when
 // each partition was assigned.
 func (m *partitionManager) List() map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		result[partition] = entry.assignedAt
@@ -129,8 +149,8 @@ func (m *partitionManager) List() map[int32]int64 {
 // ListByState returns all partitions with the specified state and their last
 // updated timestamps.
 func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		if entry.state == state {
@@ -170,7 +190,7 @@ func (m *partitionManager) SetReady(partition int32) bool {
 }
 
 // Revoke deletes the partitions.
-func (m *partitionManager) Revoke(_ context.Context, partitions []int32) {
+func (m *partitionManager) Revoke(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -185,8 +205,8 @@ func (m *partitionManager) Describe(descs chan<- *prometheus.Desc) {
 
 // Collect implements [prometheus.Collector].
 func (m *partitionManager) Collect(metrics chan<- prometheus.Metric) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	for partition, entry := range m.partitions {
 		metrics <- prometheus.MustNewConstMetric(
 			partitionsDesc,

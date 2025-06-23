@@ -1,7 +1,6 @@
 package limits
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -18,7 +17,7 @@ func TestPartitionManager_Assign(t *testing.T) {
 	// Advance the clock so we compare with a time that is not the default
 	// value.
 	c.Advance(1)
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	// Assert that the partitions were assigned and the timestamps are set to
 	// the current time.
 	now := c.Now().UnixNano()
@@ -40,7 +39,7 @@ func TestPartitionManager_Assign(t *testing.T) {
 	// partition #4. We expect the updated timestamp is equal to the advanced
 	// time.
 	c.Advance(1)
-	m.Assign(context.Background(), []int32{3, 4})
+	m.Assign([]int32{3, 4})
 	later := c.Now().UnixNano()
 	require.Equal(t, map[int32]partitionEntry{
 		1: {
@@ -62,12 +61,30 @@ func TestPartitionManager_Assign(t *testing.T) {
 	}, m.partitions)
 }
 
+func TestPartitionManager_CheckReady(t *testing.T) {
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
+	c := quartz.NewMock(t)
+	m.clock = c
+	c.Advance(1)
+	m.Assign([]int32{1, 2})
+	require.False(t, m.CheckReady())
+	m.SetReplaying(1, 10)
+	require.False(t, m.CheckReady())
+	m.SetReady(1)
+	require.False(t, m.CheckReady())
+	m.SetReplaying(2, 10)
+	require.False(t, m.CheckReady())
+	m.SetReady(2)
+	require.True(t, m.CheckReady())
+}
+
 func TestPartitionManager_GetState(t *testing.T) {
 	m, err := newPartitionManager(prometheus.NewRegistry())
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	// Getting the state for an assigned partition should return true.
 	state, ok := m.GetState(1)
 	require.True(t, ok)
@@ -82,7 +99,7 @@ func TestPartitionManager_TargetOffsetReached(t *testing.T) {
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1})
+	m.Assign([]int32{1})
 	// Target offset cannot be reached for pending partition.
 	require.False(t, m.TargetOffsetReached(1, 0))
 	// Target offset has not been reached.
@@ -101,7 +118,7 @@ func TestPartitionManager_Has(t *testing.T) {
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	require.True(t, m.Has(1))
 	require.True(t, m.Has(2))
 	require.True(t, m.Has(3))
@@ -116,7 +133,7 @@ func TestPartitionManager_List(t *testing.T) {
 	// Advance the clock so we compare with a time that is not the default
 	// value.
 	c.Advance(1)
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	now := c.Now().UnixNano()
 	result := m.List()
 	require.Equal(t, map[int32]int64{
@@ -139,7 +156,7 @@ func TestPartitionManager_ListByState(t *testing.T) {
 	// Advance the clock so we compare with a time that is not the default
 	// value.
 	c.Advance(1)
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	now := c.Now().UnixNano()
 	result := m.ListByState(partitionPending)
 	require.Equal(t, map[int32]int64{
@@ -166,7 +183,7 @@ func TestPartitionManager_SetReplaying(t *testing.T) {
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	// Setting an assigned partition to replaying should return true.
 	require.True(t, m.SetReplaying(1, 10))
 	state, ok := m.GetState(1)
@@ -181,7 +198,7 @@ func TestPartitionManager_SetReady(t *testing.T) {
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	// Setting an assigned partition to ready should return true.
 	require.True(t, m.SetReady(1))
 	state, ok := m.GetState(1)
@@ -196,7 +213,7 @@ func TestPartitionManager_Revoke(t *testing.T) {
 	require.NoError(t, err)
 	c := quartz.NewMock(t)
 	m.clock = c
-	m.Assign(context.Background(), []int32{1, 2, 3})
+	m.Assign([]int32{1, 2, 3})
 	// Assert that the partitions were assigned and the timestamps are set to
 	// the current time.
 	now := c.Now().UnixNano()
@@ -215,7 +232,7 @@ func TestPartitionManager_Revoke(t *testing.T) {
 		},
 	}, m.partitions)
 	// Revoke partitions 2 and 3.
-	m.Revoke(context.Background(), []int32{2, 3})
+	m.Revoke([]int32{2, 3})
 	require.Equal(t, map[int32]partitionEntry{
 		1: {
 			assignedAt: now,

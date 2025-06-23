@@ -19,10 +19,9 @@ import (
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -140,6 +139,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	factory := func(addr string) (client.PoolClient, error) {
 		igPool, err := NewClientPool(addr, dialOpts)
 		if err != nil {
@@ -544,13 +544,11 @@ func (b *grpcIter) Value() []byte {
 func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
-	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(clientRequestDuration))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
-	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(clientRequestDuration))
 

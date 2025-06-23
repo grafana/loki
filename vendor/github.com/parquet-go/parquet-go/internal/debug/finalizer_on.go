@@ -4,4 +4,4 @@ package debug
 
 import "runtime"
 
-func SetFinalizer(obj, finalizer interface{}) { runtime.SetFinalizer(obj, finalizer) }
+func SetFinalizer(obj, finalizer any) { runtime.SetFinalizer(obj, finalizer) }

@@ -18,7 +18,7 @@ import (
 
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
-	exceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
+	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -35,7 +35,7 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
+func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -78,64 +78,85 @@ func (c *ingestLimitsFrontendRingClient) exceedsLimits(ctx context.Context, req 
 
 type ingestLimits struct {
 	client         ingestLimitsFrontendClient
-	limitsFailures prometheus.Counter
+	requests       prometheus.Counter
+	requestsFailed prometheus.Counter
 }
 
 func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
 	return &ingestLimits{
 		client: client,
-		limitsFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_ingest_limits_failures_total",
-			Help: "The total number of failures checking ingest limits.",
+		requests: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_requests_total",
+			Help: "The total number of requests.",
+		}),
+		requestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_requests_failed_total",
+			Help: "The total number of requests that failed.",
 		}),
 	}
 }
 
-// enforceLimits returns a slice of streams that are within the per-tenant
-// limits, and in the case where one or more streams exceed per-tenant
-// limits, the reasons those streams were not included in the result.
-// An error is returned if per-tenant limits could not be enforced.
-func (l *ingestLimits) enforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, map[uint64][]string, error) {
-	exceedsLimits, reasons, err := l.exceedsLimits(ctx, tenant, streams)
-	if !exceedsLimits || err != nil {
-		return streams, nil, err
+// EnforceLimits checks all streams against the per-tenant limits and returns
+// a slice containing the streams that are accepted (within the per-tenant
+// limits). Any streams that could not have their limits checked are also
+// accepted.
+func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, error) {
+	results, err := l.ExceedsLimits(ctx, tenant, streams)
+	if err != nil {
+		return streams, err
+	}
+	// Fast path. No results means all streams were accepted and there were
+	// no failures, so we can return the input streams.
+	if len(results) == 0 {
+		return streams, nil
 	}
 	// We can do this without allocation if needed, but doing so will modify
 	// the original backing array. See "Filtering without allocation" from
 	// https://go.dev/wiki/SliceTricks.
-	withinLimits := make([]KeyedStream, 0, len(streams))
+	accepted := make([]KeyedStream, 0, len(streams))
 	for _, s := range streams {
-		if _, ok := reasons[s.HashKeyNoShard]; !ok {
-			withinLimits = append(withinLimits, s)
+		// Check each stream to see if it failed.
+		// TODO(grobinson): We have an O(N*M) loop here. Need to benchmark if
+		// its faster to do this or if we should create a map instead.
+		var (
+			found  bool
+			reason uint32
+		)
+		for _, res := range results {
+			if res.StreamHash == s.HashKeyNoShard {
+				found = true
+				reason = res.Reason
+				break
+			}
+		}
+		if !found || reason == uint32(limits.ReasonFailed) {
+			accepted = append(accepted, s)
 		}
 	}
-	return withinLimits, reasons, nil
+	return accepted, nil
 }
 
-// ExceedsLimits returns true if one or more streams exceeds per-tenant limits,
-// and false if no streams exceed per-tenant limits. In the case where one or
-// more streams exceeds per-tenant limits, it returns the reasons for each stream.
-// An error is returned if per-tenant limits could not be checked.
-func (l *ingestLimits) exceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, map[uint64][]string, error) {
+// ExceedsLimits checks all streams against the per-tenant limits. It returns
+// an error if the client failed to send the request or receive a response
+// from the server. Any streams that could not have their limits checked
+// and returned in the results with the reason "ReasonFailed".
+func (l *ingestLimits) ExceedsLimits(
+	ctx context.Context,
+	tenant string,
+	streams []KeyedStream,
+) ([]*proto.ExceedsLimitsResult, error) {
+	l.requests.Inc()
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
-		return false, nil, err
+		l.requestsFailed.Inc()
+		return nil, err
 	}
-	resp, err := l.client.exceedsLimits(ctx, req)
+	resp, err := l.client.ExceedsLimits(ctx, req)
 	if err != nil {
-		return false, nil, err
+		l.requestsFailed.Inc()
+		return nil, err
 	}
-	if len(resp.Results) == 0 {
-		return false, nil, nil
-	}
-	reasonsForHashes := make(map[uint64][]string)
-	for _, result := range resp.Results {
-		reasons := reasonsForHashes[result.StreamHash]
-		humanized := limits.Reason(result.Reason).String()
-		reasons = append(reasons, humanized)
-		reasonsForHashes[result.StreamHash] = reasons
-	}
-	return true, reasonsForHashes, nil
+	return resp.Results, nil
 }
 
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
@@ -155,11 +176,4 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil
-}
-
-func firstReasonForHashes(reasonsForHashes map[uint64][]string) string {
-	for _, reasons := range reasonsForHashes {
-		return reasons[0]
-	}
-	return "unknown reason"
 }

@@ -161,6 +161,14 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 		return "", resp.ServiceError()
 	}
 	defer func() { resp.Body().Close() }()
+
+	headers := resp.Headers()
+	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
+		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
+			return strings.Trim(resp.Header(http.ETAG), "\""), bce.NewBceClientError(errMsg)
+		}
+	}
 	return strings.Trim(resp.Header(http.ETAG), "\""), nil
 }
 
@@ -205,6 +213,15 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 			}
 			req.SetHeader(http.CONTENT_MD5, contentMD5)
 		}
+		// calc crc32c
+		if args != nil && args.ContentCrc32cFlag {
+			buf := bytes.NewBuffer(content)
+			contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(size))
+			if err != nil {
+				return "", err
+			}
+			args.ContentCrc32c = contentCrc32c
+		}
 		req.SetHeader(http.CONTENT_LENGTH, fmt.Sprintf("%d", size))
 	}
 	// Optional arguments settings
@@ -234,6 +251,15 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 		return "", resp.ServiceError()
 	}
 	defer func() { resp.Body().Close() }()
+
+	headers := resp.Headers()
+	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
+		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
+			return strings.Trim(resp.Header(http.ETAG), "\""), bce.NewBceClientError(errMsg)
+		}
+	}
+
 	return strings.Trim(resp.Header(http.ETAG), "\""), nil
 }
 
@@ -364,6 +390,10 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string,
 	}
 	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
 		result.ContentCrc32c = val
+		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
+			return result, bce.NewBceClientError(errMsg)
+		}
 	}
 	return result, nil
 }

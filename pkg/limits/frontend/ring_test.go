@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -92,14 +93,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -144,7 +145,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -152,7 +153,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -202,7 +203,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -210,7 +211,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -260,29 +261,29 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
 		// When one instance returns an error, the streams for that instance
-		// are permitted.
+		// are failed.
 		name: "two streams, two instances, one instance returns error",
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
@@ -326,7 +327,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, nil},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {
@@ -335,7 +336,12 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		}, {
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonFailed),
 			}},
 		}},
 	}, {
@@ -385,7 +391,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{
@@ -396,7 +402,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}}
@@ -418,7 +424,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			}
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -584,7 +590,7 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -721,7 +727,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger())
+			g := newRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -771,7 +777,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
 	cache := newTTLCache[string, *proto.GetAssignedPartitionsResponse](time.Minute)
-	g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger())
+	g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 	// Set a maximum upper bound on the test execution time.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

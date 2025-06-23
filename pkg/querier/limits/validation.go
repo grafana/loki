@@ -23,7 +23,7 @@ import (
 const logsDrilldownAppName = "grafana-lokiexplore-app"
 
 var nowFunc = func() time.Time { return time.Now() }
-var ErrAggMetricsDrilldownOnly = fmt.Errorf("aggregated metric queries can only be accessed from Logs Drilldown")
+var ErrInternalStreamsDrilldownOnly = fmt.Errorf("internal streams can only be queried from Logs Drilldown")
 
 func ValidateQueryRequest(ctx context.Context, req logql.QueryParams, limits Limits) (time.Time, time.Time, error) {
 	userID, err := tenant.TenantID(ctx)
@@ -46,7 +46,7 @@ func ValidateQueryRequest(ctx context.Context, req logql.QueryParams, limits Lim
 	return ValidateQueryTimeRangeLimits(ctx, userID, limits, req.GetStart(), req.GetEnd())
 }
 
-// ValidateAggregatedMetricQuery checks if the query is accessing __aggregated_metric__ streams
+// ValidateAggregatedMetricQuery checks if the query is accessing __aggregated_metric__ or __pattern__ streams
 // and ensures that only queries from Grafana Explore Logs can access them.
 func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) error {
 	selector, err := req.LogSelector()
@@ -54,18 +54,18 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 		return err
 	}
 
-	// Check if the query targets aggregated metrics
-	isAggregatedMetricQuery := false
+	// Check if the query targets aggregated metrics or patterns
+	isInternalStreamQuery := false
 	matchers := selector.Matchers()
 
 	for _, matcher := range matchers {
-		if matcher.Name == constants.AggregatedMetricLabel {
-			isAggregatedMetricQuery = true
+		if matcher.Name == constants.AggregatedMetricLabel || matcher.Name == constants.PatternLabel {
+			isInternalStreamQuery = true
 			break
 		}
 	}
 
-	if !isAggregatedMetricQuery {
+	if !isInternalStreamQuery {
 		return nil
 	}
 
@@ -88,7 +88,7 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 			return nil
 		}
 	}
-	return ErrAggMetricsDrilldownOnly
+	return ErrInternalStreamsDrilldownOnly
 }
 
 func ValidateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
