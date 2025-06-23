@@ -52,8 +52,8 @@ func Test_intComp(t *testing.T) {
 }
 
 func Fuzz_intComp(f *testing.F) {
-	f.Add(int64(rand.Int63()), 10)
-	f.Add(int64(rand.Int63()), 25)
+	f.Add(int64(775972800), 10)
+	f.Add(int64(758350800), 25)
 
 	f.Fuzz(func(t *testing.T, seed int64, count int) {
 		if count <= 0 {

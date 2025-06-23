@@ -84,8 +84,14 @@ func (enc *intCompEncoder) Flush() error {
 		binary.LittleEndian.PutUint64(enc.outputBuf[i*8:], in)
 	}
 
-	streamio.WriteUvarint(enc.w, uint64(len(enc.compressedBuf)*8))
-	enc.w.Write(enc.outputBuf[:len(enc.compressedBuf)*8])
+	err := streamio.WriteUvarint(enc.w, uint64(len(enc.compressedBuf)*8))
+	if err != nil {
+		return err
+	}
+	_, err = enc.w.Write(enc.outputBuf[:len(enc.compressedBuf)*8])
+	if err != nil {
+		return err
+	}
 	enc.inputBuf = enc.inputBuf[:0]
 	enc.compressedBuf = enc.compressedBuf[:0]
 	return nil
