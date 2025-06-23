@@ -21,7 +21,7 @@ func init() {
 	)
 }
 
-// intCompEncoder encodes int64s using intcomp.
+// intCompEncoder encodes int64s using a mix of delta, zigzag and bitpacking techniques.
 type intCompEncoder struct {
 	w streamio.Writer
 	// inputBuf is a buffer for int64 values before they are compressed in a batch. The size of this buffer controls how often the encoder flushes.
@@ -49,7 +49,7 @@ func (enc *intCompEncoder) ValueType() datasetmd.ValueType {
 	return datasetmd.VALUE_TYPE_INT64
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_DELTA].
+// EncodingType returns [datasetmd.ENCODING_TYPE_INTCOMP].
 func (enc *intCompEncoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_INTCOMP
 }
@@ -71,7 +71,7 @@ func (enc *intCompEncoder) Encode(v Value) error {
 	return nil
 }
 
-// Flush implements [valueEncoder]. It is a no-op for deltaEncoder.
+// Flush implements [valueEncoder]. It is a no-op for intCompEncoder.
 func (enc *intCompEncoder) Flush() error {
 	if len(enc.inputBuf) == 0 {
 		return nil
@@ -98,8 +98,7 @@ func (enc *intCompEncoder) Reset(w streamio.Writer) {
 	enc.w = w
 }
 
-// deltaDecoder decodes delta-encoded numbers. Values are decoded as varint,
-// with each subsequent value being the delta from the previous value.
+// intCompDecoder decodes int64s from the bytestream using a mix of delta, zigzag and bitpacking techniques.
 type intCompDecoder struct {
 	r streamio.Reader
 	// valueBuf is a buffer for a batch of decoded int64 values.
@@ -126,7 +125,7 @@ func (dec *intCompDecoder) ValueType() datasetmd.ValueType {
 	return datasetmd.VALUE_TYPE_INT64
 }
 
-// Type returns [datasetmd.ENCODING_TYPE_DELTA].
+// EncodingType returns [datasetmd.ENCODING_TYPE_INTCOMP].
 func (dec *intCompDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_INTCOMP
 }
@@ -157,8 +156,10 @@ func (dec *intCompDecoder) Decode(s []Value) (int, error) {
 	return len(s), nil
 }
 
-// decode reads the next uint64 value from the stream.
+// decode reads the next int64 value from the stream.
 func (dec *intCompDecoder) decode() (Value, error) {
+	// If there are values in the value buffer, return the next value immediately.
+	// Otherwise, decode a new block of 256 values from the stream.
 	if dec.valueIdx < len(dec.valueBuf) {
 		v := dec.valueBuf[dec.valueIdx]
 		dec.valueIdx++
@@ -182,7 +183,7 @@ func (dec *intCompDecoder) decode() (Value, error) {
 	numUint64s := int(bufLen) / 8
 	for i := 0; i < numUint64s; i++ {
 		offset := i * 8
-		dec.compBuf[i] = binary.NativeEndian.Uint64(dec.readBuf[offset : offset+8])
+		dec.compBuf[i] = binary.LittleEndian.Uint64(dec.readBuf[offset : offset+8])
 	}
 
 	dec.valueBuf = intcomp.UncompressInt64(dec.compBuf[:numUint64s], dec.valueBuf)
