@@ -8,3 +8,4 @@ redis8tests.sh
 coverage.txt
 **/coverage.txt
 .vscode
+tmp/*

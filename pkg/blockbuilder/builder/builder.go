@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
@@ -31,6 +32,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/blockbuilder/builder")
 
 type Config struct {
 	ConcurrentFlushes int `yaml:"concurrent_flushes"`

@@ -5,17 +5,17 @@ import "fmt"
 type SortOrder uint8
 
 const (
-	DESC SortOrder = iota
-	ASC
+	ASC SortOrder = iota
+	DESC
 )
 
 // String returns the string representation of the [SortOrder].
 func (o SortOrder) String() string {
 	switch o {
-	case DESC:
-		return "DESC"
 	case ASC:
 		return "ASC"
+	case DESC:
+		return "DESC"
 	default:
 		return "UNDEFINED"
 	}

@@ -4,21 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"math"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 func TestJobBuilder_buildJobs(t *testing.T) {
+	now := model.Now()
+
 	for _, tc := range []struct {
 		name          string
 		setupManifest func(client client.ObjectClient)
-		expectedJobs  []jobqueue.Job
+		expectedJobs  []grpc.Job
 	}{
 		{
 			name:          "no manifests in storage",
@@ -32,7 +34,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					UserID:    user1,
 					Query:     lblFooBar,
 					StartTime: 0,
-					EndTime:   math.MaxInt64,
+					EndTime:   now,
 				})
 				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
 				require.NoError(t, err)
@@ -45,13 +47,22 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
@@ -64,7 +75,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					UserID:    user1,
 					Query:     lblFooBar,
 					StartTime: 0,
-					EndTime:   math.MaxInt64,
+					EndTime:   now,
 				})
 				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
 				require.NoError(t, err)
@@ -77,21 +88,39 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 				{
 					Id:   "0_1",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
@@ -125,21 +154,112 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 			},
-			expectedJobs: []jobqueue.Job{
+			expectedJobs: []grpc.Job{
 				{
 					Id:   "0_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(25, 25)),
-						DeletionQueries: []string{lblFooBar},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(25, 25)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								RequestID: req1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   100,
+							},
+						},
 					}),
 				},
 				{
 					Id:   "1_0",
-					Type: jobqueue.JOB_TYPE_DELETION,
+					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
-						ChunkIDs:        getChunkIDsFromRetentionChunks(buildRetentionChunks(50, 25)),
-						DeletionQueries: []string{lblFooBar, lblFizzBuzz},
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(50, 25)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								RequestID: req1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   100,
+							},
+							{
+								UserID:    user1,
+								RequestID: req2,
+								Query:     lblFizzBuzz,
+								StartTime: 51,
+								EndTime:   100,
+							},
+						},
+					}),
+				},
+			},
+		},
+		{
+			name: "one manifest in storage with multiple segments due to multiple tables",
+			setupManifest: func(client client.ObjectClient) {
+				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
+					UserID:    user1,
+					Query:     lblFooBar,
+					StartTime: 0,
+					EndTime:   now,
+				})
+				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				require.NoError(t, err)
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(0, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table2, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(100, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.Finish(context.Background()))
+			},
+			expectedJobs: []grpc.Job{
+				{
+					Id:   "0_0",
+					Type: grpc.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionJob{
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, 100)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
+					}),
+				},
+				{
+					Id:   "0_0",
+					Type: grpc.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionJob{
+						TableName: table2,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(100, 100)),
+						DeleteRequests: []DeleteRequest{
+							{
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
 					}),
 				},
 			},
@@ -153,13 +273,13 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			tc.setupManifest(objectClient)
 
 			builder := NewJobBuilder(objectClient)
-			jobsChan := make(chan *jobqueue.Job)
+			jobsChan := make(chan *grpc.Job)
 
-			var jobsBuilt []jobqueue.Job
+			var jobsBuilt []grpc.Job
 			go func() {
 				for job := range jobsChan {
 					jobsBuilt = append(jobsBuilt, *job)
-					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
+					builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
 					})
@@ -222,10 +342,10 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			err = objectClient.PutObject(context.Background(), "test-manifest/1.json", bytes.NewReader(segmentData))
 			require.NoError(t, err)
 
-			jobsChan := make(chan *jobqueue.Job)
+			jobsChan := make(chan *grpc.Job)
 			go func() {
 				for job := range jobsChan {
-					builder.OnJobResponse(&jobqueue.ReportJobResultRequest{
+					builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
 						Error:   tc.jobProcessingError,

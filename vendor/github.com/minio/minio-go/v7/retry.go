@@ -104,6 +104,8 @@ var retryableS3Codes = map[string]struct{}{
 	"ExpiredToken":          {},
 	"ExpiredTokenException": {},
 	"SlowDown":              {},
+	"SlowDownWrite":         {},
+	"SlowDownRead":          {},
 	// Add more AWS S3 codes here.
 }
 

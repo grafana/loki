@@ -7,7 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	"slices"
+
 	"github.com/parquet-go/parquet-go/compress"
+	"github.com/parquet-go/parquet-go/encoding"
 )
 
 // ReadMode is an enum that is used to configure the way that a File reads pages.
@@ -219,6 +222,7 @@ type WriterConfig struct {
 	Compression          compress.Codec
 	Sorting              SortingConfig
 	SkipPageBounds       [][]string
+	Encodings            map[Kind]encoding.Encoding
 }
 
 // DefaultWriterConfig returns a new WriterConfig value initialized with the
@@ -269,6 +273,16 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		}
 	}
 
+	encodings := config.Encodings
+	if len(c.Encodings) > 0 {
+		if encodings == nil {
+			encodings = make(map[Kind]encoding.Encoding, len(c.Encodings))
+		}
+		for k, v := range c.Encodings {
+			encodings[k] = v
+		}
+	}
+
 	*config = WriterConfig{
 		CreatedBy:            coalesceString(c.CreatedBy, config.CreatedBy),
 		ColumnPageBuffers:    coalesceBufferPool(c.ColumnPageBuffers, config.ColumnPageBuffers),
@@ -283,6 +297,8 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		BloomFilters:         coalesceBloomFilters(c.BloomFilters, config.BloomFilters),
 		Compression:          coalesceCompression(c.Compression, config.Compression),
 		Sorting:              coalesceSortingConfig(c.Sorting, config.Sorting),
+		SkipPageBounds:       coalesceSkipPageBounds(c.SkipPageBounds, config.SkipPageBounds),
+		Encodings:            encodings,
 	}
 }
 
@@ -631,7 +647,7 @@ func KeyValueMetadata(key, value string) WriterOption {
 // and applications need to explicitly declare the columns that they want to
 // create filters for.
 func BloomFilters(filters ...BloomFilterColumn) WriterOption {
-	filters = append([]BloomFilterColumn{}, filters...)
+	filters = slices.Clone(filters)
 	return writerOption(func(config *WriterConfig) { config.BloomFilters = filters })
 }
 
@@ -644,7 +660,7 @@ func Compression(codec compress.Codec) WriterOption {
 // SortingWriterConfig is a writer option which applies configuration specific
 // to sorting writers.
 func SortingWriterConfig(options ...SortingOption) WriterOption {
-	options = append([]SortingOption{}, options...)
+	options = slices.Clone(options)
 	return writerOption(func(config *WriterConfig) { config.Sorting.Apply(options...) })
 }
 
@@ -655,6 +671,42 @@ func SortingWriterConfig(options ...SortingOption) WriterOption {
 // This option is additive, it may be used multiple times to skip multiple columns.
 func SkipPageBounds(path ...string) WriterOption {
 	return writerOption(func(config *WriterConfig) { config.SkipPageBounds = append(config.SkipPageBounds, path) })
+}
+
+// DefaultEncodingFor creates a configuration option which sets the default encoding
+// used by a writer for columns with the specified primitive type where none were defined.
+//
+// It will fail if the specified enconding isn't compatible with the specified primitive type.
+func DefaultEncodingFor(kind Kind, enc encoding.Encoding) WriterOption {
+	return writerOption(func(config *WriterConfig) { defaultEncodingFor(config, kind, enc) })
+}
+
+func defaultEncodingFor(config *WriterConfig, kind Kind, enc encoding.Encoding) {
+	if !canEncode(enc, kind) {
+		panic("cannot use encoding " + enc.Encoding().String() + " for kind " + kind.String())
+	}
+	if config.Encodings == nil {
+		config.Encodings = map[Kind]encoding.Encoding{kind: enc}
+	} else {
+		config.Encodings[kind] = enc
+	}
+}
+
+// DefaultEncoding creates a configuration option which sets the default encoding
+// used by a writer for columns where none were defined.
+//
+// It will fail if the specified enconding isn't compatible with any of the primitive types.
+func DefaultEncoding(enc encoding.Encoding) WriterOption {
+	return writerOption(func(config *WriterConfig) {
+		defaultEncodingFor(config, Boolean, enc)
+		defaultEncodingFor(config, Int32, enc)
+		defaultEncodingFor(config, Int64, enc)
+		defaultEncodingFor(config, Int96, enc)
+		defaultEncodingFor(config, Float, enc)
+		defaultEncodingFor(config, Double, enc)
+		defaultEncodingFor(config, ByteArray, enc)
+		defaultEncodingFor(config, FixedLenByteArray, enc)
+	})
 }
 
 // ColumnBufferCapacity creates a configuration option which defines the size of
@@ -668,7 +720,7 @@ func ColumnBufferCapacity(size int) RowGroupOption {
 // SortingRowGroupConfig is a row group option which applies configuration
 // specific sorting row groups.
 func SortingRowGroupConfig(options ...SortingOption) RowGroupOption {
-	options = append([]SortingOption{}, options...)
+	options = slices.Clone(options)
 	return rowGroupOption(func(config *RowGroupConfig) { config.Sorting.Apply(options...) })
 }
 
@@ -683,7 +735,7 @@ func SortingColumns(columns ...SortingColumn) SortingOption {
 	// for the variable argument list, and also avoid having a nil slice when
 	// the option is passed with no sorting columns, so we can differentiate it
 	// from it not being passed.
-	columns = append([]SortingColumn{}, columns...)
+	columns = slices.Clone(columns)
 	return sortingOption(func(config *SortingConfig) { config.SortingColumns = columns })
 }
 
@@ -794,6 +846,13 @@ func coalesceBloomFilters(f1, f2 []BloomFilterColumn) []BloomFilterColumn {
 	return f2
 }
 
+func coalesceSkipPageBounds(b1, b2 [][]string) [][]string {
+	if b1 != nil {
+		return b1
+	}
+	return b2
+}
+
 func coalesceCompression(c1, c2 compress.Codec) compress.Codec {
 	if c1 != nil {
 		return c1
@@ -816,22 +875,20 @@ func validatePositiveInt64(optionName string, optionValue int64) error {
 }
 
 func validateOneOfInt(optionName string, optionValue int, supportedValues ...int) error {
-	for _, value := range supportedValues {
-		if value == optionValue {
-			return nil
-		}
+	if slices.Contains(supportedValues, optionValue) {
+		return nil
 	}
 	return errorInvalidOptionValue(optionName, optionValue)
 }
 
-func validateNotNil(optionName string, optionValue interface{}) error {
+func validateNotNil(optionName string, optionValue any) error {
 	if optionValue != nil {
 		return nil
 	}
 	return errorInvalidOptionValue(optionName, optionValue)
 }
 
-func errorInvalidOptionValue(optionName string, optionValue interface{}) error {
+func errorInvalidOptionValue(optionName string, optionValue any) error {
 	return fmt.Errorf("invalid option value: %s: %v", optionName, optionValue)
 }
 

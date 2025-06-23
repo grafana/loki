@@ -1,0 +1,31 @@
+go 1.18
+
+use (
+	.
+	./examples
+	./maps
+	./parsers/dotenv
+	./parsers/hcl
+	./parsers/hjson
+	./parsers/json
+	./parsers/kdl
+	./parsers/nestedtext
+	./parsers/toml
+	./parsers/yaml
+	./providers/appconfig
+	./providers/basicflag
+	./providers/confmap
+	./providers/consul
+	./providers/env
+	./providers/etcd
+	./providers/file
+	./providers/fs
+	./providers/nats
+	./providers/parameterstore
+	./providers/posflag
+	./providers/rawbytes
+	./providers/s3
+	./providers/structs
+	./providers/vault
+	./tests
+)

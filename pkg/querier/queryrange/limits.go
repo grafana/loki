@@ -15,12 +15,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
+	limitErrTmpl                             = "maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()"
 	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
@@ -150,8 +150,9 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 }
 
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "limits")
+	defer span.End()
+
 	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
@@ -276,8 +277,8 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
+	defer sp.End()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -540,11 +541,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		cancel()
 	}()
 
-	span := opentracing.SpanFromContext(ctx)
-
-	if span != nil {
-		request.LogToSpan(span)
-	}
+	span := trace.SpanFromContext(ctx)
+	request.LogToSpan(span)
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -580,12 +578,10 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
 
-			if span != nil {
-				span.LogFields(
-					otlog.String("wait_time", elapsed.String()),
-					otlog.Int64("max_parallelism", int64(parallelism)),
-				)
-			}
+			span.SetAttributes(
+				attribute.String("wait_time", elapsed.String()),
+				attribute.Int64("max_parallelism", int64(parallelism)),
+			)
 
 			defer semWithTiming.sem.Release(int64(1))
 
