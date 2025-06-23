@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
-func Test_delta(t *testing.T) {
+func Test_intComp(t *testing.T) {
 	numbers := []int64{
 		1234,
 		543,
@@ -25,14 +25,16 @@ func Test_delta(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc    = newDeltaEncoder(&buf)
-		dec    = newDeltaDecoder(&buf)
+		enc    = newIntCompEncoder(&buf)
+		dec    = newIntCompDecoder(&buf)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, num := range numbers {
 		require.NoError(t, enc.Encode(Int64Value(num)))
 	}
+	err := enc.Flush()
+	require.NoError(t, err)
 
 	var actual []int64
 	for {
@@ -49,9 +51,9 @@ func Test_delta(t *testing.T) {
 	require.Equal(t, numbers, actual)
 }
 
-func Fuzz_delta(f *testing.F) {
-	f.Add(int64(775972800), 10)
-	f.Add(int64(758350800), 25)
+func Fuzz_intComp(f *testing.F) {
+	f.Add(int64(rand.Int63()), 10)
+	f.Add(int64(rand.Int63()), 25)
 
 	f.Fuzz(func(t *testing.T, seed int64, count int) {
 		if count <= 0 {
@@ -91,19 +93,20 @@ func Fuzz_delta(f *testing.F) {
 	})
 }
 
-func Benchmark_deltaEncoder_Encode(b *testing.B) {
+func Benchmark_intCompEncoder_Encode(b *testing.B) {
 	b.Run("Sequential", func(b *testing.B) {
-		enc := newDeltaEncoder(streamio.Discard)
+		enc := newIntCompEncoder(streamio.Discard)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Int64Value(int64(i)))
+		for i := int64(0); i < int64(b.N); i++ {
+			_ = enc.Encode(Int64Value(i))
 		}
+
 		b.ReportMetric(float64(b.N)*float64(unsafe.Sizeof(int64(0)))/float64(b.Elapsed().Seconds())*1e-9, "GB/s")
 	})
 
 	b.Run("Largest delta", func(b *testing.B) {
-		enc := newDeltaEncoder(streamio.Discard)
+		enc := newIntCompEncoder(streamio.Discard)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -118,7 +121,7 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 
 	b.Run("Random", func(b *testing.B) {
 		rnd := rand.New(rand.NewSource(0))
-		enc := newDeltaEncoder(streamio.Discard)
+		enc := newIntCompEncoder(streamio.Discard)
 
 		b.ResetTimer()
 
@@ -127,20 +130,23 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 		}
 		b.ReportMetric(float64(b.N)*float64(unsafe.Sizeof(int64(0)))/float64(b.Elapsed().Seconds())*1e-9, "GB/s")
 	})
+
 }
 
-func Benchmark_deltaDecoder_Decode(b *testing.B) {
+func Benchmark_intCompDecoder_Decode(b *testing.B) {
 	b.Run("Sequential", func(b *testing.B) {
 		var buf bytes.Buffer
 
 		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
+			enc = newIntCompEncoder(&buf)
+			dec = newIntCompDecoder(&buf)
 		)
 
 		for i := 0; i < b.N; i++ {
 			_ = enc.Encode(Int64Value(int64(i)))
 		}
+		err := enc.Flush()
+		require.NoError(b, err)
 
 		b.ResetTimer()
 		b.ReportMetric(float64(buf.Len())/float64(b.N), "bytes/value")
@@ -154,8 +160,8 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 		var buf bytes.Buffer
 
 		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
+			enc = newIntCompEncoder(&buf)
+			dec = newIntCompDecoder(&buf)
 		)
 
 		for i := 0; i < b.N; i++ {
@@ -165,6 +171,8 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 				_ = enc.Encode(Int64Value(math.MaxInt64))
 			}
 		}
+		err := enc.Flush()
+		require.NoError(b, err)
 
 		b.ResetTimer()
 		b.ReportMetric(float64(buf.Len())/float64(b.N), "bytes/value")
@@ -180,13 +188,15 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 		var buf bytes.Buffer
 
 		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
+			enc = newIntCompEncoder(&buf)
+			dec = newIntCompDecoder(&buf)
 		)
 
 		for i := 0; i < b.N; i++ {
 			_ = enc.Encode(Int64Value(rnd.Int63()))
 		}
+		err := enc.Flush()
+		require.NoError(b, err)
 
 		b.ResetTimer()
 		b.ReportMetric(float64(buf.Len())/float64(b.N), "bytes/value")
