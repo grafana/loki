@@ -20,15 +20,9 @@ import (
 )
 
 var (
-	labelMD    = buildMetadata(types.ColumnTypeLabel)
-	metadataMD = buildMetadata(types.ColumnTypeMetadata)
+	labelMD    = datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
+	metadataMD = datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
 )
-
-func buildMetadata(ty types.ColumnType) arrow.Metadata {
-	return arrow.MetadataFrom(map[string]string{
-		types.MetadataKeyColumnType: ty.String(),
-	})
-}
 
 func Test_dataobjScan(t *testing.T) {
 	obj := buildDataobj(t, []logproto.Stream{

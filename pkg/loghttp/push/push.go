@@ -66,7 +66,7 @@ var (
 
 	distributorLagByUserAgent = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
-		Name:      "distributor_most_recent_lag_ms",
+		Name:      "distributor_lag_ms_total",
 		Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
 	}, []string{"tenant", "userAgent"})
 

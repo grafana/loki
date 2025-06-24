@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -102,7 +101,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 func TestEvaluateColumnExpression(t *testing.T) {
 	e := expressionEvaluator{}
 
-	t.Run("invalid", func(t *testing.T) {
+	t.Run("unknown column", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "does_not_exist",
@@ -112,8 +111,12 @@ func TestEvaluateColumnExpression(t *testing.T) {
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		_, err := e.eval(colExpr, rec)
-		require.ErrorContains(t, err, errors.ErrKey.Error())
+		colVec, err := e.eval(colExpr, rec)
+		require.NoError(t, err)
+
+		_, ok := colVec.(*Scalar)
+		require.True(t, ok, "expected column vector to be a *Scalar, got %T", colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 	})
 
 	t.Run("string(message)", func(t *testing.T) {
