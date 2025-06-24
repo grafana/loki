@@ -16,7 +16,7 @@ One page summary on how to start with Loki Operator and LokiStack.
 
 ## Requirements
 
-The easiest way to start with the Loki Operator is to use Kubernetes [kind](https://github.com/kubernetes-sigs/kind).
+The easiest way to start with the Loki Operator is to use Kubernetes [kind](https://kind.sigs.k8s.io/).
 
 ## Deploy from Github repository
 
