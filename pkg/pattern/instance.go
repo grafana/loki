@@ -53,7 +53,8 @@ type instance struct {
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
 
-	writer aggregation.EntryWriter
+	metricWriter  aggregation.EntryWriter
+	patternWriter aggregation.EntryWriter
 }
 
 type aggregatedMetrics struct {
@@ -69,7 +70,8 @@ func newInstance(
 	drainLimits drain.Limits,
 	ringClient RingClient,
 	ingesterID string,
-	writer aggregation.EntryWriter,
+	metricWriter aggregation.EntryWriter,
+	patternWriter aggregation.EntryWriter,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
@@ -87,7 +89,8 @@ func newInstance(
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
-		writer:                     writer,
+		metricWriter:               metricWriter,
+		patternWriter:              patternWriter,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -233,7 +236,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.writer)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -339,8 +342,8 @@ func (i *instance) writeAggregatedMetrics(
 		{Name: constants.LevelLabel, Value: level},
 	}
 
-	if i.writer != nil {
-		i.writer.WriteEntry(
+	if i.metricWriter != nil {
+		i.metricWriter.WriteEntry(
 			now.Time(),
 			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls),
 			newLbls,
