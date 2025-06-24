@@ -155,7 +155,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
 		level.Warn(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to write response", "err", err)
-		return
 	}
 
 	// Check whether we should parse the query string.
