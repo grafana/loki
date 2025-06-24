@@ -57,7 +57,7 @@ func (b *Builder) RangeAggregation(
 	partitionBy []ColumnRef,
 	operation types.RangeAggregationType,
 	startTS, endTS time.Time,
-	step *time.Duration,
+	step time.Duration,
 	rangeInterval time.Duration,
 ) *Builder {
 	return &Builder{
