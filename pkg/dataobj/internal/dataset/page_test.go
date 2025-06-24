@@ -90,7 +90,6 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 	}
 
 	b.ReportMetric(float64(totalRead)/1_000_000/b.Elapsed().Seconds(), "MBps/op")
-	b.ReportAllocs()
 }
 
 func logsTestPage(t testing.TB) *MemPage {
@@ -109,7 +108,7 @@ func logsTestPage(t testing.TB) *MemPage {
 	require.NoError(t, r.Close())
 
 	opts := BuilderOptions{
-		PageSizeHint: 2 << 20,
+		PageSizeHint: sb.Len() * 2,
 		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
@@ -117,11 +116,8 @@ func logsTestPage(t testing.TB) *MemPage {
 	builder, err := newPageBuilder(opts)
 	require.NoError(t, err)
 
-	// Fill page up to pageSizeHint
 	for line := range strings.Lines(sb.String()) {
-		if ok := builder.Append(ByteArrayValue([]byte(line))); !ok {
-			break
-		}
+		require.True(t, builder.Append(ByteArrayValue([]byte(line))))
 	}
 
 	page, err := builder.Flush()
