@@ -320,6 +320,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
+	client.Timeout = 0
 	if err != nil {
 		return err
 	}
