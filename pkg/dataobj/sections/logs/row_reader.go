@@ -1,25 +1,18 @@
 package logs
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"maps"
-	"sort"
 	"strconv"
 	"unsafe"
-
-	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
@@ -137,11 +130,11 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		return fmt.Errorf("reading columns: %w", err)
 	}
 
-	dset := toDataset(dec)
-	columns, err := result.Collect(dset.ListColumns(ctx))
+	dset, err := newColumnsDataset(r.sec.Columns())
 	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+		return fmt.Errorf("creating columns dataset: %w", err)
 	}
+	columns := dset.Columns()
 
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
@@ -180,20 +173,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	r.columns = columns
 	r.ready = true
 	return nil
-}
-
-func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := make(labels.Labels, 0, len(md))
-	for _, label := range md {
-		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
-	}
-	sort.Slice(l, func(i, j int) bool {
-		if l[i].Name == l[j].Name {
-			return cmp.Compare(l[i].Value, l[j].Value) < 0
-		}
-		return cmp.Compare(l[i].Name, l[j].Name) < 0
-	})
-	return l
 }
 
 // Reset resets the RowReader with a new Section to read from. Reset allows

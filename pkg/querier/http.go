@@ -2,9 +2,11 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -15,10 +17,13 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -28,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/tracing"
@@ -289,7 +295,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	return resp, nil
 }
 
-// filterAggregatedMetrics adds a matcher to exclude aggregated metrics unless explicitly requested
+// filterAggregatedMetrics adds a matcher to exclude aggregated metrics and patterns unless explicitly requested
 func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, error) {
 	// cannot add filter to an empty matcher set
 	if len(groups) == 0 {
@@ -299,6 +305,15 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 	noAggMetrics, err := labels.NewMatcher(
 		labels.MatchEqual,
 		constants.AggregatedMetricLabel,
+		"",
+	)
+	if err != nil {
+		return nil, false, err
+	}
+
+	noPatterns, err := labels.NewMatcher(
+		labels.MatchEqual,
+		constants.PatternLabel,
 		"",
 	)
 	if err != nil {
@@ -315,16 +330,23 @@ func (q *QuerierAPI) filterAggregatedMetrics(groups []string) ([]string, bool, e
 		}
 
 		aggMetricsRequested := false
+		patternsRequested := false
 		for _, m := range grp {
 			if m.Name == constants.AggregatedMetricLabel {
 				aggMetricsRequested = true
 				aggMetricsRequestedInAnyGroup = true
-				break
+			}
+			if m.Name == constants.PatternLabel {
+				patternsRequested = true
+				aggMetricsRequestedInAnyGroup = true
 			}
 		}
 
 		if !aggMetricsRequested {
 			grp = append(grp, noAggMetrics)
+		}
+		if !patternsRequested {
+			grp = append(grp, noPatterns)
 		}
 
 		newGroups = append(newGroups, syntax.MatchersString(grp))
@@ -339,7 +361,7 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 			keys = append(keys, label.Key)
 		}
 
-		if slices.Contains(keys, constants.AggregatedMetricLabel) {
+		if slices.Contains(keys, constants.AggregatedMetricLabel) || slices.Contains(keys, constants.PatternLabel) {
 			resp.Series = slices.Delete(resp.Series, i, i+1)
 			i--
 		}
@@ -351,7 +373,7 @@ func (q *QuerierAPI) filterAggregatedMetricsFromSeriesResp(resp *logproto.Series
 func (q *QuerierAPI) filterAggregatedMetricsLabel(labels []string) []string {
 	newLabels := make([]string, 0, len(labels))
 	for _, label := range labels {
-		if label == constants.AggregatedMetricLabel {
+		if label == constants.AggregatedMetricLabel || label == constants.PatternLabel {
 			continue
 		}
 		newLabels = append(newLabels, label)
@@ -377,17 +399,182 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 	return resp, nil
 }
 
+type asyncPatternResponses struct {
+	responses []*logproto.QueryPatternsResponse
+	lock      sync.Mutex
+}
+
+// currently, the only contention is when adding, however if that behavior changes we may need to lock in the read methods as well
+func (r *asyncPatternResponses) add(resp *logproto.QueryPatternsResponse) {
+	if resp == nil {
+		return
+	}
+
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.responses = append(r.responses, resp)
+}
+
+func (r *asyncPatternResponses) get() []*logproto.QueryPatternsResponse {
+	return r.responses
+}
+
+func (r *asyncPatternResponses) len() int {
+	return len(r.responses)
+}
+
 func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	resp, err := q.querier.Patterns(ctx, req)
-	if err != nil {
+	// Calculate query intervals for ingester vs store
+	ingesterQueryInterval, storeQueryInterval := BuildQueryIntervalsWithLookback(q.cfg, req.Start, req.End, q.cfg.QueryPatternIngestersWithin)
+
+	responses := asyncPatternResponses{}
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Query pattern ingesters for recent data
+	if ingesterQueryInterval != nil && !q.cfg.QueryStoreOnly && q.querier != nil {
+		g.Go(func() error {
+			splitReq := *req
+			splitReq.Start = ingesterQueryInterval.start
+			splitReq.End = ingesterQueryInterval.end
+
+			resp, err := q.querier.Patterns(ctx, &splitReq)
+			if err != nil {
+				return err
+			}
+			responses.add(resp)
+			return nil
+		})
+	}
+
+	// Query store for older data by converting to LogQL query
+	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
+		g.Go(func() error {
+			storeReq := *req
+			storeReq.Start = storeQueryInterval.start
+			storeReq.End = storeQueryInterval.end
+			resp, err := q.queryStoreForPatterns(ctx, &storeReq)
+			if err != nil {
+				return err
+			}
+			responses.add(resp)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	if resp == nil { // Some stores don't implement this
+
+	// Merge responses
+	if responses.len() == 0 {
 		return &logproto.QueryPatternsResponse{
 			Series: []*logproto.PatternSeries{},
 		}, nil
 	}
+
+	return pattern.MergePatternResponses(responses.get()), nil
+}
+
+func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	params, err := queryrange.ParamsFromRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Patterns are persisted as logfmt'd strings, so we need to to run the query using the LogQL engine
+	// in order to extract the metric values from them.
+	query := q.engineV1.Query(params)
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]map[string]map[int64]float64) // level -> pattern -> timestamp -> value
+	switch v := res.Data.(type) {
+	case promql.Vector:
+		for _, s := range v {
+			lvl, pattern := getLevelAndPattern(s.Metric)
+			if pattern == "" {
+				continue
+			}
+
+			if result[lvl] == nil {
+				result[lvl] = make(map[string]map[int64]float64)
+			}
+
+			if result[lvl][pattern] == nil {
+				result[lvl][pattern] = make(map[int64]float64)
+			}
+			result[lvl][pattern][s.T] = s.F
+		}
+	case promql.Matrix:
+		for _, s := range v {
+			lvl, pattern := getLevelAndPattern(s.Metric)
+			if pattern == "" {
+				continue
+			}
+
+			if result[lvl] == nil {
+				result[lvl] = make(map[string]map[int64]float64)
+			}
+
+			if result[lvl][pattern] == nil {
+				result[lvl][pattern] = make(map[int64]float64)
+			}
+			for _, f := range s.Floats {
+				result[lvl][pattern][f.T] = f.F
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unexpected type (%s) when querying store for patterns. Expected %s or %s", res.Data.Type(), parser.ValueTypeMatrix, parser.ValueTypeVector)
+	}
+
+	// Convert to pattern response format
+	resp := &logproto.QueryPatternsResponse{
+		Series: make([]*logproto.PatternSeries, 0, len(result)),
+	}
+
+	for lvl, patterns := range result {
+		for pattern, samples := range patterns {
+			series := &logproto.PatternSeries{
+				Pattern: pattern,
+				Level:   lvl,
+				Samples: make([]*logproto.PatternSample, 0, len(samples)),
+			}
+
+			// Convert samples map to slice and sort by timestamp
+			timestamps := make([]int64, 0, len(samples))
+			for ts := range samples {
+				timestamps = append(timestamps, ts)
+			}
+			slices.Sort(timestamps)
+
+			level.Debug(q.logger).Log(
+				"msg", "earliest pattern sample from store",
+				"timestamp", timestamps[0],
+			)
+			for _, ts := range timestamps {
+				series.Samples = append(series.Samples, &logproto.PatternSample{
+					Timestamp: model.Time(ts),
+					Value:     int64(samples[ts]),
+				})
+			}
+
+			resp.Series = append(resp.Series, series)
+		}
+	}
+
 	return resp, nil
+}
+
+func getLevelAndPattern(metric labels.Labels) (string, string) {
+	lvl := metric.Get(constants.LevelLabel)
+	if lvl == "" {
+		lvl = constants.LogLevelUnknown
+	}
+
+	pattern := metric.Get("decoded_pattern")
+	return lvl, pattern
 }
 
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {

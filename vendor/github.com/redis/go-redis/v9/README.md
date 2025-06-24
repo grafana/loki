@@ -68,6 +68,7 @@ key value NoSQL database that uses RocksDB as storage engine and is compatible w
 
 - Redis commands except QUIT and SYNC.
 - Automatic connection pooling.
+- [StreamingCredentialsProvider (e.g. entra id, oauth)](#1-streaming-credentials-provider-highest-priority) (experimental)
 - [Pub/Sub](https://redis.uptrace.dev/guide/go-redis-pubsub.html).
 - [Pipelines and transactions](https://redis.uptrace.dev/guide/go-redis-pipelines.html).
 - [Scripting](https://redis.uptrace.dev/guide/lua-scripting.html).
@@ -136,17 +137,121 @@ func ExampleClient() {
 }
 ```
 
-The above can be modified to specify the version of the RESP protocol by adding the `protocol`
-option to the `Options` struct:
+### Authentication
+
+The Redis client supports multiple ways to provide authentication credentials, with a clear priority order. Here are the available options:
+
+#### 1. Streaming Credentials Provider (Highest Priority) - Experimental feature
+
+The streaming credentials provider allows for dynamic credential updates during the connection lifetime. This is particularly useful for managed identity services and token-based authentication.
 
 ```go
-    rdb := redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379",
-        Password: "", // no password set
-        DB:       0,  // use default DB
-        Protocol: 3, // specify 2 for RESP 2 or 3 for RESP 3
-    })
+type StreamingCredentialsProvider interface {
+    Subscribe(listener CredentialsListener) (Credentials, UnsubscribeFunc, error)
+}
 
+type CredentialsListener interface {
+    OnNext(credentials Credentials)  // Called when credentials are updated
+    OnError(err error)              // Called when an error occurs
+}
+
+type Credentials interface {
+    BasicAuth() (username string, password string)
+    RawCredentials() string
+}
+```
+
+Example usage:
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+    StreamingCredentialsProvider: &MyCredentialsProvider{},
+})
+```
+
+**Note:** The streaming credentials provider can be used with [go-redis-entraid](https://github.com/redis/go-redis-entraid) to enable Entra ID (formerly Azure AD) authentication. This allows for seamless integration with Azure's managed identity services and token-based authentication.
+
+Example with Entra ID:
+```go
+import (
+    "github.com/redis/go-redis/v9"
+    "github.com/redis/go-redis-entraid"
+)
+
+// Create an Entra ID credentials provider
+provider := entraid.NewDefaultAzureIdentityProvider()
+
+// Configure Redis client with Entra ID authentication
+rdb := redis.NewClient(&redis.Options{
+    Addr: "your-redis-server.redis.cache.windows.net:6380",
+    StreamingCredentialsProvider: provider,
+    TLSConfig: &tls.Config{
+        MinVersion: tls.VersionTLS12,
+    },
+})
+```
+
+#### 2. Context-based Credentials Provider
+
+The context-based provider allows credentials to be determined at the time of each operation, using the context.
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+    CredentialsProviderContext: func(ctx context.Context) (string, string, error) {
+        // Return username, password, and any error
+        return "user", "pass", nil
+    },
+})
+```
+
+#### 3. Regular Credentials Provider
+
+A simple function-based provider that returns static credentials.
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+    CredentialsProvider: func() (string, string) {
+        // Return username and password
+        return "user", "pass"
+    },
+})
+```
+
+#### 4. Username/Password Fields (Lowest Priority)
+
+The most basic way to provide credentials is through the `Username` and `Password` fields in the options.
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:     "localhost:6379",
+    Username: "user",
+    Password: "pass",
+})
+```
+
+#### Priority Order
+
+The client will use credentials in the following priority order:
+1. Streaming Credentials Provider (if set)
+2. Context-based Credentials Provider (if set)
+3. Regular Credentials Provider (if set)
+4. Username/Password fields (if set)
+
+If none of these are set, the client will attempt to connect without authentication.
+
+### Protocol Version
+
+The client supports both RESP2 and RESP3 protocols. You can specify the protocol version in the options:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:     "localhost:6379",
+    Password: "", // no password set
+    DB:       0,  // use default DB
+    Protocol: 3,  // specify 2 for RESP 2 or 3 for RESP 3
+})
 ```
 
 ### Connecting via a redis url

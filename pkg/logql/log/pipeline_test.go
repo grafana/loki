@@ -92,7 +92,7 @@ func TestPipeline(t *testing.T) {
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories][]labels.Label{
-		ParsedLabel: {{"baz", "blip"}},
+		ParsedLabel: {{Name: "baz", Value: "blip"}},
 	}
 
 	p.Reset()
@@ -168,7 +168,7 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories][]labels.Label{
-		ParsedLabel: {{"baz", "blip"}},
+		ParsedLabel: {{Name: "baz", Value: "blip"}},
 	}
 
 	p.Reset()

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -110,6 +111,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		if ownedStream {
 			if len(reqStream.Entries) == 0 {
+				level.Warn(i.logger).Log(
+					"msg", "skipping empty stream for aggregations",
+					"stream", reqStream.Labels,
+				)
 				continue
 			}
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -228,7 +233,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.writer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -337,11 +342,11 @@ func (i *instance) writeAggregatedMetrics(
 	if i.writer != nil {
 		i.writer.WriteEntry(
 			now.Time(),
-			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls),
 			newLbls,
 			sturcturedMetadata,
 		)
 
-		i.metrics.samples.WithLabelValues(service).Inc()
+		i.metrics.metricSamples.WithLabelValues(service).Inc()
 	}
 }

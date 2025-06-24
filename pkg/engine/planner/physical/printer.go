@@ -31,6 +31,7 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
 			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
+			tree.NewProperty("section_ids", true, toAnySlice(node.Sections)...),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
@@ -56,6 +57,23 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("offset", false, node.Skip),
 			tree.NewProperty("limit", false, node.Fetch),
 		}
+	case *RangeAggregation:
+		properties := []tree.Property{
+			tree.NewProperty("operation", false, node.Operation),
+			tree.NewProperty("start", false, node.Start),
+			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("range", false, node.Range),
+		}
+
+		if node.Step != nil {
+			properties = append(properties, tree.NewProperty("step", false, node.Step))
+		}
+
+		if len(node.PartitionBy) > 0 {
+			properties = append(properties, tree.NewProperty("partition_by", true, toAnySlice(node.PartitionBy)...))
+		}
+
+		treeNode.Properties = properties
 	}
 	return treeNode
 }

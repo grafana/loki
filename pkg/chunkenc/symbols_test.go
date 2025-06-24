@@ -235,19 +235,18 @@ func TestSymbolizerNormalizationCache(t *testing.T) {
 	s := newSymbolizer()
 
 	// Add a label with a name that needs normalization
-	labels1 := labels.Labels{{Name: "foo-bar", Value: "value1"}}
+	labels1 := labels.FromStrings("foo-bar", "value1")
 	symbols1, err := s.Add(labels1)
 	require.NoError(t, err)
 
 	// Look up the label multiple times
 	for i := 0; i < 3; i++ {
 		result := s.Lookup(symbols1, nil)
-		require.Equal(t, "foo_bar", result[0].Name, "normalized name should be consistent")
-		require.Equal(t, "value1", result[0].Value, "value should remain unchanged")
+		require.Equal(t, "value1", result.Get("foo_bar"), "value should remain unchanged")
 	}
 
 	// Add the same label name with a different value
-	labels2 := labels.Labels{{Name: "foo-bar", Value: "value2"}}
+	labels2 := labels.FromStrings("foo-bar", "value2")
 	symbols2, err := s.Add(labels2)
 	require.NoError(t, err)
 

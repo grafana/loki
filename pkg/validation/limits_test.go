@@ -478,3 +478,36 @@ metric_aggregation_enabled: false
 		})
 	}
 }
+
+func Test_PatternPersistenceEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected bool
+	}{
+		{
+			name: "when true",
+			yaml: `
+pattern_persistence_enabled: true
+`,
+			expected: true,
+		},
+		{
+			name: "when false",
+			yaml: `
+pattern_persistence_enabled: false
+`,
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternPersistenceEnabled("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

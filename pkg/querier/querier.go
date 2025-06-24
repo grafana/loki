@@ -49,23 +49,21 @@ import (
 
 var tracer = otel.Tracer("pkg/querier")
 
-type interval struct {
-	start, end time.Time
-}
-
 // Config for a querier.
 type Config struct {
-	TailMaxDuration               time.Duration    `yaml:"tail_max_duration"`
-	ExtraQueryDelay               time.Duration    `yaml:"extra_query_delay,omitempty"`
-	QueryIngestersWithin          time.Duration    `yaml:"query_ingesters_within,omitempty"`
-	IngesterQueryStoreMaxLookback time.Duration    `yaml:"-"`
-	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
-	MaxConcurrent                 int              `yaml:"max_concurrent"`
-	QueryStoreOnly                bool             `yaml:"query_store_only"`
-	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
-	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
-	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
-	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
+	TailMaxDuration           time.Duration    `yaml:"tail_max_duration"`
+	ExtraQueryDelay           time.Duration    `yaml:"extra_query_delay,omitempty"`
+	QueryIngestersWithin      time.Duration    `yaml:"query_ingesters_within,omitempty"`
+	Engine                    logql.EngineOpts `yaml:"engine,omitempty"`
+	MaxConcurrent             int              `yaml:"max_concurrent"`
+	QueryStoreOnly            bool             `yaml:"query_store_only"`
+	QueryIngesterOnly         bool             `yaml:"query_ingester_only"`
+	MultiTenantQueriesEnabled bool             `yaml:"multi_tenant_queries_enabled"`
+	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
+
+	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
+	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -164,7 +162,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
 	if err != nil {
-		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
 			return iter.NoopEntryIterator, nil
 		}
 		return nil, err
@@ -228,6 +226,14 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
+	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
+	if err != nil {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
+			return iter.NoopSampleIterator, nil
+		}
+		return nil, err
+	}
+
 	params.SampleQueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
@@ -281,92 +287,20 @@ func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time
 	return queryEnd.After(ingesterOldestStartTime)
 }
 
-func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration {
+func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod(queryIngestersWithin time.Duration) time.Duration {
 	mlb := time.Duration(-1)
 	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
 		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
 		mlb = q.cfg.IngesterQueryStoreMaxLookback
-	} else if q.cfg.QueryIngestersWithin != 0 {
-		mlb = q.cfg.QueryIngestersWithin
+	} else if queryIngestersWithin != 0 {
+		mlb = queryIngestersWithin
 	}
 
 	return mlb
 }
 
-func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
-	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
-	limitQueryInterval := false
-	// ingesterMLB having -1 means query ingester for whole duration.
-	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
-		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
-		limitQueryInterval = true
-	}
-
-	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
-
-	// query ingester for whole duration.
-	if ingesterMLB == -1 {
-		i := &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-
-		if limitQueryInterval {
-			// query only ingesters.
-			return i, nil
-		}
-
-		// query both stores and ingesters without limiting the query interval.
-		return i, i
-	}
-
-	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
-
-	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
-	if !ingesterQueryWithinRange {
-		return nil, &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-	}
-
-	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
-
-	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
-	if !limitQueryInterval {
-		i := &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-		return i, i
-	}
-
-	// since we are limiting the query interval, check if the query touches just the ingesters, if yes then query just the ingesters.
-	if ingesterOldestStartTime.Before(queryStart) {
-		return &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}, nil
-	}
-
-	// limit the start of ingester query interval to ingesterOldestStartTime.
-	ingesterQueryInterval := &interval{
-		start: ingesterOldestStartTime,
-		end:   queryEnd,
-	}
-
-	// limit the end of ingester query interval to ingesterOldestStartTime.
-	storeQueryInterval := &interval{
-		start: queryStart,
-		end:   ingesterOldestStartTime,
-	}
-
-	// query touches only ingester query interval so do not do store query.
-	if storeQueryInterval.start.After(storeQueryInterval.end) {
-		storeQueryInterval = nil
-	}
-
-	return ingesterQueryInterval, storeQueryInterval
+func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*QueryInterval, *QueryInterval) {
+	return BuildQueryIntervalsWithLookback(q.cfg, queryStart, queryEnd, q.cfg.QueryIngestersWithin)
 }
 
 // Label does the heavy lifting for a Label query.

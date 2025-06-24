@@ -34,6 +34,7 @@ message QueryPatternsResponse {
 message PatternSeries {
   string pattern = 1;
   repeated PatternSample samples = 2;
+  string level = 3;
 }
 
 message PatternSample {

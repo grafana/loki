@@ -59,8 +59,13 @@ type tenantUsage map[int32]map[uint64]streamUsage
 // It contains the minimal information to count per tenant active streams and
 // rate limits.
 type streamUsage struct {
-	hash        uint64
-	lastSeenAt  int64
+	hash       uint64
+	lastSeenAt int64
+	// TODO(grobinson): This is a quick fix to allow us to keep testing
+	// correctness.
+	lastProducedAt int64
+	// TODO(grobinson): Rate buckets are not used as we have decided to defer
+	// implementing rate limits to a later date in the future.
 	totalSize   uint64
 	rateBuckets []rateBucket
 }
@@ -188,11 +193,13 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
+func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time, limits Limits) ([]*proto.StreamMetadata, []*proto.StreamMetadata, []*proto.StreamMetadata, error) {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
-		return nil, nil, errOutsideActiveWindow
+		return nil, nil, nil, errOutsideActiveWindow
 	}
 	var (
+		now        = s.clock.Now()
+		toProduce  = make([]*proto.StreamMetadata, 0, len(metadata))
 		accepted   = make([]*proto.StreamMetadata, 0, len(metadata))
 		rejected   = make([]*proto.StreamMetadata, 0, len(metadata))
 		cutoff     = seenAt.Add(-s.activeWindow).UnixNano()
@@ -226,10 +233,16 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				}
 			}
 			s.update(i, tenant, partition, m, seenAt)
+			// Hard-coded produce cutoff of 1 minute.
+			produceCutoff := now.Add(-time.Minute).UnixNano()
+			if stream.lastProducedAt < produceCutoff {
+				s.setLastProducedAt(i, tenant, partition, m.StreamHash, now)
+				toProduce = append(toProduce, m)
+			}
 			accepted = append(accepted, m)
 		}
 	})
-	return accepted, rejected, nil
+	return toProduce, accepted, rejected, nil
 }
 
 // Evict evicts all streams that have not been seen within the window.
@@ -325,7 +338,7 @@ func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint6
 
 func (s *usageStore) update(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition)
-	streamHash, totalSize := metadata.StreamHash, metadata.TotalSize
+	streamHash, _ := metadata.StreamHash, metadata.TotalSize
 	// Get the stats for the stream.
 	stream, ok := s.stripes[i][tenant][partition][streamHash]
 	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
@@ -333,28 +346,36 @@ func (s *usageStore) update(i int, tenant string, partition int32, metadata *pro
 	if !ok || stream.lastSeenAt < cutoff {
 		stream.hash = streamHash
 		stream.totalSize = 0
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano
 	}
-	stream.totalSize += totalSize
+	// TODO(grobinson): As mentioned above, we will come back and implement
+	// rate limits at a later date in the future.
+	// stream.totalSize += totalSize
 	// rate buckets are implemented as a circular list. To update a rate
 	// bucket we must first calculate the bucket index.
-	bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	bucketIdx := int(bucketNum % int64(s.numBuckets))
-	bucket := stream.rateBuckets[bucketIdx]
+	// bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	// bucketIdx := int(bucketNum % int64(s.numBuckets))
+	// bucket := stream.rateBuckets[bucketIdx]
 	// Once we have found the bucket, we then need to check if it is an old
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
-	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	if bucket.timestamp < bucketStart {
-		bucket.timestamp = bucketStart
-		bucket.size = 0
-	}
-	bucket.size += totalSize
-	stream.rateBuckets[bucketIdx] = bucket
+	// bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	// if bucket.timestamp < bucketStart {
+	// bucket.timestamp = bucketStart
+	// bucket.size = 0
+	// }
+	// bucket.size += totalSize
+	// stream.rateBuckets[bucketIdx] = bucket
+	s.stripes[i][tenant][partition][streamHash] = stream
+}
+
+func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, streamHash uint64, now time.Time) {
+	stream := s.stripes[i][tenant][partition][streamHash]
+	stream.lastProducedAt = now.UnixNano()
 	s.stripes[i][tenant][partition][streamHash] = stream
 }
 

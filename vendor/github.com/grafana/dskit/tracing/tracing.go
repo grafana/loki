@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	// ErrBlankTraceConfiguration is an error to notify client to provide valid trace report agent or config server
-	ErrBlankTraceConfiguration = errors.New("no trace report agent, config server, or collector endpoint specified")
+	// ErrBlankJaegerTraceConfiguration is an error to notify client to provide valid trace report agent or config server.
+	ErrBlankJaegerTraceConfiguration = errors.New("no Jaeger trace report agent, config server, or collector endpoint specified")
 )
 
 // ExtractTraceID extracts the trace id, if any from the context.
@@ -64,12 +64,16 @@ func extractOTelContext(ctx context.Context) (tid trace.TraceID, sid trace.SpanI
 // ExtractSampledTraceID works like ExtractTraceID but the returned bool is only
 // true if the returned trace id is sampled.
 func ExtractSampledTraceID(ctx context.Context) (string, bool) {
-	if tid, ok := extractSampledJaegerTraceID(ctx); ok {
-		return tid.String(), true
+	tid, ok := extractSampledJaegerTraceID(ctx)
+	if tid.IsValid() {
+		return tid.String(), ok
 	}
-	if tid, ok := extractSampledOTelTraceID(ctx); ok {
-		return tid.String(), true
+
+	otid, ok := extractSampledOTelTraceID(ctx)
+	if otid.IsValid() {
+		return otid.String(), ok
 	}
+
 	return "", false
 }
 
