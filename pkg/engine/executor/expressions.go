@@ -39,7 +39,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					ct, ok := md.GetValue(types.MetadataKeyColumnType)
 					if !ok {
-						return nil, fmt.Errorf("column %s has no column type metadata", expr.Ref.Column)
+						continue
 					}
 
 					if ct != expr.Ref.Type.String() {
@@ -55,7 +55,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				}
 			}
 		} else {
-			// For ambiguous columns, use precedence: Generated > Parsed > Metadata > Label
+			// For ambiguous columns, collect all matching columns and order by precedence
 			precedence := map[types.ColumnType]int{
 				types.ColumnTypeGenerated: 5,
 				types.ColumnTypeParsed:    4,
@@ -64,12 +64,11 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				types.ColumnTypeBuiltin:   1,
 			}
 
-			var bestMatch struct {
+			var matchingColumns []struct {
 				index      int
 				columnType types.ColumnType
 				dt         string
 			}
-			bestPrecedence := -1
 
 			for i := range input.NumCols() {
 				if input.ColumnName(int(i)) == expr.Ref.Column {
@@ -79,13 +78,19 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 						continue
 					}
 
+					// TODO: Support other data types in MultiColumnVector
+					// For now, ensure all vectors are strings to avoid type conflicts
+					if datatype.String.String() != dt {
+						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
+					}
+
 					if ct, ok := md.GetValue(types.MetadataKeyColumnType); !ok {
-						return nil, fmt.Errorf("column %s has no column type metadata", expr.Ref.Column)
+						continue
 					} else {
 						columnType := types.ColumnTypeFromString(ct)
-						// Check if this column type has higher precedence
-						if p, exists := precedence[columnType]; exists && p > bestPrecedence {
-							bestMatch = struct {
+						// Only include columns that have a defined precedence
+						if _, exists := precedence[columnType]; exists {
+							matchingColumns = append(matchingColumns, struct {
 								index      int
 								columnType types.ColumnType
 								dt         string
@@ -93,19 +98,48 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 								index:      int(i),
 								columnType: columnType,
 								dt:         dt,
-							}
-							bestPrecedence = p
+							})
 						}
 					}
 				}
 			}
 
-			if bestPrecedence >= 0 {
+			if len(matchingColumns) == 0 {
+				// No matching columns found, fall through to default scalar
+			} else if len(matchingColumns) == 1 {
+				// Single match - return a regular Array for efficiency
+				match := matchingColumns[0]
 				return &Array{
-					array: input.Column(bestMatch.index),
-					dt:    datatype.FromString(bestMatch.dt),
-					ct:    bestMatch.columnType,
+					array: input.Column(match.index),
+					dt:    datatype.FromString(match.dt),
+					ct:    match.columnType,
 					rows:  input.NumRows(),
+				}, nil
+			} else {
+				// Multiple matches - sort by precedence and create MultiColumnVector
+				// Sort in descending order of precedence (highest first)
+				for i := 0; i < len(matchingColumns)-1; i++ {
+					for j := i + 1; j < len(matchingColumns); j++ {
+						if precedence[matchingColumns[i].columnType] < precedence[matchingColumns[j].columnType] {
+							matchingColumns[i], matchingColumns[j] = matchingColumns[j], matchingColumns[i]
+						}
+					}
+				}
+
+				// Create vectors for each matching column
+				vectors := make([]ColumnVector, len(matchingColumns))
+				for i, match := range matchingColumns {
+					vectors[i] = &Array{
+						array: input.Column(match.index),
+						dt:    datatype.FromString(match.dt),
+						ct:    match.columnType,
+						rows:  input.NumRows(),
+					}
+				}
+
+				return &MultiColumnVector{
+					vectors: vectors,
+					rows:    input.NumRows(),
 				}, nil
 			}
 		}
@@ -292,4 +326,47 @@ func (a *Array) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (a *Array) Len() int64 {
 	return int64(a.array.Len())
+}
+
+// MultiColumnVector represents multiple columns with the same name but different types,
+// ordered by precedence (highest precedence first).
+type MultiColumnVector struct {
+	vectors []ColumnVector // Ordered by precedence (Generated first, Label last)
+	rows    int64
+}
+
+var _ ColumnVector = (*MultiColumnVector)(nil)
+
+// ToArray implements ColumnVector.
+func (m *MultiColumnVector) ToArray() arrow.Array {
+	// TODO: Create a new array by materializing the final column values considering per-row precedence.
+	panic("ToArray() is not implemented for MultiColumnVector.")
+}
+
+// Value implements ColumnVector.
+func (m *MultiColumnVector) Value(i int) any {
+	// Try each vector in precedence order
+	for _, vec := range m.vectors {
+		// TODO: Check for isNull() instead
+		if val := vec.Value(i); val != nil {
+			return val
+		}
+	}
+	return nil
+}
+
+// Type implements ColumnVector.
+func (m *MultiColumnVector) Type() datatype.DataType {
+	// TODO: Support other data types in MultiColumnVector
+	return datatype.String
+}
+
+// ColumnType implements ColumnVector.
+func (m *MultiColumnVector) ColumnType() types.ColumnType {
+	return types.ColumnTypeAmbiguous
+}
+
+// Len implements ColumnVector.
+func (m *MultiColumnVector) Len() int64 {
+	return m.rows
 }
