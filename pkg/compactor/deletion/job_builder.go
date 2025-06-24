@@ -178,12 +178,12 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 
 // uploadIndexUpdateForCurrentSegment uploads the index updates for the currently processed segment to the object storage
 func (b *JobBuilder) uploadIndexUpdateForCurrentSegment(ctx context.Context, path string) error {
-	indexUpdatesJson, err := b.currSegmentIndexUpdates.encode()
+	indexUpdatesJSON, err := b.currSegmentIndexUpdates.encode()
 	if err != nil {
 		return err
 	}
 
-	return b.deleteStoreClient.PutObject(ctx, path, bytes.NewReader(indexUpdatesJson))
+	return b.deleteStoreClient.PutObject(ctx, path, bytes.NewReader(indexUpdatesJSON))
 }
 
 func (b *JobBuilder) waitForSegmentCompletion(ctx context.Context) error {
