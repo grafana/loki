@@ -59,6 +59,7 @@ func TestInstancePushQuery(t *testing.T) {
 		ringClient,
 		ingesterID,
 		mockWriter,
+		mockWriter,
 	)
 	require.NoError(t, err)
 
@@ -244,6 +245,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			&fakeLimits{},
 			ringClient,
 			ingesterID,
+			mockWriter,
 			mockWriter,
 		)
 		require.NoError(t, err)
