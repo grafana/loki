@@ -17,6 +17,11 @@ type MakeTable struct {
 	// It is invalid for Selector to include a [ColumnRef] that is not
 	// [ColumnTypeBuiltin] or [ColumnTypeLabel].
 	Selector Value
+
+	// Shard is used to indicate that the table relation does not contain all data
+	// of the relation but only a subset of it.
+	// The Shard value must be of type [ShardRef].
+	Shard Value
 }
 
 var (
@@ -34,7 +39,7 @@ func (t *MakeTable) Name() string {
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {
-	return fmt.Sprintf("MAKETABLE [selector=%s]", t.Selector.Name())
+	return fmt.Sprintf("MAKETABLE [selector=%s, shard=%s]", t.Selector.Name(), t.Shard.Name())
 }
 
 // Schema returns the schema of the table.

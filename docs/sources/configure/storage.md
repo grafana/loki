@@ -281,7 +281,7 @@ schema_config:
   configs:
     - from: 2020-07-01
       store: tsdb
-      object_store: aws
+      object_store: s3
       schema: v13
       index:
         prefix: index_
