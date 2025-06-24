@@ -339,7 +339,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			}
 			segmentData, err := json.Marshal(segment)
 			require.NoError(t, err)
-			err = objectClient.PutObject(context.Background(), "test-manifest/1.json", bytes.NewReader(segmentData))
+			err = objectClient.PutObject(context.Background(), "test-manifest/0.json", bytes.NewReader(segmentData))
 			require.NoError(t, err)
 
 			jobsChan := make(chan *grpc.Job)

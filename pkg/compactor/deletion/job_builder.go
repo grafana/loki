@@ -102,7 +102,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 	b.currentManifestMtx.Unlock()
 
 	// Process segments sequentially
-	for segmentNum := 1; ctx.Err() == nil && segmentNum <= manifest.SegmentsCount; segmentNum++ {
+	for segmentNum := 0; ctx.Err() == nil && segmentNum < manifest.SegmentsCount; segmentNum++ {
 		level.Info(util_log.Logger).Log("msg", "starting segment processing",
 			"manifest", manifestPath,
 			"segment", segmentNum)
