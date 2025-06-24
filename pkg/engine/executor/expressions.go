@@ -26,25 +26,90 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 	case *physical.ColumnExpr:
 		schema := input.Schema()
-		for i := range input.NumCols() {
-			if input.ColumnName(int(i)) == expr.Ref.Column {
-				md := schema.Field(int(i)).Metadata
-				dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
-				if !ok {
-					continue
+
+		if expr.Ref.Type != types.ColumnTypeAmbiguous {
+			// For non-ambiguous columns, find the exact match
+			for i := range input.NumCols() {
+				if input.ColumnName(int(i)) == expr.Ref.Column {
+					md := schema.Field(int(i)).Metadata
+					dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
+					if !ok {
+						continue
+					}
+
+					ct, ok := md.GetValue(types.MetadataKeyColumnType)
+					if !ok {
+						return nil, fmt.Errorf("column %s has no column type metadata", expr.Ref.Column)
+					}
+
+					if ct != expr.Ref.Type.String() {
+						return nil, fmt.Errorf("column %s has type %s, but expression expects type %s", expr.Ref.Column, ct, expr.Ref.Type)
+					}
+
+					return &Array{
+						array: input.Column(int(i)),
+						dt:    datatype.FromString(dt),
+						ct:    types.ColumnTypeFromString(ct),
+						rows:  input.NumRows(),
+					}, nil
 				}
-				ct, ok := md.GetValue(types.MetadataKeyColumnType)
-				if !ok {
-					ct = types.ColumnTypeAmbiguous.String()
+			}
+		} else {
+			// For ambiguous columns, use precedence: Generated > Parsed > Metadata > Label
+			precedence := map[types.ColumnType]int{
+				types.ColumnTypeGenerated: 5,
+				types.ColumnTypeParsed:    4,
+				types.ColumnTypeMetadata:  3,
+				types.ColumnTypeLabel:     2,
+				types.ColumnTypeBuiltin:   1,
+			}
+
+			var bestMatch struct {
+				index      int
+				columnType types.ColumnType
+				dt         string
+			}
+			bestPrecedence := -1
+
+			for i := range input.NumCols() {
+				if input.ColumnName(int(i)) == expr.Ref.Column {
+					md := schema.Field(int(i)).Metadata
+					dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
+					if !ok {
+						continue
+					}
+
+					if ct, ok := md.GetValue(types.MetadataKeyColumnType); !ok {
+						return nil, fmt.Errorf("column %s has no column type metadata", expr.Ref.Column)
+					} else {
+						columnType := types.ColumnTypeFromString(ct)
+						// Check if this column type has higher precedence
+						if p, exists := precedence[columnType]; exists && p > bestPrecedence {
+							bestMatch = struct {
+								index      int
+								columnType types.ColumnType
+								dt         string
+							}{
+								index:      int(i),
+								columnType: columnType,
+								dt:         dt,
+							}
+							bestPrecedence = p
+						}
+					}
 				}
+			}
+
+			if bestPrecedence >= 0 {
 				return &Array{
-					array: input.Column(int(i)),
-					dt:    datatype.FromString(dt),
-					ct:    types.ColumnTypeFromString(ct),
+					array: input.Column(bestMatch.index),
+					dt:    datatype.FromString(bestMatch.dt),
+					ct:    bestMatch.columnType,
 					rows:  input.NumRows(),
 				}, nil
 			}
 		}
+
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
