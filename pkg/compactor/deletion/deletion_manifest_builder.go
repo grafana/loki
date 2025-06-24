@@ -235,3 +235,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 	return path.Join(fmt.Sprint(d.creationTime.UnixNano()), filename)
 }
+
+func (d *deletionManifestBuilder) path() string {
+	return fmt.Sprint(d.creationTime.UnixNano())
+}

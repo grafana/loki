@@ -27,7 +27,7 @@ type Builder interface {
 	BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job)
 
 	// OnJobResponse reports back the response of the job execution.
-	OnJobResponse(response *grpc.JobResult)
+	OnJobResponse(response *grpc.JobResult) error
 }
 
 // Queue implements the job queue service
@@ -259,7 +259,15 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 			"job_type", result.JobType,
 		)
 	}
-	q.builders[result.JobType].OnJobResponse(result)
+	if err := q.builders[result.JobType].OnJobResponse(result); err != nil {
+		level.Error(util_log.Logger).Log(
+			"msg", "failed to process job response",
+			"job_id", result.JobId,
+			"job_type", result.JobType,
+			"error", err,
+		)
+		return err
+	}
 
 	// Remove the job from processing jobs
 	delete(q.processingJobs, result.JobId)
