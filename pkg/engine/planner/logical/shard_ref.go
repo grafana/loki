@@ -17,8 +17,7 @@ var (
 	_ Value = (*ShardInfo)(nil)
 )
 
-// Name returns the identifier of the ShardRef, which combines the column type
-// and column name being referenced.
+// Name returns the identifier of the ShardRef.
 func (s *ShardInfo) Name() string {
 	return fmt.Sprintf("%d_of_%d", s.Shard, s.Of)
 }
