@@ -266,53 +266,30 @@ func batch(n int, now time.Time) arrow.Record {
 }
 
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
-	e := expressionEvaluator{}
+	// Test precedence between generated, metadata, and label columns
+	fields := []arrow.Field{
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.String)},
+	}
 
-	mem := memory.NewGoAllocator()
+	// CSV data where:
+	// Row 0: All columns have values - should pick generated (highest precedence)
+	// Row 1: Generated is null, others have values - should pick metadata
+	// Row 2: Generated and metadata are null - should pick label
+	// Row 3: All are null - should return null
+	data := `label_0,metadata_0,generated_0
+label_1,metadata_1,null
+label_2,null,null
+null,null,null`
 
-	// Create builders for different column types with the same name "test"
-	labelBuilder := array.NewStringBuilder(mem)
-	defer labelBuilder.Release()
-	metadataBuilder := array.NewStringBuilder(mem)
-	defer metadataBuilder.Release()
-	parsedBuilder := array.NewStringBuilder(mem)
-	defer parsedBuilder.Release()
-	generatedBuilder := array.NewStringBuilder(mem)
-	defer generatedBuilder.Release()
-
-	// Add test data
-	labelBuilder.AppendValues([]string{"label_value"}, nil)
-	metadataBuilder.AppendValues([]string{"metadata_value"}, nil)
-	parsedBuilder.AppendValues([]string{"parsed_value"}, nil)
-	generatedBuilder.AppendValues([]string{"generated_value"}, nil)
-
-	// Build arrays
-	labelArray := labelBuilder.NewArray()
-	defer labelArray.Release()
-	metadataArray := metadataBuilder.NewArray()
-	defer metadataArray.Release()
-	parsedArray := parsedBuilder.NewArray()
-	defer parsedArray.Release()
-	generatedArray := generatedBuilder.NewArray()
-	defer generatedArray.Release()
-
-	// Create schema with multiple columns of the same name but different types
-	schema := arrow.NewSchema(
-		[]arrow.Field{
-			{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
-			{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)},
-			{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeParsed, datatype.String)},
-			{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.String)},
-		},
-		nil,
-	)
-
-	// Create record
-	columns := []arrow.Array{labelArray, metadataArray, parsedArray, generatedArray}
-	record := array.NewRecord(schema, columns, 1)
+	record, err := CSVToArrow(fields, data)
+	require.NoError(t, err)
 	defer record.Release()
 
-	t.Run("ambiguous column should use precedence order", func(t *testing.T) {
+	e := expressionEvaluator{}
+
+	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "test",
@@ -322,50 +299,29 @@ func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeGenerated, colVec.ColumnType())
-		require.Equal(t, "generated_value", colVec.Value(0))
+		require.Equal(t, types.ColumnTypeAmbiguous, colVec.ColumnType())
+
+		// Test per-row precedence resolution
+		require.Equal(t, "generated_0", colVec.Value(0)) // Generated has highest precedence
+		require.Equal(t, "metadata_1", colVec.Value(1))  // Generated is null, metadata has next precedence
+		require.Equal(t, "label_2", colVec.Value(2))     // Generated and metadata are null, label has next precedence
+		require.Equal(t, nil, colVec.Value(3))           // All are null
 	})
 
-	t.Run("ambiguous column with only some types present", func(t *testing.T) {
-		// Create a record with only label and metadata columns
-		schemaPartial := arrow.NewSchema(
-			[]arrow.Field{
-				{Name: "partial", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
-				{Name: "partial", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)},
-			},
-			nil,
-		)
-
-		partialColumns := []arrow.Array{labelArray, metadataArray}
-		partialRecord := array.NewRecord(schemaPartial, partialColumns, 1)
-		defer partialRecord.Release()
-
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "partial",
-				Type:   types.ColumnTypeAmbiguous,
-			},
-		}
-
-		colVec, err := e.eval(colExpr, partialRecord)
-		require.NoError(t, err)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeMetadata, colVec.ColumnType())
-		require.Equal(t, "metadata_value", colVec.Value(0))
-	})
-
-	t.Run("ambiguous column with single type should work", func(t *testing.T) {
+	t.Run("look-up matching single column should return Array", func(t *testing.T) {
 		// Create a record with only one column type
-		schemaSingle := arrow.NewSchema(
-			[]arrow.Field{
-				{Name: "single", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
-			},
-			nil,
-		)
+		fields := []arrow.Field{
+			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
+		}
+		data := `label_0
+label_1
+label_2
+`
 
-		singleColumns := []arrow.Array{labelArray}
-		singleRecord := array.NewRecord(schemaSingle, singleColumns, 1)
+		singleRecord, err := CSVToArrow(fields, data)
+		require.NoError(t, err)
 		defer singleRecord.Release()
 
 		colExpr := &physical.ColumnExpr{
@@ -377,9 +333,14 @@ func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 
 		colVec, err := e.eval(colExpr, singleRecord)
 		require.NoError(t, err)
+		require.IsType(t, &Array{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 		require.Equal(t, types.ColumnTypeLabel, colVec.ColumnType())
-		require.Equal(t, "label_value", colVec.Value(0))
+
+		// Test single column behavior
+		require.Equal(t, "label_0", colVec.Value(0))
+		require.Equal(t, "label_1", colVec.Value(1))
+		require.Equal(t, "label_2", colVec.Value(2))
 	})
 
 	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
@@ -392,8 +353,6 @@ func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeGenerated, colVec.ColumnType())
-		require.Equal(t, "", colVec.Value(0))
+		require.IsType(t, &Scalar{}, colVec)
 	})
 }
