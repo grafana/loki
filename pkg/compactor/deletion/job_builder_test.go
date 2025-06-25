@@ -304,7 +304,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				cnt := 0
 				for job := range jobsChan {
 					jobsBuilt = append(jobsBuilt, *job)
-					err = builder.OnJobResponse(&grpc.JobResult{
+					err := builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
 						Result:  mustMarshal(t, buildDeletionJobResult(cnt)),
