@@ -986,7 +986,10 @@ func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, 
 				level.Warn(m.logger).Log("msg", "failed to decode value while watching for changes", "key", key, "err", err)
 				continue
 			}
-
+			if val == nil {
+				// Skip nil values that can be generated if the notification is received after the entry has been deleted
+				continue
+			}
 			if !f(key, val) {
 				return
 			}

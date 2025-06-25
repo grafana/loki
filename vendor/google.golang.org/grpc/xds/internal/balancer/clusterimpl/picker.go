@@ -139,13 +139,9 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// This OK check also covers the case err!=nil, because SubConn will be
 		// nil.
 		pr.SubConn = scw.SubConn
-		var e error
 		// If locality ID isn't found in the wrapper, an empty locality ID will
 		// be used.
-		lIDStr, e = scw.localityID().ToString()
-		if e != nil {
-			logger.Infof("failed to marshal LocalityID: %#v, loads won't be reported", scw.localityID())
-		}
+		lIDStr = scw.localityID().ToString()
 	}
 
 	if err != nil {

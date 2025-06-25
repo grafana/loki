@@ -88,7 +88,7 @@ func main() {
 
 	if config.Tracing.Enabled {
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-		trace, err := tracing.NewOTelFromJaegerEnv(fmt.Sprintf("loki-%s", config.Target))
+		trace, err := tracing.NewOTelOrJaegerFromEnv(fmt.Sprintf("loki-%s", config.Target), util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}

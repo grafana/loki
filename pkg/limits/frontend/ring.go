@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
@@ -41,8 +42,6 @@ type ringGatherer struct {
 	zoneCmp                 func(a, b string) int
 
 	// Metrics.
-	streams           prometheus.Counter
-	streamsFailed     prometheus.Counter
 	partitionsMissing *prometheus.CounterVec
 }
 
@@ -62,18 +61,6 @@ func newRingGatherer(
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
 		zoneCmp:                 defaultZoneCmp,
-		streams: promauto.With(reg).NewCounter(
-			prometheus.CounterOpts{
-				Name: "loki_ingest_limits_frontend_streams_total",
-				Help: "The total number of received streams.",
-			},
-		),
-		streamsFailed: promauto.With(reg).NewCounter(
-			prometheus.CounterOpts{
-				Name: "loki_ingest_limits_frontend_streams_failed_total",
-				Help: "The total number of received streams that could not be checked.",
-			},
-		),
 		partitionsMissing: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_partitions_missing_total",
@@ -85,16 +72,16 @@ func newRingGatherer(
 }
 
 // ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+func (r *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
-	rs, err := g.ring.GetAllHealthy(LimitsRead)
+	rs, err := r.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
 	// Get the partition consumers for each zone.
-	zonesPartitions, err := g.getZoneAwarePartitionConsumers(ctx, rs.Instances)
+	zonesPartitions, err := r.getZoneAwarePartitionConsumers(ctx, rs.Instances)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +93,11 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	for zone := range zonesPartitions {
 		zonesToQuery = append(zonesToQuery, zone)
 	}
-	slices.SortFunc(zonesToQuery, g.zoneCmp)
+	slices.SortFunc(zonesToQuery, r.zoneCmp)
 	// Make a copy of the streams from the request. We will prune this slice
 	// each time we receive the responses from a zone.
 	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
 	streams = append(streams, req.Streams...)
-	g.streams.Add(float64(len(streams)))
 	// Query each zone as ordered in zonesToQuery. If a zone answers all
 	// streams, the request is satisfied and there is no need to query
 	// subsequent zones. If a zone answers just a subset of streams
@@ -122,7 +108,11 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 	// zones.
 	responses := make([]*proto.ExceedsLimitsResponse, 0)
 	for _, zone := range zonesToQuery {
-		resps, answered, err := g.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
+		// All streams been checked against per-tenant limits.
+		if len(streams) == 0 {
+			break
+		}
+		resps, answered, err := r.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
 		if err != nil {
 			continue
 		}
@@ -138,23 +128,29 @@ func (g *ringGatherer) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimi
 			})
 			return i < len(answered) && answered[i] == stream.StreamHash
 		})
-		// All streams been checked against per-tenant limits.
-		if len(streams) == 0 {
-			break
-		}
 	}
-	g.streamsFailed.Add(float64(len(streams)))
+	// Any unanswered streams after exhausting all zones must be failed.
+	if len(streams) > 0 {
+		failed := make([]*proto.ExceedsLimitsResult, 0, len(streams))
+		for _, stream := range streams {
+			failed = append(failed, &proto.ExceedsLimitsResult{
+				StreamHash: stream.StreamHash,
+				Reason:     uint32(limits.ReasonFailed),
+			})
+		}
+		responses = append(responses, &proto.ExceedsLimitsResponse{Results: failed})
+	}
 	return responses, nil
 }
 
-func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
+func (r *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
 	// For each stream, figure out which instance consume its partition.
 	instancesForStreams := make(map[string][]*proto.StreamMetadata)
 	for _, stream := range streams {
-		partition := int32(stream.StreamHash % uint64(g.numPartitions))
+		partition := int32(stream.StreamHash % uint64(r.numPartitions))
 		addr, ok := partitions[partition]
 		if !ok {
-			g.partitionsMissing.WithLabelValues(zone).Inc()
+			r.partitionsMissing.WithLabelValues(zone).Inc()
 			continue
 		}
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
@@ -164,9 +160,9 @@ func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 	answeredCh := make(chan uint64, len(streams))
 	for addr, streams := range instancesForStreams {
 		errg.Go(func() error {
-			client, err := g.pool.GetClientFor(addr)
+			client, err := r.pool.GetClientFor(addr)
 			if err != nil {
-				level.Error(g.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
+				level.Error(r.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
 				return nil
 			}
 			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
@@ -174,7 +170,7 @@ func (g *ringGatherer) doExceedsLimitsRPCs(ctx context.Context, tenant string, s
 				Streams: streams,
 			})
 			if err != nil {
-				level.Error(g.logger).Log("failed check execeed limits for instance", "instance", addr, "err", err.Error())
+				level.Error(r.logger).Log("failed check execeed limits for instance", "instance", addr, "err", err.Error())
 				return nil
 			}
 			responseCh <- resp
@@ -208,7 +204,7 @@ type zonePartitionConsumersResult struct {
 // zone will still be returned but its partition consumers will be nil.
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
-func (g *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
+func (r *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
 	zoneDescs := make(map[string][]ring.InstanceDesc)
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
@@ -218,9 +214,9 @@ func (g *ringGatherer) getZoneAwarePartitionConsumers(ctx context.Context, insta
 	errg, ctx := errgroup.WithContext(ctx)
 	for zone, instances := range zoneDescs {
 		errg.Go(func() error {
-			res, err := g.getPartitionConsumers(ctx, instances)
+			res, err := r.getPartitionConsumers(ctx, instances)
 			if err != nil {
-				level.Error(g.logger).Log("msg", "failed to get partition consumers for zone", "zone", zone, "err", err.Error())
+				level.Error(r.logger).Log("msg", "failed to get partition consumers for zone", "zone", zone, "err", err.Error())
 			}
 			// Even if the consumers could not be fetched for a zone, we
 			// should still return the zone.
@@ -261,7 +257,7 @@ type getAssignedPartitionsResponse struct {
 // should be called once for each zone, and instances should be filtered to
 // the respective zone. Alternatively, you can pass all instances for all zones
 // to find the most up to date consumer for each partition across all zones.
-func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
+func (r *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[int32]string, error) {
 	errg, ctx := errgroup.WithContext(ctx)
 	responseCh := make(chan getAssignedPartitionsResponse, len(instances))
 	for _, instance := range instances {
@@ -269,24 +265,24 @@ func (g *ringGatherer) getPartitionConsumers(ctx context.Context, instances []ri
 			// We use a cache to eliminate redundant gRPC requests for
 			// GetAssignedPartitions as the set of assigned partitions is
 			// expected to be stable outside consumer rebalances.
-			if resp, ok := g.assignedPartitionsCache.Get(instance.Addr); ok {
+			if resp, ok := r.assignedPartitionsCache.Get(instance.Addr); ok {
 				responseCh <- getAssignedPartitionsResponse{
 					addr:     instance.Addr,
 					response: resp,
 				}
 				return nil
 			}
-			client, err := g.pool.GetClientFor(instance.Addr)
+			client, err := r.pool.GetClientFor(instance.Addr)
 			if err != nil {
-				level.Error(g.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
+				level.Error(r.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
 			resp, err := client.(proto.IngestLimitsClient).GetAssignedPartitions(ctx, &proto.GetAssignedPartitionsRequest{})
 			if err != nil {
-				level.Error(g.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
+				level.Error(r.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
-			g.assignedPartitionsCache.Set(instance.Addr, resp)
+			r.assignedPartitionsCache.Set(instance.Addr, resp)
 			responseCh <- getAssignedPartitionsResponse{
 				addr:     instance.Addr,
 				response: resp,

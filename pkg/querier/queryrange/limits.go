@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
+	limitErrTmpl                             = "maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()"
 	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"

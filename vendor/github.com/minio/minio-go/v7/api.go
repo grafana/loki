@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +39,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	md5simd "github.com/minio/md5-simd"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/kvcache"
@@ -45,6 +47,8 @@ import (
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/minio/minio-go/v7/pkg/singleflight"
 	"golang.org/x/net/publicsuffix"
+
+	internalutils "github.com/minio/minio-go/v7/pkg/utils"
 )
 
 // Client implements Amazon S3 compatible methods.
@@ -159,7 +163,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.92"
+	libraryVersion = "v7.0.94"
 )
 
 // User Agent should always following the below style.
@@ -455,7 +459,7 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 		gcancel()
 		if !IsNetworkOrHostDown(err, false) {
 			switch ToErrorResponse(err).Code {
-			case "NoSuchBucket", "AccessDenied", "":
+			case NoSuchBucket, AccessDenied, "":
 				atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
 			}
 		}
@@ -477,7 +481,7 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 					gcancel()
 					if !IsNetworkOrHostDown(err, false) {
 						switch ToErrorResponse(err).Code {
-						case "NoSuchBucket", "AccessDenied", "":
+						case NoSuchBucket, AccessDenied, "":
 							atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
 						}
 					}
@@ -512,6 +516,8 @@ type requestMetadata struct {
 	streamSha256     bool
 	addCrc           *ChecksumType
 	trailer          http.Header // (http.Request).Trailer. Requires v4 signature.
+
+	expect200OKWithError bool
 }
 
 // dumpHTTP - dump HTTP request and response.
@@ -615,6 +621,28 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 	return resp, nil
 }
 
+// Peek resp.Body looking for S3 XMl error response:
+//   - Return the error XML bytes if an error is found
+//   - Make sure to always restablish the whole http response stream before returning
+func tryParseErrRespFromBody(resp *http.Response) ([]byte, error) {
+	peeker := internalutils.NewPeekReadCloser(resp.Body, 5*humanize.MiByte)
+	defer func() {
+		peeker.ReplayFromStart()
+		resp.Body = peeker
+	}()
+
+	errResp := ErrorResponse{}
+	errBytes, err := xmlDecodeAndBody(peeker, &errResp)
+	if err != nil {
+		var unmarshalErr xml.UnmarshalError
+		if errors.As(err, &unmarshalErr) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return errBytes, nil
+}
+
 // List of success status.
 var successStatus = []int{
 	http.StatusOK,
@@ -702,16 +730,30 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 			return nil, err
 		}
 
-		// For any known successful http status, return quickly.
+		var success bool
+		var errBodyBytes []byte
+
 		for _, httpStatus := range successStatus {
 			if httpStatus == res.StatusCode {
-				return res, nil
+				success = true
+				break
 			}
 		}
 
-		// Read the body to be saved later.
-		errBodyBytes, err := io.ReadAll(res.Body)
-		// res.Body should be closed
+		if success {
+			if !metadata.expect200OKWithError {
+				return res, nil
+			}
+			errBodyBytes, err = tryParseErrRespFromBody(res)
+			if err == nil && len(errBodyBytes) == 0 {
+				// No S3 XML error is found
+				return res, nil
+			}
+		} else {
+			errBodyBytes, err = io.ReadAll(res.Body)
+		}
+
+		// By now, res.Body should be closed
 		closeResponse(res)
 		if err != nil {
 			return nil, err
@@ -723,6 +765,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 
 		// For errors verify if its retryable otherwise fail quickly.
 		errResponse := ToErrorResponse(httpRespToErrorResponse(res, metadata.bucketName, metadata.objectName))
+		err = errResponse
 
 		// Save the body back again.
 		errBodySeeker.Seek(0, 0) // Seek back to starting point.
@@ -736,11 +779,11 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		// region is empty.
 		if c.region == "" {
 			switch errResponse.Code {
-			case "AuthorizationHeaderMalformed":
+			case AuthorizationHeaderMalformed:
 				fallthrough
-			case "InvalidRegion":
+			case InvalidRegion:
 				fallthrough
-			case "AccessDenied":
+			case AccessDenied:
 				if errResponse.Region == "" {
 					// Region is empty we simply return the error.
 					return res, err

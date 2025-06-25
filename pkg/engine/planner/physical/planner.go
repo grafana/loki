@@ -7,6 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
+// Internal state of the planner
+type state struct {
+	direction SortOrder
+}
+
 // Planner creates an executable physical plan from a logical plan.
 // Planning is done in two steps:
 //  1. Convert
@@ -18,6 +23,7 @@ import (
 type Planner struct {
 	catalog Catalog
 	plan    *Plan
+	state   state
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -28,7 +34,7 @@ func NewPlanner(catalog Catalog) *Planner {
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
 func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
-	p.plan = &Plan{}
+	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
@@ -43,6 +49,12 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
+}
+
+// reset resets the internal state of the planner
+func (p *Planner) reset() {
+	p.plan = &Plan{}
+	p.state = state{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -81,21 +93,31 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 		return p.processLimit(inst)
 	case *logical.RangeAggregation:
 		return p.processRangeAggregation(inst)
+	case *logical.VectorAggregation:
+		return p.processVectorAggregation(inst)
 	}
 	return nil, nil
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	shard, ok := lp.Shard.(*logical.ShardInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
+	}
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard))
 	if err != nil {
 		return nil, err
 	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Sections:  sections[i],
+			Direction: p.state.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
@@ -123,14 +145,15 @@ func (p *Planner) processSelect(lp *logical.Select) ([]Node, error) {
 
 // Convert [logical.Sort] into one [SortMerge] node.
 func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
-	order := ASC
-	if !lp.Ascending {
-		order = DESC
+	order := DESC
+	if lp.Ascending {
+		order = ASC
 	}
 	node := &SortMerge{
 		Column: &ColumnExpr{Ref: lp.Column.Ref},
 		Order:  order,
 	}
+	p.state.direction = order
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
 	if err != nil {
@@ -190,6 +213,30 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, 
 	return []Node{node}, nil
 }
 
+// Convert [logical.VectorAggregation] into one [VectorAggregation] node.
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation) ([]Node, error) {
+	groupBy := make([]ColumnExpression, len(lp.GroupBy))
+	for i, col := range lp.GroupBy {
+		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	}
+
+	node := &VectorAggregation{
+		GroupBy:   groupBy,
+		Operation: lp.Operation,
+	}
+	p.plan.addNode(node)
+	children, err := p.process(lp.Table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
 // Optimize tries to optimize the plan by pushing down filter predicates and limits
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
@@ -202,6 +249,13 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
+			),
+			newOptimization("GroupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
+			),
+			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
+			newOptimization("ProjectionPushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)

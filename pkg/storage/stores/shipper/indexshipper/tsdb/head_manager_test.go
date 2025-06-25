@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -48,7 +49,7 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 }
 
 func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
-	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false)
+	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
 }
 func (m noopTSDBManager) Start() error { return nil }
 
@@ -245,7 +246,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs))
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -259,6 +260,119 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
+}
+
+// test head recover from corrupted wal
+func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		setupFunc func(t *testing.T, walPath string, w *headWAL)
+		expectErr bool
+	}{
+		{
+			name: "last record torn",
+			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
+				// write enough records to fill a WAL page.
+				for i := 0; i < 1000; i++ {
+					require.Nil(t, w.Log(&WALRecord{
+						UserID:      "tenant1",
+						Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+						Series: record.RefSeries{
+							Ref:    chunks.HeadSeriesRef(i),
+							Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+						},
+						Chks: ChunkMetasRecord{
+							Chks: []index.ChunkMeta{
+								{
+									MinTime:  1,
+									MaxTime:  10,
+									Checksum: 3,
+								},
+							},
+							Ref: uint64(i),
+						},
+					}))
+				}
+
+				require.Nil(t, w.Stop())
+
+				// truncate the WAL file to 100 bytes.
+				segmentFile := filepath.Join(walPath, "00000001")
+				require.Nil(t, os.Truncate(segmentFile, 32*1024)) // 32kb
+			},
+		},
+		{
+			name: "invalid checksum",
+			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
+				require.Nil(t, w.Log(&WALRecord{
+					UserID:      "tenant1",
+					Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+					Series: record.RefSeries{
+						Ref:    chunks.HeadSeriesRef(1),
+						Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+					},
+					Chks: ChunkMetasRecord{
+						Chks: []index.ChunkMeta{
+							{
+								MinTime:  1,
+								MaxTime:  10,
+								Checksum: 3,
+							},
+						},
+						Ref: uint64(1),
+					},
+				}))
+				require.Nil(t, w.Stop())
+				// This will truncate the DATA part of the WAL record, causing the checksum to be invalid.
+				require.Nil(t, os.Truncate(filepath.Join(walPath, "00000001"), 10)) // 7 bytes(header) + a little bit of data.
+			},
+		},
+		{
+			name: "invalid Loki WAL record",
+			setupFunc: func(t *testing.T, _ string, w *headWAL) {
+				require.Nil(t, w.wal.Log([]byte("not a valid Loki WAL record")))
+				require.Nil(t, w.Stop())
+			},
+			// This is expected to fail because the WAL record is valid but the data part is not.
+			// We cannot repair the wal in this case. This would only happen if we update the WALRecord format
+			// and we try to replay a WAL that was written with the old format.
+			expectErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			now := time.Now()
+
+			storeName := "store_2010-10-10"
+			mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+			// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
+			// so ensure our dirs exist
+			for _, d := range managerRequiredDirs(storeName, dir) {
+				require.Nil(t, util.EnsureDirectory(d))
+			}
+
+			// Call Rotate() to ensure the new head tenant heads exist, etc
+			require.Nil(t, mgr.Rotate(now))
+
+			// now build a WAL independently to test recovery
+			w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
+			require.Nil(t, err)
+
+			tc.setupFunc(t, walPath(mgr.name, mgr.dir, now), w)
+
+			grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
+			require.Nil(t, err)
+			require.True(t, ok)
+			require.Equal(t, 1, len(grp.wals))
+
+			err = recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false, log.NewNopLogger(), NewMetrics(nil).walCorruptionsRepairs)
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 // test head still serves data for the most recently rotated period.

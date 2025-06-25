@@ -69,6 +69,9 @@ const (
 	NAMESPACE_BUCKET   = "namespace"
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
+
+	// BOS Client error message format
+	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -202,7 +205,7 @@ func toHttpHeaderKey(key string) string {
 	return result.String()
 }
 
-func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
+func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 	for k, v := range args {
 		if len(v) == 0 {
 			continue
@@ -255,7 +258,7 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 	}
 }
 
-func setUserMetadata(req *bce.BceRequest, meta map[string]string) error {
+func setUserMetadata(req *BosRequest, meta map[string]string) error {
 	if meta == nil {
 		return nil
 	}
@@ -283,14 +286,14 @@ func isCnameLikeHost(host string) bool {
 	return false
 }
 
-func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext) error {
+func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
 	req.SetContext(ctx.Ctx)
-	if err = cli.SendRequest(req, resp); err != nil {
+	if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -305,7 +308,7 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequest(req, resp); err != nil {
+			if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 				return err
 			}
 		}
@@ -313,13 +316,13 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 	return err
 }
 
-func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext, content []byte) error {
+func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext, content []byte) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
-	if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -334,7 +337,7 @@ func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResp
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+			if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 				return err
 			}
 		}
@@ -405,9 +408,9 @@ func replaceEndpointByBucket(bucket, endpoint string) string {
 	return strings.Join(arr, ".")
 }
 
-func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, endpoint string) {
+func setUriAndEndpoint(cli bce.Client, req *BosRequest, ctx *BosContext, endpoint string) {
 	origin_uri := req.Uri()
-	bucket := ctx.Bucket
+	bucket := req.Bucket()
 	protocol := bce.DEFAULT_PROTOCOL
 	// deal with protocal
 	if strings.HasPrefix(endpoint, "https://") {

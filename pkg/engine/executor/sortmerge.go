@@ -164,6 +164,14 @@ func (p *KWayMerge) read() error {
 		j := batchIndexes[0]
 		start := p.offsets[j]
 		end := p.batches[j].NumRows()
+
+		// check against empty batch
+		if start > end || end == 0 {
+			p.state = successState(p.batches[j])
+			p.offsets[j] = end
+			return nil
+		}
+
 		p.state = successState(p.batches[j].NewSlice(start, end))
 		p.offsets[j] = end
 		return nil
@@ -202,6 +210,13 @@ func (p *KWayMerge) read() error {
 		if p.compare(int64(ts), timestamps[1]) {
 			break
 		}
+	}
+
+	// check against empty batch
+	if start > end || end == 0 {
+		p.state = successState(p.batches[j])
+		p.offsets[j] = end
+		return nil
 	}
 
 	p.state = successState(p.batches[j].NewSlice(start, end))

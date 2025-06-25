@@ -36,6 +36,27 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 			NoParserHints(),
 		},
+		{
+			"multi depth with duplicates",
+			[]byte(`{"app":"bar","namespace":"prod","pod":{"uuid":"bar","deployment":{"ref":"foobar"}}}`),
+			labels.FromStrings("app", "foo",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("app", "foo",
+				"app_extracted", "bar",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+				"pod_uuid_extracted", "bar",
+				"pod_deployment_ref", "foobar",
+			),
+			map[string][]string{
+				"app_extracted":      {"app"},
+				"namespace":          {"namespace"},
+				"pod_uuid_extracted": {"pod", "uuid"},
+				"pod_deployment_ref": {"pod", "deployment", "ref"},
+			},
+			NoParserHints(),
+		},
 		{"numeric",
 			[]byte(`{"counter":1, "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
@@ -193,10 +214,14 @@ func Test_jsonParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		j := NewJSONParser(true)
 		t.Run(tt.name, func(t *testing.T) {
+			origLine := string(tt.line)
+
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
-			require.Equal(t, tt.want, b.LabelsResult().Labels())
+			labels := b.LabelsResult().Labels()
+			require.Equal(t, origLine, string(tt.line), "original log line was modified")
+			require.Equal(t, tt.want, labels)
 
 			// Check JSON paths if provided
 			if len(tt.wantJSONPath) > 0 {

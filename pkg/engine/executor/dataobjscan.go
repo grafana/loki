@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 
@@ -43,10 +44,11 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
+	Sections    []int                       // Logs sections to fetch.
 	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
-	Direction physical.Direction // Direction of timestamps to return.
+	Direction physical.SortOrder // Order of timestamps to return (ASC=Forward, DESC=Backward)
 	Limit     uint32             // A limit on the number of rows to return (0=unlimited).
 }
 
@@ -86,8 +88,9 @@ func (s *dataobjScan) init() error {
 
 	s.readers = nil
 
-	for _, section := range s.opts.Object.Sections() {
-		if !logs.CheckSection(section) {
+	for idx, section := range s.opts.Object.Sections().Filter(logs.CheckSection) {
+		// Filter out sections that are not part of this shard
+		if !slices.Contains(s.opts.Sections, idx) {
 			continue
 		}
 
@@ -124,6 +127,7 @@ func (s *dataobjScan) init() error {
 // that emitted [arrow.Record]s can include stream labels in results.
 func (s *dataobjScan) initStreams() error {
 	var sr streams.RowReader
+	defer sr.Close()
 
 	streamsBuf := make([]streams.Stream, 512)
 
@@ -134,11 +138,7 @@ func (s *dataobjScan) initStreams() error {
 		s.streams[id] = labels.EmptyLabels()
 	}
 
-	for _, section := range s.opts.Object.Sections() {
-		if !streams.CheckSection(section) {
-			continue
-		}
-
+	for _, section := range s.opts.Object.Sections().Filter(streams.CheckSection) {
 		sec, err := streams.Open(s.ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
@@ -204,13 +204,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	)
 
 	g, ctx := errgroup.WithContext(s.ctx)
+	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
 
 	var gotData atomic.Bool
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			buf := make([]logs.Record, 512)
 			for {
+				buf := make([]logs.Record, 1024) // do not re-use buffer
 				n, err := reader.Read(ctx, buf)
 				if n == 0 && errors.Is(err, io.EOF) {
 					return nil
@@ -262,8 +263,12 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	return rb.NewRecord(), nil
 }
 
-func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b logs.Record) bool {
-	// compareStreams is used when two records have the same timestamp.
+// getLessFunc returns a "less comparison" function for records for the sort heap.
+// direction determines the search order:
+// BACKWARD is a backward search starting at the end of the time range.
+// FORWARD is a forward search starting at the beginning of the time range.
+// If two records have the same timestamp, the compareStreams function is used to determine the sort order.
+func (s *dataobjScan) getLessFunc(direction physical.SortOrder) func(a, b logs.Record) bool {
 	compareStreams := func(a, b logs.Record) bool {
 		aStream, ok := s.streams[a.StreamID]
 		if !ok {
@@ -278,15 +283,15 @@ func (s *dataobjScan) getLessFunc(dir physical.Direction) func(a, b logs.Record)
 		return labels.Compare(aStream, bStream) < 0
 	}
 
-	switch dir {
-	case physical.Forward:
+	switch direction {
+	case physical.ASC:
 		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
 			}
 			return a.Timestamp.After(b.Timestamp)
 		}
-	case physical.Backwards:
+	case physical.DESC:
 		return func(a, b logs.Record) bool {
 			if a.Timestamp.Equal(b.Timestamp) {
 				compareStreams(a, b)
@@ -402,10 +407,6 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			return nil, fmt.Errorf("invalid column expression type %T", column)
 		}
 
-		md := arrow.MetadataFrom(map[string]string{
-			types.MetadataKeyColumnType: columnExpr.Ref.Type.String(),
-		})
-
 		switch columnExpr.Ref.Type {
 		case types.ColumnTypeLabel:
 			// TODO(rfratto): Switch to dictionary encoding for labels.
@@ -420,9 +421,10 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			//
 			// We skipped dictionary encoding for now to get the initial prototype
 			// working.
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     ty,
 				Nullable: true,
 				Metadata: md,
 			})
@@ -432,15 +434,16 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			// has unconstrained cardinality. Using dictionary encoding would require
 			// tracking every encoded value in the record, which is likely to be too
 			// expensive.
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     ty,
 				Nullable: true,
 				Metadata: md,
 			})
 
 		case types.ColumnTypeBuiltin:
-			ty, md := builtinColumnType(columnExpr.Ref)
+			ty, md := arrowTypeFromColumnRef(columnExpr.Ref)
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
 				Type:     ty,
@@ -468,16 +471,16 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeLabel.String()}),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String),
 			})
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: arrow.MetadataFrom(map[string]string{types.MetadataKeyColumnType: types.ColumnTypeMetadata.String()}),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String),
 			})
 
-		case types.ColumnTypeParsed:
+		case types.ColumnTypeParsed, types.ColumnTypeGenerated:
 			return nil, fmt.Errorf("parsed column type not supported: %s", columnExpr.Ref.Type)
 		}
 	}
@@ -485,19 +488,19 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 	return arrow.NewSchema(fields, nil), nil
 }
 
-func builtinColumnType(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
-	if ref.Type != types.ColumnTypeBuiltin {
-		panic("builtinColumnType called with a non-builtin column")
+func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
+	if ref.Type == types.ColumnTypeBuiltin {
+		switch ref.Column {
+		case types.ColumnNameBuiltinTimestamp:
+			return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
+		case types.ColumnNameBuiltinMessage:
+			return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
+		default:
+			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
+		}
 	}
 
-	switch ref.Column {
-	case types.ColumnNameBuiltinTimestamp:
-		return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
-	case types.ColumnNameBuiltinMessage:
-		return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
-	default:
-		panic(fmt.Sprintf("unsupported builtin column type %s", ref))
-	}
+	return arrow.BinaryTypes.String, datatype.ColumnMetadata(ref.Type, datatype.String)
 }
 
 // appendToBuilder appends a the provided field from record into the given

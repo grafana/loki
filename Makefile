@@ -18,7 +18,7 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.24.2
+GO_VERSION         := 1.24.4
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
 BUILD_IMAGE_TAG    := 0.34.6
 

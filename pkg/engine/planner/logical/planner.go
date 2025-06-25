@@ -61,10 +61,16 @@ func BuildPlan(query logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
+	shard, err := parseShards(query.Shards())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shard: %w", err)
+	}
+
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
 			Selector: selector,
+			Shard:    shard,
 		},
 	)
 
@@ -182,9 +188,9 @@ func lineColumnRef() *ColumnRef {
 func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
 	switch op {
 	case labels.MatchEqual:
-		return types.BinaryOpMatchSubstr
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return types.BinaryOpNotMatchSubstr
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
 		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
@@ -249,4 +255,21 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Op:    types.BinaryOpLt,
 		},
 	}
+}
+
+func parseShards(shards []string) (*ShardInfo, error) {
+	if len(shards) == 0 {
+		return noShard, nil
+	}
+	parsed, variant, err := logql.ParseShards(shards)
+	if err != nil {
+		return noShard, err
+	}
+	if len(parsed) == 0 {
+		return noShard, nil
+	}
+	if variant != logql.PowerOfTwoVersion {
+		return noShard, fmt.Errorf("unsupported shard variant: %s", variant)
+	}
+	return NewShard(parsed[0].PowerOfTwo.Shard, parsed[0].PowerOfTwo.Of), nil
 }
