@@ -685,7 +685,6 @@ type BucketTag struct {
 }
 
 type BosContext struct {
-	Bucket          string
 	PathStyleEnable bool
 	Ctx             context.Context
 }
