@@ -11,9 +11,11 @@ require 'fluent/test/helpers'
 Test::Unit::AutoRunner.need_auto_run = false if defined?(Test::Unit::AutoRunner)
 
 RSpec.describe Fluent::Plugin::LokiOutput do
-  it 'loads config' do
-    driver = Fluent::Test::Driver::Output.new(described_class)
+  let(:driver) do
+    Fluent::Test::Driver::Output.new(described_class)
+  end
 
+  it 'loads config' do
     driver.configure(<<-CONF)
       type loki
       url https://logs-us-west1.grafana.net
@@ -41,8 +43,8 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(driver.instance.line_format).to eq :key_value
     expect(driver.instance.record_accessors.keys).to eq %w[job instance]
     expect(driver.instance.remove_keys).to eq %w[a b]
-    expect(driver.instance.drop_single_key).to eq true
-    expect(driver.instance.insecure_tls).to eq true
+    expect(driver.instance.drop_single_key).to be true
+    expect(driver.instance.insecure_tls).to be true
     expect(driver.instance.ciphers).to eq 'abc:def'
     expect(driver.instance.min_version).to eq 'TLS1_3'
   end
@@ -51,12 +53,11 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
     chunk = [Time.at(1_546_270_458), content[0]]
     payload = driver.instance.generic_to_loki([chunk])
-    expect(payload[0]['stream'].empty?).to eq true
+    expect(payload[0]['stream'].empty?).to be true
     expect(payload[0]['values'].count).to eq 1
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
     expect(payload[0]['values'][0][1]).to eq content[0]
@@ -67,7 +68,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       url     https://logs-us-west1.grafana.net
       extra_labels {"env": "test"}
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
     chunk = [Time.at(1_546_270_458), content[0]]
@@ -82,13 +82,12 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
     line1 = [Time.at(1_546_270_458), content[0]]
     line2 = [Time.at(1_546_270_460), content[1]]
     payload = driver.instance.generic_to_loki([line1, line2])
-    expect(payload[0]['stream'].empty?).to eq true
+    expect(payload[0]['stream'].empty?).to be true
     expect(payload[0]['values'].count).to eq 2
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
     expect(payload[0]['values'][0][1]).to eq content[0]
@@ -101,7 +100,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       url     https://logs-us-west1.grafana.net
       extra_labels {"env": "test"}
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
     line1 = [Time.at(1_546_270_458), content[0]]
@@ -119,12 +117,11 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/non_utf8.log')[0]
     chunk = [Time.at(1_546_270_458), { 'message' => content, 'number': 1.2345, 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([chunk])
-    expect(payload[0]['stream'].empty?).to eq true
+    expect(payload[0]['stream'].empty?).to be true
     expect(payload[0]['values'].count).to eq 1
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
     expect(payload[0]['values'][0][1]).to eq 'message="? rest of line" number=1.2345 stream=stdout'
@@ -135,12 +132,11 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       url         https://logs-us-west1.grafana.net
       line_format json
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/non_utf8.log')[0]
     chunk = [Time.at(1_546_270_458), { 'message' => content, 'number': 1.2345, 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([chunk])
-    expect(payload[0]['stream'].empty?).to eq true
+    expect(payload[0]['stream'].empty?).to be true
     expect(payload[0]['values'].count).to eq 1
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
     expect(payload[0]['values'][0][1]).to eq(
@@ -152,13 +148,12 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([line1])
     body = { 'streams': payload }
-    expect(body[:streams][0]['stream'].empty?).to eq true
+    expect(body[:streams][0]['stream'].empty?).to be true
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
     expect(body[:streams][0]['values'][0][1]).to eq "message=\"#{content[0]}\" stream=stdout"
@@ -169,13 +164,12 @@ RSpec.describe Fluent::Plugin::LokiOutput do
       url     https://logs-us-west1.grafana.net
       line_format json
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'stream' => 'stdout' }]
     payload = driver.instance.generic_to_loki([line1])
     body = { 'streams': payload }
-    expect(body[:streams][0]['stream'].empty?).to eq true
+    expect(body[:streams][0]['stream'].empty?).to be true
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
     expect(body[:streams][0]['values'][0][1]).to eq Yajl.dump(line1[1])
@@ -189,7 +183,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
         stream
       </label>
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'stream' => 'stdout' }]
@@ -209,7 +202,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
         pod $.kubernetes.pod
       </label>
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'kubernetes' => { 'pod' => 'podname' } }]
@@ -230,7 +222,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
         pod $.kubernetes.pod
       </label>
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'kubernetes' => { 'pod' => 'podname' } }]
@@ -251,7 +242,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
         stream
       </label>
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     content = File.readlines('spec/gems/fluent/plugin/data/syslog')
     line1 = [Time.at(1_546_270_458), { 'message' => content[0], 'stream' => 'stdout' }]
@@ -271,7 +261,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
         stream
       </label>
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     lines = [
       [Time.at(1_546_270_460), { 'message' => '4', 'stream' => 'stdout' }],
@@ -290,7 +279,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
-    driver = Fluent::Test::Driver::Output.new(described_class)
     driver.configure(config)
     lines = [[Time.at(1_546_270_458), { 'message' => 'foobar', 'stream' => 'stdout' }]]
 
@@ -320,15 +308,8 @@ RSpec.describe Fluent::Plugin::LokiOutput do
   end
 
   context 'when output is multi-thread' do
-    let(:thread) do
-      class_double(
-        'Thread',
-        current: { _fluentd_plugin_helper_thread_title: 'thread1' }
-      ).as_stubbed_const
-    end
-
     before do
-      allow(Thread).to receive(:new).and_yield(thread)
+      allow(driver.instance).to receive(:current_thread_label).and_return('thread1')
     end
 
     it 'adds the fluentd_label by default' do
@@ -340,7 +321,6 @@ RSpec.describe Fluent::Plugin::LokiOutput do
           flush_thread_count 2
         </buffer>
       CONF
-      driver = Fluent::Test::Driver::Output.new(described_class)
       driver.configure(config)
       content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
       chunk = [Time.at(1_546_270_458), content[0]]
@@ -358,12 +338,11 @@ RSpec.describe Fluent::Plugin::LokiOutput do
           flush_thread_count 2
         </buffer>
       CONF
-      driver = Fluent::Test::Driver::Output.new(described_class)
       driver.configure(config)
       content = File.readlines('spec/gems/fluent/plugin/data/syslog2')
       chunk = [Time.at(1_546_270_458), content[0]]
       payload = driver.instance.generic_to_loki([chunk])
-      expect(payload[0]['stream'].empty?).to eq(true)
+      expect(payload[0]['stream'].empty?).to be true
     end
   end
 end

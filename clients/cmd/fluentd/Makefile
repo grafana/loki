@@ -13,7 +13,7 @@ clean:
 .bundle:
 	ruby --version
 	@echo ""
-	ruby -S gem install bundler --version 2.3.4
+	ruby -S gem install bundler --version 2.6.9
 	ruby -S bundle config silence_root_warning true
 	ruby -S bundle config set --local path ./vendor/bundle
 

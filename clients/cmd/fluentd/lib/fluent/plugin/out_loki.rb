@@ -323,6 +323,10 @@ module Fluent
       end
       # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
+      def current_thread_label
+        Thread.current[:_fluentd_plugin_helper_thread_title].to_s
+      end
+
       # convert a line to loki line with labels
       # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def line_to_loki(record)
@@ -359,7 +363,7 @@ module Fluent
         # note that flush thread != fluentd worker. if you use multiple workers you still need to
         # add the worker id as a label
         if @include_thread_label && @buffer_config.flush_thread_count > 1
-          chunk_labels['fluentd_thread'] = Thread.current[:_fluentd_plugin_helper_thread_title].to_s
+          chunk_labels['fluentd_thread'] = current_thread_label
         end
 
         # return both the line content plus the labels found in the record
