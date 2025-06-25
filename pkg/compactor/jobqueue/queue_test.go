@@ -24,12 +24,14 @@ type mockBuilder struct {
 	jobsFailed    atomic.Int32
 }
 
-func (m *mockBuilder) OnJobResponse(res *compactor_grpc.JobResult) {
+func (m *mockBuilder) OnJobResponse(res *compactor_grpc.JobResult) error {
 	if res.Error != "" {
 		m.jobsFailed.Inc()
 	} else {
 		m.jobsSucceeded.Inc()
 	}
+
+	return nil
 }
 
 func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_grpc.Job) {
