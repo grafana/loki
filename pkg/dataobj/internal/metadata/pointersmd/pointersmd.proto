@@ -32,7 +32,7 @@ enum ColumnType {
   COLUMN_TYPE_PATH = 1;
 
   // COLUMN_TYPE_SECTION is the section number within the referenced data object.
-  COLUMN_TYPE_SECTION= 2;
+  COLUMN_TYPE_SECTION = 2;
 
   // COLUMN_TYPE_STREAM_ID is a column containing the streamID within the index object
   COLUMN_TYPE_STREAM_ID = 3;
