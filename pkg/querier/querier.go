@@ -16,10 +16,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -45,37 +47,41 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-type interval struct {
-	start, end time.Time
-}
+var tracer = otel.Tracer("pkg/querier")
 
 // Config for a querier.
 type Config struct {
-	TailMaxDuration               time.Duration    `yaml:"tail_max_duration"`
-	ExtraQueryDelay               time.Duration    `yaml:"extra_query_delay,omitempty"`
-	QueryIngestersWithin          time.Duration    `yaml:"query_ingesters_within,omitempty"`
-	IngesterQueryStoreMaxLookback time.Duration    `yaml:"-"`
-	Engine                        logql.EngineOpts `yaml:"engine,omitempty"`
-	MaxConcurrent                 int              `yaml:"max_concurrent"`
-	QueryStoreOnly                bool             `yaml:"query_store_only"`
-	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
-	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
-	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
-	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
+	TailMaxDuration           time.Duration    `yaml:"tail_max_duration"`
+	ExtraQueryDelay           time.Duration    `yaml:"extra_query_delay,omitempty"`
+	QueryIngestersWithin      time.Duration    `yaml:"query_ingesters_within,omitempty"`
+	Engine                    logql.EngineOpts `yaml:"engine,omitempty"`
+	MaxConcurrent             int              `yaml:"max_concurrent"`
+	QueryStoreOnly            bool             `yaml:"query_store_only"`
+	QueryIngesterOnly         bool             `yaml:"query_ingester_only"`
+	MultiTenantQueriesEnabled bool             `yaml:"multi_tenant_queries_enabled"`
+	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
+
+	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
+	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
-	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
-	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
-	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
-	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
-	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
-	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
-	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
-	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	cfg.RegisterFlagsWithPrefix("querier.", f)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&cfg.TailMaxDuration, prefix+"tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
+	f.DurationVar(&cfg.ExtraQueryDelay, prefix+"extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
+	f.DurationVar(&cfg.QueryIngestersWithin, prefix+"query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	cfg.Engine.RegisterFlagsWithPrefix(prefix+"engine.", f)
+	f.IntVar(&cfg.MaxConcurrent, prefix+"max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
+	f.BoolVar(&cfg.QueryStoreOnly, prefix+"query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
+	f.BoolVar(&cfg.QueryIngesterOnly, prefix+"query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
+	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
+	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -156,7 +162,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
 	if err != nil {
-		if errors.Is(err, querier_limits.ErrAggMetricsDrilldownOnly) {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
 			return iter.NoopEntryIterator, nil
 		}
 		return nil, err
@@ -164,12 +170,12 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	params.QueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
-		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -180,11 +186,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		if sp != nil {
-			sp.LogKV(
-				"msg", "querying ingester",
-				"params", newParams)
-		}
+		sp.AddEvent("querying ingester", trace.WithAttributes(
+			attribute.Stringer("params", newParams),
+		))
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -196,11 +200,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		if sp != nil {
-			sp.LogKV(
-				"msg", "querying store",
-				"params", params)
-		}
+		sp.AddEvent("querying store", trace.WithAttributes(
+			attribute.Stringer("params", params),
+		))
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
@@ -224,9 +226,17 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		return nil, err
 	}
 
+	err = querier_limits.ValidateAggregatedMetricQuery(ctx, params)
+	if err != nil {
+		if errors.Is(err, querier_limits.ErrInternalStreamsDrilldownOnly) {
+			return iter.NoopSampleIterator, nil
+		}
+		return nil, err
+	}
+
 	params.SampleQueryRequest.Deletes, err = deletion.DeletesForUserQuery(ctx, params.Start, params.End, q.deleteGetter)
 	if err != nil {
-		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
@@ -277,92 +287,20 @@ func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time
 	return queryEnd.After(ingesterOldestStartTime)
 }
 
-func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration {
+func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod(queryIngestersWithin time.Duration) time.Duration {
 	mlb := time.Duration(-1)
 	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
 		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
 		mlb = q.cfg.IngesterQueryStoreMaxLookback
-	} else if q.cfg.QueryIngestersWithin != 0 {
-		mlb = q.cfg.QueryIngestersWithin
+	} else if queryIngestersWithin != 0 {
+		mlb = queryIngestersWithin
 	}
 
 	return mlb
 }
 
-func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
-	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
-	limitQueryInterval := false
-	// ingesterMLB having -1 means query ingester for whole duration.
-	if q.cfg.IngesterQueryStoreMaxLookback != 0 {
-		// IngesterQueryStoreMaxLookback takes the precedence over QueryIngestersWithin while also limiting the store query range.
-		limitQueryInterval = true
-	}
-
-	ingesterMLB := q.calculateIngesterMaxLookbackPeriod()
-
-	// query ingester for whole duration.
-	if ingesterMLB == -1 {
-		i := &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-
-		if limitQueryInterval {
-			// query only ingesters.
-			return i, nil
-		}
-
-		// query both stores and ingesters without limiting the query interval.
-		return i, i
-	}
-
-	ingesterQueryWithinRange := q.isWithinIngesterMaxLookbackPeriod(ingesterMLB, queryEnd)
-
-	// see if there is an overlap between ingester query interval and actual query interval, if not just do the store query.
-	if !ingesterQueryWithinRange {
-		return nil, &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-	}
-
-	ingesterOldestStartTime := time.Now().Add(-ingesterMLB)
-
-	// if there is an overlap and we are not limiting the query interval then do both store and ingester query for whole query interval.
-	if !limitQueryInterval {
-		i := &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}
-		return i, i
-	}
-
-	// since we are limiting the query interval, check if the query touches just the ingesters, if yes then query just the ingesters.
-	if ingesterOldestStartTime.Before(queryStart) {
-		return &interval{
-			start: queryStart,
-			end:   queryEnd,
-		}, nil
-	}
-
-	// limit the start of ingester query interval to ingesterOldestStartTime.
-	ingesterQueryInterval := &interval{
-		start: ingesterOldestStartTime,
-		end:   queryEnd,
-	}
-
-	// limit the end of ingester query interval to ingesterOldestStartTime.
-	storeQueryInterval := &interval{
-		start: queryStart,
-		end:   ingesterOldestStartTime,
-	}
-
-	// query touches only ingester query interval so do not do store query.
-	if storeQueryInterval.start.After(storeQueryInterval.end) {
-		storeQueryInterval = nil
-	}
-
-	return ingesterQueryInterval, storeQueryInterval
+func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*QueryInterval, *QueryInterval) {
+	return BuildQueryIntervalsWithLookback(q.cfg, queryStart, queryEnd, q.cfg.QueryIngestersWithin)
 }
 
 // Label does the heavy lifting for a Label query.
@@ -658,8 +596,8 @@ func (q *SingleTenantQuerier) IndexShards(
 }
 
 func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Querier.Volume")
+	defer sp.End()
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -676,14 +614,14 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	sp.LogKV(
-		"user", userID,
-		"from", req.From.Time(),
-		"through", req.Through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"limit", req.Limit,
-		"targetLabels", req.TargetLabels,
-		"aggregateBy", req.AggregateBy,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", req.From.Time().String()),
+		attribute.String("through", req.Through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int("limit", int(req.Limit)),
+		attribute.StringSlice("targetLabels", req.TargetLabels),
+		attribute.String("aggregateBy", req.AggregateBy),
 	)
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
@@ -821,7 +759,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !shouldRejectLabel(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -836,7 +774,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !shouldRejectLabel(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -877,7 +815,38 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 	return res, err
 }
 
-// containsAllIDTypes filters out all UUID, GUID and numeric types. Returns false if even one value is not of the type
+// shouldRejectLabel checks if the label should be rejected based on the values.
+// Returns true if all values are IDs or there are no values - meaning the label should be filtered out.
+// Special numeric case: boolean values (0,1) are not considered ID types.
+// Otherwise it returns false.
+func shouldRejectLabel(values []string) bool {
+	// No values means we don't want to keep this label
+	if len(values) == 0 {
+		return true
+	}
+
+	if len(values) > 2 {
+		return containsAllIDTypes(values)
+	}
+
+	// Boolean values should not be considered ID types
+	boolValues := map[string]bool{
+		"0": true,
+		"1": true,
+	}
+
+	for _, v := range values {
+		if !boolValues[v] {
+			return containsAllIDTypes(values)
+		}
+	}
+
+	return false
+}
+
+// contjainsAllIDTypes checks if all values in the array are IDs (UUIDs or numeric values)
+// Returns false if at least one value is not an ID type - meaning the label should be kept.
+// Returns true if all values are IDs - meaning the label should be filtered out.
 func containsAllIDTypes(values []string) bool {
 	for _, v := range values {
 		_, err := strconv.ParseFloat(v, 64)
@@ -1158,13 +1127,13 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	lblsResult := lbls.LabelsResult().Parsed()
-	for _, lbl := range lblsResult {
+	lblsResult.Range(func(lbl labels.Label) {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
 			parsedLabels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
 		}
-	}
+	})
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {

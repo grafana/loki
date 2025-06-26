@@ -57,6 +57,8 @@ const (
 	BCE_GRANT_FULL_CONTROL   = "x-bce-grant-full-control"
 	BCE_CONTENT_SHA256       = "x-bce-content-sha256"
 	BCE_CONTENT_CRC32        = "x-bce-content-crc32"
+	BCE_CONTENT_CRC32C       = "x-bce-content-crc32c"
+	BCE_CONTENT_CRC32C_FLAG  = "x-bce-content-crc32c-flag"
 	BCE_REQUEST_ID           = "x-bce-request-id"
 	BCE_USER_METADATA_PREFIX = "x-bce-meta-"
 	BCE_SECURITY_TOKEN       = "x-bce-security-token"

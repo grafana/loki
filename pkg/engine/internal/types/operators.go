@@ -17,8 +17,6 @@ const (
 // String returns the string representation of the UnaryOp.
 func (t UnaryOp) String() string {
 	switch t {
-	case UnaryOpInvalid:
-		return typeInvalid
 	case UnaryOpNot:
 		return "NOT"
 	case UnaryOpAbs:
@@ -42,6 +40,7 @@ const (
 	BinaryOpGte // Greater than or equal comparison (>=).
 	BinaryOpLt  // Less than comparison (<).
 	BinaryOpLte // Less than or equal comparison (<=).
+
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).
@@ -53,17 +52,17 @@ const (
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
 
-	BinaryOpMatchStr    // String matching operation (|=).
-	BinaryOpNotMatchStr // String non-matching operation (!=).
-	BinaryOpMatchRe     // Regular expression matching operation (|~).
-	BinaryOpNotMatchRe  // Regular expression non-matching operation (!~).
+	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
+	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
+	BinaryOpMatchRe         // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+	BinaryOpMatchPattern    // Pattern matching operation (|>). Used for pattern match filter.
+	BinaryOpNotMatchPattern // Pattern non-matching operation (!>). Use for pattern match filter.
 )
 
 // String returns a human-readable representation of the binary operation kind.
 func (t BinaryOp) String() string {
 	switch t {
-	case BinaryOpInvalid:
-		return typeInvalid
 	case BinaryOpEq:
 		return "EQ"
 	case BinaryOpNeq:
@@ -94,14 +93,18 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
-	case BinaryOpMatchStr:
+	case BinaryOpMatchSubstr:
 		return "MATCH_STR"
-	case BinaryOpNotMatchStr:
+	case BinaryOpNotMatchSubstr:
 		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
 	case BinaryOpMatchRe:
 		return "MATCH_RE"
 	case BinaryOpNotMatchRe:
 		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
+	case BinaryOpMatchPattern:
+		return "MATCH_PAT"
+	case BinaryOpNotMatchPattern:
+		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
 	}

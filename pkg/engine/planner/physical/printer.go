@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"fmt"
+	"io"
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
@@ -29,14 +31,13 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
 			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
+			tree.NewProperty("section_ids", true, toAnySlice(node.Sections)...),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
 		}
 		for i := range node.Predicates {
-			treeNode.AddComment("Predicate", "", []tree.Property{
-				tree.NewProperty("expr", false, node.Predicates[i].String()),
-			})
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 	case *SortMerge:
 		treeNode.Properties = []tree.Property{
@@ -49,15 +50,30 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Filter:
 		for i := range node.Predicates {
-			treeNode.AddComment("Predicate", "", []tree.Property{
-				tree.NewProperty("expr", false, node.Predicates[i].String()),
-			})
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 	case *Limit:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("offset", false, node.Offset),
-			tree.NewProperty("limit", false, node.Limit),
+			tree.NewProperty("offset", false, node.Skip),
+			tree.NewProperty("limit", false, node.Fetch),
 		}
+	case *RangeAggregation:
+		properties := []tree.Property{
+			tree.NewProperty("operation", false, node.Operation),
+			tree.NewProperty("start", false, node.Start),
+			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("range", false, node.Range),
+		}
+
+		if node.Step != nil {
+			properties = append(properties, tree.NewProperty("step", false, node.Step))
+		}
+
+		if len(node.PartitionBy) > 0 {
+			properties = append(properties, tree.NewProperty("partition_by", true, toAnySlice(node.PartitionBy)...))
+		}
+
+		treeNode.Properties = properties
 	}
 	return treeNode
 }
@@ -85,4 +101,14 @@ func PrintAsTree(p *Plan) string {
 	}
 
 	return strings.Join(results, "\n")
+}
+
+func WriteMermaidFormat(w io.Writer, p *Plan) {
+	for _, root := range p.Roots() {
+		node := BuildTree(p, root)
+		printer := tree.NewMermaid(w)
+		_ = printer.Write(node)
+
+		fmt.Fprint(w, "\n\n")
+	}
 }

@@ -1,6 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Package gcp provides a resource detector for GCP Cloud Function.
 package gcp // import "go.opentelemetry.io/contrib/detectors/gcp"
 
 import (

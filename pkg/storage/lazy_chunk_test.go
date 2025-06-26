@@ -52,8 +52,10 @@ func TestLazyChunkIterator(t *testing.T) {
 					Hash:   fooLabelsWithName.Hash(),
 					Entries: []logproto.Entry{
 						{
-							Timestamp: from,
-							Line:      "1",
+							Timestamp:          from,
+							Line:               "1",
+							Parsed:             logproto.EmptyLabelAdapters(),
+							StructuredMetadata: logproto.EmptyLabelAdapters(),
 						},
 					},
 				}),
@@ -63,8 +65,10 @@ func TestLazyChunkIterator(t *testing.T) {
 						Hash:   fooLabels.Hash(),
 						Entries: []logproto.Entry{
 							{
-								Timestamp: from,
-								Line:      "1",
+								Timestamp:          from,
+								Line:               "1",
+								Parsed:             logproto.EmptyLabelAdapters(),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
 							},
 						},
 					},

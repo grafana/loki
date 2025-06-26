@@ -147,7 +147,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			}
 			return field, true
 		})
-		if !ok {
+		if !ok || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
 			return nil
 		}
 		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
@@ -170,7 +170,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	sanitized := j.buildSanitizedPrefixFromBuffer()
 	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
 		if j.lbs.BaseHas(string(sanitized)) {
-			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
+			j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
 		}
 
 		keyPrefix := j.buildSanitizedPrefixFromBuffer()
@@ -182,13 +184,14 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	})
 
 	if j.captureJSONPath {
-		jsonPath := j.buildJSONPathFromPrefixBuffer()
-		j.lbs.SetJSONPath(keyString, jsonPath)
+		if jsonPath := j.buildJSONPathFromPrefixBuffer(); len(jsonPath) > 0 {
+			j.lbs.SetJSONPath(keyString, jsonPath)
+		}
 	}
 
 	// reset the prefix position
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
-	if !ok {
+	if !ok || j.lbs.ParserLabelHints().Extracted(keyString) {
 		return nil
 	}
 
@@ -217,10 +220,20 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	return j.sanitizedPrefixBuffer
 }
 
+// buildJSONPathFromPrefixBuffer constructs the JSON path from the accumulated prefix buffer.
+// It returns a slice of strings representing each segment of the JSON path.
+// If the prefix buffer is empty, it returns nil.
+// The function also removes any "_extracted" suffix from "duplicate" fields.
 func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
+	if len(j.prefixBuffer) == 0 {
+		return nil
+	}
+
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
 		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		// Trim _extracted suffix if the extracted field was a duplicate field
+		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}
 
@@ -321,7 +334,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 				return sanitize, true
 			})
-			if !ok {
+			if !ok || parserHints.Extracted(key) {
 				continue
 			}
 
@@ -387,7 +400,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 			return sanitized, true
 		})
-		if !ok {
+		if !ok || parserHints.Extracted(key) {
 			continue
 		}
 
@@ -459,7 +472,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			name = name + duplicateSuffix
 		}
 
-		if !parserHints.ShouldExtract(name) {
+		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
 			continue
 		}
 
@@ -526,6 +539,14 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 	}
 
+	// alwaysExtract checks whether a key should be extracted regardless of other
+	// conditions.
+	alwaysExtract := func(key string) bool {
+		// Any key in the expression list should always be extracted.
+		_, ok := keys[key]
+		return ok
+	}
+
 	l.dec.Reset(line)
 	var current []byte
 	for !l.dec.EOL() {
@@ -546,14 +567,12 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			_, alwaysExtract := keys[sanitized]
-			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			if !alwaysExtract(sanitized) && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
-
-		if !ok {
+		if !ok || (!alwaysExtract(key) && lbs.ParserLabelHints().Extracted(key)) {
 			continue
 		}
 
@@ -572,7 +591,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		if _, ok := l.expressions[key]; ok {
 			if lbs.BaseHas(key) {
 				key = key + duplicateSuffix
-				if !lbs.ParserLabelHints().ShouldExtract(key) {
+				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
 					break
 				}
@@ -784,7 +803,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				}
 				return field, true
 			})
-			if !ok {
+			if !ok || lbs.ParserLabelHints().Extracted(key) {
 				return nil
 			}
 

@@ -80,7 +80,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, categoriz
 
 	deletes, err := deletion.DeletesForUserQuery(ctx, req.Start, time.Now(), q.deleteGetter)
 	if err != nil {
-		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+		level.Error(spanlogger.FromContext(ctx, q.logger)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
 	histReq := logql.SelectLogParams{

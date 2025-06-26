@@ -1,6 +1,9 @@
 package logical
 
 import (
+	"time"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -26,7 +29,7 @@ func (b *Builder) Select(predicate Value) *Builder {
 }
 
 // Limit applies a [Limit] operation to the Builder.
-func (b *Builder) Limit(skip uint64, fetch uint64) *Builder {
+func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 	return &Builder{
 		val: &Limit{
 			Table: b.val,
@@ -45,6 +48,42 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// RangeAggregation applies a [RangeAggregation] operation to the Builder.
+func (b *Builder) RangeAggregation(
+	partitionBy []ColumnRef,
+	operation types.RangeAggregationType,
+	startTS, endTS time.Time,
+	step *time.Duration,
+	rangeInterval time.Duration,
+) *Builder {
+	return &Builder{
+		val: &RangeAggregation{
+			Table: b.val,
+
+			Operation:     operation,
+			PartitionBy:   partitionBy,
+			Start:         startTS,
+			End:           endTS,
+			Step:          step,
+			RangeInterval: rangeInterval,
+		},
+	}
+}
+
+// VectorAggregation applies a [VectorAggregation] operation to the Builder.
+func (b *Builder) VectorAggregation(
+	groupBy []ColumnRef,
+	operation types.VectorAggregationType,
+) *Builder {
+	return &Builder{
+		val: &VectorAggregation{
+			Table:     b.val,
+			GroupBy:   groupBy,
+			Operation: operation,
 		},
 	}
 }

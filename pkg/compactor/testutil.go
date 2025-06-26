@@ -172,7 +172,7 @@ func (c compactedIndex) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
-func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ []byte) error {
+func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ string) error {
 	return nil
 }
 

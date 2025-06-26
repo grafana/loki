@@ -424,19 +424,19 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 	// For simplicity it is always assumed that ingesterQueryStoreMaxLookback and queryIngestersWithin both would be set upto 11 hours so
 	// overlappingQuery has range of last 11 hours while nonOverlappingQuery has range older than last 11 hours.
 	// We would test the cases below with both the queries.
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
 
 	type response struct {
-		ingesterQueryInterval *interval
-		storeQueryInterval    *interval
+		ingesterQueryInterval *QueryInterval
+		storeQueryInterval    *QueryInterval
 	}
 
 	compareResponse := func(t *testing.T, expectedResponse, actualResponse response) {
@@ -477,11 +477,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			name:                          "ingesterQueryStoreMaxLookback set to 1h",
 			ingesterQueryStoreMaxLookback: time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -505,11 +505,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: time.Hour,
 			queryIngestersWithin:          2 * time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -523,11 +523,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: 2 * time.Hour,
 			queryIngestersWithin:          time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 2h and store until last 2h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-2 * time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-2 * time.Hour),
 				},
@@ -624,18 +624,18 @@ func TestQuerier_calculateIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod())
+			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin))
 		})
 	}
 }
 
 func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
@@ -696,7 +696,7 @@ func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod()
+			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin)
 			assert.Equal(t, tc.overlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, overlappingQuery.end))
 			assert.Equal(t, tc.nonOverlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, nonOverlappingQuery.end))
 		})
@@ -1412,6 +1412,46 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		detectedLabels := resp.DetectedLabels
 		assert.Len(t, detectedLabels, 0)
+	})
+
+	t.Run("allows boolean values, even if numeric", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"boolean-ints":            {Values: []string{"0", "1"}},
+			"boolean-bools":           {Values: []string{"true", "false"}},
+			"boolean-bools-uppercase": {Values: []string{"TRUE", "FALSE"}},
+			"single-id":               {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef"}},
+			"non-boolean-ints":        {Values: []string{"6", "7"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+
+		foundLabels := make([]string, 0, len(detectedLabels))
+		for _, d := range detectedLabels {
+			foundLabels = append(foundLabels, d.Label)
+		}
+
+		assert.ElementsMatch(t, []string{"boolean-ints", "boolean-bools", "boolean-bools-uppercase"}, foundLabels)
 	})
 
 	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {

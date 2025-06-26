@@ -76,6 +76,13 @@ var (
 		Labels:      []string{"grpc.target", "grpc.xds.server", "grpc.xds.resource_type"},
 		Default:     false,
 	})
+	xdsClientServerFailureMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:        "grpc.xds_client.server_failure",
+		Description: "A counter of xDS servers going from healthy to unhealthy. A server goes unhealthy when we have a connectivity failure or when the ADS stream fails without seeing a response message, as per gRFC A57.",
+		Unit:        "failure",
+		Labels:      []string{"grpc.target", "grpc.xds.server"},
+		Default:     false,
+	})
 )
 
 // clientImpl is the real implementation of the xDS client. The exported Client
@@ -113,19 +120,7 @@ func init() {
 	internal.TriggerXDSResourceNotFoundForTesting = triggerXDSResourceNotFoundForTesting
 	xdsclientinternal.ResourceWatchStateForTesting = resourceWatchStateForTesting
 
-	// DefaultPool is initialized with bootstrap configuration from one of the
-	// supported environment variables. If the environment variables are not
-	// set, then fallback bootstrap configuration should be set before
-	// attempting to create an xDS client, else xDS client creation will fail.
-	config, err := bootstrap.GetConfiguration()
-	if err != nil {
-		if logger.V(2) {
-			logger.Infof("Failed to read xDS bootstrap config from env vars:  %v", err)
-		}
-		DefaultPool = &Pool{clients: make(map[string]*clientRefCounted)}
-		return
-	}
-	DefaultPool = &Pool{clients: make(map[string]*clientRefCounted), config: config}
+	DefaultPool = &Pool{clients: make(map[string]*clientRefCounted)}
 }
 
 // newClientImpl returns a new xdsClient with the given config.
@@ -427,6 +422,10 @@ type channelState struct {
 func (cs *channelState) adsStreamFailure(err error) {
 	if cs.parent.done.HasFired() {
 		return
+	}
+
+	if xdsresource.ErrType(err) != xdsresource.ErrTypeStreamFailedAfterRecv {
+		xdsClientServerFailureMetric.Record(cs.parent.metricsRecorder, 1, cs.parent.target, cs.serverConfig.ServerURI())
 	}
 
 	cs.parent.channelsMu.Lock()

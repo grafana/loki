@@ -7,6 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
+// Internal state of the planner
+type state struct {
+	direction SortOrder
+}
+
 // Planner creates an executable physical plan from a logical plan.
 // Planning is done in two steps:
 //  1. Convert
@@ -18,6 +23,7 @@ import (
 type Planner struct {
 	catalog Catalog
 	plan    *Plan
+	state   state
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -28,7 +34,7 @@ func NewPlanner(catalog Catalog) *Planner {
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
 func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
-	p.plan = &Plan{}
+	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
@@ -43,6 +49,12 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 		}
 	}
 	return nil, errors.New("logical plan has no return value")
+}
+
+// reset resets the internal state of the planner
+func (p *Planner) reset() {
+	p.plan = &Plan{}
+	p.state = state{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -60,14 +72,9 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 			Op:    inst.Op,
 		}
 	case *logical.ColumnRef:
-		return &ColumnExpr{
-			Name:       inst.Column,
-			ColumnType: inst.Type,
-		}
+		return &ColumnExpr{Ref: inst.Ref}
 	case *logical.Literal:
-		return &LiteralExpr{
-			Value: inst.Value(),
-		}
+		return NewLiteral(inst.Value())
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
@@ -84,18 +91,33 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 		return p.processSort(inst)
 	case *logical.Limit:
 		return p.processLimit(inst)
+	case *logical.RangeAggregation:
+		return p.processRangeAggregation(inst)
+	case *logical.VectorAggregation:
+		return p.processVectorAggregation(inst)
 	}
 	return nil, nil
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector))
+	shard, ok := lp.Shard.(*logical.ShardInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
+	}
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard))
+	if err != nil {
+		return nil, err
+	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Sections:  sections[i],
+			Direction: p.state.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
@@ -123,17 +145,15 @@ func (p *Planner) processSelect(lp *logical.Select) ([]Node, error) {
 
 // Convert [logical.Sort] into one [SortMerge] node.
 func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
-	order := ASC
-	if !lp.Ascending {
-		order = DESC
+	order := DESC
+	if lp.Ascending {
+		order = ASC
 	}
 	node := &SortMerge{
-		Column: &ColumnExpr{
-			Name:       lp.Column.Column,
-			ColumnType: lp.Column.Type,
-		},
-		Order: order,
+		Column: &ColumnExpr{Ref: lp.Column.Ref},
+		Order:  order,
 	}
+	p.state.direction = order
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
 	if err != nil {
@@ -150,8 +170,8 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 	node := &Limit{
-		Offset: lp.Skip,
-		Limit:  lp.Fetch,
+		Skip:  lp.Skip,
+		Fetch: lp.Fetch,
 	}
 	p.plan.addNode(node)
 	children, err := p.process(lp.Table)
@@ -164,4 +184,85 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 		}
 	}
 	return []Node{node}, nil
+}
+
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, error) {
+	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
+	for i, col := range r.PartitionBy {
+		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+	}
+
+	node := &RangeAggregation{
+		PartitionBy: partitionBy,
+		Operation:   r.Operation,
+		Start:       r.Start,
+		End:         r.End,
+		Range:       r.RangeInterval,
+		Step:        r.Step,
+	}
+	p.plan.addNode(node)
+	children, err := p.process(r.Table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
+// Convert [logical.VectorAggregation] into one [VectorAggregation] node.
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation) ([]Node, error) {
+	groupBy := make([]ColumnExpression, len(lp.GroupBy))
+	for i, col := range lp.GroupBy {
+		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	}
+
+	node := &VectorAggregation{
+		GroupBy:   groupBy,
+		Operation: lp.Operation,
+	}
+	p.plan.addNode(node)
+	children, err := p.process(lp.Table)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
+// Optimize tries to optimize the plan by pushing down filter predicates and limits
+// to the scan nodes.
+func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+	for i, root := range plan.Roots() {
+
+		optimizations := []*optimization{
+			newOptimization("PredicatePushdown", plan).withRules(
+				&predicatePushdown{plan: plan},
+				&removeNoopFilter{plan: plan},
+			),
+			newOptimization("LimitPushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
+			newOptimization("GroupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
+			),
+			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
+			newOptimization("ProjectionPushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		optimizer := newOptimizer(plan, optimizations)
+		optimizer.optimize(root)
+		if i == 1 {
+			return nil, errors.New("physical plan must only have exactly one root node")
+		}
+	}
+	return plan, nil
 }

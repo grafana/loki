@@ -2,10 +2,8 @@ package distributor
 
 import (
 	"context"
-	"encoding/binary"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"math"
 	"net/http"
 	"runtime/pprof"
@@ -17,7 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+	otlptranslate "github.com/prometheus/otlptranslator"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -34,7 +33,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -89,6 +87,9 @@ type Config struct {
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
+	// Request parser
+	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
+
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
@@ -118,6 +119,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.TenantTopic.RegisterFlags(fs)
+	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -194,8 +196,7 @@ type Distributor struct {
 	ingesterTaskWg sync.WaitGroup
 
 	// Will succeed usage tracker in future.
-	limitsFrontendRing ring.ReadRing
-	limitsFrontends    *ring_client.Pool
+	ingestLimits *ingestLimits
 
 	// kafka
 	kafkaWriter   KafkaProducer
@@ -251,6 +252,17 @@ func New(
 	}
 
 	limitsFrontendClientFactory := limits_frontend_client.NewPoolFactory(limitsFrontendCfg)
+	limitsFrontendClientPool := limits_frontend_client.NewPool(
+		limits_frontend.RingName,
+		limitsFrontendCfg.PoolConfig,
+		limitsFrontendRing,
+		limitsFrontendClientFactory,
+		logger,
+	)
+	limitsFrontendClient := newIngestLimitsFrontendRingClient(
+		limitsFrontendRing,
+		limitsFrontendClientPool,
+	)
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
@@ -271,11 +283,11 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
+		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
-		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
+		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
 		// TODO: cleanup/make independent of whether we write kafka as primary?
@@ -356,17 +368,10 @@ func New(
 			Help:      "The number of records a single per-partition write request has been split into.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}),
-		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
-		kafkaWriter:          kafkaWriter,
-		partitionRing:        partitionRing,
-		limitsFrontendRing:   limitsFrontendRing,
-		limitsFrontends: limits_frontend_client.NewPool(
-			limits_frontend.RingName,
-			limitsFrontendCfg.PoolConfig,
-			limitsFrontendRing,
-			limitsFrontendClientFactory,
-			logger,
-		),
+		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		kafkaWriter:           kafkaWriter,
+		partitionRing:         partitionRing,
+		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
@@ -509,8 +514,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	defer d.waitSimulatedLatency(ctx, tenantID, start)
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger))
 }
 
@@ -521,6 +524,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if err != nil {
 		return nil, err
 	}
+
+	start := time.Now()
+	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
@@ -574,13 +580,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var ingestionBlockedError error
 
 	func() {
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogKV("event", "start to validate request")
-			defer func() {
-				sp.LogKV("event", "finished to validate request")
-			}()
-		}
+		sp := trace.SpanFromContext(ctx)
+		sp.AddEvent("start to validate request")
+		defer sp.AddEvent("finished to validate request")
 
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
@@ -602,7 +604,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			if !d.validator.IsAggregatedMetricStream(lbs) {
+			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
 					d.writeFailuresManager.Log(tenantID, err)
@@ -716,19 +718,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if d.cfg.IngestLimitsEnabled {
-		exceedsLimits, reasons, err := d.exceedsLimits(ctx, tenantID, streams, d.doExceedsLimitsRPC)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if exceedsLimits {
-			if d.cfg.IngestLimitsDryRunEnabled {
-				level.Debug(d.logger).Log("msg", "request exceeded limits", "tenant", tenantID)
-			} else {
-				return nil, httpgrpc.Error(http.StatusBadRequest, strings.Join(reasons, ","))
-			}
-		}
-	}
-
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
 		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
 
@@ -736,6 +725,19 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	}
+
+	// These limits are checked after the ingestion rate limit as this
+	// is how it works in ingesters.
+	if d.cfg.IngestLimitsEnabled {
+		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+			if len(accepted) == 0 {
+				// All streams were rejected, the request should be failed.
+				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits")
+			}
+			streams = accepted
+		}
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
@@ -776,13 +778,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		ingesterDescs := map[string]ring.InstanceDesc{}
 
 		if err := func() error {
-			sp := opentracing.SpanFromContext(ctx)
-			if sp != nil {
-				sp.LogKV("event", "started to query ingesters ring")
-				defer func() {
-					sp.LogKV("event", "finished to query ingesters ring")
-				}()
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("started to query ingesters ring")
+			defer sp.AddEvent("finished to query ingesters ring")
 
 			for i, stream := range streams {
 				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
@@ -810,9 +808,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
 				// This is to make sure all ingesters get samples even if we return early
 				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				if sp := opentracing.SpanFromContext(ctx); sp != nil {
-					localCtx = opentracing.ContextWithSpan(localCtx, sp)
-				}
+				sp := trace.SpanFromContext(ctx)
+				localCtx = trace.ContextWithSpan(localCtx, sp)
+
 				select {
 				case <-ctx.Done():
 					cancel()
@@ -1175,127 +1173,6 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 	}
 }
 
-// exceedsLimits returns true if the request exceeds the per-tenant limits,
-// otherwise false. If the request does exceed per-tenant limits, a list of
-// reasons are returned explaining which limits were exceeded. An error is
-// returned if the limits could not be checked.
-func (d *Distributor) exceedsLimits(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-	doExceedsLimitsFn doExceedsLimitsFunc,
-) (bool, []string, error) {
-	if !d.cfg.IngestLimitsEnabled {
-		return false, nil, nil
-	}
-	resp, err := doExceedsLimitsFn(ctx, tenantID, streams)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(resp.RejectedStreams) == 0 {
-		return false, nil, nil
-	}
-	// hashesToLabels memoizes the labels for a stream hash so we can add
-	// it to the reason.
-	hashesToLabels := make(map[uint64]string)
-	for _, s := range streams {
-		hashesToLabels[s.HashKeyNoShard] = s.Stream.Labels
-	}
-	reasons := make([]string, 0, len(resp.RejectedStreams))
-	for _, rejection := range resp.RejectedStreams {
-		reasons = append(reasons, fmt.Sprintf(
-			"stream %s was rejected because %q",
-			hashesToLabels[rejection.StreamHash],
-			rejection.Reason,
-		))
-	}
-	return true, reasons, nil
-}
-
-// doExceedsLimitsFunc enables stubbing out doExceedsLimitsRPC for tests.
-type doExceedsLimitsFunc func(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-) (*logproto.ExceedsLimitsResponse, error)
-
-// doExceedsLimitsRPC executes an RPC to the limits-frontend service to check
-// if per-tenant limits have been exceeded. If an RPC call returns an error,
-// it failsover to the next limits-frontend service. The failover is repeated
-// until there are no more replicas remaining or the context is canceled,
-// whichever happens first.
-func (d *Distributor) doExceedsLimitsRPC(
-	ctx context.Context,
-	tenantID string,
-	streams []KeyedStream,
-) (*logproto.ExceedsLimitsResponse, error) {
-	// We use an FNV-1 of all stream hashes in the request to load balance requests
-	// to limits-frontends instances.
-	h := fnv.New32()
-
-	// The distributor sends the hashes of all streams in the request to the
-	// limits-frontend. The limits-frontend is responsible for deciding if
-	// the request would exceed the tenants limits, and if so, which streams
-	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
-	for _, stream := range streams {
-		// Add the stream hash to FNV-1.
-		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.HashKeyNoShard)
-		_, _ = h.Write(buf)
-
-		// Calculate the size of the stream.
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-		// Add the stream hash to the request. This is sent to limits-frontend.
-		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
-			StreamHash:             stream.HashKeyNoShard,
-			EntriesSize:            entriesSize,
-			StructuredMetadataSize: structuredMetadataSize,
-		})
-	}
-
-	req := logproto.ExceedsLimitsRequest{
-		Tenant:  tenantID,
-		Streams: streamMetadata,
-	}
-
-	// Get the limits-frontend instances from the ring.
-	var descs [5]ring.InstanceDesc
-	rs, err := d.limitsFrontendRing.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
-	}
-
-	var lastErr error
-	// Send the request to the limits-frontend to see if it exceeds the tenant
-	// limits. If the RPC fails, failover to the next instance in the ring.
-	for _, instance := range rs.Instances {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		c, err := d.limitsFrontends.GetClientFor(instance.Addr)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		client := c.(logproto.IngestLimitsFrontendClient)
-		resp, err := client.ExceedsLimits(ctx, &req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		return resp, nil
-	}
-
-	return nil, lastErr
-}
-
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
 	c, err := d.ingesterClients.GetClientFor(ingester.Addr)
@@ -1362,28 +1239,6 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		).Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
-
-	entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-
-	// However, unlike stream records, the distributor writes stream metadata
-	// records to one of a fixed number of partitions, the size of which is
-	// determined ahead of time. It does not use a ring. The reason for this
-	// is that we want to be able to scale components that consume metadata
-	// records independent of ingesters.
-	metadataPartitionID := int32(stream.HashKeyNoShard % uint64(d.numMetadataPartitions))
-	metadata, err := kafka.EncodeStreamMetadata(
-		metadataPartitionID,
-		d.cfg.KafkaConfig.Topic,
-		tenant,
-		stream.HashKeyNoShard,
-		entriesSize,
-		structuredMetadataSize,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-
-	records = append(records, metadata)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 

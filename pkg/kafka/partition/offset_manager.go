@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -72,6 +73,7 @@ type OffsetManager interface {
 	GroupLag(ctx context.Context, fallbackOffsetMillis int64) (map[int32]Lag, error)
 	FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error)
 	FetchPartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
+	NextOffset(ctx context.Context, partition int32, t time.Time) (int64, error)
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
@@ -92,12 +94,7 @@ func NewKafkaOffsetManager(
 	reg prometheus.Registerer,
 ) (*KafkaOffsetManager, error) {
 	// Create a new Kafka client for the partition manager.
-	clientMetrics := client.NewReaderClientMetrics("partition-manager", reg)
-	c, err := client.NewReaderClient(
-		cfg,
-		clientMetrics,
-		log.With(logger, "component", "kafka-client"),
-	)
+	c, err := client.NewReaderClient("partition-manager", cfg, log.With(logger, "component", "kafka-client"), reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
@@ -133,6 +130,31 @@ func (r *KafkaOffsetManager) Topic() string {
 
 func (r *KafkaOffsetManager) ConsumerGroup() string {
 	return r.cfg.GetConsumerGroup(r.instanceID)
+}
+
+// NextOffset returns the first offset after the timestamp t. If the partition
+// does not have an offset after t, it returns the current end offset.
+func (r *KafkaOffsetManager) NextOffset(ctx context.Context, partition int32, t time.Time) (int64, error) {
+	resp, err := r.adminClient.ListOffsetsAfterMilli(ctx, t.UnixMilli(), r.cfg.Topic)
+	if err != nil {
+		return 0, err
+	}
+	// If a topic does not exist, a special -1 partition for each non-existing
+	// topic is added to the response.
+	partitions := resp[r.cfg.Topic]
+	if special, ok := partitions[-1]; ok {
+		return 0, special.Err
+	}
+	// If a partition does not exist, it will be missing.
+	listed, ok := partitions[partition]
+	if !ok {
+		return 0, fmt.Errorf("unknown partition %d", partition)
+	}
+	// Err is non-nil if the partition has a load error.
+	if listed.Err != nil {
+		return 0, listed.Err
+	}
+	return listed.Offset, nil
 }
 
 // FetchLastCommittedOffset retrieves the last committed offset for this partition
@@ -223,7 +245,6 @@ func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, partition
 	if err := kerr.ErrorForCode(partition.ErrorCode); err != nil {
 		return 0, err
 	}
-
 	return partition.Offset, nil
 }
 

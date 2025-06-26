@@ -256,6 +256,10 @@ func (t *Transport) run(ctx context.Context) {
 				return
 			}
 
+			// TODO(rfratto): allowing for multiple workers to process outgoing packets
+			// can help minimize latency. grafana/dskit permits for 3 workers by default,
+			// but to tolerate unhealthy peers we should probably allow for twice the
+			// number of gossip peers.
 			pkt := v.(*outPacket)
 			t.metrics.packetTxTotal.Inc()
 			t.metrics.packetTxBytesTotal.Add(float64(len(pkt.Data)))
@@ -576,7 +580,17 @@ func (t *Transport) writeToSync(b []byte, addr string) {
 	req.Header.Set("Content-Type", ckitContentType)
 	resp, err := t.opts.Client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		level.Debug(t.log).Log("msg", "failed to send message", "err", err)
+		level.Debug(t.log).Log("msg", "failed to send message", "err", err, "status_code", statusCodeValue(resp))
 		t.metrics.packetTxFailedTotal.Inc()
 	}
+}
+
+// statusCodeValue returns the value to use when logging an HTTP status code.
+// if resp is nil, statusCodeValue returns a string of "<no response>".
+// Otherwise, it returns the numeric status code.
+func statusCodeValue(resp *http.Response) any {
+	if resp == nil {
+		return "<no response>"
+	}
+	return resp.StatusCode
 }

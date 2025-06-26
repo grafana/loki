@@ -68,8 +68,14 @@ type CopyDestOptions struct {
 	LegalHold LegalHoldStatus
 
 	// Object Retention related fields
-	Mode            RetentionMode
-	RetainUntilDate time.Time
+	Mode               RetentionMode
+	RetainUntilDate    time.Time
+	Expires            time.Time
+	ContentType        string
+	ContentEncoding    string
+	ContentDisposition string
+	ContentLanguage    string
+	CacheControl       string
 
 	Size int64 // Needs to be specified if progress bar is specified.
 	// Progress of the entire copy operation will be sent here.
@@ -115,6 +121,24 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 
 	if opts.Encryption != nil {
 		opts.Encryption.Marshal(header)
+	}
+	if opts.ContentType != "" {
+		header.Set("Content-Type", opts.ContentType)
+	}
+	if opts.ContentEncoding != "" {
+		header.Set("Content-Encoding", opts.ContentEncoding)
+	}
+	if opts.ContentDisposition != "" {
+		header.Set("Content-Disposition", opts.ContentDisposition)
+	}
+	if opts.ContentLanguage != "" {
+		header.Set("Content-Language", opts.ContentLanguage)
+	}
+	if opts.CacheControl != "" {
+		header.Set("Cache-Control", opts.CacheControl)
+	}
+	if !opts.Expires.IsZero() {
+		header.Set("Expires", opts.Expires.UTC().Format(http.TimeFormat))
 	}
 
 	if opts.ReplaceMetadata {

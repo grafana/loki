@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -144,7 +145,15 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 }
 
 func (v Validator) IsAggregatedMetricStream(ls labels.Labels) bool {
-	return ls.Has(push.AggregatedMetricLabel)
+	return ls.Has(constants.AggregatedMetricLabel)
+}
+
+func (v Validator) IsPatternStream(ls labels.Labels) bool {
+	return ls.Has(constants.PatternLabel)
+}
+
+func (v Validator) IsInternalStream(ls labels.Labels) bool {
+	return v.IsAggregatedMetricStream(ls) || v.IsPatternStream(ls)
 }
 
 // Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
@@ -155,8 +164,8 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
-	// Skip validation for aggregated metric streams, as we create those for internal use
-	if v.IsAggregatedMetricStream(ls) {
+	// Skip validation for aggregated metric and pattern streams, as we create those for internal use
+	if v.IsInternalStream(ls) {
 		return nil
 	}
 

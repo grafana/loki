@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -28,7 +28,7 @@ var (
 	now = time.Now().UTC()
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
-	streams = []logproto.Stream{
+	testStreams = []logproto.Stream{
 		{
 			Labels:  `{app="foo", env="prod"}`,
 			Entries: []logproto.Entry{{Timestamp: now.Add(-2 * time.Hour)}},
@@ -65,7 +65,7 @@ type testDataBuilder struct {
 	t      *testing.T
 	bucket objstore.Bucket
 
-	builder  *dataobj.Builder
+	builder  *logsobj.Builder
 	meta     *Updater
 	uploader *uploader.Uploader
 }
@@ -81,10 +81,41 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	path, err := b.uploader.Upload(context.Background(), buf)
 	require.NoError(b.t, err)
 
-	err = b.meta.Update(context.Background(), path, stats)
+	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
+}
+
+func TestStreamIDs(t *testing.T) {
+	t.Run("not matching streams", func(t *testing.T) {
+		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+			matchers := []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+			}
+			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
+			require.NoError(t, err)
+			require.Len(t, paths, 0)
+			require.Len(t, streamIDs, 0)
+			require.Len(t, sections, 0)
+		})
+	})
+
+	t.Run("matching streams", func(t *testing.T) {
+		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+			matchers := []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			}
+			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
+			require.NoError(t, err)
+			require.Len(t, paths, 1)
+			require.Len(t, streamIDs, 1)
+			require.Len(t, sections, 1)
+			require.Equal(t, []int64{1}, streamIDs[0])
+			require.Equal(t, 1, sections[0])
+		})
+	})
 }
 
 func TestLabels(t *testing.T) {
@@ -219,11 +250,11 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 
 	builder := newTestDataBuilder(t, tenantID)
 
-	for _, stream := range streams {
+	for _, stream := range testStreams {
 		builder.addStreamAndFlush(stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket)
+	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger())
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -236,7 +267,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,      // 1MB
 		TargetObjectSize:        10 * 1024 * 1024, // 10MB
 		TargetSectionSize:       1024 * 1024,      // 1MB

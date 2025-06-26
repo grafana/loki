@@ -20,7 +20,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -64,9 +66,7 @@ func TestMetricQueryCacheKey(t *testing.T) {
 		ingesterQueryWindow = defaultSplit * 3
 	)
 
-	var (
-		step = (15 * time.Second).Milliseconds()
-	)
+	step := (15 * time.Second).Milliseconds()
 
 	l := fakeLimits{
 		splitDuration:         map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
@@ -203,16 +203,10 @@ func Test_seriesLimiter(t *testing.T) {
 						F: 0.013333333333333334,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "anotherjob",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "anotherjob",
+				),
 			},
 		}
 		params, err := ParamsFromRequest(req)
@@ -225,6 +219,263 @@ func Test_seriesLimiter(t *testing.T) {
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.LessOrEqual(t, *c, 4)
+}
+
+func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		req              *LokiRequest
+		resp             *LokiPromResponse
+		expectedResponse *LokiPromResponse
+		expectedWarnings []string
+	}{
+		{
+			name: "single variant under limit should not exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+			}),
+		},
+		{
+			name: "multiple variants under limit should not exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+		},
+		{
+			name: "single variant over the limit should exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app4"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
+		},
+		{
+			name: "multiple variants over the limit should exceed limit",
+			req: &LokiRequest{
+				Query: "sum by (job) (count_over_time({job=~\"app.*\"}[1m]))",
+			},
+			resp: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app4"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app5"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedResponse: createPromResponse([][]seriesLabels{
+				{
+					{Name: "app", Value: "foo"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "app", Value: "bar"},
+					{Name: constants.VariantLabel, Value: "0"},
+				},
+				{
+					{Name: "job", Value: "app1"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app2"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+				{
+					{Name: "job", Value: "app3"},
+					{Name: constants.VariantLabel, Value: "1"},
+				},
+			}),
+			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
+		},
+	} {
+
+		t.Run(test.name, func(t *testing.T) {
+			middleware := newSeriesLimiter(3)
+			mock := variantMockHandler{
+				response: test.resp,
+			}
+			handler := middleware.Wrap(mock)
+
+			metadata, ctx := metadata.NewContext(context.Background())
+
+			resp, err := handler.Do(ctx, &LokiRequest{})
+			require.NoError(t, err)
+			require.EqualValues(t, test.expectedResponse.Response.Data, resp.(*LokiPromResponse).Response.Data)
+
+			if test.expectedWarnings != nil {
+				require.Equal(t, test.expectedWarnings, metadata.Warnings())
+			}
+		})
+	}
+}
+
+type seriesLabels = logproto.LabelAdapter
+
+// variantMockHandler is a mock implementation of queryrangebase.Handler
+type variantMockHandler struct {
+	response *LokiPromResponse
+}
+
+func (m variantMockHandler) Do(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+	// For testing, we'll return the predefined responses
+	// This is just a mock - in a real case, the handler would return
+	// different responses based on the request
+	if m.response != nil {
+		return m.response, nil
+	}
+	// Return empty response by default
+	return createPromResponse(nil), nil
+}
+
+func createPromResponse(series [][]seriesLabels) *LokiPromResponse {
+	result := make([]queryrangebase.SampleStream, len(series))
+	for i, labels := range series {
+		result[i] = queryrangebase.SampleStream{
+			Labels:  labels,
+			Samples: []logproto.LegacySample{{Value: 1.0}},
+		}
+	}
+
+	return &LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Data: queryrangebase.PrometheusData{
+				ResultType: "matrix",
+				Result:     result,
+			},
+		},
+	}
 }
 
 func Test_MaxQueryParallelism(t *testing.T) {
@@ -416,7 +667,7 @@ func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
 
 func Test_WeightedParallelism(t *testing.T) {
 	limits := &fakeLimits{
-		tsdbMaxQueryParallelism: 100,
+		tsdbMaxQueryParallelism: 2048,
 		maxQueryParallelism:     10,
 	}
 
@@ -476,19 +727,25 @@ func Test_WeightedParallelism(t *testing.T) {
 				desc:  "50% each",
 				start: borderTime.Add(-time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   55,
+				exp:   1029,
 			},
 			{
 				desc:  "75/25 split",
 				start: borderTime.Add(-3 * time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   32,
+				exp:   519,
 			},
 			{
 				desc:  "start==end",
 				start: borderTime.Add(time.Hour),
 				end:   borderTime.Add(time.Hour),
-				exp:   100,
+				exp:   2048,
+			},
+			{
+				desc:  "huge range to make sure we don't int overflow in the calculations.",
+				start: borderTime,
+				end:   borderTime.Add(24 * time.Hour * 365 * 20),
+				exp:   2048,
 			},
 		} {
 			t.Run(cfgs.desc+tc.desc, func(t *testing.T) {
@@ -496,7 +753,6 @@ func Test_WeightedParallelism(t *testing.T) {
 			})
 		}
 	}
-
 }
 
 func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
@@ -712,7 +968,6 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
 		})
 	}
-
 }
 
 func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {

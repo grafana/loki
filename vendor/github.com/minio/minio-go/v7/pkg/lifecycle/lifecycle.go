@@ -19,10 +19,11 @@
 package lifecycle
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"time"
+
+	"github.com/minio/minio-go/v7/internal/json"
 )
 
 var errMissingStorageClass = errors.New("storage-class cannot be empty")

@@ -71,7 +71,6 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		Logger:                  b.logger,
 		SubBalancerCloseTimeout: DefaultSubBalancerCloseTimeout,
 	})
-	b.bg.Start()
 	go b.run()
 	b.logger.Infof("Created")
 	return b
@@ -211,6 +210,9 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 }
 
 func (b *priorityBalancer) ResolverError(err error) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received error from the resolver: %v", err)
+	}
 	b.bg.ResolverError(err)
 }
 

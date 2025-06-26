@@ -12,7 +12,11 @@ type Metastore interface {
 	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error)
 
 	// DataObjects returns paths to all matching the given matchers between [start,end]
+	// TODO(chaudum); The comment is not correct, because the implementation does not filter by matchers, only by [start, end].
 	DataObjects(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error)
+
+	// StreamsIDs returns object store paths and stream IDs for all matching objects for the given matchers between [start,end]
+	StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error)
 
 	// Labels returns all possible labels from matching streams between [start,end]
 	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream
