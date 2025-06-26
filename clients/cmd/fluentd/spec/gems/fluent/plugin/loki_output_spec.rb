@@ -6,9 +6,24 @@ require 'yajl'
 require 'fluent/test'
 require 'fluent/test/driver/output'
 require 'fluent/test/helpers'
+require 'ostruct'
 
 # prevent Test::Unit's AutoRunner from executing during RSpec's rake task
 Test::Unit::AutoRunner.need_auto_run = false if defined?(Test::Unit::AutoRunner)
+
+# Utility class to use in place of a Fluent::Plugin::Buffer::Chunk
+class MockChunk
+  def initialize(metadata, records)
+    @metadata = metadata
+    @records = records
+  end
+
+  attr_accessor :metadata, :records
+
+  def each
+    records.each { |item| yield(item[0], item[1]) }
+  end
+end
 
 RSpec.describe Fluent::Plugin::LokiOutput do
   let(:driver) do
@@ -275,36 +290,69 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     6.times { |i| expect(res[0]['values'][i][1]).to eq i.to_s }
   end
 
-  it 'raises an LogPostError when http request is not successful' do
+  it 'raises an LogPostError when http request is not successful and can be retried' do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
     CONF
     driver.configure(config)
-    lines = [[Time.at(1_546_270_458), { 'message' => 'foobar', 'stream' => 'stdout' }]]
+    chunk = MockChunk.new(
+      OpenStruct.new(tag: 'my.tag'),
+      [
+        [Time.at(1_546_270_458), { 'message' => 'foobar', 'stream' => 'stdout' }]
+      ]
+    )
 
     # 200
     success = Net::HTTPSuccess.new(1.0, 200, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { success }
+    allow(driver.instance).to receive(:loki_http_request).and_return(success)
     allow(success).to receive(:body).and_return('fake body')
-    expect { driver.instance.write(lines) }.not_to raise_error
+    expect { driver.instance.write(chunk) }.not_to raise_error
 
     # 205
     success = Net::HTTPSuccess.new(1.0, 205, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { success }
+    allow(driver.instance).to receive(:loki_http_request).and_return(success)
     allow(success).to receive(:body).and_return('fake body')
-    expect { driver.instance.write(lines) }.not_to raise_error
+    expect { driver.instance.write(chunk) }.not_to raise_error
 
     # 429
     too_many_requests = Net::HTTPTooManyRequests.new(1.0, 429, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { too_many_requests }
+    allow(driver.instance).to receive(:loki_http_request).and_return(too_many_requests)
     allow(too_many_requests).to receive(:body).and_return('fake body')
-    expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
+    expect { driver.instance.write(chunk) }.to raise_error(described_class::LogPostError)
 
     # 505
     server_error = Net::HTTPServerError.new(1.0, 505, 'OK')
-    allow(driver.instance).to receive(:loki_http_request) { server_error }
+    allow(driver.instance).to receive(:loki_http_request).and_return(server_error)
     allow(server_error).to receive(:body).and_return('fake body')
-    expect { driver.instance.write(lines) }.to raise_error(described_class::LogPostError)
+    expect { driver.instance.write(chunk) }.to raise_error(described_class::LogPostError)
+  end
+
+  it 'emits errors using the event emitter when a log message cannot be processed' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+    CONF
+    driver.configure(config)
+
+    chunk = MockChunk.new(
+      OpenStruct.new(tag: 'my.tag'),
+      [
+        [Time.at(1_546_270_458), { 'message' => 'foobar', 'stream' => 'stdout' }],
+        [Time.at(1_546_270_458), { 'message' => 'weewar', 'stream' => 'stdout' }]
+      ]
+    )
+
+    # 400 error
+    four_hundred = Net::HTTPBadRequest.new(1.0, 400, 'write operation failed')
+    router_mock = instance_double(Fluent::EventRouter, emit_error_event: nil)
+    allow(driver.instance).to receive_messages({ loki_http_request: four_hundred, router: router_mock })
+    allow(four_hundred).to receive(:body).and_return('fake body')
+
+    driver.instance.write(chunk)
+
+    expect(router_mock)
+      .to have_received(:emit_error_event)
+      .with('my.tag', an_instance_of(Time), an_instance_of(Hash), an_instance_of(Fluent::Plugin::LokiOutput::UnrecoverableError))
+      .twice
   end
 
   context 'when output is multi-thread' do
