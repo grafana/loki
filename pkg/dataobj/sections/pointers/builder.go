@@ -26,8 +26,9 @@ import (
 // The column indexing metadata is used to lookup which column values are present in the referenced section.
 // Path & Section are mandatory fields, and are used to uniquely identify the section within the referenced object.
 type SectionPointer struct {
-	Path    string
-	Section int64
+	Path        string
+	Section     int64
+	PointerKind PointerKind
 
 	// Stream indexing metadata
 	StreamID         int64
@@ -42,6 +43,14 @@ type SectionPointer struct {
 	ColumnName        string
 	ValuesBloomFilter []byte
 }
+
+type PointerKind int
+
+const (
+	PointerKindInvalid     PointerKind = iota // PointerKindInvalid is an invalid pointer kind.
+	PointerKindStreamIndex                    // PointerKindStreamIndex is a pointer for a stream index.
+	PointerKindColumnIndex                    // PointerKindColumnIndex is a pointer for a column index.
+)
 
 // Builder builds a pointers section.
 type Builder struct {
@@ -106,6 +115,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 	newPointer := &SectionPointer{
 		Path:             path,
 		Section:          section,
+		PointerKind:      PointerKindStreamIndex,
 		StreamID:         indexStreamID,
 		StreamIDRef:      idInObject,
 		StartTs:          ts,
@@ -121,6 +131,7 @@ func (b *Builder) RecordColumnIndex(path string, section int64, columnName strin
 	newPointer := &SectionPointer{
 		Path:              path,
 		Section:           section,
+		PointerKind:       PointerKindColumnIndex,
 		ColumnName:        columnName,
 		ColumnIndex:       columnIndex,
 		ValuesBloomFilter: valuesBloomFilter,
@@ -234,6 +245,10 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating section column: %w", err)
 	}
+	pointerKindBuilder, err := numberColumnBuilder(b.pageSize)
+	if err != nil {
+		return fmt.Errorf("creating pointer kind column: %w", err)
+	}
 
 	// Stream info
 	idBuilder, err := numberColumnBuilder(b.pageSize)
@@ -294,8 +309,9 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	for i, pointer := range b.pointers {
 		_ = pathBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Path)))
 		_ = sectionBuilder.Append(i, dataset.Int64Value(pointer.Section))
+		_ = pointerKindBuilder.Append(i, dataset.Int64Value(int64(pointer.PointerKind)))
 
-		if pointer.StreamID != 0 {
+		if pointer.PointerKind == PointerKindStreamIndex {
 			// Append only fails if the rows are out-of-order, which can't happen here.
 			_ = idBuilder.Append(i, dataset.Int64Value(pointer.StreamID))
 			_ = streamIDRefBuilder.Append(i, dataset.Int64Value(pointer.StreamIDRef))
@@ -305,7 +321,7 @@ func (b *Builder) encodeTo(enc *encoder) error {
 			_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(pointer.UncompressedSize))
 		}
 
-		if pointer.ColumnName != "" {
+		if pointer.PointerKind == PointerKindColumnIndex {
 			_ = columnNameBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.ColumnName)))
 			_ = columnIndexBuilder.Append(i, dataset.Int64Value(pointer.ColumnIndex))
 			_ = valuesBloomFilterBuilder.Append(i, dataset.ByteArrayValue(pointer.ValuesBloomFilter))
@@ -319,6 +335,7 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		var errs []error
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_PATH, pathBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_SECTION, sectionBuilder))
+		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_POINTER_KIND, pointerKindBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_STREAM_ID, idBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_STREAM_ID_REF, streamIDRefBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))

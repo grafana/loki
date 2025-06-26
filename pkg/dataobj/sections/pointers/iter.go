@@ -52,7 +52,10 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 			return err
 		}
 
-		dset := wrapDataset(dec)
+		dset, err := newColumnsDataset(section.Columns())
+		if err != nil {
+			return fmt.Errorf("creating section dataset: %w", err)
+		}
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
 		if err != nil {
@@ -96,12 +99,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 //
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
-<<<<<<< Updated upstream
-func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *ObjPointer, sym *symbolizer.Symbolizer) error {
-=======
 func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *SectionPointer, sym *symbolizer.Symbolizer) error {
-
->>>>>>> Stashed changes
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
 			continue
@@ -120,6 +118,19 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.Section = columnValue.Int64()
+
+		case pointersmd.COLUMN_TYPE_POINTER_KIND:
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			switch columnValue.Int64() {
+			case int64(PointerKindStreamIndex):
+				pointer.PointerKind = PointerKindStreamIndex
+			case int64(PointerKindColumnIndex):
+				pointer.PointerKind = PointerKindColumnIndex
+			default:
+				return fmt.Errorf("invalid pointer kind %d", columnValue.Int64())
+			}
 
 		case pointersmd.COLUMN_TYPE_STREAM_ID:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
@@ -145,7 +156,7 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 			}
 			pointer.EndTs = time.Unix(0, columnValue.Int64())
 
-		case pointersmd.COLUMN_TYPE_ROWS:
+		case pointersmd.COLUMN_TYPE_ROW_COUNT:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
@@ -161,7 +172,13 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			pointer.Column = sym.Get(unsafeString(columnValue.ByteArray()))
+			pointer.ColumnName = sym.Get(unsafeString(columnValue.ByteArray()))
+
+		case pointersmd.COLUMN_TYPE_COLUMN_INDEX:
+			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			pointer.ColumnIndex = columnValue.Int64()
 
 		case pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
@@ -173,7 +190,6 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 			copy(pointer.ValuesBloomFilter, filterBytes)
 
 		default:
-			fmt.Printf("unexpected column type: %s\n", column.Type)
 			// TODO(rfratto): We probably don't want to return an error on unexpected
 			// columns because it breaks forward compatibility. Should we log
 			// something here?
@@ -181,13 +197,6 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 	}
 
 	return nil
-}
-
-func unsafeSlice(data string, capacity int) []byte {
-	if capacity <= 0 {
-		capacity = len(data)
-	}
-	return unsafe.Slice(unsafe.StringData(data), capacity)
 }
 
 func unsafeString(data []byte) string {

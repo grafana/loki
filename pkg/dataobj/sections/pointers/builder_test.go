@@ -15,6 +15,7 @@ func TestAddingStreams(t *testing.T) {
 	type ent struct {
 		path             string
 		section          int64
+		pointerKind      PointerKind
 		streamIDInObject int64
 		streamID         int64
 		minTimestamp     time.Time
@@ -24,15 +25,15 @@ func TestAddingStreams(t *testing.T) {
 	}
 
 	tt := []ent{
-		{path: "foo", section: 0, streamIDInObject: -1, streamID: 1, minTimestamp: time.Unix(9, 0), maxTimestamp: time.Unix(15, 0), rowsCount: 2, uncompressedSize: 30},
-		{path: "bar", section: 1, streamIDInObject: -2, streamID: 2, minTimestamp: time.Unix(100, 0), maxTimestamp: time.Unix(101, 0), rowsCount: 2, uncompressedSize: 20},
+		{path: "foo", section: 0, pointerKind: PointerKindStreamIndex, streamIDInObject: -1, streamID: 1, minTimestamp: time.Unix(9, 0), maxTimestamp: time.Unix(15, 0), rowsCount: 2, uncompressedSize: 30},
+		{path: "bar", section: 1, pointerKind: PointerKindStreamIndex, streamIDInObject: -2, streamID: 2, minTimestamp: time.Unix(100, 0), maxTimestamp: time.Unix(101, 0), rowsCount: 2, uncompressedSize: 20},
 	}
 
 	tracker := NewBuilder(nil, 1024)
 	for _, tc := range tt {
 		tracker.RecordStreamRef(tc.path, tc.streamIDInObject, tc.streamID)
-		// Observe twice to track both min & max timestamps. The size is 0 to avoid double counting it.
 		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.minTimestamp, tc.uncompressedSize)
+		// We Observe twice to track the max timestamp too. But we don't want to count the size twice.
 		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.maxTimestamp, 0)
 	}
 
@@ -43,6 +44,7 @@ func TestAddingStreams(t *testing.T) {
 		{
 			Path:             "foo",
 			Section:          0,
+			PointerKind:      PointerKindStreamIndex,
 			StreamID:         1,
 			StreamIDRef:      -1,
 			StartTs:          time.Unix(9, 0),
@@ -51,11 +53,13 @@ func TestAddingStreams(t *testing.T) {
 			UncompressedSize: 30,
 			// Non stream pieces are set to default values
 			ValuesBloomFilter: nil,
-			Column:            "",
+			ColumnName:        "",
+			ColumnIndex:       0,
 		},
 		{
 			Path:             "bar",
 			Section:          1,
+			PointerKind:      PointerKindStreamIndex,
 			StreamID:         2,
 			StreamIDRef:      -2,
 			StartTs:          time.Unix(100, 0),
@@ -64,7 +68,8 @@ func TestAddingStreams(t *testing.T) {
 			UncompressedSize: 20,
 			// Non stream pieces are set to default values
 			ValuesBloomFilter: nil,
-			Column:            "",
+			ColumnName:        "",
+			ColumnIndex:       0,
 		},
 	}
 
@@ -85,18 +90,20 @@ func TestAddingColumnIndexes(t *testing.T) {
 	type ent struct {
 		path              string
 		section           int64
-		column            string
+		pointerKind       PointerKind
+		columnName        string
+		columnIndex       int64
 		valuesBloomFilter []byte
 	}
 
 	tt := []ent{
-		{path: "foo", section: 0, column: "testColumn", valuesBloomFilter: []byte{1, 2, 3}},
-		{path: "bar", section: 1, column: "testColumn2", valuesBloomFilter: []byte{1, 2, 3, 4}},
+		{path: "foo", section: 0, pointerKind: PointerKindColumnIndex, columnName: "testColumn", columnIndex: 0, valuesBloomFilter: []byte{1, 2, 3}},
+		{path: "bar", section: 1, pointerKind: PointerKindColumnIndex, columnName: "testColumn2", columnIndex: 1, valuesBloomFilter: []byte{1, 2, 3, 4}},
 	}
 
 	tracker := NewBuilder(nil, 1024)
 	for _, tc := range tt {
-		tracker.RecordColumnIndex(tc.path, tc.section, tc.column, tc.valuesBloomFilter)
+		tracker.RecordColumnIndex(tc.path, tc.section, tc.columnName, tc.columnIndex, tc.valuesBloomFilter)
 	}
 
 	buf, err := buildObject(tracker)
@@ -106,7 +113,9 @@ func TestAddingColumnIndexes(t *testing.T) {
 		{
 			Path:              "foo",
 			Section:           0,
-			Column:            "testColumn",
+			PointerKind:       PointerKindColumnIndex,
+			ColumnName:        "testColumn",
+			ColumnIndex:       0,
 			ValuesBloomFilter: []byte{1, 2, 3},
 			// Non column pieces are set to default values
 			StreamID:         0,
@@ -118,7 +127,9 @@ func TestAddingColumnIndexes(t *testing.T) {
 		{
 			Path:              "bar",
 			Section:           1,
-			Column:            "testColumn2",
+			PointerKind:       PointerKindColumnIndex,
+			ColumnName:        "testColumn2",
+			ColumnIndex:       1,
 			ValuesBloomFilter: []byte{1, 2, 3, 4},
 			// Non column pieces are set to default values
 			StreamID:         0,

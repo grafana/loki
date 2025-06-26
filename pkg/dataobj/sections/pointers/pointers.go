@@ -1,5 +1,5 @@
-// package pointers defines types used for the data object streams section. The
-// streams section holds a list of streams present in the data object.
+// package pointers defines types used for the data object pointers section. The
+// pointers section holds a list of pointers to sections present in the data object.
 package pointers
 
 import (
@@ -95,6 +95,8 @@ func convertColumnType(protoType pointersmd.ColumnType) (ColumnType, bool) {
 		return ColumnTypePath, true
 	case pointersmd.COLUMN_TYPE_SECTION:
 		return ColumnTypeSection, true
+	case pointersmd.COLUMN_TYPE_POINTER_KIND:
+		return ColumnTypePointerKind, true
 
 	case pointersmd.COLUMN_TYPE_STREAM_ID:
 		return ColumnTypeStreamID, true
@@ -124,6 +126,7 @@ const (
 	ColumnTypeInvalid ColumnType = iota // ColumnTypeInvalid is an invalid column.
 	ColumnTypePath
 	ColumnTypeSection
+	ColumnTypePointerKind // ColumnTypePointerKind is a column containing the kind of pointer: stream or column.
 
 	ColumnTypeStreamID         // ColumnTypeStreamID is a column containing a set of stream IDs.
 	ColumnTypeStreamIDRef      // ColumnTypeStreamIDRef is a column containing a set of stream IDs from the referenced object.
@@ -138,9 +141,10 @@ const (
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid: "invalid",
-	ColumnTypePath:    "path",
-	ColumnTypeSection: "section",
+	ColumnTypeInvalid:     "invalid",
+	ColumnTypePath:        "path",
+	ColumnTypeSection:     "section",
+	ColumnTypePointerKind: "pointer_kind",
 
 	ColumnTypeStreamID:         "stream_id",
 	ColumnTypeStreamIDRef:      "stream_id_ref",

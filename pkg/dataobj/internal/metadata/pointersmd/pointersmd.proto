@@ -34,36 +34,39 @@ enum ColumnType {
   // COLUMN_TYPE_SECTION is the section number within the referenced data object.
   COLUMN_TYPE_SECTION = 2;
 
+  // COLUMN_TYPE_POINTER_ is the type of index this pointer holds: Stream or Column.
+  COLUMN_TYPE_POINTER_KIND = 3;
+
   // COLUMN_TYPE_STREAM_ID is a column containing the streamID within the index object
-  COLUMN_TYPE_STREAM_ID = 3;
+  COLUMN_TYPE_STREAM_ID = 4;
 
   // COLUMN_TYPE_STREAM_ID_REF is a column containing the streamID within the referenced object
-  COLUMN_TYPE_STREAM_ID_REF = 4;
+  COLUMN_TYPE_STREAM_ID_REF = 5;
 
   // COLUMN_TYPE_MIN_TIMESTAMP is a column containing the minimum timestamp of
   // a stream.
-  COLUMN_TYPE_MIN_TIMESTAMP = 5;
+  COLUMN_TYPE_MIN_TIMESTAMP = 6;
 
   // COLUMN_TYPE_MAX_TIMESTAMP is a column containing the maximum timestamp of
   // a stream.
-  COLUMN_TYPE_MAX_TIMESTAMP = 6;
+  COLUMN_TYPE_MAX_TIMESTAMP = 7;
 
   // COLUMN_TYPE_ROW_COUNT is a column indicating the number of rows for a stream.
-  COLUMN_TYPE_ROW_COUNT = 7;
+  COLUMN_TYPE_ROW_COUNT = 8;
 
   // COLUMN_TYPE_UNCOMPRESSED_SIZE is a column indicating the uncompressed size
   // of a stream. Size of a stream is the sum of the length of all log lines and
   // the length of all structured metadata values
-  COLUMN_TYPE_UNCOMPRESSED_SIZE = 8;
+  COLUMN_TYPE_UNCOMPRESSED_SIZE = 9;
 
   // COLUMN_TYPE_COLUMN_NAME is the name of a column within a referenced section
-  COLUMN_TYPE_COLUMN_NAME = 9;
+  COLUMN_TYPE_COLUMN_NAME = 10;
 
   // COLUMN_TYPE_COLUMN_INDEX is the index of a column within a referenced section to uniquely refer to it.
-  COLUMN_TYPE_COLUMN_INDEX = 10;
+  COLUMN_TYPE_COLUMN_INDEX = 11;
 
   // COLUMN_TYPE_VALUES_BLOOM_FILTER is the raw bytes of a bloom filter for values stored in referenced column & section.
-  COLUMN_TYPE_VALUES_BLOOM_FILTER = 11;
+  COLUMN_TYPE_VALUES_BLOOM_FILTER = 12;
 }
 
 // ColumnMetadata describes the metadata for a column.
