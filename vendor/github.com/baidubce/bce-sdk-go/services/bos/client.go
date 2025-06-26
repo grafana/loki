@@ -19,11 +19,11 @@
 package bos
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math"
 	"net/http"
@@ -34,7 +34,6 @@ import (
 	sdk_http "github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
 	"github.com/baidubce/bce-sdk-go/services/sts"
-	"github.com/baidubce/bce-sdk-go/util"
 	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
@@ -960,17 +959,12 @@ func (c *Client) BasicPutObject(bucket, object string, body *bce.Body) (string, 
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromBytes(bucket, object string, bytesArr []byte,
 	args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		buf := bytes.NewBuffer(bytesArr)
-		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromBytes(bytesArr)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
@@ -979,17 +973,12 @@ func (c *Client) PutObjectFromBytes(bucket, object string, bytesArr []byte,
 // PutObjectFromBytesWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, object string,
 	bytesArr []byte, args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		buf := bytes.NewBuffer(bytesArr)
-		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromBytes(bytesArr)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
@@ -1009,17 +998,12 @@ func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, obje
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromString(bucket, object, content string,
 	args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		buf := bytes.NewBufferString(content)
-		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromString(content)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
@@ -1028,22 +1012,16 @@ func (c *Client) PutObjectFromString(bucket, object, content string,
 // PutObjectFromStringWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 	bucket, object, content string, args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		buf := bytes.NewBufferString(content)
-		contentCrc32c, err := util.CalculateContentCrc32c(buf, int64(buf.Len()))
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromString(content)
 	if err != nil {
 		return "", err
 	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
 	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
-
 }
 
 // PutObjectFromFile - upload a new object or rewrite the existed object from a local file
@@ -1059,16 +1037,12 @@ func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 	args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
@@ -1077,16 +1051,12 @@ func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 // PutObjectFromFileWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
 	bucket, object, fileName string, args *api.PutObjectArgs) (string, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
@@ -1106,20 +1076,12 @@ func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
 //   - error: the uploaded error if any occurs
 func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 	args *api.PutObjectArgs) (string, error) {
-	if seeker, ok := reader.(io.Seeker); ok && args != nil && args.ContentCrc32cFlag {
-		contentCrc32c, err := util.CalculateContentCrc32cFromStream(reader)
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-		_, err = seeker.Seek(0, io.SeekStart)
-		if err != nil {
-			return "", err
-		}
-	}
 	body, err := bce.NewBodyFromSizedReader(reader, -1)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
@@ -1128,20 +1090,12 @@ func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 // PutObjectFromStreamWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, object string,
 	reader io.Reader, args *api.PutObjectArgs) (string, error) {
-	if seeker, ok := reader.(io.Seeker); ok && args != nil && args.ContentCrc32cFlag {
-		contentCrc32c, err := util.CalculateContentCrc32cFromStream(reader)
-		if err != nil {
-			return "", err
-		}
-		args.ContentCrc32c = contentCrc32c
-		_, err = seeker.Seek(0, io.SeekStart)
-		if err != nil {
-			return "", nil
-		}
-	}
 	body, err := bce.NewBodyFromSizedReader(reader, -1)
 	if err != nil {
 		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	c.BosContext.Ctx = ctx
 	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
@@ -1150,16 +1104,12 @@ func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, obj
 
 func (c *Client) PutObjectFromFileWithCallback(bucket, object, fileName string,
 	args *api.PutObjectArgs) (string, *api.PutObjectResult, error) {
-	if args != nil && args.ContentCrc32cFlag {
-		contentCrc32c, err := util.CalculateContentCrc32cFromFile(fileName)
-		if err != nil {
-			return "", nil, err
-		}
-		args.ContentCrc32c = contentCrc32c
-	}
 	body, err := bce.NewBodyFromFile(fileName)
 	if err != nil {
 		return "", nil, err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
 	etag, putObjectResult, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, putObjectResult, err
@@ -1167,6 +1117,9 @@ func (c *Client) PutObjectFromFileWithCallback(bucket, object, fileName string,
 
 func (c *Client) PutObjectWithCallback(bucket, object string, body *bce.Body,
 	args *api.PutObjectArgs) (string, *api.PutObjectResult, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
 	etag, putObjectResult, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, putObjectResult, err
 }
@@ -1420,12 +1373,18 @@ func (c *Client) SimpleFetchObject(bucket, object, source, mode,
 //   - error: any error if it occurs
 func (c *Client) AppendObject(bucket, object string, content *bce.Body,
 	args *api.AppendObjectArgs) (*api.AppendObjectResult, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		content.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
 	return api.AppendObject(c, bucket, object, content, args, c.BosContext)
 }
 
 // AppendObjectWithContext - support to cancel request by context.Context
 func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object string,
 	content *bce.Body, args *api.AppendObjectArgs) (*api.AppendObjectResult, error) {
+	if args != nil && args.ContentCrc32cFlag {
+		content.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
 	c.BosContext.Ctx = ctx
 	return api.AppendObject(c, bucket, object, content, args, c.BosContext)
 }
@@ -1658,6 +1617,47 @@ func (c *Client) UploadPartWithContext(ctx context.Context, bucket, object, uplo
 func (c *Client) BasicUploadPart(bucket, object, uploadId string, partNumber int,
 	content *bce.Body) (string, error) {
 	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, nil, c.BosContext)
+}
+
+// UploadPartFromSectionFile - upload the single part from the section of a file
+//
+// PARAMS:
+//   - bucket: the bucket name
+//   - object: the object name
+//   - uploadId: the multipart upload id
+//   - partNumber: the current part number
+//   - file: the file to offer the content
+//   - offset: the offset of the file
+//   - size: content length
+//   - args: the optional arguments
+//
+// RETURNS:
+//   - string: the etag of the uploaded part
+//   - error: nil if ok otherwise the specific error
+func (c *Client) UploadPartFromSectionFile(bucket, object, uploadId string, partNumber int,
+	file *os.File, offset, size int64, args *api.UploadPartArgs) (string, error) {
+	body, err := bce.NewBodyFromSectionFile(file, offset, size)
+	if err != nil {
+		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, c.BosContext)
+}
+
+// UploadPartFromSectionFileWithContext - support to cancel request by context.Context
+func (c *Client) UploadPartFromSectionFileWithContext(ctx context.Context, bucket, object, uploadId string,
+	partNumber int, file *os.File, offset, size int64, args *api.UploadPartArgs) (string, error) {
+	body, err := bce.NewBodyFromSectionFile(file, offset, size)
+	if err != nil {
+		return "", err
+	}
+	if args != nil && args.ContentCrc32cFlag {
+		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
+	}
+	c.BosContext.Ctx = ctx
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, c.BosContext)
 }
 
 // UploadPartFromBytes - upload the single part in the multipart upload process

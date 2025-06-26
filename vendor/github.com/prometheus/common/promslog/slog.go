@@ -76,6 +76,11 @@ func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// Level returns the value of the logging level as an slog.Level.
+func (l *Level) Level() slog.Level {
+	return l.lvl.Level()
+}
+
 // String returns the current level.
 func (l *Level) String() string {
 	switch l.lvl.Level() {

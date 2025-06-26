@@ -398,12 +398,12 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		var writer aggregation.EntryWriter
+		metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
 
+		var metricWriter aggregation.EntryWriter
 		aggCfg := i.cfg.MetricAggregation
 		if i.limits.MetricAggregationEnabled(instanceID) {
-			metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
-			writer, err = aggregation.NewPush(
+			metricWriter, err = aggregation.NewPush(
 				aggCfg.LokiAddr,
 				instanceID,
 				aggCfg.WriteTimeout,
@@ -413,13 +413,35 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				string(aggCfg.BasicAuth.Password),
 				aggCfg.UseTLS,
 				&aggCfg.BackoffConfig,
-				i.logger,
+				log.With(i.logger, "writer", "metric-aggregation"),
 				metricAggregationMetrics,
 			)
 			if err != nil {
 				return nil, err
 			}
 		}
+
+		var patternWriter aggregation.EntryWriter
+		patternCfg := i.cfg.PatternPersistence
+		if i.limits.PatternPersistenceEnabled(instanceID) {
+			metricWriter, err = aggregation.NewPush(
+				patternCfg.LokiAddr,
+				instanceID,
+				patternCfg.WriteTimeout,
+				patternCfg.PushPeriod,
+				patternCfg.HTTPClientConfig,
+				patternCfg.BasicAuth.Username,
+				string(patternCfg.BasicAuth.Password),
+				patternCfg.UseTLS,
+				&patternCfg.BackoffConfig,
+				log.With(i.logger, "writer", "pattern"),
+				metricAggregationMetrics,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		inst, err = newInstance(
 			instanceID,
 			i.logger,
@@ -428,7 +450,8 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.limits,
 			i.ringClient,
 			i.lifecycler.ID,
-			writer,
+			metricWriter,
+			patternWriter,
 		)
 		if err != nil {
 			return nil, err
@@ -461,8 +484,8 @@ func (i *Ingester) stopWriters() {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
-		if instance.writer != nil {
-			instance.writer.Stop()
+		if instance.metricWriter != nil {
+			instance.metricWriter.Stop()
 		}
 	}
 }

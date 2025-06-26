@@ -59,6 +59,7 @@ func TestInstancePushQuery(t *testing.T) {
 		ringClient,
 		ingesterID,
 		mockWriter,
+		mockWriter,
 	)
 	require.NoError(t, err)
 
@@ -244,6 +245,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			&fakeLimits{},
 			ringClient,
 			ingesterID,
+			mockWriter,
 			mockWriter,
 		)
 		require.NoError(t, err)
@@ -442,9 +444,12 @@ func (m *mockEntryWriter) Stop() {
 }
 
 type fakeLimits struct {
-	Limits
-	metricAggregationEnabled bool
+	metricAggregationEnabled  bool
+	patternPersistenceEnabled bool
 }
+
+var _ drain.Limits = &fakeLimits{}
+var _ Limits = &fakeLimits{}
 
 func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
@@ -452,4 +457,8 @@ func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 
 func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
 	return f.metricAggregationEnabled
+}
+
+func (f *fakeLimits) PatternPersistenceEnabled(_ string) bool {
+	return f.patternPersistenceEnabled
 }

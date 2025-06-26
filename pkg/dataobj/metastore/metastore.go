@@ -16,7 +16,7 @@ type Metastore interface {
 	DataObjects(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error)
 
 	// StreamsIDs returns object store paths and stream IDs for all matching objects for the given matchers between [start,end]
-	StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, error)
+	StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error)
 
 	// Labels returns all possible labels from matching streams between [start,end]
 	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream
