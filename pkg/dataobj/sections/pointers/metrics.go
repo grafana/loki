@@ -52,7 +52,7 @@ func NewMetrics() *Metrics {
 			Subsystem: "pointers",
 			Name:      "encode_seconds",
 
-			Help: "Time taken encoding streams section in seconds.",
+			Help: "Time taken encoding pointers section in seconds.",
 
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
@@ -73,7 +73,7 @@ func NewMetrics() *Metrics {
 			Subsystem: "pointers",
 			Name:      "min_timestamp",
 
-			Help: "The minimum timestamp (in unix seconds) across all streams; this resets after an encode.",
+			Help: "The minimum timestamp (in unix seconds) across all pointers; this resets after an encode.",
 		}),
 
 		maxTimestamp: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -81,7 +81,7 @@ func NewMetrics() *Metrics {
 			Subsystem: "pointers",
 			Name:      "max_timestamp",
 
-			Help: "The maximum timestamp (in unix seconds) across all streams; this resets after an encode.",
+			Help: "The maximum timestamp (in unix seconds) across all pointers; this resets after an encode.",
 		}),
 
 		datasetColumnMetadataSize: newNativeHistogram(prometheus.HistogramOpts{

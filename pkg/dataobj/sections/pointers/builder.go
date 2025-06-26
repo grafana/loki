@@ -16,11 +16,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
-// A ObjPointer is an individual stream within a data object.
+// A ObjPointer is a pointer to an section within another object.
+// It is a wide object containing two types of index information:
+//
+// 1. Stream indexing metadata
+// 2. Column indexing metadata
+//
+// The stream indexing metadata is used to lookup which streams in the referenced section, and their ID within that section.
+// The column indexing metadata is used to lookup which column values are present in the referenced section.
+// Path & Section are mandatory fields, and are used to uniquely identify the section within the referenced object.
 type ObjPointer struct {
-	Path string
+	Path    string
+	Section int64
 
-	// Stream index metadata
+	// Stream indexing metadata
 	StreamID         int64
 	StreamIDRef      int64
 	StartTs          time.Time
@@ -28,23 +37,22 @@ type ObjPointer struct {
 	LineCount        int64
 	UncompressedSize int64
 
-	// Column index metadata
-	// TODO: Write the blooms column by column somehow? Or at least sort them. We might need to do this to avoid downloading pages of blooms we don't need?
+	// Column indexing metadata
 	Column            string
-	Section           int64
 	ValuesBloomFilter []byte
 }
 
-// Builder builds a streams section.
+// Builder builds a pointers section.
 type Builder struct {
 	metrics  *Metrics
 	pageSize int
-	// orderedStreams is used for consistently iterating over the list of
-	// streams. It contains streamed added in append order.
 
-	streamLookup     map[string]*ObjPointer
+	// streamLookup is a map of the stream ID in this index object to the pointer.
+	streamLookup map[string]*ObjPointer
+	// streamObjectRefs is a map of the stream ID in the referenced logs object to the stream ID in this index object.
 	streamObjectRefs map[string]map[int64]int64
-	ordered          []*ObjPointer
+	// pointers is the list of pointers to encode.
+	pointers []*ObjPointer
 }
 
 // NewBuilder creates a new pointers section builder. The pageSize argument
@@ -59,7 +67,7 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 
 		streamLookup:     make(map[string]*ObjPointer),
 		streamObjectRefs: make(map[string]map[int64]int64),
-		ordered:          make([]*ObjPointer, 0, 1024),
+		pointers:         make([]*ObjPointer, 0, 1024),
 	}
 }
 
@@ -104,7 +112,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 		LineCount:        1,
 		UncompressedSize: uncompressedSize,
 	}
-	b.ordered = append(b.ordered, newPointer)
+	b.pointers = append(b.pointers, newPointer)
 	b.streamLookup[key] = newPointer
 }
 
@@ -115,7 +123,7 @@ func (b *Builder) RecordColumnIndex(path string, section int64, column string, v
 		Section:           section,
 		ValuesBloomFilter: valuesBloomFilter,
 	}
-	b.ordered = append(b.ordered, newPointer)
+	b.pointers = append(b.pointers, newPointer)
 }
 
 // EstimatedSize returns the estimated size of the Pointers section in bytes.
@@ -127,23 +135,31 @@ func (b *Builder) EstimatedSize() int {
 	// compression:
 	//
 	// 1. Assume an ID delta of 1.
-	// 2. Assume a timestamp delta of 1s.
+	// 2. Assume a timestamp delta of 10m.
 	// 3. Assume a row count delta of 500.
-	// 4. Assume (conservative) 2x compression ratio of all label values.
+	// 4. Assume a 10kb uncompressed size delta.
+	// 5. Assume 5 bytes per column name with a 2x compression ratio.
+	// 6. Assume 50 bytes per column bloom.
+	// 7. Assume 10% of the pointers are column indexes.
 
 	var (
 		idDeltaSize        = streamio.VarintSize(1)
-		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
+		timestampDeltaSize = streamio.VarintSize(10 * int64(time.Minute))
 		rowDeltaSize       = streamio.VarintSize(500)
+		bytesDeltaSize     = streamio.VarintSize(10000)
+		streamIndexCount   = int(float64(len(b.streamLookup)) * 0.9)
+		columnIndexCount   = int(float64(len(b.pointers)) * 0.1)
 	)
 
 	var sizeEstimate int
 
-	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += len(b.ordered) * 20                 // All labels (2x compression ratio)
+	sizeEstimate += len(b.pointers) * idDeltaSize * 2     // ID + StreamIDRef
+	sizeEstimate += streamIndexCount * timestampDeltaSize // Min timestamp
+	sizeEstimate += streamIndexCount * timestampDeltaSize // Max timestamp
+	sizeEstimate += streamIndexCount * rowDeltaSize       // Rows
+	sizeEstimate += streamIndexCount * bytesDeltaSize     // Uncompressed size
+	sizeEstimate += columnIndexCount * 5                  // Column name (2x compression ratio)
+	sizeEstimate += columnIndexCount * 50                 // Column bloom
 
 	return sizeEstimate
 }
@@ -172,22 +188,22 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 // sortPointerObjects sorts the pointers so all the column indexes are together and all the stream indexes are ordered by StreamID then Timestamp.
 func (b *Builder) sortPointerObjects() {
-	sort.Slice(b.ordered, func(i, j int) bool {
-		if b.ordered[i].StreamID == 0 && b.ordered[j].StreamID == 0 {
+	sort.Slice(b.pointers, func(i, j int) bool {
+		if b.pointers[i].StreamID == 0 && b.pointers[j].StreamID == 0 {
 			// A column index
-			if b.ordered[i].Column == b.ordered[j].Column {
-				return b.ordered[i].Section < b.ordered[j].Section
+			if b.pointers[i].Column == b.pointers[j].Column {
+				return b.pointers[i].Section < b.pointers[j].Section
 			}
-			return b.ordered[i].Column < b.ordered[j].Column
-		} else if b.ordered[i].StreamID != 0 && b.ordered[j].StreamID != 0 {
+			return b.pointers[i].Column < b.pointers[j].Column
+		} else if b.pointers[i].StreamID != 0 && b.pointers[j].StreamID != 0 {
 			// A stream
-			if b.ordered[i].StartTs.Equal(b.ordered[j].StartTs) {
-				return b.ordered[i].EndTs.Before(b.ordered[j].EndTs)
+			if b.pointers[i].StartTs.Equal(b.pointers[j].StartTs) {
+				return b.pointers[i].EndTs.Before(b.pointers[j].EndTs)
 			}
-			return b.ordered[i].StartTs.Before(b.ordered[j].StartTs)
+			return b.pointers[i].StartTs.Before(b.pointers[j].StartTs)
 		}
 		// They're different, just make sure all the streams are separate from the columns
-		return b.ordered[i].StreamID < b.ordered[j].StreamID
+		return b.pointers[i].StreamID < b.pointers[j].StreamID
 	})
 }
 
@@ -249,6 +265,9 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating column name column: %w", err)
@@ -258,14 +277,14 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		PageSizeHint: b.pageSize,
 		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE, // TODO: Is there any point compression a bloom?
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE, // TODO: is there a sensible compression algorithm for bloom filters?
 	})
 	if err != nil {
 		return fmt.Errorf("creating values bloom filter column: %w", err)
 	}
 
 	// Populate our column builders.
-	for i, pointer := range b.ordered {
+	for i, pointer := range b.pointers {
 		_ = pathBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Path)))
 		_ = sectionBuilder.Append(i, dataset.Int64Value(pointer.Section))
 
@@ -349,7 +368,7 @@ func encodeColumn(enc *encoder, columnType pointersmd.ColumnType, builder *datas
 
 // Reset resets all state, allowing Streams to be reused.
 func (b *Builder) Reset() {
-	b.ordered = sliceclear.Clear(b.ordered)
+	b.pointers = sliceclear.Clear(b.pointers)
 	clear(b.streamLookup)
 	clear(b.streamObjectRefs)
 
