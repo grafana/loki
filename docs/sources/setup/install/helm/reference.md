@@ -3083,7 +3083,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.1"
+    "tag": "1.9.3"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3260,7 +3260,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.1"
+"1.9.3"
 </pre>
 </td>
 		</tr>
