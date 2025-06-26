@@ -19,8 +19,8 @@ import (
 
 // Iter iterates over pointers in the provided decoder. All pointers sections are
 // iterated over in order.
-func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[ObjPointer] {
-	return result.Iter(func(yield func(ObjPointer) bool) error {
+func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[SectionPointer] {
+	return result.Iter(func(yield func(SectionPointer) bool) error {
 		for i, section := range obj.Sections().Filter(CheckSection) {
 			pointersSection, err := Open(ctx, section)
 			if err != nil {
@@ -38,8 +38,8 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[ObjPointer] {
 	})
 }
 
-func IterSection(ctx context.Context, section *Section) result.Seq[ObjPointer] {
-	return result.Iter(func(yield func(ObjPointer) bool) error {
+func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointer] {
+	return result.Iter(func(yield func(SectionPointer) bool) error {
 		dec := newDecoder(section.reader)
 
 		// We need to pull the columns twice: once from the dataset implementation
@@ -76,7 +76,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[ObjPointer] {
 				return nil
 			}
 
-			var stream ObjPointer
+			var stream SectionPointer
 			for _, row := range rows[:n] {
 				if err := decodeRow(streamsColumns, row, &stream, sym); err != nil {
 					return err
@@ -96,7 +96,12 @@ func IterSection(ctx context.Context, section *Section) result.Seq[ObjPointer] {
 //
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
+<<<<<<< Updated upstream
 func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *ObjPointer, sym *symbolizer.Symbolizer) error {
+=======
+func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *SectionPointer, sym *symbolizer.Symbolizer) error {
+
+>>>>>>> Stashed changes
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
 			continue

@@ -13,12 +13,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
+<<<<<<< Updated upstream
 var pointerTestData = []ObjPointer{
 	{Path: "testPath2", Section: 2, Column: "testColumn", ValuesBloomFilter: []byte{1, 2, 3}},
 	{Path: "testPath2", Section: 2, Column: "testColumn2", ValuesBloomFilter: []byte{1, 2, 3, 4}},
 	{Path: "testPath1", Section: 1, StreamID: 1, StreamIDRef: 3, StartTs: unixTime(10), EndTs: unixTime(15), LineCount: 2, UncompressedSize: 2},
 	{Path: "testPath1", Section: 2, StreamID: 2, StreamIDRef: 4, StartTs: unixTime(12), EndTs: unixTime(17), LineCount: 2, UncompressedSize: 4},
 	{Path: "testPath2", Section: 1, StreamID: 1, StreamIDRef: 5, StartTs: unixTime(13), EndTs: unixTime(18), LineCount: 2, UncompressedSize: 3},
+=======
+var pointerTestData = []SectionPointer{
+	{Path: "testPath1", StreamID: 1, StartTs: unixTime(10), EndTs: unixTime(15), LineCount: 25, UncompressedSize: 2},
+	{Path: "testPath1", StreamID: 2, StartTs: unixTime(12), EndTs: unixTime(17), LineCount: 50, UncompressedSize: 4},
+	{Path: "testPath2", StreamID: 1, StartTs: unixTime(13), EndTs: unixTime(18), LineCount: 10, UncompressedSize: 3},
+	{Path: "testPath2", Column: "testColumn", Section: 1, ValuesBloomFilter: []byte{1, 2, 3}},
+	{Path: "testPath2", Column: "testColumn2", Section: 2, ValuesBloomFilter: []byte{1, 2, 3, 4}},
+>>>>>>> Stashed changes
 }
 
 func TestRowReader(t *testing.T) {
@@ -63,10 +72,10 @@ func buildPointersDecoder(t *testing.T, pageSize int) *Section {
 	return sec
 }
 
-func readAllPointers(ctx context.Context, r *RowReader) ([]ObjPointer, error) {
+func readAllPointers(ctx context.Context, r *RowReader) ([]SectionPointer, error) {
 	var (
-		res []ObjPointer
-		buf = make([]ObjPointer, 128)
+		res []SectionPointer
+		buf = make([]SectionPointer, 128)
 	)
 
 	for {

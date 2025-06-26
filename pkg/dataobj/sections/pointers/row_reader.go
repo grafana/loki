@@ -87,7 +87,7 @@ func (r *RowReader) SetPredicate(p RowPredicate) error {
 // Read reads up to the next len(s) streams from the reader and stores them
 // into s. It returns the number of streams read and any error encountered. At
 // the end of the stream section, Read returns 0, io.EOF.
-func (r *RowReader) Read(ctx context.Context, s []ObjPointer) (int, error) {
+func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 	if r.sec == nil {
 		return 0, io.EOF
 	}

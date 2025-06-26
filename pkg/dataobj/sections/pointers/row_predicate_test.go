@@ -37,15 +37,15 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		pointer  ObjPointer
+		pointer  SectionPointer
 		pred     RowPredicate
 		expected bool
 	}{
 		{
 			name: "bloom filter contains value",
-			pointer: ObjPointer{
+			pointer: SectionPointer{
 				Path:              "testPath1",
-				Column:            "pod",
+				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
 			pred: BloomExistencePredicate{
@@ -56,9 +56,9 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 		},
 		{
 			name: "bloom filter does not contain value", // our false positive rate is very low for this test, so it should never return true
-			pointer: ObjPointer{
+			pointer: SectionPointer{
 				Path:              "testPath1",
-				Column:            "pod",
+				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
 			pred: BloomExistencePredicate{
@@ -78,12 +78,12 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 	}
 }
 
-func evaluateBloomExistencePredicate(p dataset.Predicate, s ObjPointer) bool {
+func evaluateBloomExistencePredicate(p dataset.Predicate, s SectionPointer) bool {
 	switch p := p.(type) {
 	case dataset.AndPredicate:
 		return evaluateBloomExistencePredicate(p.Left, s) && evaluateBloomExistencePredicate(p.Right, s)
 	case dataset.EqualPredicate:
-		return s.Column == unsafeString(p.Value.ByteArray())
+		return s.ColumnName == unsafeString(p.Value.ByteArray())
 	case dataset.FuncPredicate:
 		return p.Keep(p.Column, dataset.ByteArrayValue(s.ValuesBloomFilter))
 

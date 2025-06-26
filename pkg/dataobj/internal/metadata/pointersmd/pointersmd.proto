@@ -1,5 +1,5 @@
-// streamsmd.proto holds metadata for the streams section of a data object. The
-// streams section conains references to log streams within the data object.
+// pointersmd.proto holds metadata for the pointers section of a data object. The
+// pointers contains references to other dataobjects in storage, intended for use with indexing.
 syntax = "proto3";
 
 package dataobj.metadata.pointers.v1;
@@ -8,13 +8,13 @@ import "pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd";
 
-// Metadata describes the metadata for the streams section.
+// Metadata describes the metadata for the pointers section.
 message Metadata {
-  // Columns within the stream.
+  // Columns within the pointers section.
   repeated ColumnDesc columns = 1;
 }
 
-// ColumnDesc describes an individual column within the streams table.
+// ColumnDesc describes an individual column within the pointers table.
 message ColumnDesc {
   // Information about the column.
   dataobj.metadata.dataset.v1.ColumnInfo info = 1;
@@ -23,7 +23,7 @@ message ColumnDesc {
   ColumnType type = 2;
 }
 
-// ColumnType represents the valid types that a stream's column can have.
+// ColumnType represents the valid types that a pointer's column can have.
 enum ColumnType {
   // Invalid column type.
   COLUMN_TYPE_UNSPECIFIED = 0;
@@ -48,19 +48,22 @@ enum ColumnType {
   // a stream.
   COLUMN_TYPE_MAX_TIMESTAMP = 6;
 
-  // COLUMN_TYPE_ROWS is a column indicating the number of rows for a stream.
-  COLUMN_TYPE_ROWS = 7;
+  // COLUMN_TYPE_ROW_COUNT is a column indicating the number of rows for a stream.
+  COLUMN_TYPE_ROW_COUNT = 7;
 
   // COLUMN_TYPE_UNCOMPRESSED_SIZE is a column indicating the uncompressed size
   // of a stream. Size of a stream is the sum of the length of all log lines and
   // the length of all structured metadata values
   COLUMN_TYPE_UNCOMPRESSED_SIZE = 8;
 
-  // COLUMN_TYPE_COLUMN_NAME is the name of a column this object is storing indexes about
+  // COLUMN_TYPE_COLUMN_NAME is the name of a column within a referenced section
   COLUMN_TYPE_COLUMN_NAME = 9;
 
-  // COLUMN_TYPE_VALUES_BLOOM_FILTER is the raw bytes of a bloom filter for values stored in relevant column & section.
-  COLUMN_TYPE_VALUES_BLOOM_FILTER = 10;
+  // COLUMN_TYPE_COLUMN_INDEX is the index of a column within a referenced section to uniquely refer to it.
+  COLUMN_TYPE_COLUMN_INDEX = 10;
+
+  // COLUMN_TYPE_VALUES_BLOOM_FILTER is the raw bytes of a bloom filter for values stored in referenced column & section.
+  COLUMN_TYPE_VALUES_BLOOM_FILTER = 11;
 }
 
 // ColumnMetadata describes the metadata for a column.

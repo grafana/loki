@@ -39,7 +39,7 @@ func TestAddingStreams(t *testing.T) {
 	buf, err := buildObject(tracker)
 	require.NoError(t, err)
 
-	expect := []ObjPointer{
+	expect := []SectionPointer{
 		{
 			Path:             "foo",
 			Section:          0,
@@ -71,7 +71,7 @@ func TestAddingStreams(t *testing.T) {
 	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
 	require.NoError(t, err)
 
-	var actual []ObjPointer
+	var actual []SectionPointer
 	for result := range Iter(context.Background(), obj) {
 		pointer, err := result.Value()
 		require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestAddingColumnIndexes(t *testing.T) {
 	buf, err := buildObject(tracker)
 	require.NoError(t, err)
 
-	expect := []ObjPointer{
+	expect := []SectionPointer{
 		{
 			Path:              "foo",
 			Section:           0,
@@ -132,7 +132,7 @@ func TestAddingColumnIndexes(t *testing.T) {
 	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
 	require.NoError(t, err)
 
-	var actual []ObjPointer
+	var actual []SectionPointer
 	for result := range Iter(context.Background(), obj) {
 		pointer, err := result.Value()
 		require.NoError(t, err)

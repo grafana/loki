@@ -16,16 +16,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
-// A ObjPointer is a pointer to an section within another object.
+// A SectionPointer is a pointer to an section within another object.
 // It is a wide object containing two types of index information:
 //
 // 1. Stream indexing metadata
 // 2. Column indexing metadata
 //
-// The stream indexing metadata is used to lookup which streams in the referenced section, and their ID within that section.
+// The stream indexing metadata is used to lookup which stream is in the referenced section, and their ID within the object.
 // The column indexing metadata is used to lookup which column values are present in the referenced section.
 // Path & Section are mandatory fields, and are used to uniquely identify the section within the referenced object.
-type ObjPointer struct {
+type SectionPointer struct {
 	Path    string
 	Section int64
 
@@ -38,7 +38,8 @@ type ObjPointer struct {
 	UncompressedSize int64
 
 	// Column indexing metadata
-	Column            string
+	ColumnIndex       int64
+	ColumnName        string
 	ValuesBloomFilter []byte
 }
 
@@ -48,11 +49,11 @@ type Builder struct {
 	pageSize int
 
 	// streamLookup is a map of the stream ID in this index object to the pointer.
-	streamLookup map[string]*ObjPointer
+	streamLookup map[string]*SectionPointer
 	// streamObjectRefs is a map of the stream ID in the referenced logs object to the stream ID in this index object.
 	streamObjectRefs map[string]map[int64]int64
 	// pointers is the list of pointers to encode.
-	pointers []*ObjPointer
+	pointers []*SectionPointer
 }
 
 // NewBuilder creates a new pointers section builder. The pageSize argument
@@ -65,9 +66,9 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		metrics:  metrics,
 		pageSize: pageSize,
 
-		streamLookup:     make(map[string]*ObjPointer),
+		streamLookup:     make(map[string]*SectionPointer),
 		streamObjectRefs: make(map[string]map[int64]int64),
-		pointers:         make([]*ObjPointer, 0, 1024),
+		pointers:         make([]*SectionPointer, 0, 1024),
 	}
 }
 
@@ -102,7 +103,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 		return
 	}
 
-	newPointer := &ObjPointer{
+	newPointer := &SectionPointer{
 		Path:             path,
 		Section:          section,
 		StreamID:         indexStreamID,
@@ -116,11 +117,12 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 	b.streamLookup[key] = newPointer
 }
 
-func (b *Builder) RecordColumnIndex(path string, section int64, column string, valuesBloomFilter []byte) {
-	newPointer := &ObjPointer{
+func (b *Builder) RecordColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloomFilter []byte) {
+	newPointer := &SectionPointer{
 		Path:              path,
-		Column:            column,
 		Section:           section,
+		ColumnName:        columnName,
+		ColumnIndex:       columnIndex,
 		ValuesBloomFilter: valuesBloomFilter,
 	}
 	b.pointers = append(b.pointers, newPointer)
@@ -191,10 +193,10 @@ func (b *Builder) sortPointerObjects() {
 	sort.Slice(b.pointers, func(i, j int) bool {
 		if b.pointers[i].StreamID == 0 && b.pointers[j].StreamID == 0 {
 			// A column index
-			if b.pointers[i].Column == b.pointers[j].Column {
+			if b.pointers[i].ColumnIndex == b.pointers[j].ColumnIndex {
 				return b.pointers[i].Section < b.pointers[j].Section
 			}
-			return b.pointers[i].Column < b.pointers[j].Column
+			return b.pointers[i].ColumnIndex < b.pointers[j].ColumnIndex
 		} else if b.pointers[i].StreamID != 0 && b.pointers[j].StreamID != 0 {
 			// A stream
 			if b.pointers[i].StartTs.Equal(b.pointers[j].StartTs) {
@@ -250,7 +252,7 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(b.pageSize)
+	rowCountBuilder, err := numberColumnBuilder(b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
@@ -271,6 +273,11 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	})
 	if err != nil {
 		return fmt.Errorf("creating column name column: %w", err)
+	}
+
+	columnIndexBuilder, err := numberColumnBuilder(b.pageSize)
+	if err != nil {
+		return fmt.Errorf("creating column index column: %w", err)
 	}
 
 	valuesBloomFilterBuilder, err := dataset.NewColumnBuilder("values_bloom_filter", dataset.BuilderOptions{
@@ -294,12 +301,13 @@ func (b *Builder) encodeTo(enc *encoder) error {
 			_ = streamIDRefBuilder.Append(i, dataset.Int64Value(pointer.StreamIDRef))
 			_ = minTimestampBuilder.Append(i, dataset.Int64Value(pointer.StartTs.UnixNano()))
 			_ = maxTimestampBuilder.Append(i, dataset.Int64Value(pointer.EndTs.UnixNano()))
-			_ = rowsCountBuilder.Append(i, dataset.Int64Value(pointer.LineCount))
+			_ = rowCountBuilder.Append(i, dataset.Int64Value(pointer.LineCount))
 			_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(pointer.UncompressedSize))
 		}
 
-		if pointer.Column != "" {
-			_ = columnNameBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Column)))
+		if pointer.ColumnName != "" {
+			_ = columnNameBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.ColumnName)))
+			_ = columnIndexBuilder.Append(i, dataset.Int64Value(pointer.ColumnIndex))
 			_ = valuesBloomFilterBuilder.Append(i, dataset.ByteArrayValue(pointer.ValuesBloomFilter))
 		}
 	}
@@ -315,9 +323,10 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_STREAM_ID_REF, streamIDRefBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
+		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_ROW_COUNT, rowCountBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_COLUMN_NAME, columnNameBuilder))
+		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_COLUMN_INDEX, columnIndexBuilder))
 		errs = append(errs, encodeColumn(enc, pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER, valuesBloomFilterBuilder))
 
 		if err := errors.Join(errs...); err != nil {
