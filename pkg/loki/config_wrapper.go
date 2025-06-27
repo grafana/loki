@@ -244,6 +244,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
 		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
 	}
 
@@ -260,6 +261,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Pattern.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
 	}
 
 	// IngestLimits
@@ -276,6 +278,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IngestLimits.LifecyclerConfig.Zone = rc.InstanceZone
 		r.IngestLimits.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.IngestLimits.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.IngestLimits.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
 	}
 
 	// IngestLimitsFrontend
@@ -292,6 +295,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IngestLimitsFrontend.LifecyclerConfig.Zone = rc.InstanceZone
 		r.IngestLimitsFrontend.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.IngestLimitsFrontend.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.IngestLimitsFrontend.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
 	}
 
 	// Distributor
@@ -303,6 +307,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Distributor.DistributorRing.InstanceID = rc.InstanceID
 		r.Distributor.DistributorRing.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.Distributor.DistributorRing.KVStore = rc.KVStore
+		r.Distributor.DistributorRing.EnableIPv6 = rc.EnableIPv6
 	}
 
 	// Ruler
@@ -314,6 +319,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ruler.Ring.InstanceID = rc.InstanceID
 		r.Ruler.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
 		r.Ruler.Ring.KVStore = rc.KVStore
+		r.Ruler.Ring.EnableIPv6 = rc.EnableIPv6
 	}
 
 	// Query Scheduler
@@ -327,6 +333,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.QueryScheduler.SchedulerRing.InstanceZone = rc.InstanceZone
 		r.QueryScheduler.SchedulerRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.QueryScheduler.SchedulerRing.KVStore = rc.KVStore
+		r.QueryScheduler.SchedulerRing.EnableIPv6 = rc.EnableIPv6
 	}
 
 	// Compactor
@@ -340,6 +347,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.CompactorConfig.CompactorRing.InstanceZone = rc.InstanceZone
 		r.CompactorConfig.CompactorRing.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.CompactorConfig.CompactorRing.KVStore = rc.KVStore
+		r.CompactorConfig.CompactorRing.EnableIPv6 = rc.EnableIPv6
 	}
 
 	// IndexGateway
@@ -353,6 +361,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.InstanceZone = rc.InstanceZone
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
+		r.IndexGateway.Ring.EnableIPv6 = rc.EnableIPv6
 	}
 }
 
