@@ -234,6 +234,9 @@ func TestCanExecuteQuery(t *testing.T) {
 			// max is not supported
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
 		},
+		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m] offset 5m))`,
+		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
 			q := &query{
