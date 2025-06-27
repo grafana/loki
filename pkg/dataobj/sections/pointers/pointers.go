@@ -1,18 +1,18 @@
-// Package streams defines types used for the data object streams section. The
-// streams section holds a list of streams present in the data object.
-package streams
+// package pointers defines types used for the data object pointers section. The
+// pointers section holds a list of pointers to sections present in the data object.
+package pointers
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd"
 )
 
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
-	Kind:      "streams",
+	Kind:      "pointers",
 }
 
 // CheckSection returns true if section is a streams section.
@@ -81,56 +81,81 @@ type Column struct {
 	Name    string     // Optional name of the column.
 	Type    ColumnType // Type of data in the column.
 
-	desc *streamsmd.ColumnDesc // Column description used for further decoding and reading.
+	desc *pointersmd.ColumnDesc // Column description used for further decoding and reading.
 }
 
 // ColumnType represents the kind of information stored in a [Column].
 type ColumnType int
 
-func convertColumnType(protoType streamsmd.ColumnType) (ColumnType, bool) {
+func convertColumnType(protoType pointersmd.ColumnType) (ColumnType, bool) {
 	switch protoType {
-	case streamsmd.COLUMN_TYPE_UNSPECIFIED:
+	case pointersmd.COLUMN_TYPE_UNSPECIFIED:
 		return ColumnTypeInvalid, true
-	case streamsmd.COLUMN_TYPE_STREAM_ID:
+	case pointersmd.COLUMN_TYPE_PATH:
+		return ColumnTypePath, true
+	case pointersmd.COLUMN_TYPE_SECTION:
+		return ColumnTypeSection, true
+	case pointersmd.COLUMN_TYPE_POINTER_KIND:
+		return ColumnTypePointerKind, true
+
+	case pointersmd.COLUMN_TYPE_STREAM_ID:
 		return ColumnTypeStreamID, true
-	case streamsmd.COLUMN_TYPE_MIN_TIMESTAMP:
+	case pointersmd.COLUMN_TYPE_STREAM_ID_REF:
+		return ColumnTypeStreamIDRef, true
+	case pointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
 		return ColumnTypeMinTimestamp, true
-	case streamsmd.COLUMN_TYPE_MAX_TIMESTAMP:
+	case pointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
 		return ColumnTypeMaxTimestamp, true
-	case streamsmd.COLUMN_TYPE_LABEL:
-		return ColumnTypeLabel, true
-	case streamsmd.COLUMN_TYPE_ROWS:
-		return ColumnTypeRows, true
-	case streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
+	case pointersmd.COLUMN_TYPE_ROW_COUNT:
+		return ColumnTypeRowCount, true
+	case pointersmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
 		return ColumnTypeUncompressedSize, true
+
+	case pointersmd.COLUMN_TYPE_COLUMN_NAME:
+		return ColumnTypeColumnName, true
+	case pointersmd.COLUMN_TYPE_COLUMN_INDEX:
+		return ColumnTypeColumnIndex, true
+	case pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER:
+		return ColumnTypeValuesBloomFilter, true
 	}
 
 	return ColumnTypeInvalid, false
 }
 
 const (
-	ColumnTypeInvalid      ColumnType = iota // ColumnTypeInvalid is an invalid column.
-	ColumnTypeStreamID                       // ColumnTypeStreamID is a column containing a set of stream IDs.
-	ColumnTypeMinTimestamp                   // ColumnTypeMinTimestamp is a column containing minimum timestamps per stream.
-	ColumnTypeMaxTimestamp                   // ColumnTypeMaxTimestamp is a column containing maximum timestamps per stream.
+	ColumnTypeInvalid ColumnType = iota // ColumnTypeInvalid is an invalid column.
+	ColumnTypePath
+	ColumnTypeSection
+	ColumnTypePointerKind // ColumnTypePointerKind is a column containing the kind of pointer: stream or column.
 
-	// ColumnTypeLabel is a column containing a sequence of label values per
-	// stream. There will be one ColumnTypeLabels per label name; the name of the
-	// label is stored as the column name.
-	ColumnTypeLabel
-
-	ColumnTypeRows             // ColumnTypeRows is a column containing row counts per stream.
+	ColumnTypeStreamID         // ColumnTypeStreamID is a column containing a set of stream IDs.
+	ColumnTypeStreamIDRef      // ColumnTypeStreamIDRef is a column containing a set of stream IDs from the referenced object.
+	ColumnTypeMinTimestamp     // ColumnTypeMinTimestamp is a column containing minimum timestamps per stream.
+	ColumnTypeMaxTimestamp     // ColumnTypeMaxTimestamp is a column containing maximum timestamps per stream.
+	ColumnTypeRowCount         // ColumnTypeRowCount is a column containing row count per stream.
 	ColumnTypeUncompressedSize // ColumnTypeUncompressedSize is a column containing uncompressed size per stream.
+
+	ColumnTypeColumnName        // ColumnTypeColumnName is a column containing the name of the column in the referenced object.
+	ColumnTypeColumnIndex       // ColumnTypeColumnIndex is a column containing the index of the column in the referenced object.
+	ColumnTypeValuesBloomFilter // ColumnTypeValuesBloomFilter is a column containing a bloom filter of the values in the column in the referenced object.
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid:          "invalid",
+	ColumnTypeInvalid:     "invalid",
+	ColumnTypePath:        "path",
+	ColumnTypeSection:     "section",
+	ColumnTypePointerKind: "pointer_kind",
+
 	ColumnTypeStreamID:         "stream_id",
+	ColumnTypeStreamIDRef:      "stream_id_ref",
 	ColumnTypeMinTimestamp:     "min_timestamp",
 	ColumnTypeMaxTimestamp:     "max_timestamp",
-	ColumnTypeLabel:            "label",
-	ColumnTypeRows:             "rows",
+	ColumnTypeRowCount:         "row_count",
 	ColumnTypeUncompressedSize: "uncompressed_size",
+
+	ColumnTypeColumnName:        "column_name",
+	ColumnTypeColumnIndex:       "column_index",
+	ColumnTypeValuesBloomFilter: "values_bloom_filter",
 }
 
 // String returns the human-readable name of ct.
