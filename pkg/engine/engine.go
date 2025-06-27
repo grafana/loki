@@ -97,6 +97,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	)
 
 	t = time.Now() // start stopwatch for physical planning
+	statsCtx, ctx := stats.NewContext(ctx)
 	executionContext := physical.NewContext(ctx, e.metastore, params.Start(), params.End())
 	planner := physical.NewPlanner(executionContext)
 	plan, err := planner.Build(logicalPlan)
@@ -137,7 +138,6 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return builder.empty(), err
 	}
 
-	statsCtx := stats.FromContext(ctx)
 	builder.setStats(statsCtx.Result(time.Since(start), 0, builder.len()))
 
 	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
