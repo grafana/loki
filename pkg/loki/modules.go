@@ -1624,6 +1624,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	)
 	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
 
+	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
+	// This should be fixed in the future.
 	var err error
 	t.Cfg.MemberlistKV.AdvertiseAddr, err = ring.GetInstanceAddr(
 		t.Cfg.MemberlistKV.AdvertiseAddr,
