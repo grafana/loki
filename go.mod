@@ -95,7 +95,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
-	go.etcd.io/bbolt v1.4.1
+	go.etcd.io/bbolt v1.4.2
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.39.0
