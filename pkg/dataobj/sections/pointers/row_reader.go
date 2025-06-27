@@ -135,7 +135,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		predicates = append(predicates, streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs))
 	}
 
-	if p := translatePointersPredicate(r.predicate, columns, columnDescs); p != nil {
+	if p := translatePointersPredicate(r.predicate, columns); p != nil {
 		predicates = append(predicates, p)
 	}
 
@@ -219,7 +219,7 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 	}
 }
 
-func translatePointersPredicate(p RowPredicate, columns []dataset.Column, columnDesc []*pointersmd.ColumnDesc) dataset.Predicate {
+func translatePointersPredicate(p RowPredicate, columns []dataset.Column) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
@@ -253,7 +253,7 @@ func convertBloomExistencePredicate(p BloomExistencePredicate, nameColumn, bloom
 		},
 		Right: dataset.FuncPredicate{
 			Column: bloomColumn,
-			Keep: func(column dataset.Column, value dataset.Value) bool {
+			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				bloomBytes := value.ByteArray()
 				bf := bloom.New(100, 100) // Dummy values
 				_, err := bf.ReadFrom(bytes.NewReader(bloomBytes))
