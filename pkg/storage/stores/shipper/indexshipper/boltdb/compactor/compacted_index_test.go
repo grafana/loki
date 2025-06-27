@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -49,7 +50,8 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))
 			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) (err error) {
 				if series.Labels().Get("fizz") == "buzz" {
-					chunkIndexed, err := compactedIndex.IndexChunk(c4)
+					approxKB := math.Round(float64(c4.Data.UncompressedSize()) / float64(1<<10))
+					chunkIndexed, err := compactedIndex.IndexChunk(c4.ChunkRef, c4.Metric, uint32(approxKB), uint32(c4.Data.Entries()))
 					require.NoError(t, err)
 					require.True(t, chunkIndexed)
 				}

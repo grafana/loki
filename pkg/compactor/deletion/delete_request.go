@@ -27,8 +27,8 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID          string                 `json:"-"`
-	SequenceNum     int64                  `json:"-"`
+	UserID          string                 `json:"user_id,omitempty"`
+	SequenceNum     int64                  `json:"sequence_num,omitempty"`
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 	timeInterval    *timeInterval          `json:"-"`

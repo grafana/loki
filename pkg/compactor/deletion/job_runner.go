@@ -35,12 +35,28 @@ type Chunk struct {
 	KB, Entries   uint32
 }
 
-// JobResult holds details of chunks to be deleted from index and new chunk entries to be added to it.
-// ToDo(Sandeep): Use proto for encoding instead of json for better performance and resource usage.
-type JobResult struct {
-	ChunksToDelete  []string // List of chunks to be deleted from object storage and removed from the index of the current table
-	ChunksToDeIndex []string // List of chunks only to be removed from the index of the current table
-	ChunksToIndex   []Chunk  // List of chunks to be indexed in the current table
+func (c Chunk) GetFrom() model.Time {
+	return c.From
+}
+
+func (c Chunk) GetThrough() model.Time {
+	return c.Through
+}
+
+func (c Chunk) GetFingerprint() uint64 {
+	return c.Fingerprint
+}
+
+func (c Chunk) GetChecksum() uint32 {
+	return c.Checksum
+}
+
+func (c Chunk) GetSize() uint32 {
+	return c.KB
+}
+
+func (c Chunk) GetEntriesCount() uint32 {
+	return c.Entries
 }
 
 func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobRunner {
@@ -51,7 +67,7 @@ func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobR
 
 func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 	var deletionJob deletionJob
-	var jobResult JobResult
+	var updates storageUpdates
 
 	if err := json.Unmarshal(job.Payload, &deletionJob); err != nil {
 		return nil, err
@@ -126,7 +142,7 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		if err != nil {
 			if errors.Is(err, chunk.ErrSliceNoDataInRange) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
-				jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
+				updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
 				continue
 			}
 			return nil, err
@@ -147,7 +163,7 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		// the new chunk is out of range for the table in process, so don't upload and index it
 		if newChunkStart > tableInterval.End || newChunkEnd < tableInterval.Start {
 			// only remove the index entry from the current table since the new chunk is out of its range
-			jobResult.ChunksToDeIndex = append(jobResult.ChunksToDeIndex, chunkID)
+			updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunkID)
 			continue
 		}
 
@@ -170,7 +186,7 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		}
 
 		// add the new chunk details to the list of chunks to index
-		jobResult.ChunksToIndex = append(jobResult.ChunksToIndex, Chunk{
+		updates.ChunksToIndex = append(updates.ChunksToIndex, Chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,
@@ -180,10 +196,10 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		})
 
 		// Add the ID of original chunk to the list of ChunksToDelete
-		jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
+		updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
 	}
 
-	jobResultJSON, err := json.Marshal(jobResult)
+	jobResultJSON, err := json.Marshal(updates)
 	if err != nil {
 		return nil, err
 	}

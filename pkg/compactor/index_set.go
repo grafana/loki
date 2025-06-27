@@ -14,6 +14,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -166,7 +169,7 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 		return nil
 	}
 
-	empty, modified, err := tableMarker.MarkForDelete(is.ctx, is.tableName, is.userID, is.compactedIndex, is.logger)
+	empty, modified, err := tableMarker.FindAndMarkChunksForDeletion(is.ctx, is.tableName, is.userID, is.compactedIndex, is.logger)
 	if err != nil {
 		return err
 	}
@@ -178,6 +181,61 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 		is.uploadCompactedDB = true
 		is.removeSourceObjects = true
 	}
+
+	return nil
+}
+
+// applyUpdates applies the given updates to the compacted index.
+func (is *indexSet) applyUpdates(labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+	if is.compactedIndex == nil {
+		return fmt.Errorf("compacted index should be initialized before applying updates")
+	}
+
+	userIDBytes := unsafeGetBytes(is.userID)
+	labels, err := syntax.ParseLabels(labelsStr)
+	if err != nil {
+		return err
+	}
+
+	for _, chunkID := range chunksToDelete {
+		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
+		if err != nil {
+			return err
+		}
+
+		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, chunkID := range chunksToDeIndex {
+		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
+		if err != nil {
+			return err
+		}
+
+		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, chk := range chunksToIndex {
+		_, err := is.compactedIndex.IndexChunk(logproto.ChunkRef{
+			Fingerprint: chk.GetFingerprint(),
+			UserID:      is.userID,
+			From:        chk.GetFrom(),
+			Through:     chk.GetThrough(),
+			Checksum:    chk.GetChecksum(),
+		}, labels, chk.GetSize(), chk.GetEntriesCount())
+		if err != nil {
+			return err
+		}
+	}
+
+	is.uploadCompactedDB = true
+	is.removeSourceObjects = true
 
 	return nil
 }
@@ -280,7 +338,6 @@ func (is *indexSet) removeFilesFromStorage() error {
 }
 
 // done takes care of file operations which includes:
-// - recreate the compacted db if required.
 // - upload the compacted db if required.
 // - remove the source objects from storage if required.
 func (is *indexSet) done() error {
