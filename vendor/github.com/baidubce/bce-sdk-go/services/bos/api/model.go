@@ -32,6 +32,7 @@ type BucketSummaryType struct {
 	CreationDate    string `json:"creationDate"`
 	LccLocation     string `json:"lccLocation,omitempty"`
 	EnableDedicated bool   `json:"enableDedicated,omitempty"`
+	EnableMultiAz   bool   `json:"enableMultiAz,omitempty"`
 }
 
 // ListBucketsResult defines the result structure of ListBuckets api.
@@ -685,7 +686,6 @@ type BucketTag struct {
 }
 
 type BosContext struct {
-	Bucket          string
 	PathStyleEnable bool
 	Ctx             context.Context
 }
