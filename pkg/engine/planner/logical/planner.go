@@ -124,7 +124,7 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 
 func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
 	if params.Step() > 0 {
-		return nil, fmt.Errorf("only instant metric queries are supported")
+		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
 	}
 
 	var (
