@@ -121,7 +121,7 @@ var DiscardedBytes = promauto.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant", "retention_hours", "policy"},
+	[]string{ReasonLabel, "tenant", "retention_hours", "policy", "format"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -131,7 +131,7 @@ var DiscardedSamples = promauto.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant", "retention_hours", "policy"},
+	[]string{ReasonLabel, "tenant", "retention_hours", "policy", "format"},
 )
 
 var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
