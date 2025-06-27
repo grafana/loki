@@ -5,7 +5,7 @@
 *.output
 *.tgz
 *.exe
-__debug_bin
+__debug_bin*
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
