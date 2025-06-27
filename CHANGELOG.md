@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.5.2](https://github.com/grafana/loki/compare/v3.5.1...v3.5.2) (2025-06-27)
+
+
+### Bug Fixes
+
+* **ci:** Update release code 3.5 ([#18014](https://github.com/grafana/loki/issues/18014)) ([b1b28b0](https://github.com/grafana/loki/commit/b1b28b0970b437a071050abd8d1391a037cc3ac5))
+* **deps:** Move to Go 1.24.2 (backport release-3.5.x) ([#17805](https://github.com/grafana/loki/issues/17805)) ([d0fbad0](https://github.com/grafana/loki/commit/d0fbad095d46ec4edceed4dc9a1eff69b0ef1565))
+* **frontend:** allow resolution of v6 addresses. (backport release-3.5.x) ([#18261](https://github.com/grafana/loki/issues/18261)) ([aed4610](https://github.com/grafana/loki/commit/aed461037b9145ac8cc89813c40cfcad091ed6bf))
+* **jsonparser:** Fix possible JSON log line corruption caused by `json` parser on query path (backport release-3.5.x) ([#18059](https://github.com/grafana/loki/issues/18059)) ([546d456](https://github.com/grafana/loki/commit/546d456b9d1d75154d1c2e42309933e346629c2b))
+* **memberlist:** allow resolution of advertise address from v6 interf… (backport release-3.5.x) ([#18257](https://github.com/grafana/loki/issues/18257)) ([6f878ad](https://github.com/grafana/loki/commit/6f878ad1d02427df81b6684c7cb76711d6fee46a))
+
 ## [3.5.1](https://github.com/grafana/loki/compare/v3.5.0...v3.5.1) (2025-05-19)
 
 
