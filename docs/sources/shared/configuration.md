@@ -2229,6 +2229,10 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
+
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
 # CLI flag: -frontend.encoding
