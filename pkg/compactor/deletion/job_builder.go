@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	maxChunksPerJob            = 1000
-	indexUpdatesFilenameSuffix = `-index-updates.json`
+	maxChunksPerJob              = 1000
+	storageUpdatesFilenameSuffix = `-storage-updates.json`
 )
 
 type deletionJob struct {
@@ -43,13 +43,13 @@ type JobBuilder struct {
 	currentManifest    manifestJobs
 	currentManifestMtx sync.RWMutex
 
-	currSegmentIndexUpdates *indexUpdates
+	currSegmentStorageUpdates *storageUpdates
 }
 
 func NewJobBuilder(deleteStoreClient client.ObjectClient) *JobBuilder {
 	return &JobBuilder{
 		deleteStoreClient:       deleteStoreClient,
-		currSegmentIndexUpdates: &indexUpdates{},
+		currSegmentStorageUpdates: &storageUpdates{},
 	}
 }
 
@@ -136,7 +136,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 		b.currentManifest.jobsInProgress = make(map[string]struct{})
 		b.currentManifestMtx.Unlock()
 
-		b.currSegmentIndexUpdates.reset(segment.TableName)
+		b.currSegmentStorageUpdates.reset(segment.TableName)
 
 		// Process each chunks group (same deletion query)
 		for i, group := range segment.ChunksGroups {
@@ -155,9 +155,9 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 			return err
 		}
 
-		// update the index updates for the current table
-		if err := b.uploadIndexUpdateForCurrentSegment(ctx, path.Join(manifestPath, fmt.Sprintf("%d%s", segmentNum, indexUpdatesFilenameSuffix))); err != nil {
-			return errors.Wrap(err, "failed to upload index updates")
+		// upload the storage updates for the current table
+		if err := b.uploadStorageUpdateForCurrentSegment(ctx, path.Join(manifestPath, fmt.Sprintf("%d%s", segmentNum, storageUpdatesFilenameSuffix))); err != nil {
+			return errors.Wrap(err, "failed to upload storage updates")
 		}
 
 		// Delete the processed segment
@@ -176,14 +176,14 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifestPath string, j
 	return nil
 }
 
-// uploadIndexUpdateForCurrentSegment uploads the index updates for the currently processed segment to the object storage
-func (b *JobBuilder) uploadIndexUpdateForCurrentSegment(ctx context.Context, path string) error {
-	indexUpdatesJSON, err := b.currSegmentIndexUpdates.encode()
+// uploadStorageUpdateForCurrentSegment uploads the storage updates for the currently processed segment to the object storage
+func (b *JobBuilder) uploadStorageUpdateForCurrentSegment(ctx context.Context, path string) error {
+	storageUpdatesJSON, err := b.currSegmentStorageUpdates.encode()
 	if err != nil {
 		return err
 	}
 
-	return b.deleteStoreClient.PutObject(ctx, path, bytes.NewReader(indexUpdatesJSON))
+	return b.deleteStoreClient.PutObject(ctx, path, bytes.NewReader(storageUpdatesJSON))
 }
 
 func (b *JobBuilder) waitForSegmentCompletion(ctx context.Context) error {
@@ -314,7 +314,7 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 		return err
 	}
 
-	b.currSegmentIndexUpdates.addUpdates(jobResult)
+	b.currSegmentStorageUpdates.addUpdates(jobResult)
 	delete(b.currentManifest.jobsInProgress, response.JobId)
 
 	return nil
@@ -335,8 +335,8 @@ func (b *JobBuilder) getSegment(ctx context.Context, segmentPath string) (*segme
 	return &segment, nil
 }
 
-// indexUpdates collects updates to be made to the index for the segment in-process
-type indexUpdates struct {
+// storageUpdates collects updates to be made to the storage for the segment in-process
+type storageUpdates struct {
 	TableName string
 
 	mtx             sync.Mutex
@@ -345,7 +345,7 @@ type indexUpdates struct {
 	ChunksToIndex   []Chunk  // List of chunks to be indexed in the current table
 }
 
-func (i *indexUpdates) reset(tableName string) {
+func (i *storageUpdates) reset(tableName string) {
 	i.TableName = tableName
 
 	i.ChunksToDelete = i.ChunksToDelete[:0]
@@ -353,7 +353,7 @@ func (i *indexUpdates) reset(tableName string) {
 	i.ChunksToIndex = i.ChunksToIndex[:0]
 }
 
-func (i *indexUpdates) addUpdates(result JobResult) {
+func (i *storageUpdates) addUpdates(result JobResult) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
@@ -362,7 +362,7 @@ func (i *indexUpdates) addUpdates(result JobResult) {
 	i.ChunksToIndex = append(i.ChunksToIndex, result.ChunksToIndex...)
 }
 
-func (i *indexUpdates) encode() ([]byte, error) {
+func (i *storageUpdates) encode() ([]byte, error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 

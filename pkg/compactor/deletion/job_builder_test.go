@@ -24,7 +24,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		name                 string
 		setupManifest        func(client client.ObjectClient) string
 		expectedJobs         []grpc.Job
-		expectedIndexUpdates map[string][]byte
+		expectedStorageUpdates map[string][]byte
 	}{
 		{
 			name: "no manifests in storage",
@@ -74,8 +74,8 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 1),
+			expectedStorageUpdates: map[string][]byte{
+				fmt.Sprintf("%d%s", 0, storageUpdatesFilenameSuffix): buildStorageUpdates(t, table1, 0, 1),
 			},
 		},
 		{
@@ -136,8 +136,8 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 2),
+			expectedStorageUpdates: map[string][]byte{
+				fmt.Sprintf("%d%s", 0, storageUpdatesFilenameSuffix): buildStorageUpdates(t, table1, 0, 2),
 			},
 		},
 		{
@@ -215,8 +215,8 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 2),
+			expectedStorageUpdates: map[string][]byte{
+				fmt.Sprintf("%d%s", 0, storageUpdatesFilenameSuffix): buildStorageUpdates(t, table1, 0, 2),
 			},
 		},
 		{
@@ -283,9 +283,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 1),
-				fmt.Sprintf("%d%s", 1, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table2, 1, 1),
+			expectedStorageUpdates: map[string][]byte{
+				fmt.Sprintf("%d%s", 0, storageUpdatesFilenameSuffix): buildStorageUpdates(t, table1, 0, 1),
+				fmt.Sprintf("%d%s", 1, storageUpdatesFilenameSuffix): buildStorageUpdates(t, table2, 1, 1),
 			},
 		},
 	} {
@@ -320,15 +320,15 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			require.Equal(t, len(tc.expectedJobs), len(jobsBuilt))
 			require.Equal(t, tc.expectedJobs, jobsBuilt)
 
-			for filename, expectedIndexUpdate := range tc.expectedIndexUpdates {
+			for filename, expectedStorageUpdate := range tc.expectedStorageUpdates {
 				readCloser, _, err := objectClient.GetObject(context.Background(), filepath.Join(manifestPath, filename))
 				require.NoError(t, err)
 
-				indexUpdateJSON, err := io.ReadAll(readCloser)
+				storageUpdateJSON, err := io.ReadAll(readCloser)
 				require.NoError(t, err)
 				require.NoError(t, readCloser.Close())
 
-				require.Equal(t, expectedIndexUpdate, indexUpdateJSON)
+				require.Equal(t, expectedStorageUpdate, storageUpdateJSON)
 			}
 		})
 	}
@@ -434,17 +434,17 @@ func buildDeletionJobResult(jobCounter int) JobResult {
 	return deletionJobResult
 }
 
-func buildIndexUpdates(t *testing.T, tableName string, jobIndexStart, totalJobs int) []byte {
-	indexUpdates := indexUpdates{
+func buildStorageUpdates(t *testing.T, tableName string, jobIndexStart, totalJobs int) []byte {
+	storageUpdates := storageUpdates{
 		TableName: tableName,
 	}
 
 	for i := 0; i < totalJobs; i++ {
-		indexUpdates.addUpdates(buildDeletionJobResult(jobIndexStart + i))
+		storageUpdates.addUpdates(buildDeletionJobResult(jobIndexStart + i))
 	}
 
-	indexUpdatesJSON, err := indexUpdates.encode()
+	storageUpdatesJSON, err := storageUpdates.encode()
 	require.NoError(t, err)
 
-	return indexUpdatesJSON
+	return storageUpdatesJSON
 }
