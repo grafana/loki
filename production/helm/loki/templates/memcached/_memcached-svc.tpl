@@ -8,7 +8,7 @@ valuesSection and component are specified separately because helm prefers camelc
 */}}
 {{- define "loki.memcached.service" -}}
 {{ with (index $.ctx.Values $.valuesSection) }}
-{{- if .enabled -}}
+{{- if and .enabled (.Values.memcached.enabled) -}}
 apiVersion: v1
 kind: Service
 metadata:
