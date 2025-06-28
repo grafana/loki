@@ -194,6 +194,8 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
 - [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
 - [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
+- [FEATURE] Allow passing tenant password hash instead of password to avoid idempotency issue with the gateway secret [12032](https://github.com/grafana/loki/issues/12032).
+- [FEATURE] Added support to use KEDA for autoscaling querier
 
 ## 6.30.1
 
@@ -219,7 +221,6 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
-- [FEATURE] Added support to use KEDA for autoscaling querier
 
 ## 6.28.0
 
