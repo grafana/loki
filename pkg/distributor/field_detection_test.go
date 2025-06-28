@@ -773,3 +773,138 @@ func TestGetLevelUsingJsonParser(t *testing.T) {
 		})
 	}
 }
+
+func TestDisableLogfmtAutoDetection(t *testing.T) {
+	tests := []struct {
+		name                       string
+		disableLogfmtAutoDetection bool
+		logLine                    string
+		expectedLevelDetected      bool
+		expectedGenericDetected    bool
+	}{
+		{
+			name:                       "logfmt auto detection enabled - false positive case avoided",
+			disableLogfmtAutoDetection: false,
+			logLine:                    `1.2.3.4 - - [29/Apr/2025:17:35:43 +0000] "GET /statistics/resources?timespan=6 HTTP/2.0" 200 453 "-" "Go-http-client/2.0" 190645 "example@file" "http://1.2.3.4:1234" 2ms`,
+			expectedLevelDetected:      true,
+			expectedGenericDetected:    false,
+		},
+		{
+			name:                       "logfmt auto detection disabled - prevents logfmt parsing but allows fallback",
+			disableLogfmtAutoDetection: true,
+			logLine:                    `level=info msg="test message" user=john`,
+			expectedLevelDetected:      true,
+			expectedGenericDetected:    false, // Should not detect generic fields when logfmt disabled
+		},
+		{
+			name:                       "logfmt auto detection enabled - valid logfmt",
+			disableLogfmtAutoDetection: false,
+			logLine:                    `level=info msg="test message" user=john`,
+			expectedLevelDetected:      true, // Should detect level in valid logfmt
+			expectedGenericDetected:    true, // Should detect generic fields in valid logfmt
+		},
+		{
+			name:                       "logfmt auto detection disabled - fallback to regex detection",
+			disableLogfmtAutoDetection: true,
+			logLine:                    `This is an INFO message about something`,
+			expectedLevelDetected:      true,
+			expectedGenericDetected:    false,
+		},
+		{
+			name:                       "improved regex prevents false positive logfmt detection",
+			disableLogfmtAutoDetection: false,
+			logLine:                    `key=value user=john level=debug`, // This is valid logfmt and would be parsed correctly
+			expectedLevelDetected:      true,                              // Should detect level via logfmt parsing
+			expectedGenericDetected:    true,                              // Should detect user field via logfmt parsing
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ld := newFieldDetector(
+				validationContext{
+					discoverLogLevels:          true,
+					disableLogfmtAutoDetection: tt.disableLogfmtAutoDetection,
+					logLevelFields:             []string{"level"},
+					discoverGenericFields:      map[string][]string{"user": {"user"}},
+					allowStructuredMetadata:    true,
+				},
+			)
+
+			// Test log level detection
+			entry := logproto.Entry{Line: tt.logLine}
+			_, levelDetected := ld.extractLogLevel(
+				labels.EmptyLabels(),
+				labels.EmptyLabels(),
+				entry,
+			)
+			require.Equal(t, tt.expectedLevelDetected, levelDetected, "level detection mismatch")
+
+			// Test generic field detection
+			_, genericDetected := ld.extractGenericField(
+				"user",
+				[]string{"user"},
+				labels.EmptyLabels(),
+				labels.EmptyLabels(),
+				entry,
+			)
+			require.Equal(t, tt.expectedGenericDetected, genericDetected, "generic field detection mismatch")
+		})
+	}
+}
+
+func TestImprovedLogfmtDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		logLine  string
+		expected bool
+	}{
+		{
+			name:     "valid logfmt",
+			logLine:  `level=info msg="test message" user=john`,
+			expected: true,
+		},
+		{
+			name:     "apache log - false positive with old logic",
+			logLine:  `1.2.3.4 - - [29/Apr/2025:17:35:43 +0000] "GET /statistics/resources?timespan=6 HTTP/2.0" 200 453 "-" "Go-http-client/2.0" 190645 "example@file" "http://1.2.3.4:1234" 2ms`,
+			expected: false,
+		},
+		{
+			name:     "nginx log",
+			logLine:  `127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`,
+			expected: false,
+		},
+		{
+			name:     "json log",
+			logLine:  `{"level": "info", "message": "test"}`,
+			expected: false,
+		},
+		{
+			name:     "logfmt with quotes",
+			logLine:  `level=info msg="quoted message with spaces" timestamp=2023-01-01`,
+			expected: true,
+		},
+		{
+			name:     "empty line",
+			logLine:  ``,
+			expected: false,
+		},
+		{
+			name:     "single key=value",
+			logLine:  `key=value`,
+			expected: true,
+		},
+		{
+			name:     "equals sign but not logfmt",
+			logLine:  `This is a message with = signs but not key=value format`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isLogFmt([]byte(tt.logLine))
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

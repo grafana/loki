@@ -48,6 +48,7 @@ type validationContext struct {
 	discoverServiceName          []string
 	discoverGenericFields        map[string][]string
 	discoverLogLevels            bool
+	disableLogfmtAutoDetection   bool
 	logLevelFields               []string
 	logLevelFromJSONMaxDepth     int
 
@@ -80,6 +81,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
 		discoverServiceName:          v.DiscoverServiceName(userID),
 		discoverLogLevels:            v.DiscoverLogLevels(userID),
+		disableLogfmtAutoDetection:   v.DisableLogfmtAutoDetection(userID),
 		logLevelFields:               v.LogLevelFields(userID),
 		logLevelFromJSONMaxDepth:     v.LogLevelFromJSONMaxDepth(userID),
 		discoverGenericFields:        v.DiscoverGenericFields(userID),

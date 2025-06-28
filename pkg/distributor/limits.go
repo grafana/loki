@@ -25,6 +25,7 @@ type Limits interface {
 	DiscoverServiceName(userID string) []string
 	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool
+	DisableLogfmtAutoDetection(userID string) bool
 	LogLevelFields(userID string) []string
 	LogLevelFromJSONMaxDepth(userID string) int
 
