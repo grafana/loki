@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/flate"
+	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4"
 )
@@ -50,8 +51,9 @@ var (
 		}
 		return r, nil
 	}}
+	encS2 = Encoding{code: 10, name: "s2", readerFn: func(reader io.Reader) (io.Reader, error) { return s2.NewReader(reader), nil }}
 
-	Encodings = []Encoding{encNone, encGZIP, encDumb, encLZ4, encSnappy, enclz4_256k, enclz4_1M, enclz4_4M, encFlate, encZstd}
+	Encodings = []Encoding{encNone, encGZIP, encDumb, encLZ4, encSnappy, enclz4_256k, enclz4_1M, enclz4_4M, encFlate, encZstd, encS2}
 )
 
 const (
