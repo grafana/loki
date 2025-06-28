@@ -2582,3 +2582,53 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectLevelFromLogLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Case sensitivity tests
+		{"lowercase info", "info: starting service", constants.LogLevelInfo},
+		{"uppercase INFO", "INFO: starting service", constants.LogLevelInfo},
+		{"mixed case Info", "Info: starting service", constants.LogLevelInfo},
+		{"C# style Error", "Error: database failed", constants.LogLevelError},
+
+		// Priority ordering tests
+		{"error over info", "ERROR: info service failed", constants.LogLevelError},
+		{"critical over warning", "CRITICAL: warning system down", constants.LogLevelCritical},
+
+		// False positive prevention
+		{"productinformationservice", "productinformationservice running", constants.LogLevelUnknown},
+		{"information in message", "processing information data", constants.LogLevelUnknown},
+		{"terraform logs", "terraform error applying config", constants.LogLevelError},
+
+		// Different formats
+		{"with colon", "warn: connection timeout", constants.LogLevelWarn},
+		{"without colon", "warning connection timeout", constants.LogLevelWarn},
+		{"with brackets", "[ERROR] failed to connect", constants.LogLevelError},
+		{"err prefix", "err: connection failed", constants.LogLevelError},
+
+		// New fatal level
+		{"fatal lowercase", "fatal: system crash", constants.LogLevelFatal},
+		{"fatal uppercase", "FATAL: system crash", constants.LogLevelFatal},
+
+		// Debug cases
+		{"debug info", "debug: user info loaded", constants.LogLevelDebug},
+		{"DEBUG uppercase", "DEBUG: tracing enabled", constants.LogLevelDebug},
+
+		// Unknown cases
+		{"no level", "application started successfully", constants.LogLevelUnknown},
+		{"empty string", "", constants.LogLevelUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectLevelFromLogLine(tt.input)
+			if result != tt.expected {
+				t.Errorf("detectLevelFromLogLine(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
