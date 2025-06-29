@@ -152,4 +152,7 @@ enum EncodingType {
   // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
   // integers using a combination of run-length encoding and bitpacking.
   ENCODING_TYPE_BITMAP = 3;
+
+  // Intcomp encoding. Utilises the methods by Daniel Lemire for high performance integer compression. Under the hood, it is a mix of delta, zigzag and bitpacking.
+  ENCODING_TYPE_INTCOMP = 4;
 }
