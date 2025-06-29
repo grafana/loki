@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -147,19 +146,7 @@ func lessFn(direction logproto.Direction) func(a, b entryWithLabels) bool {
 // heapIterator creates a new EntryIterator for the given topk heap. After
 // calling heapIterator, h is emptied.
 func heapIterator(h *topk.Heap[entryWithLabels]) iter.EntryIterator {
-	elems := h.PopAll()
-
-	// We need to reverse the order of the entries in the slice to maintain the order of logs we
-	// want to return:
-	//
-	// For FORWARD direction, we want smallest timestamps first (but the heap is
-	// ordered by largest timestamps first due to lessFn).
-	//
-	// For BACKWARD direction, we want largest timestamps first (but the heap is
-	// ordered by smallest timestamps first due to lessFn).
-	slices.Reverse(elems)
-
-	return &sliceIterator{entries: elems}
+	return &sliceIterator{entries: h.PopAll()}
 }
 
 type sliceIterator struct {
