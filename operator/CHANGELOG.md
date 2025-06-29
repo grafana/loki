@@ -1,5 +1,23 @@
 ## Main
 
+## [0.8.1](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.8.1) (2025-06-27)
+
+
+### Features
+
+* **operator:** allow users to configure virtual-host-style for S3 secrets ([#17363](https://github.com/grafana/loki/issues/17363)) ([c4dace5](https://github.com/grafana/loki/commit/c4dace5c57646c0878fd8558d42ab1f7efaa0518))
+* **operator:** Allow using resource requests as limits ([#17484](https://github.com/grafana/loki/issues/17484)) ([0b2bae8](https://github.com/grafana/loki/commit/0b2bae87f3646492129c141695811eac9e0b1ffe))
+* **operator:** extend LokiStack authorization to support OTel Semantics ([#16031](https://github.com/grafana/loki/issues/16031)) ([3f1aacf](https://github.com/grafana/loki/commit/3f1aacfa0e78a2c96f70ba5aba126a4aaf5b1dd2))
+* **operator:** Update Loki operand to v3.4.3 ([#17847](https://github.com/grafana/loki/issues/17847)) ([d911e67](https://github.com/grafana/loki/commit/d911e67615a2ba850d98eb84a4d1adef18da29cb))
+
+
+### Bug Fixes
+
+* **operator:** Fix type of maximum OpenShift version property ([#18066](https://github.com/grafana/loki/issues/18066)) ([f7c7dfa](https://github.com/grafana/loki/commit/f7c7dfa910d03e2ddc9c95c8d22fb3bff5c78e6b))
+* **operator:** fix typo in docs regarding forcepathstyle ([#17725](https://github.com/grafana/loki/issues/17725)) ([14d7670](https://github.com/grafana/loki/commit/14d7670c92307d51d6ee4ddc9716cc8672c06a1b))
+* **operator:** Update maximum OpenShift version ([#17954](https://github.com/grafana/loki/issues/17954)) ([6b55918](https://github.com/grafana/loki/commit/6b5591826393100144fcdf8cd6c3ca1c340dffaf))
+* **operator:** update webhook validator for alerts/rules ([#17824](https://github.com/grafana/loki/issues/17824)) ([2d40349](https://github.com/grafana/loki/commit/2d40349fad1df5bad9543687f5a2852f0f3de6b8))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 
