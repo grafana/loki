@@ -96,7 +96,12 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 			return nil, ctx.Err()
 		}
 
-		code := grpcutil.ErrorToStatusCode(err)
+		var code int
+		st, ok := grpcutil.ErrorToStatus(err)
+		if ok {
+			code = int(st.Code())
+		}
+
 		// Error handling is tricky... There are many places we wrap any error and set an HTTP style status code
 		// but there are also places where we return an existing GRPC object which will use GRPC status codes
 		// If the code is < 100 it's a gRPC status code, currently we retry all of these, even codes.Canceled
