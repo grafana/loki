@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -246,12 +247,12 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 	return []*BinOp{
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(start),
+			Right: NewLiteral(datatype.Timestamp(start.UTC().UnixNano())),
 			Op:    types.BinaryOpGte,
 		},
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(end),
+			Right: NewLiteral(datatype.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
 	}

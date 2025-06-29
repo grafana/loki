@@ -162,7 +162,7 @@ func convertLiteralToString(expr Expression) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("expected literal expression, got %T", expr)
 	}
-	if l.ValueType() != datatype.String {
+	if l.ValueType() != datatype.Loki.String {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
 	}
 	return l.Any().(string), nil

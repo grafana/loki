@@ -55,8 +55,8 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 }
 
 func TestConvertArrowRecordsToLokiResult(t *testing.T) {
-	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
-	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
+	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
+	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
 
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(

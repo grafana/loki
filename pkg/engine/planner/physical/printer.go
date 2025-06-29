@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
@@ -60,8 +61,8 @@ func toTreeNode(n Node) *tree.Node {
 	case *RangeAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
-			tree.NewProperty("start", false, node.Start),
-			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 			tree.NewProperty("range", false, node.Range),
 		}
 
