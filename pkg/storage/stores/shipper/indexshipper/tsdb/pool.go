@@ -3,13 +3,15 @@ package tsdb
 import (
 	"sync"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var (
 	ChunkMetasPool = &index.ChunkMetasPool // re-exporting
-	SeriesPool     PoolSeries
-	ChunkRefsPool  PoolChunkRefs
+	SeriesPool        PoolSeries
+	ChunkRefsPool     PoolChunkRefs
+	LabelsBuilderPool PoolLabelsBuilder
 )
 
 type PoolSeries struct {
@@ -42,6 +44,23 @@ func (p *PoolChunkRefs) Get() []ChunkRef {
 
 func (p *PoolChunkRefs) Put(xs []ChunkRef) {
 	xs = xs[:0]
+	//nolint:staticcheck
+	p.pool.Put(xs)
+}
+
+type PoolLabelsBuilder struct {
+	pool sync.Pool
+}
+
+func (p *PoolLabelsBuilder) Get() *log.BufferedLabelsBuilder {
+	if xs := p.pool.Get(); xs != nil {
+		return xs.(*log.BufferedLabelsBuilder)
+	}
+	return log.NewBufferedLabelsBuilderWithSize(10)
+}
+
+func (p *PoolLabelsBuilder) Put(xs *log.BufferedLabelsBuilder) {
+	xs.Reset()
 	//nolint:staticcheck
 	p.pool.Put(xs)
 }

@@ -22,20 +22,20 @@ func TestLabelSeriesID(t *testing.T) {
 		expected string
 	}{
 		{
-			labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}},
+			labels.FromStrings(model.MetricNameLabel, "foo"),
 			"LCa0a2j/xo/5m0U8HTBBNBNCLXBkg7+g+YpeiGJm564",
 		},
 		{
-			labels.Labels{
-				{Name: model.MetricNameLabel, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-				{Name: "flip", Value: "flop"},
-				{Name: "toms", Value: "code"},
-			},
+			labels.FromStrings(
+				model.MetricNameLabel, "foo",
+				"bar", "baz",
+				"flip", "flop",
+				"toms", "code",
+			),
 			"KrbXMezYneba+o7wfEdtzOdAWhbfWcDrlVfs1uOCX3M",
 		},
 		{
-			labels.Labels{},
+			labels.EmptyLabels(),
 			"RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o",
 		},
 	} {

@@ -342,7 +342,7 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 				From:    model.TimeFromUnix(now.Add(-chk.from).UTC().Unix()),
 				Through: model.TimeFromUnix(now.Add(-chk.through).UTC().Unix()),
 			},
-			Metric:   labels.Labels{labels.Label{Name: "start", Value: strconv.Itoa(from)}},
+			Metric:   labels.FromStrings("start", strconv.Itoa(from)),
 			Data:     data,
 			Encoding: data.Encoding(),
 		}
