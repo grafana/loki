@@ -11,6 +11,8 @@ tokengen common labels
 {{- define "enterprise-logs.tokengenLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: tokengen
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
