@@ -28,7 +28,7 @@ type Frontend struct {
 	services.Service
 	cfg                     Config
 	logger                  log.Logger
-	gatherer                exceedsLimitsGatherer
+	limitsClient            limitsClient
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
 	subservices             *services.Manager
 	subservicesWatcher      *services.FailureWatcher
@@ -43,32 +43,9 @@ type Frontend struct {
 
 // New returns a new Frontend.
 func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
-	// Set up a client pool for the limits service. The frontend will use this
-	// to make RPCs that get the current stream usage to checks per-tenant limits.
-	clientPoolFactory := limits_client.NewPoolFactory(cfg.ClientConfig)
-	clientPool := limits_client.NewPool(
-		ringName,
-		cfg.ClientConfig.PoolConfig,
-		limitsRing,
-		clientPoolFactory,
-		logger,
-	)
-
-	// Set up the assigned partitions cache.
-	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
-	if cfg.AssignedPartitionsCacheTTL == 0 {
-		// When the TTL is 0, the cache is disabled.
-		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-	} else {
-		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
-	}
-	gatherer := newRingGatherer(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
-
 	f := &Frontend{
-		cfg:                     cfg,
-		logger:                  logger,
-		gatherer:                gatherer,
-		assignedPartitionsCache: assignedPartitionsCache,
+		cfg:    cfg,
+		logger: logger,
 		streams: promauto.With(reg).NewCounter(
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_streams_total",
@@ -88,7 +65,26 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 			},
 		),
 	}
-
+	// Set up a client pool for the limits service. The frontend will use this
+	// to make RPCs that get the current stream usage to checks per-tenant limits.
+	clientPoolFactory := limits_client.NewPoolFactory(cfg.ClientConfig)
+	clientPool := limits_client.NewPool(
+		ringName,
+		cfg.ClientConfig.PoolConfig,
+		limitsRing,
+		clientPoolFactory,
+		logger,
+	)
+	// Set up the assigned partitions cache.
+	var assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
+	if cfg.AssignedPartitionsCacheTTL == 0 {
+		// When the TTL is 0, the cache is disabled.
+		assignedPartitionsCache = newNopCache[string, *proto.GetAssignedPartitionsResponse]()
+	} else {
+		assignedPartitionsCache = newTTLCache[string, *proto.GetAssignedPartitionsResponse](cfg.AssignedPartitionsCacheTTL)
+	}
+	f.assignedPartitionsCache = assignedPartitionsCache
+	f.limitsClient = newRingLimitsClient(limitsRing, clientPool, cfg.NumPartitions, assignedPartitionsCache, logger, reg)
 	lifecycler, err := ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
@@ -97,18 +93,15 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 	// Watch the lifecycler.
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
-
 	servs := []services.Service{lifecycler, clientPool}
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
 		return nil, err
 	}
-
 	f.subservices = mgr
 	f.subservicesWatcher = services.NewFailureWatcher()
 	f.subservicesWatcher.WatchManager(f.subservices)
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
-
 	return f, nil
 }
 
@@ -116,7 +109,7 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	f.streams.Add(float64(len(req.Streams)))
 	results := make([]*proto.ExceedsLimitsResult, 0, len(req.Streams))
-	resps, err := f.gatherer.ExceedsLimits(ctx, req)
+	resps, err := f.limitsClient.ExceedsLimits(ctx, req)
 	if err != nil {
 		// If the entire call failed, then all streams failed.
 		for _, stream := range req.Streams {
