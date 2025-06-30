@@ -3750,3 +3750,371 @@ func inverse(g generator) generator {
 		return g(-i)
 	}
 }
+
+func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
+	t.Parallel()
+
+	// Test the JoinSampleVector method directly to test both code paths
+	tests := []struct {
+		name               string
+		queryTags          string
+		maxSeries          int
+		vectorSize         int // Number of series in the vector to test immediate limit check
+		isRangeQuery       bool
+		additionalVectors  []int // Additional vectors for range query testing
+		expectError        bool
+		expectTruncation   bool
+		expectedWarningMsg string
+	}{
+		{
+			name:               "Drilldown - immediate limit exceeded in first vector",
+			queryTags:          "Source=grafana-lokiexplore-app",
+			maxSeries:          2,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        false,
+			expectTruncation:   true,
+			expectedWarningMsg: "maximum number of series (2) reached for a single query; returning partial results",
+		},
+		{
+			name:               "Non-drilldown - immediate limit exceeded in first vector",
+			queryTags:          "Source=grafana",
+			maxSeries:          2,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        true,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
+		{
+			name:               "Drilldown - limit NOT exceeded",
+			queryTags:          "Source=grafana-lokiexplore-app",
+			maxSeries:          5,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        false,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
+		{
+			name:               "Non-drilldown - limit NOT exceeded",
+			queryTags:          "Source=grafana",
+			maxSeries:          5,
+			vectorSize:         3,
+			isRangeQuery:       false,
+			expectError:        false,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
+		{
+			name:               "Drilldown - range query limit exceeded in second vector",
+			queryTags:          "Source=grafana-lokiexplore-app",
+			maxSeries:          3,
+			vectorSize:         2, // First vector has 2 series
+			isRangeQuery:       true,
+			additionalVectors:  []int{2}, // Second vector has 2 more unique series (total 4 > limit 3)
+			expectError:        false,
+			expectTruncation:   true,
+			expectedWarningMsg: "maximum number of series (3) reached for a single query; returning partial results",
+		},
+		{
+			name:               "Non-drilldown - range query limit exceeded in second vector",
+			queryTags:          "Source=grafana",
+			maxSeries:          3,
+			vectorSize:         2, // First vector has 2 series
+			isRangeQuery:       true,
+			additionalVectors:  []int{2}, // Second vector has 2 more unique series (total 4 > limit 3)
+			expectError:        true,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
+		{
+			name:               "Drilldown - range query limit NOT exceeded across multiple vectors",
+			queryTags:          "Source=grafana-lokiexplore-app",
+			maxSeries:          5,
+			vectorSize:         2, // First vector has 2 series
+			isRangeQuery:       true,
+			additionalVectors:  []int{2, 1}, // Second has 2, third has 1 (total 5 = limit)
+			expectError:        false,
+			expectTruncation:   false,
+			expectedWarningMsg: "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Create a mock query with the necessary context
+			ctx := context.Background()
+			if test.queryTags != "" {
+				ctx = httpreq.InjectQueryTags(ctx, test.queryTags)
+			}
+			_, ctx = metadata.NewContext(ctx)
+
+			// Create mock params - adjust for range vs instant query
+			var params *LiteralParams
+			if test.isRangeQuery {
+				params = &LiteralParams{
+					queryString: `rate({app="foo"}[1m])`,
+					start:       time.Unix(0, 0),
+					end:         time.Unix(120, 0), // Range query: multiple steps
+					step:        60 * time.Second,
+					interval:    0,
+					direction:   logproto.FORWARD,
+					limit:       100,
+				}
+			} else {
+				params = &LiteralParams{
+					queryString: `rate({app="foo"}[1m])`,
+					start:       time.Unix(0, 0),
+					end:         time.Unix(60, 0), // Instant query: single step
+					step:        30 * time.Second,
+					interval:    0,
+					direction:   logproto.FORWARD,
+					limit:       100,
+				}
+			}
+
+			q := &query{
+				params: params,
+			}
+
+			// Create the initial vector with the specified number of series
+			vec := make(promql.Vector, test.vectorSize)
+			for i := 0; i < test.vectorSize; i++ {
+				vec[i] = promql.Sample{
+					T:      60 * 1000,
+					F:      float64(i + 1),
+					Metric: labels.FromStrings("app", fmt.Sprintf("app%d", i)),
+				}
+			}
+
+			// Create additional vectors for range query testing
+			var stepResults []StepResult
+			if test.isRangeQuery && len(test.additionalVectors) > 0 {
+				seriesOffset := test.vectorSize // Start naming series after the initial vector
+				for _, additionalSize := range test.additionalVectors {
+					additionalVec := make(promql.Vector, additionalSize)
+					for i := 0; i < additionalSize; i++ {
+						additionalVec[i] = promql.Sample{
+							T:      120 * 1000, // Different timestamp for subsequent steps
+							F:      float64(seriesOffset + i + 1),
+							Metric: labels.FromStrings("app", fmt.Sprintf("app%d", seriesOffset+i)),
+						}
+					}
+					stepResults = append(stepResults, &storeSampleResult{vector: additionalVec})
+					seriesOffset += additionalSize
+				}
+			}
+
+			// Create a mock step evaluator
+			stepEvaluator := &mockStepEvaluator{
+				results: stepResults,
+				current: 0,
+				t:       t,
+			}
+
+			// Call JoinSampleVector with context
+			result, err := q.JoinSampleVector(ctx, true, &storeSampleResult{vector: vec}, stepEvaluator, test.maxSeries, false)
+
+			if test.expectError {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, logqlmodel.ErrLimit))
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+
+				if test.expectTruncation {
+					// Check that the result was truncated to maxSeries
+					var actualSeriesCount int
+					if vec, ok := result.(promql.Vector); ok {
+						// Instant query result
+						actualSeriesCount = len(vec)
+					} else if matrix, ok := result.(promql.Matrix); ok {
+						// Range query result - count unique series
+						seriesMap := make(map[string]bool)
+						for _, series := range matrix {
+							seriesMap[series.Metric.String()] = true
+						}
+						actualSeriesCount = len(seriesMap)
+					} else {
+						t.Fatalf("Unexpected result type: %T", result)
+					}
+					
+					require.LessOrEqual(t, actualSeriesCount, test.maxSeries, 
+						"Expected result to be truncated to maxSeries (%d), but got %d series", 
+						test.maxSeries, actualSeriesCount)
+
+					// Check for warning
+					meta := metadata.FromContext(ctx)
+					warnings := meta.Warnings()
+					require.NotEmpty(t, warnings, "Expected warnings but got none")
+					require.Contains(t, warnings[0], test.expectedWarningMsg)
+				} else {
+					// No truncation expected - verify no warnings
+					meta := metadata.FromContext(ctx)
+					warnings := meta.Warnings()
+					if test.expectedWarningMsg == "" {
+						require.Empty(t, warnings, "Expected no warnings but got: %v", warnings)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestHttpreqIsLogsDrilldownRequest(t *testing.T) {
+	tests := []struct {
+		name      string
+		queryTags string
+		expected  bool
+	}{
+		{
+			name:      "Valid Logs Drilldown request",
+			queryTags: "Source=grafana-lokiexplore-app,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Case insensitive source matching",
+			queryTags: "Source=GRAFANA-LOKIEXPLORE-APP,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Different source",
+			queryTags: "Source=grafana,Feature=explore",
+			expected:  false,
+		},
+		{
+			name:      "No source tag",
+			queryTags: "Feature=patterns,User=test",
+			expected:  false,
+		},
+		{
+			name:      "Empty query tags",
+			queryTags: "",
+			expected:  false,
+		},
+		{
+			name:      "Malformed tags",
+			queryTags: "invalid_tags_format",
+			expected:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.queryTags != "" {
+				ctx = httpreq.InjectQueryTags(ctx, test.queryTags)
+			}
+
+			result := httpreq.IsLogsDrilldownRequest(ctx)
+			require.Equal(t, test.expected, result, "Expected %v, got %v for queryTags: %s", test.expected, result, test.queryTags)
+		})
+	}
+}
+
+func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
+	t.Parallel()
+
+	// This test covers a vector overwrite issue in range queries for Logs Drilldown.
+	// The problem was that after truncating the first vector due to series limit,
+	// subsequent steps in the range query can overwrite the truncated vector with larger vectors,
+	// causing the final result to exceed the intended series limit.
+
+	ctx := context.Background()
+	ctx = httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
+	_, ctx = metadata.NewContext(ctx)
+
+	// Create mock params for a range query (multiple steps)
+	params := &LiteralParams{
+		queryString: `rate({app="foo"}[1m])`,
+		start:       time.Unix(0, 0),
+		end:         time.Unix(120, 0), // 3 steps with 60s step
+		step:        60 * time.Second,
+		interval:    0,
+		direction:   logproto.FORWARD,
+		limit:       100,
+	}
+
+	q := &query{
+		params: params,
+	}
+
+	maxSeries := 2 // Limit to 2 series
+
+	// Create first vector that exceeds the limit (3 series)
+	firstVec := make(promql.Vector, 3)
+	for i := range 3 {
+		firstVec[i] = promql.Sample{
+			T:      0 * 1000, // First time step
+			F:      float64(i + 1),
+			Metric: labels.FromStrings("app", fmt.Sprintf("app%d", i)),
+		}
+	}
+
+	// Create second vector that also exceeds the limit (4 series)
+	// This simulates the case where subsequent steps return even more series
+	secondVec := make(promql.Vector, 4)
+	for i := range 4 {
+		secondVec[i] = promql.Sample{
+			T:      60 * 1000, // Second time step
+			F:      float64(i + 10),
+			Metric: labels.FromStrings("app", fmt.Sprintf("app%d", i)),
+		}
+	}
+
+	// Create third vector that also exceeds the limit (5 series)
+	thirdVec := make(promql.Vector, 5)
+	for i := range 5 {
+		thirdVec[i] = promql.Sample{
+			T:      120 * 1000, // Third time step
+			F:      float64(i + 20),
+			Metric: labels.FromStrings("app", fmt.Sprintf("app%d", i)),
+		}
+	}
+
+	// Create a mock step evaluator that returns vectors exceeding the limit on each call
+	stepEvaluator := &mockStepEvaluator{
+		results: []StepResult{
+			&storeSampleResult{vector: secondVec}, // Second call will return 4 series
+			&storeSampleResult{vector: thirdVec},  // Third call will return 5 series
+		},
+		current: 0,
+		t:       t,
+	}
+
+	// Call JoinSampleVector with the first vector (3 series) and step evaluator
+	// that will return even larger vectors in subsequent steps
+	result, err := q.JoinSampleVector(ctx, true, &storeSampleResult{vector: firstVec}, stepEvaluator, maxSeries, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// This test expects the CORRECT behavior: series limit should be respected
+	// across all steps of a range query for Logs Drilldown requests
+	if matrix, ok := result.(promql.Matrix); ok {
+		// Count total unique series across all steps
+		seriesMap := make(map[string]bool)
+		for _, series := range matrix {
+			seriesMap[series.Metric.String()] = true
+		}
+
+		// The correct behavior: final result should never exceed maxSeries
+		// This assertion will FAIL initially, demonstrating the bug exists
+		require.LessOrEqual(t, len(seriesMap), maxSeries,
+			"Expected series limit to be respected across all range query steps. "+
+				"Found %d series but limit is %d. This indicates the vector overwrite bug exists.",
+			len(seriesMap), maxSeries)
+
+		t.Logf("Correct behavior: found %d unique series (within limit of %d)", len(seriesMap), maxSeries)
+	} else {
+		t.Fatalf("Expected Matrix result, got %T", result)
+	}
+
+	// Verify that warnings were still added for the first truncation
+	meta := metadata.FromContext(ctx)
+	warnings := meta.Warnings()
+	require.NotEmpty(t, warnings, "Expected warnings due to series limit exceeded")
+	require.Contains(t, warnings[0], "maximum number of series")
+}
