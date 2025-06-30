@@ -3720,6 +3720,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
 
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
