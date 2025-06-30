@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,14 @@ type groupConsumer struct {
 
 	// The data for topics that the user assigned. Metadata updates the
 	// atomic.Value in each pointer atomically.
+	//
+	// We initialize tps with zero-value *topicPartitions in initGroup
+	// if we are directly consuming topics. If we are regex consuming,
+	// the metadata loop itself requests all topics, filters the topics
+	// against our regex, and then adds matching topics to tps.
+	//
+	// This, effectively, is the set of all candidate topics we could
+	// theoretically consume. Purging topics removes from this.
 	tps *topicsPartitions
 
 	reSeen map[string]bool // topics we evaluated against regex, and whether we want them or not
@@ -94,11 +103,13 @@ type groupConsumer struct {
 	// topics that we are not interested in consuming. We track the entire
 	// group's topics in external, and our fetchMetadata loop uses this.
 	// We store this as a pointer for address comparisons.
+	// Not relevant if using KIP-848.
 	external atomic.Value // *groupExternal
 
 	// See the big comment on `commit`. If we allow committing between
 	// join&sync, we occasionally see RebalanceInProgress or
 	// IllegalGeneration errors while cooperative consuming.
+	// Not relevant if using KIP-848.
 	noCommitDuringJoinAndSync sync.RWMutex
 
 	//////////////
@@ -108,8 +119,12 @@ type groupConsumer struct {
 
 	// using is updated when finding new assignments, we always add to this
 	// if we want to consume a topic (or see there are more potential
-	// partitions). Only the leader can trigger a new group session if there
-	// are simply more partitions for existing topics.
+	// partitions). The difference between 'using' and 'tps' is that
+	// 'using' is used FOR joining. We add topics to this when we learn
+	// about them and want to consume them, and the topics here
+	// are used in the JoinGroup metadata. There may be a small delta
+	// between 'tps' before topics are in 'using', and 'using' tracks
+	// the last known partition count for if we are leader.
 	//
 	// This is read when joining a group or leaving a group.
 	using map[string]int // topics *we* are currently using => # partitions known in that topic
@@ -145,7 +160,10 @@ type groupConsumer struct {
 	blockAuto bool
 
 	// We set this once to manage the group lifecycle once.
+	// If we detect we should run in 848 mode, we set is848 true.
 	managing bool
+	is848    bool
+	g848     *g848
 
 	dying    bool // set when closing, read in findNewAssignments
 	left     chan struct{}
@@ -188,6 +206,10 @@ func (g *groupMemberGen) storeMember(memberID string) {
 	g.store(memberID, g.generation())
 }
 
+func (g *groupMemberGen) storeGeneration(generation int32) {
+	g.store(g.memberID(), generation)
+}
+
 // LeaveGroup leaves a group. Close automatically leaves the group, so this is
 // only necessary to call if you plan to leave the group but continue to use
 // the client. If a rebalance is in progress, this function waits for the
@@ -208,7 +230,7 @@ func (cl *Client) LeaveGroup() {
 	cl.LeaveGroupContext(cl.ctx)
 }
 
-// LeaveGroup leaves a group. Close automatically leaves the group, so this is
+// LeaveGroupContext leaves a group. Close automatically leaves the group, so this is
 // only necessary to call if you plan to leave the group but continue to use
 // the client. If a rebalance is in progress, this function waits for the
 // rebalance to complete before the group can be left. This is necessary to
@@ -365,6 +387,93 @@ func (c *consumer) initGroup() {
 	}
 }
 
+func (g *groupConsumer) manageFailWait(consecutiveErrors int, err error) (ctxCanceled bool) {
+	// If the user has BlockPollOnRebalance enabled, we have to
+	// block around the onLost and assigning.
+	g.c.waitAndAddRebalance()
+
+	if errors.Is(err, context.Canceled) && g.cfg.onRevoked != nil {
+		// The cooperative consumer does not revoke everything
+		// while rebalancing, meaning if our context is
+		// canceled, we may have uncommitted data. Rather than
+		// diving into onLost, we should go into onRevoked,
+		// because for the most part, a context cancelation
+		// means we are leaving the group. Going into onRevoked
+		// gives us an opportunity to commit outstanding
+		// offsets. For the eager consumer, since we always
+		// revoke before exiting the heartbeat loop, we do not
+		// really care so much about *needing* to call
+		// onRevoked, but since we are handling this case for
+		// the cooperative consumer we may as well just also
+		// include the eager consumer.
+		g.cfg.onRevoked(g.cl.ctx, g.cl, g.nowAssigned.read())
+	} else {
+		// Any other error is perceived as a fatal error,
+		// and we go into onLost as appropriate.
+		if g.cfg.onLost != nil {
+			g.cfg.onLost(g.cl.ctx, g.cl, g.nowAssigned.read())
+		}
+		g.cfg.hooks.each(func(h Hook) {
+			if h, ok := h.(HookGroupManageError); ok {
+				h.OnGroupManageError(err)
+			}
+		})
+		g.c.addFakeReadyForDraining("", 0, &ErrGroupSession{err}, "notification of group management loop error")
+	}
+
+	// If we are eager, we should have invalidated everything
+	// before getting here, but we do so doubly just in case.
+	//
+	// If we are cooperative, the join and sync could have failed
+	// during the cooperative rebalance where we were still
+	// consuming. We need to invalidate everything. Waiting to
+	// resume from poll is necessary, but the user will likely be
+	// unable to commit.
+	{
+		g.c.mu.Lock()
+		g.c.assignPartitions(nil, assignInvalidateAll, nil, "clearing assignment at end of group management session")
+		g.mu.Lock()     // before allowing poll to touch uncommitted, lock the group
+		g.c.mu.Unlock() // now part of poll can continue
+		g.uncommitted = nil
+		g.mu.Unlock()
+
+		g.nowAssigned.store(nil)
+		g.lastAssigned = nil
+		g.fetching = nil
+
+		g.leader.Store(false)
+		g.resetExternal()
+	}
+
+	// Unblock bolling now that we have called onLost and
+	// re-assigned.
+	g.c.unaddRebalance()
+
+	if errors.Is(err, context.Canceled) { // context was canceled, quit now
+		return true
+	}
+
+	// Waiting for the backoff is a good time to update our
+	// metadata; maybe the error is from stale metadata.
+	backoff := g.cfg.retryBackoff(consecutiveErrors)
+	g.cfg.logger.Log(LogLevelError, "group manage loop errored",
+		"group", g.cfg.group,
+		"err", err,
+		"consecutive_errors", consecutiveErrors,
+		"backoff", backoff,
+	)
+	deadline := time.Now().Add(backoff)
+	g.cl.waitmeta(g.ctx, backoff, "waitmeta during group manage backoff")
+	after := time.NewTimer(time.Until(deadline))
+	select {
+	case <-g.ctx.Done():
+		after.Stop()
+		return true
+	case <-after.C:
+	}
+	return false
+}
+
 // Manages the group consumer's join / sync / heartbeat / fetch offset flow.
 //
 // Once a group is assigned, we fire a metadata request for all topics the
@@ -387,7 +496,7 @@ func (g *groupConsumer) manage() {
 		}
 		err := g.joinAndSync(joinWhy)
 		if err == nil {
-			if joinWhy, err = g.setupAssignedAndHeartbeat(); err != nil {
+			if joinWhy, err = g.setupAssignedAndHeartbeat(g.cfg.heartbeatInterval, g.heartbeatFn()); err != nil {
 				if errors.Is(err, kerr.RebalanceInProgress) {
 					err = nil
 				}
@@ -399,89 +508,10 @@ func (g *groupConsumer) manage() {
 		}
 		joinWhy = "rejoining after we previously errored and backed off"
 
-		// If the user has BlockPollOnRebalance enabled, we have to
-		// block around the onLost and assigning.
-		g.c.waitAndAddRebalance()
-
-		if errors.Is(err, context.Canceled) && g.cfg.onRevoked != nil {
-			// The cooperative consumer does not revoke everything
-			// while rebalancing, meaning if our context is
-			// canceled, we may have uncommitted data. Rather than
-			// diving into onLost, we should go into onRevoked,
-			// because for the most part, a context cancelation
-			// means we are leaving the group. Going into onRevoked
-			// gives us an opportunity to commit outstanding
-			// offsets. For the eager consumer, since we always
-			// revoke before exiting the heartbeat loop, we do not
-			// really care so much about *needing* to call
-			// onRevoked, but since we are handling this case for
-			// the cooperative consumer we may as well just also
-			// include the eager consumer.
-			g.cfg.onRevoked(g.cl.ctx, g.cl, g.nowAssigned.read())
-		} else {
-			// Any other error is perceived as a fatal error,
-			// and we go into onLost as appropriate.
-			if g.cfg.onLost != nil {
-				g.cfg.onLost(g.cl.ctx, g.cl, g.nowAssigned.read())
-			}
-			g.cfg.hooks.each(func(h Hook) {
-				if h, ok := h.(HookGroupManageError); ok {
-					h.OnGroupManageError(err)
-				}
-			})
-			g.c.addFakeReadyForDraining("", 0, &ErrGroupSession{err}, "notification of group management loop error")
-		}
-
-		// If we are eager, we should have invalidated everything
-		// before getting here, but we do so doubly just in case.
-		//
-		// If we are cooperative, the join and sync could have failed
-		// during the cooperative rebalance where we were still
-		// consuming. We need to invalidate everything. Waiting to
-		// resume from poll is necessary, but the user will likely be
-		// unable to commit.
-		{
-			g.c.mu.Lock()
-			g.c.assignPartitions(nil, assignInvalidateAll, nil, "clearing assignment at end of group management session")
-			g.mu.Lock()     // before allowing poll to touch uncommitted, lock the group
-			g.c.mu.Unlock() // now part of poll can continue
-			g.uncommitted = nil
-			g.mu.Unlock()
-
-			g.nowAssigned.store(nil)
-			g.lastAssigned = nil
-			g.fetching = nil
-
-			g.leader.Store(false)
-			g.resetExternal()
-		}
-
-		// Unblock bolling now that we have called onLost and
-		// re-assigned.
-		g.c.unaddRebalance()
-
-		if errors.Is(err, context.Canceled) { // context was canceled, quit now
-			return
-		}
-
-		// Waiting for the backoff is a good time to update our
-		// metadata; maybe the error is from stale metadata.
 		consecutiveErrors++
-		backoff := g.cfg.retryBackoff(consecutiveErrors)
-		g.cfg.logger.Log(LogLevelError, "join and sync loop errored",
-			"group", g.cfg.group,
-			"err", err,
-			"consecutive_errors", consecutiveErrors,
-			"backoff", backoff,
-		)
-		deadline := time.Now().Add(backoff)
-		g.cl.waitmeta(g.ctx, backoff, "waitmeta during join & sync error backoff")
-		after := time.NewTimer(time.Until(deadline))
-		select {
-		case <-g.ctx.Done():
-			after.Stop()
+		ctxCanceled := g.manageFailWait(consecutiveErrors, err)
+		if ctxCanceled {
 			return
-		case <-after.C:
 		}
 	}
 }
@@ -493,6 +523,7 @@ func (g *groupConsumer) leave(ctx context.Context) {
 	wasDead := g.dying
 	g.dying = true
 	wasManaging := g.managing
+	is848 := g.is848
 	g.cancel()
 	g.mu.Unlock()
 
@@ -511,11 +542,23 @@ func (g *groupConsumer) leave(ctx context.Context) {
 
 		defer close(g.left)
 
+		// If we JUST started a group but do not yet have a
+		// member ID, there's nothing we can do.
+		memberID := g.memberGen.memberID()
+		if memberID == "" {
+			g.cfg.logger.Log(LogLevelInfo, "tried to leave group but we have no member ID yet, returning early", "group", g.cfg.group)
+			return
+		}
+
+		if is848 {
+			g.leave848(ctx)
+			return
+		}
+
 		if g.cfg.instanceID != nil {
 			return
 		}
 
-		memberID := g.memberGen.memberID()
 		g.cfg.logger.Log(LogLevelInfo, "leaving group",
 			"group", g.cfg.group,
 			"member_id", memberID,
@@ -653,7 +696,8 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 
 	switch stage {
 	case revokeLastSession:
-		// we use lost in this case
+		// we use lost in this case; this is the case where we are
+		// rejoining after losing some partitions (cooperative or KIP-848)
 
 	case revokeThisSession:
 		// lost is nil for cooperative assigning. Instead, we determine
@@ -708,9 +752,9 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 
 	if len(lost) > 0 || stage == revokeThisSession {
 		if len(lost) == 0 {
-			g.cfg.logger.Log(LogLevelInfo, "cooperative consumer calling onRevoke at the end of a session even though no partitions were lost", "group", g.cfg.group)
+			g.cfg.logger.Log(LogLevelInfo, "consumer calling onRevoke at the end of a session; consumer did not change any client-side subscription", "group", g.cfg.group)
 		} else {
-			g.cfg.logger.Log(LogLevelInfo, "cooperative consumer calling onRevoke", "group", g.cfg.group, "lost", lost, "stage", stage)
+			g.cfg.logger.Log(LogLevelInfo, "calling onRevoke at the end of a session", "group", g.cfg.group, "lost", lost, "stage", stage)
 		}
 		if g.cfg.onRevoked != nil {
 			g.cfg.onRevoked(g.cl.ctx, g.cl, lost)
@@ -722,7 +766,7 @@ func (g *groupConsumer) revoke(stage revokeStage, lost map[string][]int32, leavi
 	}
 
 	if stage != revokeThisSession { // cooperative consumers rejoin after they revoking what they lost
-		defer g.rejoin("cooperative rejoin after revoking what we lost from a rebalance")
+		defer g.rejoin("after revoking what we lost from a rebalance")
 	}
 
 	// The block below deletes everything lost from our uncommitted map.
@@ -824,7 +868,7 @@ func (s *assignRevokeSession) revoke(g *groupConsumer, leaving bool) <-chan stru
 //   - which ensures that pre revoking is complete
 //   - fetching is complete
 //   - heartbeating is complete
-func (g *groupConsumer) setupAssignedAndHeartbeat() (string, error) {
+func (g *groupConsumer) setupAssignedAndHeartbeat(initialHb time.Duration, hbfn func() (time.Duration, error)) (string, error) {
 	type hbquit struct {
 		rejoinWhy string
 		err       error
@@ -846,7 +890,7 @@ func (g *groupConsumer) setupAssignedAndHeartbeat() (string, error) {
 	go func() {
 		defer cancel() // potentially kill offset fetching
 		g.cfg.logger.Log(LogLevelInfo, "beginning heartbeat loop", "group", g.cfg.group)
-		rejoinWhy, err := g.heartbeat(fetchErrCh, s)
+		rejoinWhy, err := g.heartbeat(initialHb, fetchErrCh, s, hbfn)
 		hbErrCh <- hbquit{rejoinWhy, err}
 	}()
 
@@ -864,7 +908,7 @@ func (g *groupConsumer) setupAssignedAndHeartbeat() (string, error) {
 	// Before we fetch offsets, we wait for the user's onAssign callback to
 	// be done. This ensures a few things:
 	//
-	// * that we wait for for prerevoking to be done, which updates the
+	// * that we wait for prerevoking to be done, which updates the
 	// uncommitted field. Waiting for that ensures that a rejoin and poll
 	// does not have weird concurrent interaction.
 	//
@@ -909,30 +953,52 @@ func (g *groupConsumer) setupAssignedAndHeartbeat() (string, error) {
 	return done.rejoinWhy, done.err
 }
 
+func (g *groupConsumer) heartbeatFn() func() (time.Duration, error) {
+	return func() (time.Duration, error) {
+		req := kmsg.NewPtrHeartbeatRequest()
+		req.Group = g.cfg.group
+		memberID, generation := g.memberGen.load()
+		req.Generation = generation
+		req.MemberID = memberID
+		req.InstanceID = g.cfg.instanceID
+		var resp *kmsg.HeartbeatResponse
+		resp, err := req.RequestWith(g.ctx, g.cl)
+		if err == nil {
+			err = kerr.ErrorForCode(resp.ErrorCode)
+		}
+		return g.cfg.heartbeatInterval, err
+	}
+}
+
 // heartbeat issues heartbeat requests to Kafka for the duration of a group
 // session.
 //
 // This function begins before fetching offsets to allow the consumer's
 // onAssigned to be called before fetching. If the eventual offset fetch
-// errors, we continue heartbeating until onRevoked finishes and our metadata
-// is updated. If the error is not RebalanceInProgress, we return immediately.
+// errors, we continue heartbeating until onRevoked finishes.
+// If the error is not RebalanceInProgress, we return immediately.
 //
 // If the offset fetch is successful, then we basically sit in this function
 // until a heartbeat errors or we, being the leader, decide to re-join.
-func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSession) (string, error) {
-	ticker := time.NewTicker(g.cfg.heartbeatInterval)
-	defer ticker.Stop()
+func (g *groupConsumer) heartbeat(initialHb time.Duration, fetchErrCh <-chan error, s *assignRevokeSession, hbfn func() (time.Duration, error)) (string, error) {
+	g.mu.Lock()
+	is848 := g.is848
+	g.mu.Unlock()
+
+	timer := time.NewTimer(initialHb)
+	defer timer.Stop()
 
 	// We issue one heartbeat quickly if we are cooperative because
 	// cooperative consumers rejoin the group immediately, and we want to
-	// detect that in 500ms rather than 3s.
+	// detect that in 500ms rather than 3s. We only want this is non-848
+	// mode.
 	var cooperativeFastCheck <-chan time.Time
-	if g.cooperative.Load() {
+	if g.cooperative.Load() && !is848 {
 		cooperativeFastCheck = time.After(500 * time.Millisecond)
 	}
 
-	var metadone, revoked <-chan struct{}
-	var heartbeat, didMetadone, didRevoke bool
+	var revoked <-chan struct{}
+	var heartbeat, didRevoke bool
 	var rejoinWhy string
 	var lastErr error
 
@@ -945,7 +1011,7 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 		select {
 		case <-cooperativeFastCheck:
 			heartbeat = true
-		case <-ticker.C:
+		case <-timer.C:
 			heartbeat = true
 		case force = <-g.heartbeatForceCh:
 			heartbeat = true
@@ -956,9 +1022,6 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 			err = kerr.RebalanceInProgress
 		case err = <-fetchErrCh:
 			fetchErrCh = nil
-		case <-metadone:
-			metadone = nil
-			didMetadone = true
 		case <-revoked:
 			revoked = nil
 			didRevoke = true
@@ -973,27 +1036,19 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 
 		if heartbeat {
 			g.cfg.logger.Log(LogLevelDebug, "heartbeating", "group", g.cfg.group)
-			req := kmsg.NewPtrHeartbeatRequest()
-			req.Group = g.cfg.group
-			memberID, generation := g.memberGen.load()
-			req.Generation = generation
-			req.MemberID = memberID
-			req.InstanceID = g.cfg.instanceID
-			var resp *kmsg.HeartbeatResponse
-			if resp, err = req.RequestWith(g.ctx, g.cl); err == nil {
-				err = kerr.ErrorForCode(resp.ErrorCode)
-			}
+			var reset time.Duration
+			reset, err = hbfn()
+			timer.Reset(reset)
 			g.cfg.logger.Log(LogLevelDebug, "heartbeat complete", "group", g.cfg.group, "err", err)
 			if force != nil {
 				force(err)
 			}
 		}
 
-		// The first error either triggers a clean revoke and metadata
-		// update or it returns immediately. If we triggered the
-		// revoke, we wait for it to complete regardless of any future
-		// error.
-		if didMetadone && didRevoke {
+		// The first error either triggers a clean revoke or it returns
+		// immediately. If we triggered the revoke, we wait for it to
+		// complete regardless of any future error.
+		if didRevoke {
 			return rejoinWhy, lastErr
 		}
 
@@ -1002,7 +1057,11 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 		}
 
 		if lastErr == nil {
-			g.cfg.logger.Log(LogLevelInfo, "heartbeat errored", "group", g.cfg.group, "err", err)
+			if is848 && errors.Is(err, kerr.RebalanceInProgress) {
+				g.cfg.logger.Log(LogLevelInfo, "heartbeat saw a change in group status; partitions were added or lost", "group", g.cfg.group)
+			} else {
+				g.cfg.logger.Log(LogLevelInfo, "heartbeat errored", "group", g.cfg.group, "err", err)
+			}
 		} else {
 			g.cfg.logger.Log(LogLevelInfo, "heartbeat errored again while waiting for user revoke to finish", "group", g.cfg.group, "err", err)
 		}
@@ -1033,17 +1092,6 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 			// left and we revoke everything.
 			revoked = s.revoke(g, errors.Is(err, context.Canceled))
 		}
-		// Since we errored, while waiting for the revoke to finish, we
-		// update our metadata. A leader may have re-joined with new
-		// metadata, and we want the update.
-		if !didMetadone && metadone == nil {
-			waited := make(chan struct{})
-			metadone = waited
-			go func() {
-				g.cl.waitmeta(g.ctx, g.cfg.sessionTimeout, "waitmeta after heartbeat error")
-				close(waited)
-			}()
-		}
 
 		// We always save the latest error; generally this should be
 		// REBALANCE_IN_PROGRESS, but if the revoke takes too long,
@@ -1066,7 +1114,7 @@ func (g *groupConsumer) heartbeat(fetchErrCh <-chan error, s *assignRevokeSessio
 // rebalance and will instead reply to the member with its current assignment.
 func (cl *Client) ForceRebalance() {
 	if g := cl.consumer.g; g != nil {
-		g.rejoin("rejoin from ForceRebalance")
+		g.rejoin("from ForceRebalance")
 	}
 }
 
@@ -1434,6 +1482,9 @@ func (g *groupConsumer) handleSyncResp(protocol string, resp *kmsg.SyncGroupResp
 		g.cfg.logger.Log(LogLevelError, "sync assignment parse failed", "group", g.cfg.group, "err", err)
 		return err
 	}
+	for _, v := range assigned {
+		slices.Sort(v)
+	}
 
 	g.cfg.logger.Log(LogLevelInfo, "synced", "group", g.cfg.group, "assigned", mtps(assigned))
 
@@ -1552,15 +1603,22 @@ func (g *groupConsumer) fetchOffsets(ctx context.Context, added map[string][]int
 	// request, if we are only requesting one group, as well as maps the
 	// response back, so we do not need to worry about v8+ here.
 start:
+	member, gen := g.memberGen.load()
 	req := kmsg.NewPtrOffsetFetchRequest()
-	req.Group = g.cfg.group
 	req.RequireStable = g.cfg.requireStable
+	reqg := kmsg.NewOffsetFetchRequestGroup()
+	reqg.Group = g.cfg.group
+	if member != "" {
+		reqg.MemberID = &member
+		reqg.MemberEpoch = gen
+	}
 	for topic, partitions := range added {
-		reqTopic := kmsg.NewOffsetFetchRequestTopic()
+		reqTopic := kmsg.NewOffsetFetchRequestGroupTopic()
 		reqTopic.Topic = topic
 		reqTopic.Partitions = partitions
-		req.Topics = append(req.Topics, reqTopic)
+		reqg.Topics = append(reqg.Topics, reqTopic)
 	}
+	req.Groups = append(req.Groups, reqg)
 
 	var resp *kmsg.OffsetFetchResponse
 	var err error
@@ -1623,7 +1681,7 @@ start:
 				offset.epoch = rPartition.LeaderEpoch
 			}
 			if rPartition.Offset == -1 {
-				offset = g.cfg.resetOffset
+				offset = g.cfg.startOffset
 			}
 			topicOffsets[rPartition.Partition] = offset
 		}
@@ -1770,6 +1828,11 @@ func (g *groupConsumer) findNewAssignments() {
 
 	if !g.managing {
 		g.managing = true
+		if g.should848() {
+			g.is848 = true
+			go g.manage848()
+			return
+		}
 		go g.manage()
 		return
 	}
@@ -1799,7 +1862,7 @@ type uncommit struct {
 type EpochOffset struct {
 	// Epoch is the leader epoch of the record being committed. Truncation
 	// detection relies on the epoch of the CURRENT record. For truncation
-	// detection, the client asks "what is the the end of this epoch?",
+	// detection, the client asks "what is the end of this epoch?",
 	// which returns one after the end offset (see the next field, and
 	// check the docs on kmsg.OffsetForLeaderEpochRequest).
 	Epoch int32
@@ -2270,9 +2333,7 @@ func (g *groupConsumer) getUncommittedLocked(head, dirty bool) map[string]map[in
 	return uncommitted
 }
 
-type commitContextFnT struct{}
-
-var commitContextFn commitContextFnT
+var commitContextFn = func() *string { s := "commit_ctx"; return &s }()
 
 // PreCommitFnContext attaches fn to the context through WithValue. Using the
 // context while committing allows fn to be called just before the commit is
@@ -2283,9 +2344,7 @@ func PreCommitFnContext(ctx context.Context, fn func(*kmsg.OffsetCommitRequest) 
 	return context.WithValue(ctx, commitContextFn, fn)
 }
 
-type txnCommitContextFnT struct{}
-
-var txnCommitContextFn txnCommitContextFnT
+var txnCommitContextFn = func() *string { s := "txn_commit_ctx"; return &s }()
 
 // PreTxnCommitFnContext attaches fn to the context through WithValue. Using
 // the context while committing a transaction allows fn to be called just
@@ -2803,6 +2862,8 @@ func (g *groupConsumer) commit(
 	req.MemberID = memberID
 	req.InstanceID = g.cfg.instanceID
 
+	is848 := g.is848 // safe since we are under g.mu
+
 	if ctx.Done() != nil {
 		go func() {
 			select {
@@ -2848,11 +2909,50 @@ func (g *groupConsumer) commit(
 			}
 		}
 
+		var retries int
+	issue:
+		start := time.Now()
 		resp, err := req.RequestWith(commitCtx, g.cl)
 		if err != nil {
 			onDone(g.cl, req, nil, err)
 			return
 		}
+		g.cl.metrics.observeTime(&g.cl.metrics.cCommitLatency, time.Since(start).Milliseconds())
+
+		// With next gen consumer groups, it is possible for the group
+		// to rebalance again immediately after we discover we need to
+		// revoke. We try up to 3x reloading and resending.
+		if is848 && len(resp.Topics) > 0 && len(resp.Topics[0].Partitions) > 0 {
+			ec := resp.Topics[0].Partitions[0].ErrorCode
+			if kerr.ErrorForCode(ec) == kerr.StaleMemberEpoch && retries < 3 {
+				hbreq := g.g848.mkreq()
+				hbresp, err := hbreq.RequestWith(commitCtx, g.cl)
+				if err != nil {
+					g.cl.cfg.logger.Log(LogLevelInfo, "received STALE_MEMBER_EPOCH while committing; unable to force heartbeat; returning original stale error",
+						"last_generation", generation,
+						"err", err,
+					)
+				} else {
+					if err := kerr.ErrorForCode(hbresp.ErrorCode); err != nil { //nolint:revive // err != nil is more standard as the first case
+						g.cl.cfg.logger.Log(LogLevelInfo, "received STALE_MEMBER_EPOCH while committing; forced immediate heartbeat to load the latest generation but received an error",
+							"last_generation", generation,
+							"err", err,
+						)
+					} else {
+						g.cl.cfg.logger.Log(LogLevelInfo, "received STALE_MEMBER_EPOCH while committing; forced immediate heartbeat to load the latest generation",
+							"last_generation", generation,
+							"new_generation", hbresp.MemberEpoch,
+						)
+						g.memberGen.storeGeneration(hbresp.MemberEpoch)
+						generation = hbresp.MemberEpoch
+						req.Generation = generation
+						retries++
+						goto issue
+					}
+				}
+			}
+		}
+
 		g.updateCommitted(req, resp)
 		onDone(g.cl, req, resp, nil)
 	}()
