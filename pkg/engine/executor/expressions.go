@@ -313,10 +313,29 @@ type CoalesceVector struct {
 
 var _ ColumnVector = (*CoalesceVector)(nil)
 
-// ToArray implements ColumnVector.
+// ToArray implements [ColumnVector].
 func (m *CoalesceVector) ToArray() arrow.Array {
-	// TODO: Create a new array by materializing the final column values considering per-row precedence.
-	panic("ToArray() is not implemented for CoalesceVector.")
+	mem := memory.NewGoAllocator()
+	builder := array.NewBuilder(mem, m.Type().ArrowType())
+	defer builder.Release()
+
+	// use Value() method which already handles precedence logic
+	for i := 0; i < int(m.rows); i++ {
+		val := m.Value(i)
+		if val == nil {
+			builder.AppendNull()
+		} else {
+			// [CoalesceVector] only supports [datatype.String] for now
+			if strVal, ok := val.(string); ok {
+				builder.(*array.StringBuilder).Append(strVal)
+			} else {
+				// Fallback: convert to string representation
+				builder.(*array.StringBuilder).Append(fmt.Sprintf("%v", val))
+			}
+		}
+	}
+
+	return builder.NewArray()
 }
 
 // Value returns the value at the specified index position considering the precedence rules.

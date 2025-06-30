@@ -310,6 +310,29 @@ null,null,null`
 		require.Equal(t, nil, colVec.Value(3))           // All are null
 	})
 
+	t.Run("ToArray method should return correct Arrow array", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "test",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
+
+		arr := colVec.ToArray()
+		require.IsType(t, &array.String{}, arr)
+		stringArr := arr.(*array.String)
+
+		require.Equal(t, 4, stringArr.Len())
+		require.Equal(t, "generated_0", stringArr.Value(0))
+		require.Equal(t, "metadata_1", stringArr.Value(1))
+		require.Equal(t, "label_2", stringArr.Value(2))
+		require.True(t, stringArr.IsNull(3)) // Row 3 should be null
+	})
+
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
 		// Create a record with only one column type
 		fields := []arrow.Field{
