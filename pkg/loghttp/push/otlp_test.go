@@ -593,6 +593,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				log.NewNopLogger(),
 				streamResolver,
+				"otlp",
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
@@ -929,6 +930,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		"otlp",
 	)
 
 	// Debug: Print the actual streams we got
@@ -1214,6 +1216,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		"otlp",
 	)
 
 	// Debug: Print the actual streams we got

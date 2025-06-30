@@ -451,7 +451,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		if tracker != nil && !pushStats.IsInternalStream {
-			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
+			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
 		req.Streams[i] = s
