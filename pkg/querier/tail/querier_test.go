@@ -60,6 +60,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 	ingester.On("Tail", mock.Anything, &request).Return(clients, nil)
 	ingester.On("TailersCount", mock.Anything).Return([]uint32{0}, nil)
+	ingester.On("TailDisconnectedIngesters", mock.Anything, mock.Anything, mock.Anything).Return(map[string]logproto.Querier_TailClient{}, nil).Maybe()
 
 	// Setup log selector mock
 	logSelector := newMockTailLogSelector()
@@ -153,6 +154,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			}
 			ingester.On("Tail", mock.Anything, &request).Return(clients, testData.ingesterError)
 			ingester.On("TailersCount", mock.Anything).Return([]uint32{testData.tailersCount}, testData.ingesterError)
+			ingester.On("TailDisconnectedIngesters", mock.Anything, mock.Anything, mock.Anything).Return(map[string]logproto.Querier_TailClient{}, nil).Maybe()
 
 			// Setup log selector mock
 			logSelector := newMockTailLogSelector()

@@ -145,22 +145,7 @@ func (es ResourceMetricsSlice) RemoveIf(f func(ResourceMetrics) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ResourceMetricsSlice) CopyTo(dest ResourceMetricsSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newResourceMetrics((*es.orig)[i], es.state).CopyTo(newResourceMetrics((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.ResourceMetrics, srcLen)
-	wrappers := make([]*otlpmetrics.ResourceMetrics, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newResourceMetrics((*es.orig)[i], es.state).CopyTo(newResourceMetrics(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigResourceMetricsSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the ResourceMetrics elements within ResourceMetricsSlice given the
@@ -169,4 +154,19 @@ func (es ResourceMetricsSlice) CopyTo(dest ResourceMetricsSlice) {
 func (es ResourceMetricsSlice) Sort(less func(a, b ResourceMetrics) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigResourceMetricsSlice(dest, src []*otlpmetrics.ResourceMetrics) []*otlpmetrics.ResourceMetrics {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.ResourceMetrics, len(src))
+		data := make([]otlpmetrics.ResourceMetrics, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigResourceMetrics(dest[i], src[i])
+	}
+	return dest
 }

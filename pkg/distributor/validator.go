@@ -37,8 +37,9 @@ type validationContext struct {
 	rejectOldSampleMaxAge int64
 	creationGracePeriod   int64
 
-	maxLineSize         int
-	maxLineSizeTruncate bool
+	maxLineSize                   int
+	maxLineSizeTruncate           bool
+	maxLineSizeTruncateIdentifier string
 
 	maxLabelNamesPerSeries int
 	maxLabelNameLength     int
@@ -68,28 +69,29 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 	retentionHours := util.RetentionHours(v.RetentionPeriod(userID))
 
 	return validationContext{
-		userID:                       userID,
-		rejectOldSample:              v.RejectOldSamples(userID),
-		rejectOldSampleMaxAge:        now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
-		creationGracePeriod:          now.Add(v.CreationGracePeriod(userID)).UnixNano(),
-		maxLineSize:                  v.MaxLineSize(userID),
-		maxLineSizeTruncate:          v.MaxLineSizeTruncate(userID),
-		maxLabelNamesPerSeries:       v.MaxLabelNamesPerSeries(userID),
-		maxLabelNameLength:           v.MaxLabelNameLength(userID),
-		maxLabelValueLength:          v.MaxLabelValueLength(userID),
-		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
-		discoverServiceName:          v.DiscoverServiceName(userID),
-		discoverLogLevels:            v.DiscoverLogLevels(userID),
-		logLevelFields:               v.LogLevelFields(userID),
-		logLevelFromJSONMaxDepth:     v.LogLevelFromJSONMaxDepth(userID),
-		discoverGenericFields:        v.DiscoverGenericFields(userID),
-		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
-		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
-		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
-		blockIngestionUntil:          v.BlockIngestionUntil(userID),
-		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
-		enforcedLabels:               v.EnforcedLabels(userID),
-		validationMetrics:            newValidationMetrics(retentionHours),
+		userID:                        userID,
+		rejectOldSample:               v.RejectOldSamples(userID),
+		rejectOldSampleMaxAge:         now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
+		creationGracePeriod:           now.Add(v.CreationGracePeriod(userID)).UnixNano(),
+		maxLineSize:                   v.MaxLineSize(userID),
+		maxLineSizeTruncate:           v.MaxLineSizeTruncate(userID),
+		maxLineSizeTruncateIdentifier: v.MaxLineSizeTruncateIdentifier(userID),
+		maxLabelNamesPerSeries:        v.MaxLabelNamesPerSeries(userID),
+		maxLabelNameLength:            v.MaxLabelNameLength(userID),
+		maxLabelValueLength:           v.MaxLabelValueLength(userID),
+		incrementDuplicateTimestamps:  v.IncrementDuplicateTimestamps(userID),
+		discoverServiceName:           v.DiscoverServiceName(userID),
+		discoverLogLevels:             v.DiscoverLogLevels(userID),
+		logLevelFields:                v.LogLevelFields(userID),
+		logLevelFromJSONMaxDepth:      v.LogLevelFromJSONMaxDepth(userID),
+		discoverGenericFields:         v.DiscoverGenericFields(userID),
+		allowStructuredMetadata:       v.AllowStructuredMetadata(userID),
+		maxStructuredMetadataSize:     v.MaxStructuredMetadataSize(userID),
+		maxStructuredMetadataCount:    v.MaxStructuredMetadataCount(userID),
+		blockIngestionUntil:           v.BlockIngestionUntil(userID),
+		blockIngestionStatusCode:      v.BlockIngestionStatusCode(userID),
+		enforcedLabels:                v.EnforcedLabels(userID),
+		validationMetrics:             newValidationMetrics(retentionHours),
 	}
 }
 
