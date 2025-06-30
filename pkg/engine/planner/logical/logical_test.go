@@ -21,6 +21,7 @@ func TestPlan_String(t *testing.T) {
 				Right: NewLiteral("users"),
 				Op:    types.BinaryOpEq,
 			},
+			Shard: noShard,
 		},
 	).Select(
 		&BinOp{
@@ -39,12 +40,12 @@ func TestPlan_String(t *testing.T) {
 
 	// Define expected output
 	exp := `
-%1 = EQ label.app "users" 
-%2 = MAKETABLE [selector=%1] 
-%3 = GT metadata.age 21 
-%4 = SELECT %2 [predicate=%3] 
+%1 = EQ label.app "users"
+%2 = MAKETABLE [selector=%1, shard=0_of_1]
+%3 = GT metadata.age 21
+%4 = SELECT %2 [predicate=%3]
 %5 = SORT %4 [column=metadata.age, asc=true, nulls_first=false]
-RETURN %5 
+RETURN %5
 `
 	exp = strings.TrimSpace(exp)
 

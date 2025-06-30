@@ -586,7 +586,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest, manifest)
 
 			for i := 0; i < tc.expectedManifest.SegmentsCount; i++ {
-				reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i+1)))
+				reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
 				require.NoError(t, err)
 
 				segmentJSON, err := io.ReadAll(reader)

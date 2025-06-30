@@ -725,6 +725,20 @@ func Test_TruncateLogLines(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
+
+	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 8
+		limits.MaxLineSizeTruncateIdentifier = "[...]"
+
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, int(limits.MaxLineSize))
+		require.Equal(t, "000[...]", topVal.Streams[0].Entries[0].Line)
+	})
 }
 
 func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
@@ -2462,7 +2476,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams",
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,

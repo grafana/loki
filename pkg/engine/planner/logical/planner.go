@@ -85,10 +85,16 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 		return nil, err
 	}
 
+	shard, err := parseShards(params.Shards())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shard: %w", err)
+	}
+
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
 			Selector: selector,
+			Shard:    shard,
 		},
 	)
 
@@ -354,4 +360,21 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Op:    types.BinaryOpLt,
 		},
 	}
+}
+
+func parseShards(shards []string) (*ShardInfo, error) {
+	if len(shards) == 0 {
+		return noShard, nil
+	}
+	parsed, variant, err := logql.ParseShards(shards)
+	if err != nil {
+		return noShard, err
+	}
+	if len(parsed) == 0 {
+		return noShard, nil
+	}
+	if variant != logql.PowerOfTwoVersion {
+		return noShard, fmt.Errorf("unsupported shard variant: %s", variant)
+	}
+	return NewShard(parsed[0].PowerOfTwo.Shard, parsed[0].PowerOfTwo.Of), nil
 }

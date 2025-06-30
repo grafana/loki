@@ -2931,6 +2931,10 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
+
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
 # CLI flag: -frontend.encoding
@@ -3715,6 +3719,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Whether to truncate lines that exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
+
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
 
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a

@@ -103,15 +103,22 @@ func (p *Planner) process(inst logical.Value) ([]Node, error) {
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
-	objects, streams, err := p.catalog.ResolveDataObj(p.convertPredicate(lp.Selector), p.state.rangeInterval)
+	shard, ok := lp.Shard.(*logical.ShardInfo)
+	if !ok {
+		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
+	}
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), p.state.rangeInterval)
 	if err != nil {
 		return nil, err
 	}
+
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
 		node := &DataObjScan{
 			Location:  objects[i],
 			StreamIDs: streams[i],
+			Sections:  sections[i],
 			Direction: p.state.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(node)
