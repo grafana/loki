@@ -447,18 +447,27 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	}
 
 	// Query store for older data by converting to LogQL query
+	// Only query the store if pattern persistence is enabled for this tenant
 	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
-		g.Go(func() error {
-			storeReq := *req
-			storeReq.Start = storeQueryInterval.start
-			storeReq.End = storeQueryInterval.end
-			resp, err := q.queryStoreForPatterns(ctx, &storeReq)
-			if err != nil {
-				return err
-			}
-			responses.add(resp)
-			return nil
-		})
+		tenantID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Only query the store if pattern persistence is enabled for this tenant
+		if q.limits.PatternPersistenceEnabled(tenantID) {
+			g.Go(func() error {
+				storeReq := *req
+				storeReq.Start = storeQueryInterval.start
+				storeReq.End = storeQueryInterval.end
+				resp, err := q.queryStoreForPatterns(ctx, &storeReq)
+				if err != nil {
+					return err
+				}
+				responses.add(resp)
+				return nil
+			})
+		}
 	}
 
 	if err := g.Wait(); err != nil {
