@@ -73,7 +73,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			if r.ContentLength > 0 {
 				// Add empty values for retention_hours and policy labels since we don't have
 				// that information for request body too large errors
-				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", "format", format).Add(float64(r.ContentLength))
+				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", format).Add(float64(r.ContentLength))
 			} else {
 				level.Error(logger).Log(
 					"msg", "negative content length observed",
@@ -137,7 +137,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver)
+	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

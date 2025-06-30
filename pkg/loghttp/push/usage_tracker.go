@@ -13,5 +13,5 @@ type UsageTracker interface {
 	ReceivedBytesAdd(ctx context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
 
 	// DiscardedBytesAdd records discarded bytes by tenant and labels.
-	DiscardedBytesAdd(ctx context.Context, tenant, reason string, labels labels.Labels, value float64)
+	DiscardedBytesAdd(ctx context.Context, tenant, reason string, labels labels.Labels, value float64, format string)
 }

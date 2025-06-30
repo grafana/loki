@@ -133,7 +133,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			assert.NoError(t, err)
 			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "")
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -232,7 +232,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "")
+			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
