@@ -6875,15 +6875,6 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>memcached.customReadinessProbe</td>
-			<td>object</td>
-			<td>custom Readiness probe for memcached pods that overrides the default one</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>memcached.image.pullPolicy</td>
 			<td>string</td>
 			<td>Memcached Docker image pull policy</td>
@@ -6936,10 +6927,9 @@ null
 		<tr>
 			<td>memcached.readinessProbe</td>
 			<td>object</td>
-			<td>Readiness probe for memcached pods</td>
+			<td>Readiness probe for memcached pods (probe port defaults to container port)</td>
 			<td><pre lang="json">
 {
-  "enabled": false,
   "failureThreshold": 6,
   "initialDelaySeconds": 5,
   "periodSeconds": 5,
