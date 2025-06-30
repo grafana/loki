@@ -75,6 +75,10 @@ func (ms Status) SetMessage(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Status) CopyTo(dest Status) {
 	dest.state.AssertMutable()
-	dest.SetCode(ms.Code())
-	dest.SetMessage(ms.Message())
+	copyOrigStatus(dest.orig, ms.orig)
+}
+
+func copyOrigStatus(dest, src *otlptrace.Status) {
+	dest.Code = src.Code
+	dest.Message = src.Message
 }
