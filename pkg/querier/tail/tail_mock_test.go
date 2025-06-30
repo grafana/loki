@@ -6,6 +6,7 @@ import (
 
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -103,7 +104,9 @@ func (c *tailClientMock) RecvMsg(_ interface{}) error {
 }
 
 func (c *tailClientMock) mockRecvWithTrigger(response *logproto.TailResponse) *tailClientMock {
-	c.On("Recv").WaitUntil(c.recvTrigger).Return(response, nil)
+	c.On("Recv").WaitUntil(c.recvTrigger).Return(response, nil).Times(1)
+	// return error on subsequent calls to break the tailer client loop
+	c.On("Recv").Return((*logproto.TailResponse)(nil), errors.New("connection closed"))
 	return c
 }
 
