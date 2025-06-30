@@ -7,9 +7,10 @@
 package container
 
 import (
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"reflect"
 	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
@@ -126,7 +127,7 @@ func (o *GetPropertiesOptions) format() (*generated.ContainerClientGetProperties
 
 // ListBlobsInclude indicates what additional information the service should return with each blob.
 type ListBlobsInclude struct {
-	Copy, Metadata, Snapshots, UncommittedBlobs, Deleted, Tags, Versions, LegalHold, ImmutabilityPolicy, DeletedWithVersions bool
+	Copy, Metadata, Snapshots, UncommittedBlobs, Deleted, Tags, Versions, LegalHold, ImmutabilityPolicy, DeletedWithVersions, Permissions bool
 }
 
 func (l ListBlobsInclude) format() []generated.ListBlobsIncludeItem {
@@ -166,7 +167,9 @@ func (l ListBlobsInclude) format() []generated.ListBlobsIncludeItem {
 	if l.Versions {
 		include = append(include, generated.ListBlobsIncludeItemVersions)
 	}
-
+	if l.Permissions {
+		include = append(include, generated.ListBlobsIncludeItemPermissions)
+	}
 	return include
 }
 
