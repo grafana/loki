@@ -68,7 +68,7 @@ func (s *Section) init(ctx context.Context) error {
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
 //
-// Unrecognized columns (e.g., when running older code against newer sterams
+// Unrecognized columns (e.g., when running older code against newer streams
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
