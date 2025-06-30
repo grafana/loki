@@ -1318,6 +1318,13 @@ func toAbsoluteName(name, origin string) (absolute string, ok bool) {
 		return origin, true
 	}
 
+	// this can happen when we have a comment after a RR that has a domain, '...   MX 20 ; this is wrong'.
+	// technically a newline can be in a domain name, but this is clearly an error and the newline only shows
+	// because of the scanning and the comment.
+	if name == "\n" {
+		return "", false
+	}
+
 	// require a valid domain name
 	_, ok = IsDomainName(name)
 	if !ok || name == "" {
