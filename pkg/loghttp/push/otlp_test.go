@@ -1024,10 +1024,10 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		generateLogs(),
 		"test-user",
 		DefaultOTLPConfig(defaultGlobalOTLPConfig),
-		[]string{},
+		nil,        // tenantConfigs
+		[]string{}, // discoverServiceName
 		tracker,
 		stats,
-		false,
 		log.NewNopLogger(),
 		streamResolver,
 	)
@@ -1078,11 +1078,11 @@ func TestNegativeMetadataScenarioExplicit(t *testing.T) {
 	}
 
 	scopeMeta := push.LabelsAdapter{
-		{Name: "scope_key", Value: "scope_value"}, // 21 bytes
+		{Name: "scope_key", Value: "scope_value"}, // 20 bytes
 	}
 
 	entryMeta := push.LabelsAdapter{
-		{Name: "entry_key", Value: "entry_value"}, // 21 bytes
+		{Name: "entry_key", Value: "entry_value"}, // 20 bytes
 	}
 
 	// ExcludedStructuredMetadataLabels would exclude certain labels
@@ -1100,8 +1100,8 @@ func TestNegativeMetadataScenarioExplicit(t *testing.T) {
 
 	// Calculate sizes with simulated exclusions
 	resourceSize := calculateSize(resourceMeta) // 27 bytes (excluded_label not counted)
-	scopeSize := calculateSize(scopeMeta)       // 21 bytes
-	entrySize := calculateSize(entryMeta)       // 21 bytes
+	scopeSize := calculateSize(scopeMeta)       // 20 bytes
+	entrySize := calculateSize(entryMeta)       // 20 bytes
 
 	// The original approach:
 	// 1. Add resource and scope attributes to entry metadata
@@ -1111,13 +1111,13 @@ func TestNegativeMetadataScenarioExplicit(t *testing.T) {
 	combined = append(combined, scopeMeta...)
 
 	// 2. Calculate combined size (with certain labels excluded)
-	combinedSize := calculateSize(combined) // Should be 27 + 21 + 21 = 69 bytes
+	combinedSize := calculateSize(combined) // Should be 27 + 20 + 20 = 67 bytes
 
 	// 3. Calculate entry-specific metadata by subtraction
 	//    metadataSize := int64(combinedSize - resourceSize - scopeSize)
 	oldCalculation := combinedSize - resourceSize - scopeSize
 
-	// Should be: 69 - 27 - 21 = 21 bytes, which equals entrySize
+	// Should be: 67 - 27 - 20 = 20 bytes, which equals entrySize
 
 	t.Logf("Resource size: %d bytes", resourceSize)
 	t.Logf("Scope size: %d bytes", scopeSize)
@@ -1132,7 +1132,7 @@ func TestNegativeMetadataScenarioExplicit(t *testing.T) {
 
 	// Using the original calculation method:
 	simulatedRealCalculation := simulatedRealCombinedSize - resourceSize - scopeSize
-	// This will be: (27 + 21 - 5) - 27 - 21 = 43 - 48 = -5 bytes
+	// This will be: (27 + 20 - 5) - 27 - 20 = 42 - 47 = -5 bytes
 
 	t.Logf("Simulated real combined size: %d bytes", simulatedRealCombinedSize)
 	t.Logf("Simulated real calculation (old method): %d bytes", simulatedRealCalculation)
