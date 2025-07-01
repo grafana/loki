@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -36,9 +38,10 @@ type Uploader struct {
 	bucket        objstore.Bucket
 	tenantID      string
 	metrics       *metrics
+	logger        log.Logger
 }
 
-func New(cfg Config, bucket objstore.Bucket, tenantID string) *Uploader {
+func New(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *Uploader {
 	metrics := newMetrics(cfg.SHAPrefixSize)
 
 	return &Uploader{
@@ -46,6 +49,7 @@ func New(cfg Config, bucket objstore.Bucket, tenantID string) *Uploader {
 		bucket:        bucket,
 		tenantID:      tenantID,
 		metrics:       metrics,
+		logger:        logger,
 	}
 }
 
@@ -90,5 +94,6 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 	}
 
 	d.metrics.uploadCount.WithLabelValues("success")
+	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath)
 	return objectPath, nil
 }

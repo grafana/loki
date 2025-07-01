@@ -276,10 +276,13 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	})
 	require.NoError(t, err)
 
-	meta := NewUpdater(bucket, tenantID, log.NewLogfmtLogger(os.Stdout))
+	logger := log.NewLogfmtLogger(os.Stdout)
+	logger = log.With(logger, "test", t.Name())
+
+	meta := NewUpdater(bucket, tenantID, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	return &testDataBuilder{
