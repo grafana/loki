@@ -74,7 +74,11 @@ func (ms ResourceMetrics) ScopeMetrics() ScopeMetricsSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ResourceMetrics) CopyTo(dest ResourceMetrics) {
 	dest.state.AssertMutable()
-	ms.Resource().CopyTo(dest.Resource())
-	dest.SetSchemaUrl(ms.SchemaUrl())
-	ms.ScopeMetrics().CopyTo(dest.ScopeMetrics())
+	copyOrigResourceMetrics(dest.orig, ms.orig)
+}
+
+func copyOrigResourceMetrics(dest, src *otlpmetrics.ResourceMetrics) {
+	internal.CopyOrigResource(&dest.Resource, &src.Resource)
+	dest.SchemaUrl = src.SchemaUrl
+	dest.ScopeMetrics = copyOrigScopeMetricsSlice(dest.ScopeMetrics, src.ScopeMetrics)
 }

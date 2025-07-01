@@ -23,6 +23,11 @@ func NewUInt64Slice(orig *[]uint64, state *State) UInt64Slice {
 	return UInt64Slice{orig: orig, state: state}
 }
 
+func CopyOrigUInt64Slice(dst, src []uint64) []uint64 {
+	dst = dst[:0]
+	return append(dst, src...)
+}
+
 func FillTestUInt64Slice(tv UInt64Slice) {
 }
 

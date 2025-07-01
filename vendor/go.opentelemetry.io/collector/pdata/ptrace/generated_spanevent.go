@@ -92,8 +92,12 @@ func (ms SpanEvent) SetDroppedAttributesCount(v uint32) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SpanEvent) CopyTo(dest SpanEvent) {
 	dest.state.AssertMutable()
-	dest.SetTimestamp(ms.Timestamp())
-	dest.SetName(ms.Name())
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetDroppedAttributesCount(ms.DroppedAttributesCount())
+	copyOrigSpanEvent(dest.orig, ms.orig)
+}
+
+func copyOrigSpanEvent(dest, src *otlptrace.Span_Event) {
+	dest.TimeUnixNano = src.TimeUnixNano
+	dest.Name = src.Name
+	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
+	dest.DroppedAttributesCount = src.DroppedAttributesCount
 }

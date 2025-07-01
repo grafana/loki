@@ -74,7 +74,11 @@ func (ms ScopeLogs) LogRecords() LogRecordSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeLogs) CopyTo(dest ScopeLogs) {
 	dest.state.AssertMutable()
-	ms.Scope().CopyTo(dest.Scope())
-	dest.SetSchemaUrl(ms.SchemaUrl())
-	ms.LogRecords().CopyTo(dest.LogRecords())
+	copyOrigScopeLogs(dest.orig, ms.orig)
+}
+
+func copyOrigScopeLogs(dest, src *otlplogs.ScopeLogs) {
+	internal.CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
+	dest.SchemaUrl = src.SchemaUrl
+	dest.LogRecords = copyOrigLogRecordSlice(dest.LogRecords, src.LogRecords)
 }

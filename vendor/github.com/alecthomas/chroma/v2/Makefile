@@ -15,11 +15,19 @@ tokentype_string.go: types.go
 .PHONY: chromad
 chromad: build/chromad
 
-build/chromad: $(shell find cmd/chromad -name '*.go' -o -name '*.html' -o -name '*.css' -o -name '*.js')
+build/chromad: $(shell find cmd/chromad -name '*.go' -o -name '*.html' -o -name '*.css' -o -name '*.js') \
+	cmd/chromad/static/wasm_exec.js \
+	cmd/chromad/static/chroma.wasm
 	rm -rf build
-	esbuild --bundle cmd/chromad/static/index.js --minify --outfile=cmd/chromad/static/index.min.js
+	esbuild --platform=node --bundle cmd/chromad/static/index.js --minify --outfile=cmd/chromad/static/index.min.js
 	esbuild --bundle cmd/chromad/static/index.css --minify --outfile=cmd/chromad/static/index.min.css
 	(export CGOENABLED=0 ; go build -C cmd/chromad -ldflags="-X 'main.version=$(VERSION)'" -o ../../build/chromad .)
+
+cmd/chromad/static/wasm_exec.js: $(shell tinygo env TINYGOROOT)/targets/wasm_exec.js
+	install -m644 $< $@
+
+cmd/chromad/static/chroma.wasm: cmd/libchromawasm/main.go
+	tinygo build -no-debug -target wasm -o $@ $<
 
 upload: build/chromad
 	scp build/chromad root@swapoff.org: && \

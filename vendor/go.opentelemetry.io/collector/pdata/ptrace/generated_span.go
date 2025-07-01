@@ -201,20 +201,24 @@ func (ms Span) Status() Status {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Span) CopyTo(dest Span) {
 	dest.state.AssertMutable()
-	dest.SetTraceID(ms.TraceID())
-	dest.SetSpanID(ms.SpanID())
-	ms.TraceState().CopyTo(dest.TraceState())
-	dest.SetParentSpanID(ms.ParentSpanID())
-	dest.SetName(ms.Name())
-	dest.SetFlags(ms.Flags())
-	dest.SetKind(ms.Kind())
-	dest.SetStartTimestamp(ms.StartTimestamp())
-	dest.SetEndTimestamp(ms.EndTimestamp())
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetDroppedAttributesCount(ms.DroppedAttributesCount())
-	ms.Events().CopyTo(dest.Events())
-	dest.SetDroppedEventsCount(ms.DroppedEventsCount())
-	ms.Links().CopyTo(dest.Links())
-	dest.SetDroppedLinksCount(ms.DroppedLinksCount())
-	ms.Status().CopyTo(dest.Status())
+	copyOrigSpan(dest.orig, ms.orig)
+}
+
+func copyOrigSpan(dest, src *otlptrace.Span) {
+	dest.TraceId = src.TraceId
+	dest.SpanId = src.SpanId
+	internal.CopyOrigTraceState(&dest.TraceState, &src.TraceState)
+	dest.ParentSpanId = src.ParentSpanId
+	dest.Name = src.Name
+	dest.Flags = src.Flags
+	dest.Kind = src.Kind
+	dest.StartTimeUnixNano = src.StartTimeUnixNano
+	dest.EndTimeUnixNano = src.EndTimeUnixNano
+	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
+	dest.DroppedAttributesCount = src.DroppedAttributesCount
+	dest.Events = copyOrigSpanEventSlice(dest.Events, src.Events)
+	dest.DroppedEventsCount = src.DroppedEventsCount
+	dest.Links = copyOrigSpanLinkSlice(dest.Links, src.Links)
+	dest.DroppedLinksCount = src.DroppedLinksCount
+	copyOrigStatus(&dest.Status, &src.Status)
 }
