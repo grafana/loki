@@ -76,7 +76,6 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, shard Sh
 		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	// extend search by rangeInterval to be able to include entries belonging to the [$range] interval.
 	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
