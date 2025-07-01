@@ -44,7 +44,7 @@ type String struct {
 // NewStringData constructs a new String array from data.
 func NewStringData(data arrow.ArrayData) *String {
 	a := &String{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -191,7 +191,7 @@ type LargeString struct {
 // NewStringData constructs a new String array from data.
 func NewLargeStringData(data arrow.ArrayData) *LargeString {
 	a := &LargeString{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -332,7 +332,7 @@ type StringView struct {
 
 func NewStringViewData(data arrow.ArrayData) *StringView {
 	a := &StringView{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -715,4 +715,8 @@ var (
 	_ StringLike        = (*String)(nil)
 	_ StringLike        = (*LargeString)(nil)
 	_ StringLike        = (*StringView)(nil)
+
+	_ arrow.TypedArray[string] = (*String)(nil)
+	_ arrow.TypedArray[string] = (*LargeString)(nil)
+	_ arrow.TypedArray[string] = (*StringView)(nil)
 )

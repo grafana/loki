@@ -22,6 +22,9 @@ type partitionOffsetMetrics struct {
 
 	// Processing delay histogram
 	processingDelay prometheus.Histogram
+
+	// Data volume metrics
+	bytesProcessed prometheus.Counter
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -50,6 +53,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		bytesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_bytes_processed_total",
+			Help: "Total number of bytes processed from this partition",
+		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -73,6 +80,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.appendFailures,
 		p.currentOffset,
 		p.processingDelay,
+		p.bytesProcessed,
 	}
 
 	for _, collector := range collectors {
@@ -91,6 +99,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.appendFailures,
 		p.currentOffset,
 		p.processingDelay,
+		p.bytesProcessed,
 	}
 
 	for _, collector := range collectors {
@@ -123,4 +132,8 @@ func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Tim
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
 		p.processingDelay.Observe(time.Since(recordTimestamp).Seconds())
 	}
+}
+
+func (p *partitionOffsetMetrics) addBytesProcessed(bytes int64) {
+	p.bytesProcessed.Add(float64(bytes))
 }

@@ -37,13 +37,13 @@ func NewStringSlice() StringSlice {
 
 // AsRaw returns a copy of the []string slice.
 func (ms StringSlice) AsRaw() []string {
-	return copyStringSlice(nil, *ms.getOrig())
+	return internal.CopyOrigStringSlice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []string into the slice StringSlice.
 func (ms StringSlice) FromRaw(val []string) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = copyStringSlice(*ms.getOrig(), val)
+	*ms.getOrig() = internal.CopyOrigStringSlice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []string slice value.
@@ -106,22 +106,35 @@ func (ms StringSlice) Append(elms ...string) {
 func (ms StringSlice) MoveTo(dest StringSlice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
+	*ms.getOrig() = nil
+}
+
+// MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
+// The current slice will be cleared.
+func (ms StringSlice) MoveAndAppendTo(dest StringSlice) {
+	ms.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	if *dest.getOrig() == nil {
+		// We can simply move the entire vector and avoid any allocations.
+		*dest.getOrig() = *ms.getOrig()
+	} else {
+		*dest.getOrig() = append(*dest.getOrig(), *ms.getOrig()...)
+	}
 	*ms.getOrig() = nil
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms StringSlice) CopyTo(dest StringSlice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = copyStringSlice(*dest.getOrig(), *ms.getOrig())
+	*dest.getOrig() = internal.CopyOrigStringSlice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another StringSlice
 func (ms StringSlice) Equal(val StringSlice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
-}
-
-func copyStringSlice(dst, src []string) []string {
-	dst = dst[:0]
-	return append(dst, src...)
 }

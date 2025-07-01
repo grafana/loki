@@ -7,11 +7,10 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -53,14 +52,13 @@ func NewGRPCTransportFromAddress(
 	metrics := newGRPCTransportMetrics(reg)
 	dialOpts, err := cfg.DialOption(
 		[]grpc.UnaryClientInterceptor{
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.UnaryClientInstrumentInterceptor(metrics.requestLatency),
 		}, []grpc.StreamClientInterceptor{
-			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientInstrumentInterceptor(metrics.requestLatency),
 		},
 		middleware.NoOpInvalidClusterValidationReporter,
 	)
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, err
 	}

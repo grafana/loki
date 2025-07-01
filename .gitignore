@@ -5,7 +5,7 @@
 *.output
 *.tgz
 *.exe
-__debug_bin
+__debug_bin*
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
@@ -44,10 +44,6 @@ pkg/ui/frontend/.vite/*
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login
 
-# Workspaces
-*.work
-*.work.sum
-
 # emacs
 .#*
 
@@ -77,3 +73,5 @@ production/helm/loki/src/helm-test/helm-test
 cpu.prof
 mem.prof
 *.pprof
+
+**/.claude/settings.local.json

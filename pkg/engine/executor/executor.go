@@ -8,6 +8,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -58,6 +59,10 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return c.executeFilter(ctx, n, inputs)
 	case *physical.Projection:
 		return c.executeProjection(ctx, n, inputs)
+	case *physical.RangeAggregation:
+		return c.executeRangeAggregation(ctx, n, inputs)
+	case *physical.VectorAggregation:
+		return c.executeVectorAggregation(ctx, n, inputs)
 	default:
 		return errorPipeline(fmt.Errorf("invalid node type: %T", node))
 	}
@@ -68,7 +73,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(errors.New("no object store bucket configured"))
 	}
 
-	predicates := make([]dataobj.LogsPredicate, 0, len(node.Predicates))
+	predicates := make([]logs.RowPredicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
 		conv, err := buildLogsPredicate(p)
@@ -78,9 +83,15 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		predicates = append(predicates, conv)
 	}
 
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	if err != nil {
+		return errorPipeline(fmt.Errorf("creating data object: %w", err))
+	}
+
 	return newDataobjScanPipeline(ctx, dataobjScanOptions{
-		Object:      dataobj.FromBucket(c.bucket, string(node.Location)),
+		Object:      obj,
 		StreamIDs:   node.StreamIDs,
+		Sections:    node.Sections,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
@@ -145,4 +156,36 @@ func (c *Context) executeProjection(_ context.Context, proj *physical.Projection
 		return errorPipeline(err)
 	}
 	return p
+}
+
+func (c *Context) executeRangeAggregation(_ context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := NewRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+		partitionBy:   plan.PartitionBy,
+		startTs:       plan.Start,
+		endTs:         plan.End,
+		rangeInterval: plan.Range,
+		step:          plan.Step,
+	})
+	if err != nil {
+		return errorPipeline(err)
+	}
+
+	return pipeline
+}
+
+func (c *Context) executeVectorAggregation(_ context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
+	if err != nil {
+		return errorPipeline(err)
+	}
+
+	return pipeline
 }

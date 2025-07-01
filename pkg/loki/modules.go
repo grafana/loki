@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
-	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
@@ -444,7 +443,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
 
-	ingestLimits, err := limits.NewIngestLimits(
+	ingestLimits, err := limits.New(
 		t.Cfg.IngestLimits,
 		t.Overrides,
 		util_log.Logger,
@@ -545,9 +544,10 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier"), metastore.NewObjectMetastore(store)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -563,6 +563,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+
+	// Use Pattern ingester RetainFor value to determine when to query pattern ingesters
+	t.Cfg.Querier.QueryPatternIngestersWithin = t.Cfg.Pattern.RetainFor
+
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
@@ -1620,11 +1624,14 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	)
 	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
 
+	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
+	// This should be fixed in the future.
 	var err error
-	t.Cfg.MemberlistKV.AdvertiseAddr, err = GetInstanceAddr(
+	t.Cfg.MemberlistKV.AdvertiseAddr, err = ring.GetInstanceAddr(
 		t.Cfg.MemberlistKV.AdvertiseAddr,
-		t.Cfg.Common.InstanceInterfaceNames,
+		t.Cfg.Common.Ring.InstanceInterfaceNames,
 		util_log.Logger,
+		t.Cfg.Common.Ring.EnableIPv6,
 	)
 	if err != nil {
 		return nil, err
@@ -2367,12 +2374,4 @@ func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
 	}
 
 	return false
-}
-
-func GetInstanceAddr(addr string, netInterfaces []string, logger log.Logger) (string, error) {
-	if addr != "" {
-		return addr, nil
-	}
-
-	return netutil.GetFirstAddressOf(netInterfaces, logger, false)
 }

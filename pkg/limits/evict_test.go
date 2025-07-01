@@ -15,7 +15,7 @@ type mockEvictable struct {
 	clock quartz.Clock
 }
 
-func (m *mockEvictable) Evict(_ context.Context) error {
+func (m *mockEvictable) evict(_ context.Context) error {
 	m.calls = append(m.calls, m.clock.Now())
 	return nil
 }
@@ -27,7 +27,7 @@ func TestEvictor(t *testing.T) {
 
 	clock := quartz.NewMock(t)
 	m := mockEvictable{clock: clock}
-	e, err := NewEvictor(ctx, time.Second, &m, log.NewNopLogger())
+	e, err := newEvictor(ctx, time.Second, &m, log.NewNopLogger())
 	require.NoError(t, err)
 	e.clock = clock
 
@@ -37,7 +37,8 @@ func TestEvictor(t *testing.T) {
 	go e.Run() //nolint:errcheck
 	call, err := trap.Wait(ctx)
 	require.NoError(t, err)
-	call.Release()
+	err = call.Release(ctx)
+	require.NoError(t, err)
 
 	// Do a tick.
 	clock.Advance(time.Second).MustWait(ctx)

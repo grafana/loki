@@ -9,29 +9,30 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/dskit/backoff"
 
 	"github.com/gogo/protobuf/proto"
 )
+
+var tracer = otel.Tracer("pkg/pattern/aggregation")
 
 const (
 	defaultContentType         = "application/x-protobuf"
@@ -154,6 +155,8 @@ func NewPush(
 
 	p.running.Add(1)
 	go p.run(pushPeriod)
+
+	level.Debug(p.logger).Log("msg", "started pushing aggregation entries")
 	return p, nil
 }
 
@@ -172,11 +175,8 @@ func (p *Push) Stop() {
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
 func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
-	sp, _ := opentracing.StartSpanFromContext(
-		ctx,
-		"patternIngester.aggregation.Push.buildPayload",
-	)
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.buildPayload")
+	defer sp.End()
 
 	entries := p.entries.reset()
 	if len(entries) == 0 {
@@ -207,7 +207,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		serviceLimit = 1000
 	}
 
-	services := make([]string, 0, serviceLimit)
 	for s, entries := range entriesByStream {
 		lbls, err := syntax.ParseLabels(s)
 		if err != nil {
@@ -219,10 +218,6 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 			Entries: entries,
 			Hash:    lbls.Hash(),
 		})
-
-		if len(services) < serviceLimit {
-			services = append(services, lbls.Get(constants.AggregatedMetricLabel))
-		}
 	}
 
 	if len(streams) == 0 {
@@ -243,10 +238,15 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
 	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
 
-	sp.LogKV(
-		"event", "build aggregated metrics payload",
+	sp.AddEvent("build aggregated metrics payload", trace.WithAttributes(
+		attribute.Int("num_service", len(entriesByStream)),
+		attribute.Int("num_streams", len(streams)),
+		attribute.Int("num_entries", len(entries)),
+	))
+
+	level.Debug(p.logger).Log(
+		"msg", "built aggregation payload",
 		"num_service", len(entriesByStream),
-		"first_1k_services", strings.Join(services, ","),
 		"num_streams", len(streams),
 		"num_entries", len(entries),
 	)
@@ -272,6 +272,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 			cancel()
 			return
 		case <-pushTicker.C:
+			pushTicker.Reset(pushPeriod)
 			payload, err := p.buildPayload(ctx)
 			if err != nil {
 				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
@@ -279,6 +280,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 			}
 
 			if len(payload) == 0 {
+				level.Warn(p.logger).Log("msg", "skipping aggregation push, payload is empty")
 				continue
 			}
 
@@ -290,26 +292,23 @@ func (p *Push) run(pushPeriod time.Duration) {
 				status := 0
 				status, err = p.send(ctx, payload)
 				if err == nil {
-					pushTicker.Reset(pushPeriod)
+					level.Info(p.logger).Log("msg", "successfully pushed aggregation entry", "status", status)
 					break
 				}
 
 				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
-					pushTicker.Reset(pushPeriod)
 					break
 				}
 
 				if !backoff.Ongoing() {
 					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
-					pushTicker.Reset(pushPeriod)
 					break
 				}
 				level.Warn(p.logger).
 					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
 				backoff.Wait()
 			}
-
 		}
 	}
 }
@@ -325,8 +324,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
 	defer cancel()
 
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "patternIngester.aggregation.Push.send")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "patternIngester.aggregation.Push.send")
+	defer sp.End()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
 	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
@@ -377,18 +376,39 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 func AggregatedMetricEntry(
 	ts model.Time,
 	totalBytes, totalCount uint64,
-	service string,
 	lbls labels.Labels,
 ) string {
 	byteString := util.HumanizeBytes(totalBytes)
 	base := fmt.Sprintf(
-		"ts=%d bytes=%s count=%d %s=\"%s\"",
+		"ts=%d bytes=%s count=%d",
 		ts.UnixNano(),
 		byteString,
 		totalCount,
-		push.LabelServiceName, service,
 	)
 
+	return internalEntry(base, lbls)
+}
+
+func PatternEntry(
+	ts time.Time,
+	count int64,
+	pattern string,
+	lbls labels.Labels,
+) string {
+	base := fmt.Sprintf(
+		`ts=%d count=%d detected_pattern="%s"`,
+		ts.UnixNano(),
+		count,
+		url.QueryEscape(pattern),
+	)
+
+	return internalEntry(base, lbls)
+}
+
+func internalEntry(
+	base string,
+	lbls labels.Labels,
+) string {
 	for _, l := range lbls {
 		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
 	}

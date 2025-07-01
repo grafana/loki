@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	otlptranslate "github.com/prometheus/otlptranslator"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -32,7 +33,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -580,13 +580,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var ingestionBlockedError error
 
 	func() {
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogKV("event", "start to validate request")
-			defer func() {
-				sp.LogKV("event", "finished to validate request")
-			}()
-		}
+		sp := trace.SpanFromContext(ctx)
+		sp.AddEvent("start to validate request")
+		defer sp.AddEvent("finished to validate request")
 
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
@@ -608,7 +604,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			if !d.validator.IsAggregatedMetricStream(lbs) {
+			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
 					d.writeFailuresManager.Log(tenantID, err)
@@ -722,25 +718,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if d.cfg.IngestLimitsEnabled {
-		streamsAfterLimits, reasonsForHashes, err := d.ingestLimits.enforceLimits(ctx, tenantID, streams)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to check if request exceeds limits, request has been accepted", "err", err)
-		} else if len(streamsAfterLimits) == 0 {
-			// All streams have been dropped.
-			level.Debug(d.logger).Log("msg", "request exceeded limits, all streams will be dropped", "tenant", tenantID)
-			if !d.cfg.IngestLimitsDryRunEnabled {
-				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits: "+firstReasonForHashes(reasonsForHashes))
-			}
-		} else if len(streamsAfterLimits) < len(streams) {
-			// Some streams have been dropped.
-			level.Debug(d.logger).Log("msg", "request exceeded limits, some streams will be dropped", "tenant", tenantID)
-			if !d.cfg.IngestLimitsDryRunEnabled {
-				streams = streamsAfterLimits
-			}
-		}
-	}
-
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
 		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver)
 
@@ -748,6 +725,19 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	}
+
+	// These limits are checked after the ingestion rate limit as this
+	// is how it works in ingesters.
+	if d.cfg.IngestLimitsEnabled {
+		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+			if len(accepted) == 0 {
+				// All streams were rejected, the request should be failed.
+				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits")
+			}
+			streams = accepted
+		}
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
@@ -788,13 +778,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		ingesterDescs := map[string]ring.InstanceDesc{}
 
 		if err := func() error {
-			sp := opentracing.SpanFromContext(ctx)
-			if sp != nil {
-				sp.LogKV("event", "started to query ingesters ring")
-				defer func() {
-					sp.LogKV("event", "finished to query ingesters ring")
-				}()
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("started to query ingesters ring")
+			defer sp.AddEvent("finished to query ingesters ring")
 
 			for i, stream := range streams {
 				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
@@ -822,9 +808,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
 				// This is to make sure all ingesters get samples even if we return early
 				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
-				if sp := opentracing.SpanFromContext(ctx); sp != nil {
-					localCtx = opentracing.ContextWithSpan(localCtx, sp)
-				}
+				sp := trace.SpanFromContext(ctx)
+				localCtx = trace.ContextWithSpan(localCtx, sp)
+
 				select {
 				case <-ctx.Done():
 					cancel()
@@ -1124,13 +1110,20 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 		return
 	}
 
+	suffix := vContext.maxLineSizeTruncateIdentifier
+
 	var truncatedSamples, truncatedBytes int
 	for i, e := range stream.Entries {
 		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
-			stream.Entries[i].Line = e.Line[:maxSize]
+			truncateTo := maxSize - len(suffix)
+			if truncateTo <= 0 {
+				continue
+			}
+
+			stream.Entries[i].Line = e.Line[:truncateTo] + suffix
 
 			truncatedSamples++
-			truncatedBytes += len(e.Line) - maxSize
+			truncatedBytes += len(e.Line) - truncateTo
 		}
 	}
 

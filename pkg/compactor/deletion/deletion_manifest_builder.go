@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,8 +22,8 @@ const (
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 type ChunksGroup struct {
-	Requests []DeleteRequest   `json:"requests"`
-	Chunks   []retention.Chunk `json:"chunks"`
+	Requests []DeleteRequest `json:"requests"`
+	Chunks   []string        `json:"chunks"`
 }
 
 // segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
@@ -158,7 +159,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 		}
 
 		group := d.currentSegment[chunksGroupIdentifier]
-		group.Chunks = append(group.Chunks, chk)
+		group.Chunks = append(group.Chunks, chk.ChunkID)
 		d.currentSegment[chunksGroupIdentifier] = group
 	}
 
@@ -210,6 +211,16 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	if len(b.ChunksGroups) == 0 {
 		return nil
 	}
+
+	slices.SortFunc(b.ChunksGroups, func(a, b ChunksGroup) int {
+		if len(a.Requests) < len(b.Requests) {
+			return -1
+		} else if len(a.Requests) > len(b.Requests) {
+			return 1
+		}
+
+		return 0
+	})
 	batchJSON, err := json.Marshal(b)
 	if err != nil {
 		return err
@@ -218,9 +229,13 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount)), strings.NewReader(unsafeGetString(batchJSON)))
+	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 	return path.Join(fmt.Sprint(d.creationTime.UnixNano()), filename)
+}
+
+func (d *deletionManifestBuilder) path() string {
+	return fmt.Sprint(d.creationTime.UnixNano())
 }

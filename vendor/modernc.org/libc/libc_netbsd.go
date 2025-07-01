@@ -86,6 +86,8 @@ func X__runes_for_locale(t *TLS, l locale_t, p uintptr) uintptr {
 	panic(todo(""))
 }
 
+type Tsize_t = types.Size_t
+
 type file uintptr
 
 func (f file) fd() int32      { return int32((*stdio.FILE)(unsafe.Pointer(f)).F_file) }

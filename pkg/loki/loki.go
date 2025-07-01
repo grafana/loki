@@ -289,11 +289,13 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
-	if err := c.IngestLimits.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits config"))
-	}
-	if err := c.IngestLimitsFrontend.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
+	if c.IngestLimits.Enabled {
+		if err := c.IngestLimits.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits config"))
+		}
+		if err := c.IngestLimitsFrontend.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend config"))
+		}
 	}
 	if err := c.IngestLimitsFrontendClient.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingest_limits_frontend_client config"))
@@ -391,7 +393,7 @@ type Loki struct {
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
-	ingestLimits              *limits.IngestLimits
+	ingestLimits              *limits.Service
 	ingestLimitsRing          *ring.Ring
 	ingestLimitsFrontend      *limits_frontend.Frontend
 	ingestLimitsFrontendRing  *ring.Ring
