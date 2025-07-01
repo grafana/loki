@@ -1056,6 +1056,28 @@ dataobj:
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
+    # If true, partition processing will be enabled
+    # CLI flag: -dataobj-consumer.partition-processing-enabled
+    [partition_processing_enabled: <boolean> | default = true]
+
+    # If true, index building will be enabled
+    # CLI flag: -dataobj-consumer.index-building-enabled
+    [index_building_enabled: <boolean> | default = false]
+
+    # Experimental: The number of events to batch before building an index
+    # CLI flag: -dataobj-consumer.index-building-events-per-index
+    [index_building_events_per_index: <int> | default = 32]
+
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # to separate the metastore & index files during initial testing.
+    # CLI flag: -dataobj-consumer.index-storage-prefix
+    [index_storage_prefix: <string> | default = "indexing-v0/"]
+
+    # Experimental: A list of tenant IDs to enable index building for. If empty,
+    # all tenants will be enabled.
+    # CLI flag: -dataobj-consumer.enabled-tenant-ids
+    [enabled_tenant_ids: <list of strings> | default = []]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
