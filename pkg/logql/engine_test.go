@@ -3940,9 +3940,9 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 					} else {
 						t.Fatalf("Unexpected result type: %T", result)
 					}
-					
-					require.LessOrEqual(t, actualSeriesCount, test.maxSeries, 
-						"Expected result to be truncated to maxSeries (%d), but got %d series", 
+
+					require.LessOrEqual(t, actualSeriesCount, test.maxSeries,
+						"Expected result to be truncated to maxSeries (%d), but got %d series",
 						test.maxSeries, actualSeriesCount)
 
 					// Check for warning
