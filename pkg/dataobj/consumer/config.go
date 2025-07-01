@@ -4,6 +4,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 )
@@ -17,8 +18,9 @@ type Config struct {
 	IndexBuildingEnabled       bool `yaml:"index_building_enabled"`
 
 	// Testing flags to modify behaviour during development.
-	IndexBuildingEventsPerIndex int    `yaml:"index_building_events_per_index" category:"experimental"`
-	IndexStoragePrefix          string `yaml:"index_storage_prefix" category:"experimental"`
+	IndexBuildingEventsPerIndex int                 `yaml:"index_building_events_per_index" category:"experimental"`
+	IndexStoragePrefix          string              `yaml:"index_storage_prefix" category:"experimental"`
+	EnabledTenantIDs            flagext.StringSlice `yaml:"enabled_tenant_ids" category:"experimental"`
 }
 
 func (cfg *Config) Validate() error {
@@ -42,4 +44,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.IndexBuildingEnabled, prefix+"index-building-enabled", false, "If true, index building will be enabled")
 	f.IntVar(&cfg.IndexBuildingEventsPerIndex, prefix+"index-building-events-per-index", 32, "Experimental: The number of events to batch before building an index")
 	f.StringVar(&cfg.IndexStoragePrefix, prefix+"index-storage-prefix", "indexing-v0/", "Experimental: A prefix to use for storing indexes in object storage. Used to separate the metastore & index files during initial testing.")
+	f.Var(&cfg.EnabledTenantIDs, prefix+"enabled-tenant-ids", "Experimental: A list of tenant IDs to enable index building for. If empty, all tenants will be enabled.")
 }

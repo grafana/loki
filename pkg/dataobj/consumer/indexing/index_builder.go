@@ -29,9 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 )
 
-// TODO: Remove this once we have a proper way to manage multi-tenancy & commit index builds.
-var enabledTenantIDs = []string{"29", "test-tenant"}
-
 type downloadedObject struct {
 	event       metastore.ObjectWrittenEvent
 	objectBytes *[]byte
@@ -52,6 +49,7 @@ type IndexBuilder struct {
 	// Config params
 	eventsPerIndex     int
 	indexStoragePrefix string
+	enabledTenantIDs   []string
 
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
@@ -83,6 +81,7 @@ func NewIndexBuilder(
 	reg prometheus.Registerer,
 	eventsPerIndex int,
 	indexStoragePrefix string,
+	enabledTenantIDs []string,
 ) *IndexBuilder {
 	ctx, cancel := context.WithCancel(ctx)
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
@@ -126,12 +125,17 @@ func NewIndexBuilder(
 		metrics:            metrics,
 		eventsPerIndex:     eventsPerIndex,
 		indexStoragePrefix: indexStoragePrefix,
+		enabledTenantIDs:   enabledTenantIDs,
 
 		bufferedEvents: make(map[string][]metastore.ObjectWrittenEvent),
 	}
 }
 
 func (p *IndexBuilder) Start() {
+	if err := p.metrics.register(p.reg); err != nil {
+		level.Error(p.logger).Log("msg", "failed to register metrics for index builder", "err", err)
+	}
+
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
@@ -158,19 +162,20 @@ func (p *IndexBuilder) Start() {
 		for event := range p.downloadQueue {
 			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
 			downloadStart := time.Now()
-			// TODO: Figure out if we should optimize the reads by downloading in parallel or prioritizing earlier sections or something.
-			// Using FromBucket results in lots of small reads when we are going to read the whole object anyway. (We don't actually need the log lines but we don't have a reader for that)
+
 			objectReader, err := p.bucket.Get(p.ctx, event.ObjectPath)
 			if err != nil {
 				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
 				continue
 			}
+			defer objectReader.Close()
+
 			object, err := io.ReadAll(objectReader)
 			if err != nil {
 				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
 				continue
 			}
-			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart), "speed", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
+			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart), "size_mb", float64(len(object))/1024/1024, "avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
 			p.downloadedObjects <- downloadedObject{
 				event:       event,
 				objectBytes: &object,
@@ -215,7 +220,7 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 	level.Info(p.logger).Log("msg", "buffered new event for tenant", "count", len(p.bufferedEvents[event.Tenant]), "tenant", event.Tenant)
 
 	if len(p.bufferedEvents[event.Tenant]) >= p.eventsPerIndex {
-		if !slices.Contains(enabledTenantIDs, event.Tenant) {
+		if !slices.Contains(p.enabledTenantIDs, event.Tenant) {
 			// TODO(benclive): Remove this check once builders handle multi-tenancy when building indexes.
 			level.Info(p.logger).Log("msg", "skipping index build for disabled tenant", "tenant", event.Tenant)
 			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]

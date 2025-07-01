@@ -193,7 +193,7 @@ func (s *Service) run(ctx context.Context) error {
 			SectionStripeMergeLimit: 1024,
 		}
 
-		indexBuilder := indexing.NewIndexBuilder(ctx, s.logger, s.eventConsumerClient, builderCfg, s.cfg.UploaderConfig, s.bucket, "loki.metastore-events", s.reg, s.cfg.IndexBuildingEventsPerIndex, s.cfg.IndexStoragePrefix)
+		indexBuilder := indexing.NewIndexBuilder(ctx, s.logger, s.eventConsumerClient, builderCfg, s.cfg.UploaderConfig, s.bucket, "loki.metastore-events", s.reg, s.cfg.IndexBuildingEventsPerIndex, s.cfg.IndexStoragePrefix, s.cfg.EnabledTenantIDs)
 		indexBuilder.Start()
 		defer indexBuilder.Stop()
 		for {

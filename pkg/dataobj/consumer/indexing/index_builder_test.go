@@ -77,6 +77,7 @@ func TestIndexBuilder(t *testing.T) {
 	require.NoError(t, err)
 
 	indexPrefix := "test-prefix"
+	tenant := "test-tenant"
 	p := NewIndexBuilder(
 		ctx,
 		log.NewLogfmtLogger(os.Stdout),
@@ -96,6 +97,7 @@ func TestIndexBuilder(t *testing.T) {
 		prometheus.NewRegistry(),
 		3,
 		indexPrefix,
+		[]string{tenant},
 	)
 	p.Start()
 
@@ -106,14 +108,14 @@ func TestIndexBuilder(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
-			Tenant:     "test-tenant",
+			Tenant:     tenant,
 			WriteTime:  time.Now().Format(time.RFC3339),
 		}
 		eventBytes, err := event.Marshal()
 		require.NoError(t, err)
 
 		p.processRecord(&kgo.Record{
-			Key:   []byte("test-tenant"),
+			Key:   []byte(tenant),
 			Value: eventBytes,
 		})
 	}
