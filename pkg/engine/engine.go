@@ -93,8 +93,8 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for physical planning
 	statsCtx, ctx := stats.NewContext(ctx)
-	executionContext := physical.NewContext(ctx, e.metastore, params.Start(), params.End())
-	planner := physical.NewPlanner(executionContext)
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
