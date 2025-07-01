@@ -385,7 +385,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				updates: map[string]map[string]map[string]storageUpdates{},
 			}
 
-			builder := NewJobBuilder(objectClient, func(ctx context.Context, iterator StorageUpdatesIterator) error {
+			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
 				for iterator.Next() {
 					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
 						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
@@ -463,9 +463,9 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			builder := NewJobBuilder(objectClient, func(ctx context.Context, iterator StorageUpdatesIterator) error {
+			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
 				return nil
-			}, func(requests []DeleteRequest) error {
+			}, func(_ []DeleteRequest) error {
 				return nil
 			})
 
