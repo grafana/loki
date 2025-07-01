@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 )
 
 type downloadedObject struct {
@@ -44,7 +43,6 @@ type IndexBuilder struct {
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
 	builder           *indexobj.Builder
-	metastoreUpdater  *metastore.Updater
 
 	// Config params
 	eventsPerIndex     int
@@ -75,7 +73,6 @@ func NewIndexBuilder(
 	logger log.Logger,
 	client *kgo.Client,
 	builderCfg indexobj.BuilderConfig,
-	uploaderCfg uploader.Config,
 	bucket objstore.Bucket,
 	topic string,
 	reg prometheus.Registerer,
@@ -168,9 +165,9 @@ func (p *IndexBuilder) Start() {
 				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
 				continue
 			}
-			defer objectReader.Close()
 
 			object, err := io.ReadAll(objectReader)
+			_ = objectReader.Close()
 			if err != nil {
 				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
 				continue

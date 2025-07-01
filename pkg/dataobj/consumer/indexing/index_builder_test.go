@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -90,7 +89,6 @@ func TestIndexBuilder(t *testing.T) {
 
 			SectionStripeMergeLimit: 2,
 		},
-		uploader.Config{},
 		bucket,
 		"loki.metastore-events",
 		prometheus.NewRegistry(),
@@ -170,9 +168,7 @@ func readAllSectionPointers(t *testing.T, bucket objstore.Bucket, indexPrefix st
 					if num == 0 && err == io.EOF {
 						break
 					}
-					for _, pointer := range buf[:num] {
-						out = append(out, pointer)
-					}
+					out = append(out, buf[:num]...)
 				}
 			}
 			return nil
