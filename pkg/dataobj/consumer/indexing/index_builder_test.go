@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"testing"
 	"time"
 
@@ -80,7 +79,7 @@ func TestIndexBuilder(t *testing.T) {
 	tenant := "test-tenant"
 	p := NewIndexBuilder(
 		ctx,
-		log.NewLogfmtLogger(os.Stdout),
+		log.NewNopLogger(),
 		client,
 		indexobj.BuilderConfig{
 			TargetPageSize:    128 * 1024,

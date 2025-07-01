@@ -413,6 +413,9 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Log
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
+		if column.Type != logs.ColumnTypeMetadata.String() {
+			continue
+		}
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
 		columnIndexes[column.Name] = column.ColumnIndex
 	}
