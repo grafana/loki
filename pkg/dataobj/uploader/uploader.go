@@ -87,7 +87,10 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 
 	var err error
 	for backoff.Ongoing() {
-		err = d.bucket.Upload(ctx, objectPath, r)
+		err = d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
+		if err == nil {
+			break
+		}
 		backoff.Wait()
 	}
 
