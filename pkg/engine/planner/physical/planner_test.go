@@ -21,12 +21,12 @@ type catalog struct {
 }
 
 // ResolveDataObj implements Catalog.
-func (c *catalog) ResolveDataObj(e Expression) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(e, noShard)
+func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+	return c.ResolveDataObjWithShard(e, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -99,7 +99,7 @@ func TestMockCatalog(t *testing.T) {
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, tt.shard)
+			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, tt.shard, time.Now(), time.Now())
 			require.Equal(t, tt.expPaths, paths)
 			require.Equal(t, tt.expStreams, streams)
 			require.Equal(t, tt.expSections, sections)
@@ -142,7 +142,7 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			"obj5": {streamIDs: []int64{4, 5}, sections: 2},
 		},
 	}
-	planner := NewPlanner(catalog)
+	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 	streamSelector := &logical.BinOp{
 		Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
@@ -197,7 +197,7 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			nodes, err := planner.processMakeTable(relation)
+			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expPaths, locations(t, nodes))
@@ -245,7 +245,7 @@ func TestPlanner_Convert(t *testing.T) {
 			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
 		},
 	}
-	planner := NewPlanner(catalog)
+	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 	physicalPlan, err := planner.Build(logicalPlan)
 	require.NoError(t, err)
@@ -284,7 +284,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		nil,           // Step
+		0,             // Step
 		time.Minute*5, // Range
 	)
 
@@ -297,7 +297,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
 		},
 	}
-	planner := NewPlanner(catalog)
+	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 	physicalPlan, err := planner.Build(logicalPlan)
 	require.NoError(t, err)

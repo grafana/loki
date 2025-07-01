@@ -62,11 +62,8 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("operation", false, node.Operation),
 			tree.NewProperty("start", false, node.Start),
 			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("step", false, node.Step),
 			tree.NewProperty("range", false, node.Range),
-		}
-
-		if node.Step != nil {
-			properties = append(properties, tree.NewProperty("step", false, node.Step))
 		}
 
 		if len(node.PartitionBy) > 0 {

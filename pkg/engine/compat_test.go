@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/promql"
 )
 
 func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arrow.Record {
@@ -54,7 +55,7 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 	return builder.NewRecord()
 }
 
-func TestConvertArrowRecordsToLokiResult(t *testing.T) {
+func TestStreamsResultBuilder(t *testing.T) {
 	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
 	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
 
@@ -80,11 +81,11 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newResultBuilder()
+		builder := newStreamsResultBuilder()
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 0, builder.len(), "expected no entries to be collected")
+		require.Equal(t, 0, builder.Len(), "expected no entries to be collected")
 	})
 
 	t.Run("fields without metadata are ignored", func(t *testing.T) {
@@ -109,11 +110,11 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newResultBuilder()
+		builder := newStreamsResultBuilder()
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 0, builder.len(), "expected no entries to be collected")
+		require.Equal(t, 0, builder.Len(), "expected no entries to be collected")
 	})
 
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
@@ -142,13 +143,13 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newResultBuilder()
+		builder := newStreamsResultBuilder()
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 5, builder.len())
+		require.Equal(t, 5, builder.Len())
 
-		result := builder.build()
+		result := builder.Build()
 		require.Equal(t, 3, result.Data.(logqlmodel.Streams).Len())
 
 		expected := logqlmodel.Streams{
@@ -174,5 +175,87 @@ func TestConvertArrowRecordsToLokiResult(t *testing.T) {
 			},
 		}
 		require.Equal(t, expected, result.Data.(logqlmodel.Streams))
+	})
+}
+
+func TestVectorResultBuilder(t *testing.T) {
+	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.String)
+
+	t.Run("successful conversion of vector data", func(t *testing.T) {
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
+				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
+			},
+			nil,
+		)
+
+		data := [][]any{
+			{arrow.Timestamp(1620000000000000000), int64(42), "localhost:9090", "prometheus"},
+			{arrow.Timestamp(1620000000000000000), int64(23), "localhost:9100", "node-exporter"},
+			{arrow.Timestamp(1620000000000000000), int64(15), "localhost:9100", "prometheus"},
+		}
+
+		record := createRecord(t, schema, data)
+		defer record.Release()
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newVectorResultBuilder()
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 3, builder.Len())
+
+		result := builder.Build()
+		vector := result.Data.(promql.Vector)
+		require.Equal(t, 3, len(vector))
+
+		// Check first sample
+		require.Equal(t, int64(1620000000000000000), vector[0].T)
+		require.Equal(t, 42.0, vector[0].F)
+		require.Equal(t, labels.FromStrings("instance", "localhost:9090", "job", "prometheus"), vector[0].Metric)
+
+		// Check second sample
+		require.Equal(t, int64(1620000000000000000), vector[1].T)
+		require.Equal(t, 23.0, vector[1].F)
+		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"), vector[1].Metric)
+
+		// Check third sample
+		require.Equal(t, int64(1620000000000000000), vector[2].T)
+		require.Equal(t, 15.0, vector[2].F)
+		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "prometheus"), vector[2].Metric)
+	})
+
+	// TODO:(ashwanth) also enforce grouping labels are all present?
+	t.Run("rows without timestamp or value are ignored", func(t *testing.T) {
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
+			},
+			nil,
+		)
+
+		data := [][]interface{}{
+			{nil, int64(42), "localhost:9090"},
+			{arrow.Timestamp(1620000000000000000), nil, "localhost:9100"},
+		}
+
+		record := createRecord(t, schema, data)
+		defer record.Release()
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newVectorResultBuilder()
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 0, builder.Len(), "expected no samples to be collected")
 	})
 }

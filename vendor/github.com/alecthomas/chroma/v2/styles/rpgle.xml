@@ -3,7 +3,7 @@
   <entry type="Background" style="bg:#fafafa"/>
   <entry type="Keyword" style="#00a8c8"/>
   <entry type="KeywordNamespace" style="#f92672"/>
-  <entry type="KeywordReserved" style="#ffff00"/>
+  <entry type="KeywordReserved" style="#0000ff"/>
   <entry type="KeywordType" style="#800000"/>
   <entry type="Name" style="#111111"/>
   <entry type="NameAttribute" style="#75af00"/>
@@ -23,6 +23,7 @@
   <entry type="Punctuation" style="#ff0000"/>
   <entry type="Comment" style="#75715e"/>
   <entry type="CommentPreproc" style="#2e7d32"/>
+  <entry type="CommentSpecial" style="#ffbf00"/>
   <entry type="GenericEmph" style="italic"/>
   <entry type="GenericStrong" style="bold"/>
   <entry type="Text" style="#272822"/>
