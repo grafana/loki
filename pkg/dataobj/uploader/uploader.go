@@ -78,16 +78,17 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 		MaxRetries: 20,
 	})
 
-	var lastErr error
+	var err error
 	for backoff.Ongoing() {
-		err := d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
-		if err == nil {
-			return objectPath, nil
-		}
-		lastErr = err
+		err = d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
 		backoff.Wait()
 	}
 
-	d.metrics.uploadFailures.Inc()
-	return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), lastErr)
+	if err != nil {
+		d.metrics.uploadCount.WithLabelValues("failure")
+		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
+	}
+
+	d.metrics.uploadCount.WithLabelValues("success")
+	return objectPath, nil
 }
