@@ -131,13 +131,15 @@ func (b *streamsResultBuilder) Len() int {
 }
 
 type vectorResultBuilder struct {
-	data  promql.Vector
-	stats stats.Result
+	data        promql.Vector
+	lblsBuilder *labels.Builder
+	stats       stats.Result
 }
 
 func newVectorResultBuilder() *vectorResultBuilder {
 	return &vectorResultBuilder{
-		data: promql.Vector{},
+		data:        promql.Vector{},
+		lblsBuilder: labels.NewBuilder(labels.EmptyLabels()),
 	}
 }
 
@@ -154,7 +156,7 @@ func (b *vectorResultBuilder) CollectRecord(rec arrow.Record) {
 
 func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
 	var sample promql.Sample
-	lbls := labels.NewBuilder(labels.EmptyLabels())
+	b.lblsBuilder.Reset(labels.EmptyLabels())
 
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
@@ -179,16 +181,20 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
-			sample.F = float64(col.(*array.Int64).Value(i))
+			col, ok := col.(*array.Float64)
+			if !ok {
+				return promql.Sample{}, false
+			}
+			sample.F = float64(col.Value(i))
 		default:
 			// allow any string columns
 			if colDataType == datatype.String.String() {
-				lbls.Set(colName, col.(*array.String).Value(i))
+				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
 			}
 		}
 	}
 
-	sample.Metric = lbls.Labels()
+	sample.Metric = b.lblsBuilder.Labels()
 	return sample, true
 }
 
