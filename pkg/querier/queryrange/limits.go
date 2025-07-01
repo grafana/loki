@@ -475,17 +475,16 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 				continue
 			}
 		} else {
-			if len(sl.hashes) >= sl.maxSeries {
-				if httpreq.IsLogsDrilldownRequest(ctx) {
-					metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
-					return res, nil
-				} else {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
-				}
+			if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+				metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
+				return res, nil
 			}
 
 			// For non-variant series, track them in the global hashes map
 			sl.hashes[hash] = struct{}{}
+			if len(sl.hashes) > sl.maxSeries {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
+			}
 		}
 	}
 
