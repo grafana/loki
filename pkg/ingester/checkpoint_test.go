@@ -424,12 +424,16 @@ var (
 		Labels: labels.FromStrings("stream", "1").String(),
 		Entries: []logproto.Entry{
 			{
-				Timestamp: time.Unix(0, 1),
-				Line:      "1",
+				Timestamp:          time.Unix(0, 1),
+				Line:               "1",
+				StructuredMetadata: logproto.EmptyLabelAdapters(),
+				Parsed:             logproto.EmptyLabelAdapters(),
 			},
 			{
-				Timestamp: time.Unix(0, 2),
-				Line:      "2",
+				Timestamp:          time.Unix(0, 2),
+				Line:               "2",
+				StructuredMetadata: logproto.EmptyLabelAdapters(),
+				Parsed:             logproto.EmptyLabelAdapters(),
 			},
 		},
 	}
@@ -437,12 +441,16 @@ var (
 		Labels: labels.FromStrings("stream", "2").String(),
 		Entries: []logproto.Entry{
 			{
-				Timestamp: time.Unix(0, 1),
-				Line:      "3",
+				Timestamp:          time.Unix(0, 1),
+				Line:               "3",
+				StructuredMetadata: logproto.EmptyLabelAdapters(),
+				Parsed:             logproto.EmptyLabelAdapters(),
 			},
 			{
-				Timestamp: time.Unix(0, 2),
-				Line:      "4",
+				Timestamp:          time.Unix(0, 2),
+				Line:               "4",
+				StructuredMetadata: logproto.EmptyLabelAdapters(),
+				Parsed:             logproto.EmptyLabelAdapters(),
 			},
 		},
 	}

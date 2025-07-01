@@ -35,6 +35,14 @@ type listAllMyBucketsResult struct {
 	Owner owner
 }
 
+// listAllMyDirectoryBucketsResult container for listDirectoryBuckets response.
+type listAllMyDirectoryBucketsResult struct {
+	Buckets struct {
+		Bucket []BucketInfo
+	}
+	ContinuationToken string
+}
+
 // owner container for bucket owner information.
 type owner struct {
 	DisplayName string
@@ -98,6 +106,14 @@ type Version struct {
 		K int // Data blocks
 		M int // Parity blocks
 	} `xml:"Internal"`
+
+	// Checksum values. Only returned by AiStor servers.
+	ChecksumCRC32     string `xml:",omitempty"`
+	ChecksumCRC32C    string `xml:",omitempty"`
+	ChecksumSHA1      string `xml:",omitempty"`
+	ChecksumSHA256    string `xml:",omitempty"`
+	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumType      string `xml:",omitempty"`
 
 	isDeleteMarker bool
 }

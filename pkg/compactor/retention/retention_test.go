@@ -584,7 +584,7 @@ func TestChunkRewriter(t *testing.T) {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
 				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
-					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					ChunkID: getChunkID(tt.chunk.ChunkRef),
 					From:    tt.chunk.From,
 					Through: tt.chunk.Through,
 				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
@@ -631,6 +631,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
+							Parsed:             logproto.EmptyLabelAdapters(),
 						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
@@ -684,7 +685,7 @@ func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ 
 	time.Sleep(m.delay)
 	m.numExpiryChecks++
 
-	ce := m.chunksExpiry[string(chk.ChunkID)]
+	ce := m.chunksExpiry[chk.ChunkID]
 	return ce.isExpired, ce.filterFunc
 }
 
@@ -1167,4 +1168,59 @@ func TestMigrateMarkers(t *testing.T) {
 		require.NoError(t, CopyMarkers(workDir, dst))
 		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
+}
+
+func TestDuplicateSeriesDetection(t *testing.T) {
+	chk := createChunk(t, "1", labels.FromStrings("foo", "1"), model.Now().Add(-time.Hour), model.Now())
+
+	expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{
+		getChunkID(chk.ChunkRef): {isExpired: false},
+	}, nil)
+
+	// Create a custom index processor that will loop on same series
+	loopIndexProcessor := &loopIndexProcessor{
+		series: series{
+			seriesID: []byte(chk.Metric.String()),
+			userID:   []byte(chk.UserID),
+			labels:   chk.Metric,
+			chunks: []Chunk{
+				{
+					ChunkID: getChunkID(chk.ChunkRef),
+					From:    chk.From,
+					Through: chk.Through,
+				},
+			},
+		},
+	}
+
+	// Attempt to mark for deletion - this should fail due to duplicate series
+	empty, isModified, err := markForDelete(
+		context.Background(),
+		0,
+		"test_table",
+		&noopWriter{},
+		loopIndexProcessor,
+		expirationChecker,
+		nil,
+		util_log.Logger,
+	)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "series should not be repeated")
+	require.False(t, empty)
+	require.False(t, isModified)
+}
+
+// loopIndexProcessor implements IndexProcessor which loops on same series for iteration
+type loopIndexProcessor struct {
+	IndexProcessor
+	series series
+}
+
+func (p *loopIndexProcessor) ForEachSeries(_ context.Context, callback SeriesCallback) error {
+	for {
+		if err := callback(&p.series); err != nil {
+			return err
+		}
+	}
 }

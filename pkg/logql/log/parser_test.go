@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"sort"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -33,6 +32,27 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"app":                {"app"},
 				"namespace":          {"namespace"},
 				"pod_uuid":           {"pod", "uuid"},
+				"pod_deployment_ref": {"pod", "deployment", "ref"},
+			},
+			NoParserHints(),
+		},
+		{
+			"multi depth with duplicates",
+			[]byte(`{"app":"bar","namespace":"prod","pod":{"uuid":"bar","deployment":{"ref":"foobar"}}}`),
+			labels.FromStrings("app", "foo",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("app", "foo",
+				"app_extracted", "bar",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+				"pod_uuid_extracted", "bar",
+				"pod_deployment_ref", "foobar",
+			),
+			map[string][]string{
+				"app_extracted":      {"app"},
+				"namespace":          {"namespace"},
+				"pod_uuid_extracted": {"pod", "uuid"},
 				"pod_deployment_ref": {"pod", "deployment", "ref"},
 			},
 			NoParserHints(),
@@ -194,10 +214,14 @@ func Test_jsonParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		j := NewJSONParser(true)
 		t.Run(tt.name, func(t *testing.T) {
+			origLine := string(tt.line)
+
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
-			require.Equal(t, tt.want, b.LabelsResult().Labels())
+			labels := b.LabelsResult().Labels()
+			require.Equal(t, origLine, string(tt.line), "original log line was modified")
+			require.Equal(t, tt.want, labels)
 
 			// Check JSON paths if provided
 			if len(tt.wantJSONPath) > 0 {
@@ -238,7 +262,7 @@ func TestKeyShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			require.False(t, result)
 		})
 	}
@@ -278,7 +302,7 @@ func TestLabelShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
-			require.Len(t, lbs.labels(), 1)
+			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
 			require.Equal(t, ParsedLabel, category)
@@ -1075,7 +1099,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			[]byte(`buzz=foo bar=�f`),
 			labels.EmptyLabels(),
 			labels.FromStrings("bar", " f", "buzz", "foo"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1084,7 +1108,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"bar", "foo"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1094,7 +1118,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "foo bar",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1104,7 +1128,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1114,7 +1138,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1124,7 +1148,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", `foo ba\r baz`,
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1134,7 +1158,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo bar\nb\\az",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1145,7 +1169,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo bar",
 				"latency", "10ms",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1155,7 +1179,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "foo bar",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1166,7 +1190,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foo_extracted", "foo bar",
 				"foobar", "10ms",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1178,7 +1202,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foo_bar", "10ms",
 				"test_dash", "foo",
 			),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1186,7 +1210,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			nil,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
-			nil,
+			labels.EmptyLabels(),
 			NoParserHints(),
 		},
 		{
@@ -1268,10 +1292,9 @@ func TestLogfmtParser_parse(t *testing.T) {
 				_, _ = p.Process(0, tt.line, b)
 
 				want := tt.want
-				if tt.wantStrict != nil {
+				if !tt.wantStrict.IsEmpty() {
 					want = tt.wantStrict
 				}
-				sort.Sort(want)
 				require.Equal(t, want, b.LabelsResult().Labels())
 			})
 		}
@@ -1338,7 +1361,6 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 					_, _ = p.Process(0, tt.line, b)
 
 					want := tt.want
-					sort.Sort(want)
 					require.Equal(t, want, b.LabelsResult().Labels())
 				})
 			}

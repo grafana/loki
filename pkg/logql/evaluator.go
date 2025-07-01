@@ -359,6 +359,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
+	case *CountMinSketchEvalExpr:
+		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -418,7 +420,7 @@ func newVectorAggEvaluator(
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
-		lb:            labels.NewBuilder(nil),
+		lb:            labels.NewBuilder(labels.EmptyLabels()),
 	}, nil
 }
 
@@ -462,16 +464,16 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 				e.lb.Del(labels.MetricName)
 				m = e.lb.Labels()
 			} else {
-				m = make(labels.Labels, 0, len(e.expr.Grouping.Groups))
-				for _, l := range metric {
+				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
+				metric.Range(func(l labels.Label) {
 					for _, n := range e.expr.Grouping.Groups {
 						if l.Name == n {
-							m = append(m, l)
+							b.Add(l.Name, l.Value)
 							break
 						}
 					}
-				}
-				sort.Sort(m)
+				})
+				m = b.Labels()
 			}
 			result[groupingKey] = &groupedAggregation{
 				labels:     m,
@@ -1096,15 +1098,14 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		matching := opts.VectorMatching
 		if matching.Card == syntax.CardOneToOne {
 			if matching.On {
-			Outer:
-				for _, l := range lhs {
+				lhs.Range(func(l labels.Label) {
 					for _, n := range matching.MatchingLabels {
 						if l.Name == n {
-							continue Outer
+							return
 						}
 					}
 					lb.Del(l.Name)
-				}
+				})
 			} else {
 				lb.Del(matching.MatchingLabels...)
 			}
@@ -1230,7 +1231,7 @@ func (r *VectorIterator) Next() (bool, int64, StepResult) {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
-	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
+	vectorPoint := promql.Sample{T: r.currentMs, F: r.val, Metric: labels.EmptyLabels()}
 	results = append(results, vectorPoint)
 	return true, r.currentMs, SampleVector(results)
 }
@@ -1319,7 +1320,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	selector, err := expr.Selector()
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
 	lm := selector.Matchers()
 	if len(lm) == 0 {
@@ -1440,7 +1441,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 						nextEvaluator: rangeEvaluator,
 						expr:          e,
 						buf:           make([]byte, 0, 1024),
-						lb:            labels.NewBuilder(nil),
+						lb:            labels.NewBuilder(labels.EmptyLabels()),
 					}
 				} else {
 					return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
@@ -1478,7 +1479,6 @@ type sampleWithLabelsAndStreamHash struct {
 	streamHash uint64
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIterator) Next(index int) bool {
 	// Check if there are samples in the buffer for the requested index
 	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
@@ -1523,17 +1523,13 @@ func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
 		return -1
 	}
 
-	for _, lbl := range metric {
-		// TODO: make constant
-		if lbl.Name == constants.VariantLabel {
-			val, err := strconv.Atoi(lbl.Value)
-			if err != nil {
-				it.err = err
-				return -1
-			}
-
-			return val
+	if variant := metric.Get(constants.VariantLabel); variant != "" {
+		val, err := strconv.Atoi(variant)
+		if err != nil {
+			it.err = err
+			return -1
 		}
+		return val
 	}
 
 	it.err = fmt.Errorf("variant label not found in %s", lbls)
@@ -1572,14 +1568,12 @@ type bufferedVariantsIteratorWrapper struct {
 	index int
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIteratorWrapper) Next() bool {
 	return it.bufferedVariantsIterator.Next(it.index)
 }
 
 // VariantsEvaluator is responsible for making sure the window is loaded from all
 // evaluators for all variants
-// TODO(twhitney): does this need its own test?
 type VariantsEvaluator struct {
 	current int64
 

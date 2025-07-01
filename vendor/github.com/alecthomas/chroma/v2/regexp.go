@@ -366,6 +366,17 @@ restart:
 			}
 		}
 	}
+	// Validate emitters
+	for state := range r.rules {
+		for i := range len(r.rules[state]) {
+			rule := r.rules[state][i]
+			if validate, ok := rule.Type.(ValidatingEmitter); ok {
+				if err := validate.ValidateEmitter(rule); err != nil {
+					return fmt.Errorf("%s: %s: %s: %w", r.config.Name, state, rule.Pattern, err)
+				}
+			}
+		}
+	}
 	r.compiled = true
 	return nil
 }

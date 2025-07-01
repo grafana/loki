@@ -424,19 +424,19 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 	// For simplicity it is always assumed that ingesterQueryStoreMaxLookback and queryIngestersWithin both would be set upto 11 hours so
 	// overlappingQuery has range of last 11 hours while nonOverlappingQuery has range older than last 11 hours.
 	// We would test the cases below with both the queries.
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
 
 	type response struct {
-		ingesterQueryInterval *interval
-		storeQueryInterval    *interval
+		ingesterQueryInterval *QueryInterval
+		storeQueryInterval    *QueryInterval
 	}
 
 	compareResponse := func(t *testing.T, expectedResponse, actualResponse response) {
@@ -477,11 +477,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			name:                          "ingesterQueryStoreMaxLookback set to 1h",
 			ingesterQueryStoreMaxLookback: time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -505,11 +505,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: time.Hour,
 			queryIngestersWithin:          2 * time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -523,11 +523,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: 2 * time.Hour,
 			queryIngestersWithin:          time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 2h and store until last 2h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-2 * time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-2 * time.Hour),
 				},
@@ -624,18 +624,18 @@ func TestQuerier_calculateIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod())
+			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin))
 		})
 	}
 }
 
 func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
@@ -696,7 +696,7 @@ func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod()
+			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin)
 			assert.Equal(t, tc.overlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, overlappingQuery.end))
 			assert.Equal(t, tc.nonOverlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, nonOverlappingQuery.end))
 		})

@@ -1,13 +1,14 @@
 package executor
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -38,7 +39,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
 		expr     physical.Expression
-		want     dataobj.TimeRangePredicate[dataobj.LogsPredicate]
+		want     logs.TimeRangeRowPredicate
 		errMatch string
 	}{
 		{
@@ -48,7 +49,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpEq,
 				Right: physical.NewLiteral(time100),
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -62,7 +63,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpGt,
 				Right: physical.NewLiteral(time100),
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      testOpenEnd,
 				IncludeStart: false,
@@ -76,7 +77,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpGte,
 				Right: physical.NewLiteral(time100),
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      testOpenEnd,
 				IncludeStart: true,
@@ -90,7 +91,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpLt,
 				Right: physical.NewLiteral(time100),
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -104,7 +105,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Op:    types.BinaryOpLte,
 				Right: physical.NewLiteral(time100),
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -219,7 +220,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time200),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      time200,
 				IncludeStart: false,
@@ -241,7 +242,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time200),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      time200,
 				IncludeStart: true,
@@ -297,7 +298,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time100),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -361,7 +362,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time200),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    time200,
 				EndTime:      time200,
 				IncludeStart: true,
@@ -417,7 +418,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time200),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -439,7 +440,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: physical.NewLiteral(time100),
 				},
 			},
-			want: dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
 				EndTime:      time100,
 				IncludeStart: true,
@@ -463,7 +464,7 @@ func TestMapMetadataPredicate(t *testing.T) {
 	tests := []struct {
 		name          string
 		expr          physical.Expression
-		expectedPred  dataobj.Predicate
+		expectedPred  logs.RowPredicate
 		expectedErr   bool
 		expectedErrAs any // For errors.As checks
 	}{
@@ -474,7 +475,7 @@ func TestMapMetadataPredicate(t *testing.T) {
 				Right: physical.NewLiteral("bar"),
 				Op:    types.BinaryOpEq,
 			},
-			expectedPred: dataobj.MetadataMatcherPredicate{Key: "foo", Value: "bar"},
+			expectedPred: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
 			expectedErr:  false,
 		},
 		{
@@ -492,9 +493,9 @@ func TestMapMetadataPredicate(t *testing.T) {
 				},
 				Op: types.BinaryOpAnd,
 			},
-			expectedPred: dataobj.AndPredicate[dataobj.LogsPredicate]{
-				Left:  dataobj.MetadataMatcherPredicate{Key: "foo", Value: "bar"},
-				Right: dataobj.MetadataMatcherPredicate{Key: "baz", Value: "qux"},
+			expectedPred: logs.AndRowPredicate{
+				Left:  logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
+				Right: logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
 			},
 			expectedErr: false,
 		},
@@ -513,9 +514,9 @@ func TestMapMetadataPredicate(t *testing.T) {
 				},
 				Op: types.BinaryOpOr,
 			},
-			expectedPred: dataobj.OrPredicate[dataobj.LogsPredicate]{
-				Left:  dataobj.MetadataMatcherPredicate{Key: "foo", Value: "bar"},
-				Right: dataobj.MetadataMatcherPredicate{Key: "baz", Value: "qux"},
+			expectedPred: logs.OrRowPredicate{
+				Left:  logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
+				Right: logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
 			},
 			expectedErr: false,
 		},
@@ -529,8 +530,8 @@ func TestMapMetadataPredicate(t *testing.T) {
 				},
 				Op: types.UnaryOpNot,
 			},
-			expectedPred: dataobj.NotPredicate[dataobj.LogsPredicate]{
-				Inner: dataobj.MetadataMatcherPredicate{Key: "foo", Value: "bar"},
+			expectedPred: logs.NotRowPredicate{
+				Inner: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
 			},
 			expectedErr: false,
 		},
@@ -557,11 +558,11 @@ func TestMapMetadataPredicate(t *testing.T) {
 				},
 				Op: types.BinaryOpAnd,
 			},
-			expectedPred: dataobj.AndPredicate[dataobj.LogsPredicate]{
-				Left: dataobj.MetadataMatcherPredicate{Key: "foo", Value: "bar"},
-				Right: dataobj.OrPredicate[dataobj.LogsPredicate]{
-					Left:  dataobj.MetadataMatcherPredicate{Key: "baz", Value: "qux"},
-					Right: dataobj.MetadataMatcherPredicate{Key: "faz", Value: "fuzz"},
+			expectedPred: logs.AndRowPredicate{
+				Left: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
+				Right: logs.OrRowPredicate{
+					Left:  logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
+					Right: logs.MetadataMatcherRowPredicate{Key: "faz", Value: "fuzz"},
 				},
 			},
 			expectedErr: false,
@@ -645,6 +646,127 @@ func TestMapMetadataPredicate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedPred, pred)
+			}
+		})
+	}
+}
+
+func TestMapMessagePredicate(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		expr         physical.Expression
+		expectedErr  string
+		expectedType string
+	}{
+		{
+			name: "string match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("dataobjscan"),
+				Op:    types.BinaryOpMatchSubstr,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "not string match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("dataobjscan"),
+				Op:    types.BinaryOpNotMatchSubstr,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "regex match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
+				Op:    types.BinaryOpMatchRe,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "not regex match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
+				Op:    types.BinaryOpNotMatchRe,
+			},
+			expectedType: "logs.LogMessageFilterRowPredicate",
+		},
+		{
+			name: "pattern match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("<_> dataobj <_>"),
+				Op:    types.BinaryOpMatchPattern,
+			},
+			expectedErr: "unsupported binary operator (MATCH_PAT) for log message predicate",
+		},
+		{
+			name: "not pattern match filter",
+			expr: &physical.BinaryExpr{
+				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: physical.NewLiteral("<_> dataobj <_>"),
+				Op:    types.BinaryOpNotMatchPattern,
+			},
+			expectedErr: "unsupported binary operator (NOT_MATCH_PAT) for log message predicate",
+		},
+		{
+			name: "and filter",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Right: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("bar"),
+					Op:    types.BinaryOpNotMatchSubstr,
+				},
+				Op: types.BinaryOpAnd,
+			},
+			expectedType: "logs.AndRowPredicate",
+		},
+		{
+			name: "or filter",
+			expr: &physical.BinaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Right: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("bar"),
+					Op:    types.BinaryOpNotMatchSubstr,
+				},
+				Op: types.BinaryOpOr,
+			},
+			expectedType: "logs.OrRowPredicate",
+		},
+		{
+			name: "not filter",
+			expr: &physical.UnaryExpr{
+				Left: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpMatchSubstr,
+				},
+				Op: types.UnaryOpNot,
+			},
+			expectedType: "logs.NotRowPredicate",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("%s", tc.expr)
+			got, err := mapMessagePredicate(tc.expr)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedType, fmt.Sprintf("%T", got))
 			}
 		})
 	}

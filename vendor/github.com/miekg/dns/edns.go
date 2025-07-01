@@ -27,6 +27,7 @@ const (
 	EDNS0LOCALSTART   = 0xFDE9  // Beginning of range reserved for local/experimental use (See RFC 6891)
 	EDNS0LOCALEND     = 0xFFFE  // End of range reserved for local/experimental use (See RFC 6891)
 	_DO               = 1 << 15 // DNSSEC OK
+	_CO               = 1 << 14 // Compact Answers OK
 )
 
 // makeDataOpt is used to unpack the EDNS0 option(s) from a message.
@@ -75,7 +76,11 @@ type OPT struct {
 func (rr *OPT) String() string {
 	s := "\n;; OPT PSEUDOSECTION:\n; EDNS: version " + strconv.Itoa(int(rr.Version())) + "; "
 	if rr.Do() {
-		s += "flags: do; "
+		if rr.Co() {
+			s += "flags: do, co; "
+		} else {
+			s += "flags: do; "
+		}
 	} else {
 		s += "flags:; "
 	}
@@ -195,14 +200,34 @@ func (rr *OPT) SetDo(do ...bool) {
 	}
 }
 
-// Z returns the Z part of the OPT RR as a uint16 with only the 15 least significant bits used.
-func (rr *OPT) Z() uint16 {
-	return uint16(rr.Hdr.Ttl & 0x7FFF)
+// Co returns the value of the CO (Compact Answers OK) bit.
+func (rr *OPT) Co() bool {
+	return rr.Hdr.Ttl&_CO == _CO
 }
 
-// SetZ sets the Z part of the OPT RR, note only the 15 least significant bits of z are used.
+// SetCo sets the CO (Compact Answers OK) bit.
+// If we pass an argument, set the CO bit to that value.
+// It is possible to pass 2 or more arguments, but they will be ignored.
+func (rr *OPT) SetCo(co ...bool) {
+	if len(co) == 1 {
+		if co[0] {
+			rr.Hdr.Ttl |= _CO
+		} else {
+			rr.Hdr.Ttl &^= _CO
+		}
+	} else {
+		rr.Hdr.Ttl |= _CO
+	}
+}
+
+// Z returns the Z part of the OPT RR as a uint16 with only the 14 least significant bits used.
+func (rr *OPT) Z() uint16 {
+	return uint16(rr.Hdr.Ttl & 0x3FFF)
+}
+
+// SetZ sets the Z part of the OPT RR, note only the 14 least significant bits of z are used.
 func (rr *OPT) SetZ(z uint16) {
-	rr.Hdr.Ttl = rr.Hdr.Ttl&^0x7FFF | uint32(z&0x7FFF)
+	rr.Hdr.Ttl = rr.Hdr.Ttl&^0x3FFF | uint32(z&0x3FFF)
 }
 
 // EDNS0 defines an EDNS0 Option. An OPT RR can have multiple options appended to it.
