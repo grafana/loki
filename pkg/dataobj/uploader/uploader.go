@@ -92,12 +92,12 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 	}
 
 	if err != nil {
-		d.metrics.uploadCount.WithLabelValues(statusFailure)
+		d.metrics.uploadCount.WithLabelValues(statusFailure).Inc()
 		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
 		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
 	}
 
-	d.metrics.uploadCount.WithLabelValues(statusSuccess)
+	d.metrics.uploadCount.WithLabelValues(statusSuccess).Inc()
 	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
 	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath)
 	return objectPath, nil
