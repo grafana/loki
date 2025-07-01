@@ -12,8 +12,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/arrowtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestReader(t *testing.T) {

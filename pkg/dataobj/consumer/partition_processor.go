@@ -91,7 +91,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	uploader := uploader.New(uploaderCfg, bucket, tenantID)
+	uploader := uploader.New(uploaderCfg, bucket, tenantID, logger)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}

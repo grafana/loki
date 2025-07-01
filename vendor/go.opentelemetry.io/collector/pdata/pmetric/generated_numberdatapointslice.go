@@ -145,22 +145,7 @@ func (es NumberDataPointSlice) RemoveIf(f func(NumberDataPoint) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newNumberDataPoint((*es.orig)[i], es.state).CopyTo(newNumberDataPoint((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.NumberDataPoint, srcLen)
-	wrappers := make([]*otlpmetrics.NumberDataPoint, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newNumberDataPoint((*es.orig)[i], es.state).CopyTo(newNumberDataPoint(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigNumberDataPointSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the NumberDataPoint elements within NumberDataPointSlice given the
@@ -169,4 +154,19 @@ func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 func (es NumberDataPointSlice) Sort(less func(a, b NumberDataPoint) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigNumberDataPointSlice(dest, src []*otlpmetrics.NumberDataPoint) []*otlpmetrics.NumberDataPoint {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.NumberDataPoint, len(src))
+		data := make([]otlpmetrics.NumberDataPoint, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigNumberDataPoint(dest[i], src[i])
+	}
+	return dest
 }

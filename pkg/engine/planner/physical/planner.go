@@ -3,13 +3,62 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
-// Internal state of the planner
-type state struct {
-	direction SortOrder
+// Context carries planning state that needs to be propagated down the plan tree.
+// This enables each branch to have independent context, which is essential for complex queries:
+// - Binary operations with different [$range] intervals, offsets or @timestamp.
+//
+// Propagation:
+// - Each process() method passes context to children.
+// - Context can be cloned and modified by nodes (ex: RangeAggregation sets rangeInterval) that gets inherited by all descendants.
+type Context struct {
+	from          time.Time
+	through       time.Time
+	rangeInterval time.Duration
+	direction     SortOrder
+}
+
+func NewContext(from, through time.Time) *Context {
+	return &Context{
+		from:    from,
+		through: through,
+	}
+}
+
+func (pc *Context) Clone() *Context {
+	return &Context{
+		from:          pc.from,
+		through:       pc.through,
+		rangeInterval: pc.rangeInterval,
+		direction:     pc.direction,
+	}
+}
+
+func (pc *Context) WithDirection(direction SortOrder) *Context {
+	cloned := pc.Clone()
+	cloned.direction = direction
+	return cloned
+}
+
+func (pc *Context) WithRangeInterval(rangeInterval time.Duration) *Context {
+	cloned := pc.Clone()
+	cloned.rangeInterval = rangeInterval
+	return cloned
+}
+
+func (pc *Context) WithTimeRange(from, through time.Time) *Context {
+	cloned := pc.Clone()
+	cloned.from = from
+	cloned.through = through
+	return cloned
+}
+
+func (pc *Context) GetResolveTimeRange() (from, through time.Time) {
+	return pc.from.Add(-pc.rangeInterval), pc.through
 }
 
 // Planner creates an executable physical plan from a logical plan.
@@ -21,14 +70,17 @@ type state struct {
 //     a) Push down the limit of the Limit node to the DataObjScan nodes.
 //     b) Push down the predicate from the Filter node to the DataObjScan nodes.
 type Planner struct {
+	context *Context
 	catalog Catalog
 	plan    *Plan
-	state   state
 }
 
 // NewPlanner creates a new planner instance with the given context.
-func NewPlanner(catalog Catalog) *Planner {
-	return &Planner{catalog: catalog}
+func NewPlanner(ctx *Context, catalog Catalog) *Planner {
+	return &Planner{
+		context: ctx,
+		catalog: catalog,
+	}
 }
 
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
@@ -38,7 +90,7 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
-			nodes, err := p.process(inst.Value)
+			nodes, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
 			}
@@ -54,7 +106,6 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 // reset resets the internal state of the planner
 func (p *Planner) reset() {
 	p.plan = &Plan{}
-	p.state = state{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
@@ -81,32 +132,33 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 }
 
 // Convert a [logical.Instruction] into one or multiple [Node]s.
-func (p *Planner) process(inst logical.Value) ([]Node, error) {
+func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
-		return p.processMakeTable(inst)
+		return p.processMakeTable(inst, ctx)
 	case *logical.Select:
-		return p.processSelect(inst)
+		return p.processSelect(inst, ctx)
 	case *logical.Sort:
-		return p.processSort(inst)
+		return p.processSort(inst, ctx)
 	case *logical.Limit:
-		return p.processLimit(inst)
+		return p.processLimit(inst, ctx)
 	case *logical.RangeAggregation:
-		return p.processRangeAggregation(inst)
+		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
-		return p.processVectorAggregation(inst)
+		return p.processVectorAggregation(inst, ctx)
 	}
 	return nil, nil
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
-func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
+func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard))
+	from, through := ctx.GetResolveTimeRange()
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +169,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
 			Location:  objects[i],
 			StreamIDs: streams[i],
 			Sections:  sections[i],
-			Direction: p.state.direction, // apply direction from previously visited Sort node
+			Direction: ctx.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(node)
 		nodes = append(nodes, node)
@@ -126,12 +178,12 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable) ([]Node, error) {
 }
 
 // Convert [logical.Select] into one [Filter] node.
-func (p *Planner) processSelect(lp *logical.Select) ([]Node, error) {
+func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error) {
 	node := &Filter{
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.addNode(node)
-	children, err := p.process(lp.Table)
+	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +196,7 @@ func (p *Planner) processSelect(lp *logical.Select) ([]Node, error) {
 }
 
 // Convert [logical.Sort] into one [SortMerge] node.
-func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
@@ -153,12 +205,14 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 		Column: &ColumnExpr{Ref: lp.Column.Ref},
 		Order:  order,
 	}
-	p.state.direction = order
+
 	p.plan.addNode(node)
-	children, err := p.process(lp.Table)
+
+	children, err := p.process(lp.Table, ctx.WithDirection(order))
 	if err != nil {
 		return nil, err
 	}
+
 	for i := range children {
 		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
@@ -168,13 +222,13 @@ func (p *Planner) processSort(lp *logical.Sort) ([]Node, error) {
 }
 
 // Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
+func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) {
 	node := &Limit{
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
 	p.plan.addNode(node)
-	children, err := p.process(lp.Table)
+	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +240,7 @@ func (p *Planner) processLimit(lp *logical.Limit) ([]Node, error) {
 	return []Node{node}, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, error) {
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
 	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -201,10 +255,12 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, 
 		Step:        r.Step,
 	}
 	p.plan.addNode(node)
-	children, err := p.process(r.Table)
+
+	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
 		return nil, err
 	}
+
 	for i := range children {
 		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
@@ -214,7 +270,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation) ([]Node, 
 }
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
-func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation) ([]Node, error) {
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]Node, error) {
 	groupBy := make([]ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
 		groupBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -225,7 +281,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation) ([]Nod
 		Operation: lp.Operation,
 	}
 	p.plan.addNode(node)
-	children, err := p.process(lp.Table)
+	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func TestContext_ConvertLiteral(t *testing.T) {
+func TestCatalog_ConvertLiteral(t *testing.T) {
 	tests := []struct {
 		expr    Expression
 		want    string
@@ -63,7 +63,7 @@ func TestContext_ConvertLiteral(t *testing.T) {
 	}
 }
 
-func TestContext_ConvertColumnRef(t *testing.T) {
+func TestCatalog_ConvertColumnRef(t *testing.T) {
 	tests := []struct {
 		expr    Expression
 		want    string
@@ -108,7 +108,7 @@ func TestContext_ConvertColumnRef(t *testing.T) {
 	}
 }
 
-func TestContext_ExpressionToMatchers(t *testing.T) {
+func TestCatalog_ExpressionToMatchers(t *testing.T) {
 	tests := []struct {
 		expr    Expression
 		want    []*labels.Matcher
