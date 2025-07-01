@@ -5,8 +5,9 @@ import (
 
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type partitionOffsetMetrics struct {

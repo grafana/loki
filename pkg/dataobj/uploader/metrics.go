@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	labelStatus = "status"
+	labelStatus   = "status"
 	statusSuccess = "success"
 	statusFailure = "failure"
 )
@@ -39,7 +39,7 @@ func newMetrics(shaPrefixSize int) *metrics {
 			Subsystem: subsystem,
 			Name:      "upload_size_bytes",
 			Help:      "Size of data objects uploaded to object storage in bytes grouped by status.",
-			Buckets:   prometheus.LinearBuckets(128<<20, 128<<20, 10) // 128MB, 256MB, ... -> 1280MB
+			Buckets:   prometheus.LinearBuckets(128<<20, 128<<20, 10), // 128MB, 256MB, ... -> 1280MB
 		}, []string{labelStatus}),
 		shaPrefixSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
