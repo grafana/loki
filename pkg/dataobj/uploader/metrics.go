@@ -1,7 +1,6 @@
 package uploader
 
 import (
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -19,33 +18,24 @@ type metrics struct {
 }
 
 func newMetrics(shaPrefixSize int) *metrics {
-	subsystem := "dataobj_uploader"
 	metrics := &metrics{
 		uploadCount: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "upload_count_total",
-			Help:      "Total number of uploads grouped by status",
+			Name: "loki_dataobj_uploader_upload_count_total",
+			Help: "Total number of uploads grouped by status",
 		}, []string{labelStatus}),
 		uploadTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "upload_time_seconds",
-			Help:      "Time taken writing data objects to object storage.",
-			Buckets:   prometheus.DefBuckets,
+			Name:    "loki_dataobj_uploader_upload_time_seconds",
+			Help:    "Time taken writing data objects to object storage.",
+			Buckets: prometheus.DefBuckets,
 		}),
 		uploadSize: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "upload_size_bytes",
-			Help:      "Size of data objects uploaded to object storage in bytes grouped by status.",
-			Buckets:   prometheus.LinearBuckets(128<<20, 128<<20, 10), // 128MB, 256MB, ... -> 1280MB
+			Name:    "loki_dataobj_uploader_upload_size_bytes",
+			Help:    "Size of data objects uploaded to object storage in bytes grouped by status.",
+			Buckets: prometheus.LinearBuckets(128<<20, 128<<20, 10), // 128MB, 256MB, ... -> 1280MB
 		}, []string{labelStatus}),
 		shaPrefixSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "sha_prefix_size",
-			Help:      "The size of the SHA prefix used for object storage keys.",
+			Name: "loki_dataobj_uploader_sha_prefix_size",
+			Help: "The size of the SHA prefix used for object storage keys.",
 		}),
 	}
 
