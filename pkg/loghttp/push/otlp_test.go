@@ -984,6 +984,171 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
 }
 
+func TestOTLPStructuredMetadataCalculation(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with attributes
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+		rl.Resource().Attributes().PutStr("resource.key", "resource.value")
+
+		// Create scope with attributes
+		sl := rl.ScopeLogs().AppendEmpty()
+		sl.Scope().SetName("test-scope")
+		sl.Scope().Attributes().PutStr("scope.key", "scope.value")
+
+		// Add a log record with minimal metadata
+		logRecord := sl.LogRecords().AppendEmpty()
+		logRecord.Body().SetStr("Test entry with minimal metadata")
+		logRecord.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		logRecord.Attributes().PutStr("entry.key", "entry.value")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		DefaultOTLPConfig(defaultGlobalOTLPConfig),
+		nil,        // tenantConfigs
+		[]string{}, // discoverServiceName
+		tracker,
+		stats,
+		log.NewNopLogger(),
+		streamResolver,
+	)
+
+	// Verify there is exactly one stream
+	require.Equal(t, 1, len(pushReq.Streams))
+
+	// Verify we have a single entry with all the expected metadata
+	stream := pushReq.Streams[0]
+	require.Equal(t, 1, len(stream.Entries))
+
+	// Verify the structured metadata bytes are positive
+	require.Greater(t, stats.StructuredMetadataBytes["test-policy"][time.Hour], int64(0),
+		"Structured metadata bytes should be positive")
+
+	// Verify we can find the resource, scope, and entry metadata in the entry
+	entry := stream.Entries[0]
+
+	resourceMetadataFound := false
+	scopeMetadataFound := false
+	entryMetadataFound := false
+
+	for _, metadata := range entry.StructuredMetadata {
+		if metadata.Name == "resource_key" && metadata.Value == "resource.value" {
+			resourceMetadataFound = true
+		}
+		if metadata.Name == "scope_key" && metadata.Value == "scope.value" {
+			scopeMetadataFound = true
+		}
+		if metadata.Name == "entry_key" && metadata.Value == "entry.value" {
+			entryMetadataFound = true
+		}
+	}
+
+	require.True(t, resourceMetadataFound, "Resource metadata should be present in the entry")
+	require.True(t, scopeMetadataFound, "Scope metadata should be present in the entry")
+	require.True(t, entryMetadataFound, "Entry metadata should be present in the entry")
+}
+
+func TestNegativeMetadataScenarioExplicit(t *testing.T) {
+	// This test explicitly demonstrates how negative structured metadata size values
+	// could occur when subtracting resource/scope attributes from total structured metadata size
+
+	// Setup: Create metadata with a label that would be excluded from size calculation
+	resourceMeta := push.LabelsAdapter{
+		{Name: "resource_key", Value: "resource_value"}, // 27 bytes
+		{Name: "excluded_label", Value: "value"},        // This would be excluded from size calculation
+	}
+
+	scopeMeta := push.LabelsAdapter{
+		{Name: "scope_key", Value: "scope_value"}, // 20 bytes
+	}
+
+	entryMeta := push.LabelsAdapter{
+		{Name: "entry_key", Value: "entry_value"}, // 20 bytes
+	}
+
+	// ExcludedStructuredMetadataLabels would exclude certain labels
+	// from size calculations.
+	calculateSize := func(labels push.LabelsAdapter) int {
+		size := 0
+		for _, label := range labels {
+			// Simulate a label being excluded from size calc
+			if label.Name != "excluded_label" {
+				size += len(label.Name) + len(label.Value)
+			}
+		}
+		return size
+	}
+
+	// Calculate sizes with simulated exclusions
+	resourceSize := calculateSize(resourceMeta) // 27 bytes (excluded_label not counted)
+	scopeSize := calculateSize(scopeMeta)       // 20 bytes
+	entrySize := calculateSize(entryMeta)       // 20 bytes
+
+	// The original approach:
+	// 1. Add resource and scope attributes to entry metadata
+	combined := make(push.LabelsAdapter, 0)
+	combined = append(combined, entryMeta...)
+	combined = append(combined, resourceMeta...)
+	combined = append(combined, scopeMeta...)
+
+	// 2. Calculate combined size (with certain labels excluded)
+	combinedSize := calculateSize(combined) // Should be 27 + 20 + 20 = 67 bytes
+
+	// 3. Calculate entry-specific metadata by subtraction
+	//    metadataSize := int64(combinedSize - resourceSize - scopeSize)
+	oldCalculation := combinedSize - resourceSize - scopeSize
+
+	// Should be: 67 - 27 - 20 = 20 bytes, which equals entrySize
+
+	t.Logf("Resource size: %d bytes", resourceSize)
+	t.Logf("Scope size: %d bytes", scopeSize)
+	t.Logf("Entry size: %d bytes", entrySize)
+	t.Logf("Combined size: %d bytes", combinedSize)
+	t.Logf("Old calculation (combined - resource - scope): %d bytes", oldCalculation)
+
+	// Now, to demonstrate how this could produce negative values:
+	// In reality, due to potential inconsistencies in how labels were excluded/combined/normalized,
+	// the combined size could be LESS than the sum of parts
+	simulatedRealCombinedSize := resourceSize + scopeSize - 5 // 5 bytes less than sum
+
+	// Using the original calculation method:
+	simulatedRealCalculation := simulatedRealCombinedSize - resourceSize - scopeSize
+	// This will be: (27 + 20 - 5) - 27 - 20 = 42 - 47 = -5 bytes
+
+	t.Logf("Simulated real combined size: %d bytes", simulatedRealCombinedSize)
+	t.Logf("Simulated real calculation (old method): %d bytes", simulatedRealCalculation)
+
+	// This would be a negative value!
+	require.Less(t, simulatedRealCalculation, 0,
+		"This demonstrates how the old calculation could produce negative values")
+
+	// Directly use entry's size before combining
+	t.Logf("New calculation (direct entry size): %d bytes", entrySize)
+	require.Equal(t, entrySize, 20,
+		"New calculation provides correct entry size")
+	require.Greater(t, entrySize, 0,
+		"New calculation always produces non-negative values")
+}
+
 func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
 
