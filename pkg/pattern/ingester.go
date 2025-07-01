@@ -424,7 +424,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		var patternWriter aggregation.EntryWriter
 		patternCfg := i.cfg.PatternPersistence
 		if i.limits.PatternPersistenceEnabled(instanceID) {
-			metricWriter, err = aggregation.NewPush(
+			patternWriter, err = aggregation.NewPush(
 				patternCfg.LokiAddr,
 				instanceID,
 				patternCfg.WriteTimeout,
@@ -486,6 +486,9 @@ func (i *Ingester) stopWriters() {
 	for _, instance := range instances {
 		if instance.metricWriter != nil {
 			instance.metricWriter.Stop()
+		}
+		if instance.patternWriter != nil {
+			instance.patternWriter.Stop()
 		}
 	}
 }
