@@ -10,6 +10,12 @@
     <mime_type>text/x-rpgle</mime_type>
     <mime_type>text/x-sqlrpgle</mime_type>
     <case_insensitive>true</case_insensitive>
+    <analyse>
+      <regex pattern="^\*\*free$" score="0.9"/>
+      <regex pattern="ctl-opt" score="0.9"/>
+      <regex pattern="dcl-(ds|s|f|proc|pr|pi)" score="0.9"/>
+      <regex pattern="\*in[0-9][0-9]" score="0.5"/>
+    </analyse>
   </config>
   <rules>
     <state name="root">
@@ -18,6 +24,10 @@
       </rule>
       <rule pattern="^\*\*free$">
         <token type="CommentSpecial"/>
+      </rule>
+      <rule pattern="\*\*((ctdata|ftrans|altseq)(\s+\w+)?)?(\r|\n|\r\n)">
+        <token type="CommentSpecial"/> <!-- compile-time arrays at the end of the file, introduced by ** -->
+        <push state="compile-time-array"/>
       </rule>
       <rule pattern="(\*(all(g|oc|ow|sep|thread|u|x)?|altseq|alwblanknum|ascii|astfill|aut[lo]|basic|blank(s)?|caller|cancl|cdmy(0)?|change|char|cl|cmd(y|y0)?|cnowiden|cntrld|col|comp(at)?|concurrent|constants|constructor|convert|copyright|crt(bndrpg|rpgmod)|ct(data|lbdy|lspec)|cur(lib|sym)|cvt(data)?|cwiden|cymd(0)?|data|date(time)?|day(s)?|dclcase|ddm|debugio|dec|delete|det[cl]|dft|diag|dmy|dtaara|dump|end|entry(exit)?|equate|escape|eur(0)?|exact|exclude|excp|exp(dds|include)|ext(desc|dft)?|file(s)?|first|ftrans|full|gen|getin|graph(ic)?|hex|hival|hms|hours|ignore|ilerpg|in([0-9]{2}|H[1-9]|K[A-Y]|L[1-9]|LR|O[AGV]|U[1-8])?|INFO|INHERIT|INIT|INP(UT(ONLY|PACKED)?)?|INZ(OFL|SR)|ISO(0)?|JAVA|JIS|JOB(RUN(0|MIX|_DBCS|_JAVA|_MIXED)?)?|JUL|KEEP|KEY|LANGID(SHR|UNQ)|LDA|LGL|LIB(L|RCRTAUT)|LIKE(DS)?|LIST|LOCK|LONG(JOBRUN(0)?|JUL(0)?)|LOVAL|LVL[12]|MAX(DIGITS)?|MDY(0)?|MINUTES|MIXED(ASCII|EBCDIC)|MN|MODE|MODULE|MONTH(S)?|MS(ECONDS)?|M[A-Z]{3}[0-9]{4}|NATURAL|NEW|NEXT|NO(ALLOW|CHGDSLEN|COL|CVT(DATA)?|DATETIME|DEBUGIO|EXACT|EXPDDS|EXPINCLUDE|EXT|GEN|GRAPHIC|IND|INPUTPACKED|INZOFL|KEY|PASS|RMVCOMMENT|SECLVL|SHOWCPY|SHOWSKP|SRCSTMT|UNREF|VARCHAR|VARGRAPHIC|XREF|ZONED)?|NONE|NOTIFY|NULL(IND)?|OFF|OFL|OMIT|ON(EXIT|LY)?|OPCODE|OUT(PUT)?|OWNER|PARM(S)?|PCML|PDA|PEP|PGM(BDY)?|PLACE|PROC|PROGRAM|PSSR|RECORD|REQUIRE|RESDECPOS|RETVAL|RIGHTADJ|RMVCOMMENT|ROUTINE|SECLVL|SECONDS|SELF|SERIALIZE|SHOW(CPY|SKP)|SIZE|SNGLVL|SRC(MBRTXT|STMT)?|START|STATUS|STDCHARSIZE|STGMDL|STRICTKEYS|STRING|SYS|TBL|TERASPACE|TERM|THREAD_(CONCURRENT|SERIALIZE)|TOT[CL]|TRIM|UCS2|UNIQUE|UNREF|UNSET|UPDATE|USA(0)?|USE(DECEDIT)?|USER|USR(CTL|SPC)|UTF(8|16)?|V[0-9]R[0-9]M[0-9]|V[678]|VAR(CHAR|GRAPHIC|SIZE)?|WARN|XMLSAX|XML_(ATTR_(CHARS|NAME|PREDEF_REF|UCS2_REF)|CHARS|COMMENT|DOCTYPE_DECL|ENCODING_DECL|END_(ATTR|CDATA|DOCUMENT|ELEMENT)|EXCEPTION|PI_(DATA|TARGET)|PREDEF_REF|STANDALONE_DECL|START_(CDATA|DOCUMENT|ELEMENT)|UCS2_REF|UNKNOWN_(ATTR_REF|REF)|VERSION_INFO)|XREF|YEAR(S)?|YES|YMD(0)?|ZERO(S)?|ZONED|[DHMNSY]))\b">
         <token type="Literal"/> <!-- Special values -->
@@ -35,11 +45,17 @@
       <rule pattern="\b(dcl\-(ds|pi|proc|pr|[csf])|end\-(ds|pi|proc|pr)|ctl\-opt|const|value|to|downto|not)\b">
         <token type="Keyword"/> <!-- Syntax keywords -->
       </rule>
-      <rule pattern="\b(acq|add|adddur|alloc|and(gt|lt|eq|ne|ge|le)?|bitoff|biton|cab(gt|lt|eq|ne|ge|le)?|call(b|p)?|cas(gt|lt|eq|ne|ge|le)?|cat|chain|check|checkr|clear|close|commit|comp|data-gen|data-into|dealloc|define|delete|div|do((u|w)(gt|lt|eq|ne|ge|le)?)?|dsply|dump|else(if)?|end(cs|do|for|if|mon|sl|sr)?|eval(r|-corr)?|except|exfmt|exsr|extrct|feod|for(-each)?|force|goto|if(gt|lt|eq|ne|ge|le)?|in|iter|kfld|klist|leave(sr)?|lookup|m(hh|hl|lh|ll)zo|monitor|move[al]?|mult|mvr|next|occur|on-(error|excp|exit)|open|or(gt|lt|eq|ne|ge|le)?|other|out|parm|plist|post|read(c|e|p|pe)?|realloc|rel|reset|return|rolbk|scan|select|set(gt|ll|off|on)|shtdn|snd-msg|sorta|sqrt|sub(dur|st)?|tag|test[bnz]?|time|unlock|update|when(gt|lt|eq|ne|ge|le)?|when-i[ns]|write|xfoot|slate|xml-(into|sax)|z-(add|sub))\b">
+      <rule pattern="\b(acq|add|adddur|alloc|and(gt|lt|eq|ne|ge|le)?|begsr|bitoff|biton|cab(gt|lt|eq|ne|ge|le)?|call(b|p)?|cas(gt|lt|eq|ne|ge|le)?|cat|chain|check|checkr|clear|close|commit|comp|data-gen|data-into|dealloc|define|delete|div|do((u|w)(gt|lt|eq|ne|ge|le)?)?|dsply|dump|else(if)?|end(cs|do|for|if|mon|sl|sr)?|eval(r|-corr)?|except|exfmt|exsr|extrct|feod|for(-each)?|force|goto|if(gt|lt|eq|ne|ge|le)?|in|iter|kfld|klist|leave(sr)?|lookup|m(hh|hl|lh|ll)zo|monitor|move[al]?|mult|mvr|next|occur|on-(error|excp|exit)|open|or(gt|lt|eq|ne|ge|le)?|other|out|parm|plist|post|read(c|e|p|pe)?|realloc|rel|reset|return|rolbk|scan|select|set(gt|ll|off|on)|shtdn|snd-msg|sorta|sqrt|sub(dur|st)?|tag|test[bnz]?|time|unlock|update|when(gt|lt|eq|ne|ge|le)?|when-i[ns]|write|xfoot|slate|xml-(into|sax)|z-(add|sub))\b">
         <token type="Keyword"/> <!-- Operation codes -->
       </rule>
       <rule pattern="\b(alloc|altseq|ccsid|copy(nest|right)|cursym|dat(edit|fmt)|debug|dec(edit|prec)|dftname|expropts|extbinint|fltdiv|formsalign|ftrans|intprec|(no)?main|openopt|thread|timfmt|actgrp|alwnull|aut|bnddir|cvtopt|dateyy|dftactgrp|enbpfrcol|fixnbr|genlvl|indent|langid|optimize|option|pgminfo|prfdta|reqprexp|strseq|stgmdl|text|truncnbr|usrprf)\b">
         <token type="KeywordReserved"/> <!-- ctl-opt (former H spec) -->
+      </rule>
+      <rule pattern="\b(alias|block|commit|charcount|data|datfmt|devid|disk|ext(desc|file|ind|mbr)|form(len|ofl)|handler|ignore|include|in(dds|fds|fsr)|keyed|keyloc|likefile|maxdev|oflind|pass|pgmname|plist|prefix|printer|prtctl|qualified|rafdata|recno|rename|save(ds|ind)|seq|sfile|sln|special|static|template|timfmt|usage|usropn|workstn)\b">
+        <token type="KeywordReserved"/> <!-- dcl-f (former F spec) -->
+      </rule>
+      <rule pattern="\b(\*(yes|no|natural|stdcharsize|(no)?cvt|ext(desc)?|inu[1-8]|char|only|file|noind|ext|compat|input|output|update|delete))\b">
+        <token type="Literal"/> <!-- F spec special values-->
       </rule>
       <rule pattern="\b(alias|align|alt|altseq|ascend|based|ccsid|class|const|ctdata|datfmt|descend|dim|dtaara|export|ext(fld|fmt|name|pgm|proc)?|fromfile|import|inz|len|like(ds|file|rec)?|noopt|nullind|occurs|opdesc|options|overlay|overload|packeven|perrcd|pos|prefix|procptr|psds|qualified|reqproto|rtnparm|samepos|static|template|timfmt|tofile|value|varying)\b">
         <token type="KeywordReserved"/> <!-- Other keywords (not operation codes nor ctl-opt/H spec) -> mostly used with variables -->
@@ -56,7 +72,7 @@
       <rule pattern="'(''|[^'])*'">
         <token type="LiteralString"/>
       </rule>
-      <rule pattern="[,:;\(\)]+">
+      <rule pattern="[,:;\(\)\.]+">
         <token type="Punctuation"/>
       </rule>
       <rule pattern="((\*\*)|(&lt;&gt;)|=|([&lt;&gt;\+\-\*\/]=?))+">
@@ -149,6 +165,11 @@
       <rule pattern="&#34;">
         <token type="LiteralStringDouble"/>
         <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="compile-time-array">
+      <rule pattern="[^\r\n]*(\r|\n|\r\n)?">
+        <token type="CommentSpecial"/>
       </rule>
     </state>
   </rules>
