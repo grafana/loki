@@ -58,11 +58,11 @@ func TestAuditIndex(t *testing.T) {
 	objClient := testObjClient{}
 	compactedIdx := testCompactedIdx{
 		chunks: []retention.Chunk{
-			{ChunkID: []byte("found-1")},
-			{ChunkID: []byte("found-2")},
-			{ChunkID: []byte("found-3")},
-			{ChunkID: []byte("found-4")},
-			{ChunkID: []byte("missing-1")},
+			{ChunkID: "found-1"},
+			{ChunkID: "found-2"},
+			{ChunkID: "found-3"},
+			{ChunkID: "found-4"},
+			{ChunkID: "missing-1"},
 		},
 	}
 	logger := log.NewNopLogger()

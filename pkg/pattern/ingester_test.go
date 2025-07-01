@@ -2,7 +2,9 @@ package pattern
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -25,7 +27,8 @@ import (
 )
 
 func TestInstancePushQuery(t *testing.T) {
-	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	lbs := labels.FromStrings("test", "test", "service_name", "test_service")
+	now := drain.TruncateTimestamp(model.Now(), drain.TimeResolution)
 
 	ingesterID := "foo"
 	replicationSet := ring.ReplicationSet{
@@ -56,6 +59,7 @@ func TestInstancePushQuery(t *testing.T) {
 		ringClient,
 		ingesterID,
 		mockWriter,
+		mockWriter,
 	)
 	require.NoError(t, err)
 
@@ -65,22 +69,33 @@ func TestInstancePushQuery(t *testing.T) {
 				Labels: lbs.String(),
 				Entries: []push.Entry{
 					{
-						Timestamp: time.Unix(20, 0),
+						Timestamp: now.Time(),
 						Line:      "ts=1 msg=hello",
+						StructuredMetadata: push.LabelsAdapter{
+							push.LabelAdapter{
+								Name:  constants.LevelLabel,
+								Value: constants.LogLevelInfo,
+							},
+						},
 					},
 				},
 			},
 		},
 	})
+	require.NoError(t, err)
 	for i := 0; i <= 30; i++ {
+		foo := "bar"
+		if i%2 != 0 {
+			foo = "baz"
+		}
 		err = inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
 				{
 					Labels: lbs.String(),
 					Entries: []push.Entry{
 						{
-							Timestamp: time.Unix(20, 0),
-							Line:      "foo bar foo bar",
+							Timestamp: now.Add(time.Duration(i) * time.Second).Time(),
+							Line:      fmt.Sprintf("foo=%s num=%d", foo, rand.Int()),
 						},
 					},
 				},
@@ -88,7 +103,28 @@ func TestInstancePushQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
+
+	err = inst.Push(context.Background(), &push.PushRequest{
+		Streams: []push.Stream{
+			{
+				Labels: lbs.String(),
+				Entries: []push.Entry{
+					{
+						Timestamp: now.Add(1 * time.Minute).Time(),
+						Line:      "ts=2 msg=hello",
+						StructuredMetadata: push.LabelsAdapter{
+							push.LabelAdapter{
+								Name:  constants.LevelLabel,
+								Value: constants.LogLevelInfo,
+							},
+						},
+					},
+				},
+			},
+		},
+	})
 	require.NoError(t, err)
+
 	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
 		Query: "{test=\"test\"}",
 		Start: time.Unix(0, 0),
@@ -97,7 +133,73 @@ func TestInstancePushQuery(t *testing.T) {
 	require.NoError(t, err)
 	res, err := iter.ReadAll(it)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(res.Series))
+	require.Equal(t, 3, len(res.Series))
+
+	patterns := make([]string, 0, 3)
+	for _, it := range res.Series {
+		patterns = append(patterns, it.Pattern)
+	}
+
+	require.ElementsMatch(t, []string{
+		"foo=bar num=<_>",
+		"foo=baz num=<_>",
+		"ts=<_> msg=hello",
+	}, patterns)
+
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Time(),
+		aggregation.PatternEntry(
+			now.Time(),
+			1,
+			"ts=<_> msg=hello",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
+		},
+	)
+
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Time(),
+		aggregation.PatternEntry(
+			now.Time(),
+			5,
+			"foo=bar num=<_>",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
+		},
+	)
+
+	// writes a sample every 10s
+	mockWriter.AssertCalled(
+		t,
+		"WriteEntry",
+		now.Add(10*time.Second).Time(),
+		aggregation.PatternEntry(
+			now.Add(10*time.Second).Time(),
+			5,
+			"foo=bar num=<_>",
+			lbs,
+		),
+		labels.New(
+			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
+		),
+		[]logproto.LabelAdapter{
+			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
+		},
+	)
 }
 
 func TestInstancePushAggregateMetrics(t *testing.T) {
@@ -114,7 +216,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		labels.Label{Name: "service_name", Value: "baz_service"},
 	)
 
-	setup := func() (*instance, *mockEntryWriter) {
+	setup := func(now time.Time) (*instance, *mockEntryWriter) {
 		ingesterID := "foo"
 		replicationSet := ring.ReplicationSet{
 			Instances: []ring.InstanceDesc{
@@ -144,6 +246,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			ringClient,
 			ingesterID,
 			mockWriter,
+			mockWriter,
 		)
 		require.NoError(t, err)
 
@@ -153,7 +256,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 					Labels: lbs.String(),
 					Entries: []push.Entry{
 						{
-							Timestamp: time.Unix(20, 0),
+							Timestamp: now.Add(-1 * time.Minute),
 							Line:      "ts=1 msg=hello",
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
@@ -168,8 +271,8 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 					Labels: lbs2.String(),
 					Entries: []push.Entry{
 						{
-							Timestamp: time.Unix(20, 0),
-							Line:      "ts=1 msg=hello",
+							Timestamp: now.Add(-1 * time.Minute),
+							Line:      fmt.Sprintf("ts=%d msg=hello", rand.Intn(9)),
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
 									Name:  constants.LevelLabel,
@@ -183,7 +286,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 					Labels: lbs3.String(),
 					Entries: []push.Entry{
 						{
-							Timestamp: time.Unix(20, 0),
+							Timestamp: now.Add(-1 * time.Minute),
 							Line:      "error error error",
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
@@ -203,8 +306,8 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						Labels: lbs.String(),
 						Entries: []push.Entry{
 							{
-								Timestamp: time.Unix(20, 0),
-								Line:      "foo bar foo bar",
+								Timestamp: now.Add(-1 * time.Duration(i) * time.Second),
+								Line:      "foo=bar baz=qux",
 								StructuredMetadata: push.LabelsAdapter{
 									push.LabelAdapter{
 										Name:  constants.LevelLabel,
@@ -218,8 +321,8 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						Labels: lbs2.String(),
 						Entries: []push.Entry{
 							{
-								Timestamp: time.Unix(20, 0),
-								Line:      "foo bar foo bar",
+								Timestamp: now.Add(-1 * time.Duration(i) * time.Second),
+								Line:      "foo=bar baz=qux",
 								StructuredMetadata: push.LabelsAdapter{
 									push.LabelAdapter{
 										Name:  constants.LevelLabel,
@@ -239,7 +342,8 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 	}
 
 	t.Run("accumulates bytes and count for each stream and level on every push", func(t *testing.T) {
-		inst, _ := setup()
+		now := time.Now()
+		inst, _ := setup(now)
 
 		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
 
@@ -262,12 +366,11 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			uint64(1),
 			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].count,
 		)
-	},
-	)
+	})
 
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
-		inst, mockWriter := setup()
 		now := model.Now()
+		inst, mockWriter := setup(now.Time())
 		inst.Downsample(now)
 
 		mockWriter.AssertCalled(
@@ -278,7 +381,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				now,
 				uint64(14+(15*30)),
 				uint64(31),
-				"test_service",
 				lbs,
 			),
 			labels.New(
@@ -297,7 +399,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				now,
 				uint64(14+(15*30)),
 				uint64(31),
-				"foo_service",
 				lbs2,
 			),
 			labels.New(
@@ -316,7 +417,6 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				now,
 				uint64(17),
 				uint64(1),
-				"baz_service",
 				lbs3,
 			),
 			labels.New(
@@ -344,9 +444,12 @@ func (m *mockEntryWriter) Stop() {
 }
 
 type fakeLimits struct {
-	Limits
-	metricAggregationEnabled bool
+	metricAggregationEnabled  bool
+	patternPersistenceEnabled bool
 }
+
+var _ drain.Limits = &fakeLimits{}
+var _ Limits = &fakeLimits{}
 
 func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
@@ -354,4 +457,8 @@ func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 
 func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
 	return f.metricAggregationEnabled
+}
+
+func (f *fakeLimits) PatternPersistenceEnabled(_ string) bool {
+	return f.patternPersistenceEnabled
 }

@@ -54,7 +54,7 @@ func ForEachSeries(ctx context.Context, bucket *bbolt.Bucket, config config.Peri
 		}
 
 		current.AppendChunks(retention.Chunk{
-			ChunkID: ref.ChunkID,
+			ChunkID: string(ref.ChunkID),
 			From:    ref.From,
 			Through: ref.Through,
 		})
@@ -134,7 +134,7 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID []byte) error {
+func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	if lbls.Get(labels.MetricName) == "" {
 		lbls = append(lbls, labels.Label{
@@ -143,7 +143,7 @@ func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbl
 		})
 	}
 
-	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, string(chunkID))
+	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, chunkID)
 	if err != nil {
 		return err
 	}

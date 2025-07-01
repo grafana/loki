@@ -11,10 +11,9 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -82,6 +81,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	opts = append(opts, dialOpts...)
 	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
@@ -105,7 +105,6 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
-	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	}
@@ -114,7 +113,6 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
-	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	}

@@ -21,7 +21,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"reflect"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -39,10 +38,11 @@ type FixedSizeBinaryBuilder struct {
 
 func NewFixedSizeBinaryBuilder(mem memory.Allocator, dtype *arrow.FixedSizeBinaryType) *FixedSizeBinaryBuilder {
 	b := &FixedSizeBinaryBuilder{
-		builder: builder{refCount: 1, mem: mem},
+		builder: builder{mem: mem},
 		dtype:   dtype,
 		values:  newByteBufferBuilder(mem),
 	}
+	b.builder.refCount.Add(1)
 	return b
 }
 
@@ -52,9 +52,9 @@ func (b *FixedSizeBinaryBuilder) Type() arrow.DataType { return b.dtype }
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (b *FixedSizeBinaryBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -256,6 +256,4 @@ func (b *FixedSizeBinaryBuilder) UnmarshalJSON(data []byte) error {
 	return b.Unmarshal(dec)
 }
 
-var (
-	_ Builder = (*FixedSizeBinaryBuilder)(nil)
-)
+var _ Builder = (*FixedSizeBinaryBuilder)(nil)

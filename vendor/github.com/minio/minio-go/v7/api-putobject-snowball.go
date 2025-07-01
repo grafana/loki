@@ -106,8 +106,8 @@ type readSeekCloser interface {
 // The key for each object will be used for the destination in the specified bucket.
 // Total size should be < 5TB.
 // This function blocks until 'objs' is closed and the content has been uploaded.
-func (c Client) PutObjectsSnowball(ctx context.Context, bucketName string, opts SnowballOptions, objs <-chan SnowballObject) (err error) {
-	err = opts.Opts.validate(&c)
+func (c *Client) PutObjectsSnowball(ctx context.Context, bucketName string, opts SnowballOptions, objs <-chan SnowballObject) (err error) {
+	err = opts.Opts.validate(c)
 	if err != nil {
 		return err
 	}

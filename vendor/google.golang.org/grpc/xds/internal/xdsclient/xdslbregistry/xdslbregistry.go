@@ -69,8 +69,6 @@ func ConvertToServiceConfig(lbPolicy *v3clusterpb.LoadBalancingPolicy, depth int
 		converter := m[policy.GetTypedExtensionConfig().GetTypedConfig().GetTypeUrl()]
 		// "Any entry not in the above list is unsupported and will be skipped."
 		// - A52
-		// This includes Least Request as well, since grpc-go does not support
-		// the Least Request Load Balancing Policy.
 		if converter == nil {
 			continue
 		}

@@ -54,6 +54,11 @@
     },
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast3.rep.googleapis.com/",
+      "location": "asia-northeast3"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.asia-south1.rep.googleapis.com/",
       "location": "asia-south1"
     },
@@ -206,9 +211,49 @@
       "description": "Regional Endpoint",
       "endpointUrl": "https://storage.us-west4.rep.googleapis.com/",
       "location": "us-west4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast2.rep.googleapis.com/",
+      "location": "northamerica-northeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-east1.rep.googleapis.com/",
+      "location": "southamerica-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-west1.rep.googleapis.com/",
+      "location": "southamerica-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-central1.rep.googleapis.com/",
+      "location": "me-central1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast1.rep.googleapis.com/",
+      "location": "northamerica-northeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-north2.rep.googleapis.com/",
+      "location": "europe-north2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west8.rep.googleapis.com/",
+      "location": "us-west8"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-south1.rep.googleapis.com/",
+      "location": "northamerica-south1"
     }
   ],
-  "etag": "\"363938303832303939373531303639383731\"",
+  "etag": "\"36383730363437323837383838393538333732\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -227,10 +272,12 @@
       "default": "json",
       "description": "Data format for the response.",
       "enum": [
-        "json"
+        "json",
+        "media"
       ],
       "enumDescriptions": [
-        "Responses with Content-Type of application/json"
+        "Responses with Content-Type of application/json",
+        "Responses containing object data"
       ],
       "location": "query",
       "type": "string"
@@ -3409,6 +3456,19 @@
               "location": "query",
               "type": "string"
             },
+            "projection": {
+              "description": "Set of properties to return. Defaults to noAcl.",
+              "enum": [
+                "full",
+                "noAcl"
+              ],
+              "enumDescriptions": [
+                "Include all properties.",
+                "Omit the owner, acl property."
+              ],
+              "location": "query",
+              "type": "string"
+            },
             "sourceObject": {
               "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
               "location": "path",
@@ -4479,7 +4539,7 @@
       }
     }
   },
-  "revision": "20250312",
+  "revision": "20250605",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4771,6 +4831,14 @@
         "ipFilter": {
           "description": "The bucket's IP filter configuration. Specifies the network sources that are allowed to access the operations on the bucket, as well as its underlying objects. Only enforced when the mode is set to 'Enabled'.",
           "properties": {
+            "allowAllServiceAgentAccess": {
+              "description": "Whether to allow all service agents to access the bucket regardless of the IP filter configuration.",
+              "type": "boolean"
+            },
+            "allowCrossOrgVpcs": {
+              "description": "Whether to allow cross-org VPCs in the bucket's IP filter configuration.",
+              "type": "boolean"
+            },
             "mode": {
               "description": "The mode of the IP filter. Valid values are 'Enabled' and 'Disabled'.",
               "type": "string"

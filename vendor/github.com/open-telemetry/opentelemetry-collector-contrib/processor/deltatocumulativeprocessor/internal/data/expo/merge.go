@@ -23,6 +23,15 @@ func Merge(arel, brel Buckets) {
 	lo := min(a.Lower(), b.Lower())
 	up := max(a.Upper(), b.Upper())
 
+	// Skip leading and trailing zeros to reduce number of buckets.
+	// As we cap number of buckets this allows us to have higher scale.
+	for lo < up && a.Abs(lo) == 0 && b.Abs(lo) == 0 {
+		lo++
+	}
+	for lo < up-1 && a.Abs(up-1) == 0 && b.Abs(up-1) == 0 {
+		up--
+	}
+
 	size := up - lo
 
 	counts := pcommon.NewUInt64Slice()

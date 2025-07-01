@@ -50,8 +50,10 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 	// Create two consumers using our Client wrapper
 	createConsumer := func(id string) *Client {
 		cfg := kafka.Config{
-			Address: addrs[0],
-			Topic:   "test-topic",
+			ReaderConfig: kafka.ClientConfig{
+				Address: addrs[0],
+			},
+			Topic: "test-topic",
 		}
 
 		// Track partition assignments for this consumer
@@ -222,8 +224,10 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 	createConsumer := func(id string) *Client {
 		cfg := kafka.Config{
-			Address: addrs[0],
-			Topic:   "test-topic",
+			ReaderConfig: kafka.ClientConfig{
+				Address: addrs[0],
+			},
+			Topic: "test-topic",
 		}
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),

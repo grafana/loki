@@ -86,6 +86,7 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 	additions := make([]func(int), len(fields))
 
 	for i, field := range fields {
+
 		switch field.Type.ID() {
 		case arrow.BOOL:
 			builder := array.NewBooleanBuilder(mem)
@@ -124,6 +125,14 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Float64)
+				builder.Append(src.Value(offset))
+			}
+
+		case arrow.TIMESTAMP:
+			builder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+			builders[i] = builder
+			additions[i] = func(offset int) {
+				src := batch.Column(i).(*array.Timestamp)
 				builder.Append(src.Value(offset))
 			}
 

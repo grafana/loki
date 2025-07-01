@@ -630,7 +630,7 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
 		chunkEntries = append(chunkEntries, retention.Chunk{
-			ChunkID: []byte(schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls))),
+			ChunkID: schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
 			From:    chunkMeta.From(),
 			Through: chunkMeta.Through(),
 		})

@@ -517,7 +517,9 @@ func concatListView(data []arrow.ArrayData, offsetType arrow.FixedWidthDataType,
 // concat is the implementation for actually performing the concatenation of the arrow.ArrayData
 // objects that we can call internally for nested types.
 func concat(data []arrow.ArrayData, mem memory.Allocator) (arr arrow.ArrayData, err error) {
-	out := &Data{refCount: 1, dtype: data[0].DataType(), nulls: 0}
+	out := &Data{dtype: data[0].DataType(), nulls: 0}
+	out.refCount.Add(1)
+
 	defer func() {
 		if pErr := recover(); pErr != nil {
 			err = utils.FormatRecoveredError("arrow/concat", pErr)

@@ -74,6 +74,18 @@ type MemoTable interface {
 	WriteOutSubset(offset int, out []byte)
 }
 
+type MemoTypes interface {
+	int8 | int16 | int32 | int64 |
+		uint8 | uint16 | uint32 | uint64 |
+		float32 | float64 | []byte
+}
+
+type TypedMemoTable[T MemoTypes] interface {
+	MemoTable
+	Exists(T) bool
+	InsertOrGet(val T) (idx int, found bool, err error)
+}
+
 type NumericMemoTable interface {
 	MemoTable
 	WriteOutLE(out []byte)
@@ -202,23 +214,15 @@ func (BinaryMemoTable) getHash(val interface{}) uint64 {
 	}
 }
 
-// helper function to append the given value to the builder regardless
-// of the underlying binary type.
-func (b *BinaryMemoTable) appendVal(val interface{}) {
-	switch v := val.(type) {
-	case string:
-		b.builder.AppendString(v)
-	case []byte:
-		b.builder.Append(v)
-	case ByteSlice:
-		b.builder.Append(v.Bytes())
-	}
-}
-
 func (b *BinaryMemoTable) lookup(h uint64, val []byte) (*entryInt32, bool) {
 	return b.tbl.Lookup(h, func(i int32) bool {
 		return bytes.Equal(val, b.builder.Value(int(i)))
 	})
+}
+
+func (b *BinaryMemoTable) Exists(val []byte) bool {
+	_, ok := b.lookup(b.getHash(val), val)
+	return ok
 }
 
 // Get returns the index of the specified value in the table or KeyNotFound,
@@ -246,17 +250,21 @@ func (b *BinaryMemoTable) GetOrInsertBytes(val []byte) (idx int, found bool, err
 	return
 }
 
+func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return b.InsertOrGet(b.valAsByteSlice(val))
+}
+
 // GetOrInsert returns the index of the given value in the table, if not found
 // it is inserted into the table. The return value 'found' indicates whether the value
 // was found in the table (true) or inserted (false) along with any possible error.
-func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+func (b *BinaryMemoTable) InsertOrGet(val []byte) (idx int, found bool, err error) {
 	h := b.getHash(val)
-	p, found := b.lookup(h, b.valAsByteSlice(val))
+	p, found := b.lookup(h, val)
 	if found {
 		idx = int(p.payload.val)
 	} else {
 		idx = b.Size()
-		b.appendVal(val)
+		b.builder.Append(val)
 		b.tbl.Insert(p, h, int32(idx), -1)
 	}
 	return

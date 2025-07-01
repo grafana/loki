@@ -14,6 +14,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // Helper types.
@@ -120,10 +121,28 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			// directly.
 			zr = zstdPool.New().(*zstdWrapper)
 		}
-
-		return bitmapReader, &closerFunc{Reader: zr, onClose: func() error {
+		defer func() {
 			_ = zr.Reset(nil) // Allow releasing the buffer.
 			zstdPool.Put(zr)
+		}()
+
+		decompressed := bufpool.Get(p.PageInfo().UncompressedSize)
+		defer func() {
+			// Return the buffer to the pool immediately if there was an error.
+			// Otherwise, the buffer will be returned to the pool when the reader is
+			// closed.
+			if err != nil {
+				bufpool.Put(decompressed)
+			}
+		}()
+
+		_, err := io.Copy(decompressed, zr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to decompress page: %w", err)
+		}
+
+		return bitmapReader, &closerFunc{Reader: decompressed, onClose: func() error {
+			bufpool.Put(decompressed)
 			return nil
 		}}, nil
 

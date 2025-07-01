@@ -25,10 +25,16 @@ local runner = import 'runner.libsonnet',
         include: platform,
       },
     })
+    + job.withPermissions({
+      contents: 'write',
+      'id-token': 'write',
+      'pull-requests': 'write',
+    })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.fetchGcsCredentials,
       common.googleAuth,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
@@ -156,6 +162,9 @@ local runner = import 'runner.libsonnet',
     ]
                )
     job.new('${{ matrix.runs_on }}')
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
@@ -166,6 +175,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.fetchGcsCredentials,
       common.googleAuth,
 
       step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
@@ -307,9 +317,13 @@ local runner = import 'runner.libsonnet',
 
   dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
+    + job.withPermissions({
+      'id-token': 'write',
+    })
     + job.withSteps([
       common.cleanUpBuildCache,
       common.fetchReleaseRepo,
+      common.fetchGcsCredentials,
       common.googleAuth,
       common.setupGoogleCloudSdk,
 

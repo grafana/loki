@@ -32,7 +32,7 @@ const (
 )
 
 type Chunk struct {
-	ChunkID []byte
+	ChunkID string
 	From    model.Time
 	Through model.Time
 }
@@ -94,7 +94,7 @@ type SeriesIterator interface {
 }
 
 type IndexCleaner interface {
-	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID []byte) error
+	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error
 	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
 	// It would only be called for the series that have all their chunks deleted without adding new ones.
 	CleanupSeries(userID []byte, lbls labels.Labels) error
@@ -216,17 +216,14 @@ func markForDelete(
 	iterCtx, cancel := ctxForTimeout(timeout)
 	defer cancel()
 
-	seriesSeen := map[string]struct{}{}
 	err := indexFile.ForEachSeries(iterCtx, func(s Series) error {
-		seriesIDStr := string(s.SeriesID())
-		if _, ok := seriesMap[seriesIDStr]; ok {
-			return fmt.Errorf("series should not be repeated. Series %s already seen earlier", seriesIDStr)
+		if seriesMap.HasSeries(s.SeriesID(), s.UserID()) {
+			return fmt.Errorf("series should not be repeated. Series %s already seen earlier", s.SeriesID())
 		}
-		seriesSeen[seriesIDStr] = struct{}{}
+		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
+
 		chunks := s.Chunks()
 		if len(chunks) == 0 {
-			// add the series to series map so that it gets cleaned up
-			seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 			return nil
 		}
 
@@ -239,10 +236,10 @@ func markForDelete(
 		}
 
 		if expiration.CanSkipSeries(s.UserID(), s.Labels(), s.SeriesID(), seriesStart, tableName, now) {
+			seriesMap.MarkSeriesNotDeleted(s.SeriesID(), s.UserID())
 			empty = false
 			return nil
 		}
-		seriesMap.Add(s.SeriesID(), s.UserID(), s.Labels())
 
 		for i := 0; i < len(chunks) && iterCtx.Err() == nil; i++ {
 			c := chunks[i]
@@ -271,7 +268,7 @@ func markForDelete(
 					// For a partially deleted chunk, if we delete the source chunk before all the tables which index it are processed then
 					// the retention would fail because it would fail to find it in the storage.
 					if filterFunc == nil || c.From >= tableInterval.Start {
-						if err := marker.Put(c.ChunkID); err != nil {
+						if err := marker.Put(unsafeGetBytes(c.ChunkID)); err != nil {
 							return err
 						}
 					}
@@ -445,9 +442,8 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 // the status of which is set to wroteChunks.
 func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chunk, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userIDStr := unsafeGetString(userID)
-	chunkID := unsafeGetString(ce.ChunkID)
 
-	chk, err := chunk.ParseExternalKey(userIDStr, chunkID)
+	chk, err := chunk.ParseExternalKey(userIDStr, ce.ChunkID)
 	if err != nil {
 		return false, false, err
 	}
@@ -471,7 +467,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 	})
 	if err != nil {
 		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
-			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", string(ce.ChunkID))
+			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", ce.ChunkID)
 			return false, true, nil
 		}
 		return false, false, err

@@ -594,7 +594,7 @@ func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
 
 	// if no errors and not cached already, cache ppid
 	p.parent = ppid
-	if 0 == p.getPpid() {
+	if p.getPpid() == 0 {
 		p.setPpid(ppid)
 	}
 
@@ -882,7 +882,8 @@ func getFromSnapProcess(pid int32) (int32, int32, string, error) { //nolint:unpa
 	defer windows.CloseHandle(snap)
 	var pe32 windows.ProcessEntry32
 	pe32.Size = uint32(unsafe.Sizeof(pe32))
-	if err = windows.Process32First(snap, &pe32); err != nil {
+	err = windows.Process32First(snap, &pe32)
+	if err != nil {
 		return 0, 0, "", err
 	}
 	for {
