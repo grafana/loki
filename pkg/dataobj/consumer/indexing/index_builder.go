@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bits-and-blooms/bloom/v3"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"

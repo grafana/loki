@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 )
