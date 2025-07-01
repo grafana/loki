@@ -48,6 +48,7 @@ func (m *metrics) register(reg prometheus.Registerer) error {
 		m.uploadCount,
 		m.uploadTime,
 		m.uploadSize,
+		m.shaPrefixSize,
 	}
 
 	for _, collector := range collectors {
@@ -65,6 +66,7 @@ func (m *metrics) unregister(reg prometheus.Registerer) {
 		m.uploadCount,
 		m.uploadTime,
 		m.uploadSize,
+		m.shaPrefixSize,
 	}
 
 	for _, collector := range collectors {
