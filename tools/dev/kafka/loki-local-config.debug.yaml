@@ -5,8 +5,6 @@ server:
   grpc_listen_port: 9096
   log_level: info
   grpc_server_max_concurrent_streams: 1000
-  grpc_server_max_send_msg_size: 104857600
-  grpc_server_max_recv_msg_size: 104857600
 
 common:
   instance_addr: 127.0.0.1
@@ -41,11 +39,6 @@ ingest_limits:
         store: inmemory
       replication_factor: 1
 
-storage_config:
-  object_store:
-    gcs:
-      bucket_name: dev-us-central-0-loki-dev-005-data
-
 ingest_limits_frontend:
   num_partitions: 1
   lifecycler:
@@ -79,7 +72,7 @@ schema_config:
   configs:
     - from: 2020-10-24
       store: tsdb
-      object_store: gcs
+      object_store: filesystem
       schema: v13
       index:
         prefix: index_
@@ -91,7 +84,7 @@ pattern_ingester:
     loki_address: localhost:3100
 
 compactor:
-  retention_enabled: false
+  retention_enabled: true
   delete_request_store: filesystem
 
 ruler:
@@ -109,5 +102,5 @@ frontend:
 # Refer to the buildReport method to see what goes into a report.
 #
 # If you would like to disable reporting, uncomment the following lines:
-analytics:
-  reporting_enabled: false
+#analytics:
+#  reporting_enabled: false

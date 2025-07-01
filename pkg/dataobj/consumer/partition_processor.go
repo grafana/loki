@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -29,12 +28,11 @@ type partitionProcessor struct {
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records              chan *kgo.Record
-	builder              *logsobj.Builder
-	decoder              *kafka.Decoder
-	uploader             *uploader.Uploader
-	metastoreUpdater     *metastore.Updater
-	eventsProducerClient *kgo.Client
+	records          chan *kgo.Record
+	builder          *logsobj.Builder
+	decoder          *kafka.Decoder
+	uploader         *uploader.Uploader
+	metastoreUpdater *metastore.Updater
 
 	// Builder initialization
 	builderOnce sync.Once
@@ -57,8 +55,7 @@ type partitionProcessor struct {
 	reg    prometheus.Registerer
 	logger log.Logger
 
-	sizeEstimate        int64
-	sizeReportThreshold int64
+	eventsProducerClient *kgo.Client
 }
 
 func newPartitionProcessor(
@@ -125,7 +122,6 @@ func newPartitionProcessor(
 		lastFlush:            time.Now(),
 		lastModified:         time.Now(),
 		eventsProducerClient: eventsProducerClient,
-		sizeReportThreshold:  256 * 1024, // 256KB
 	}
 }
 
@@ -221,8 +217,6 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 	}
 
 	p.lastFlush = time.Now()
-	p.sizeEstimate = 0
-	p.sizeReportThreshold = 256 * 1024 // 256KB
 
 	return nil
 }
@@ -246,17 +240,14 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 
 	// Emitting the event is non-critical so we don't need to wait for it.
 	// We can just log the error and move on.
-	results := p.eventsProducerClient.ProduceSync(p.ctx, &kgo.Record{
-		Key:   []byte(p.tenantID),
+	p.eventsProducerClient.Produce(p.ctx, &kgo.Record{
 		Value: eventBytes,
+	}, func(_ *kgo.Record, err error) {
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", err)
+		}
 	})
 
-	for _, result := range results {
-		if result.Err != nil {
-			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", result.Err)
-			return result.Err
-		}
-	}
 	return nil
 }
 
@@ -270,7 +261,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	// Initialize builder if this is the first record
 	if err := p.initBuilder(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to initialize builder", "err", err)
-		panic(err)
+		return
 	}
 
 	// todo: handle multi-tenant
@@ -282,12 +273,6 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
 		return
-	}
-
-	p.sizeEstimate += int64(len(record.Value))
-	if p.sizeEstimate > p.sizeReportThreshold {
-		level.Info(p.logger).Log("msg", "builder size report", "size", humanize.Bytes(uint64(p.sizeEstimate)))
-		p.sizeReportThreshold *= 2
 	}
 
 	p.metrics.incAppendsTotal()

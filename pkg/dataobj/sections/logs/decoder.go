@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -107,8 +106,7 @@ func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 	defer rc.Close()
 
 	data := make([]byte, size)
-	reader := bufio.NewReaderSize(rc, int(size))
-	if _, err := io.ReadFull(reader, data); err != nil {
+	if _, err := io.ReadFull(rc, data); err != nil {
 		return nil, fmt.Errorf("read column data: %w", err)
 	}
 	return data, nil

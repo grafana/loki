@@ -134,7 +134,6 @@ func readAllSectionPointers(t *testing.T, bucket objstore.Bucket, indexPrefix st
 
 	for _, directory := range directories {
 		err := bucket.Iter(context.Background(), directory, func(name string) error {
-			t.Logf("found index: %s", name)
 
 			objReader, err := bucket.Get(context.Background(), name)
 			require.NoError(t, err)

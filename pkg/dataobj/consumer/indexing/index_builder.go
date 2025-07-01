@@ -23,7 +23,6 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -399,21 +398,18 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Log
 		return err
 	}
 
-	// Fetch the metadata and init the bloom filters for each column
-	md, err := logs.Metadata(logsSection)
+	// Fetch the column statistics in order to init the bloom filters for each column
+	stats, err := logs.ReadStats(ctx, logsSection)
 	if err != nil {
-		level.Error(objLogger).Log("msg", "failed to get logs metadata", "err", err)
+		level.Error(objLogger).Log("msg", "failed to read logs stats", "err", err)
 		return err
 	}
 
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
-	for i, column := range md.Columns {
-		if column.Type != logsmd.COLUMN_TYPE_METADATA {
-			continue
-		}
-		columnBloomBuilders[column.Info.Name] = bloom.NewWithEstimates(uint(column.Info.Statistics.CardinalityCount), 1.0/128.0)
-		columnIndexes[column.Info.Name] = int64(i)
+	for _, column := range stats.Columns {
+		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
+		columnIndexes[column.Name] = column.ColumnIndex
 	}
 
 	// Read the whole logs section to extract all the column values.
