@@ -3,7 +3,7 @@ name: loki
 description: Helm chart for Grafana Loki and Grafana Enterprise Logs supporting monolithic, simple scalable, and microservices modes.
 type: application
 appVersion: 3.5.0
-version: 6.30.1
+version: 6.31.0
 home: https://grafana.github.io/helm-charts
 sources:
   - https://github.com/grafana/loki
