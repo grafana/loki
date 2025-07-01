@@ -20,10 +20,10 @@ type rangeAggregationOptions struct {
 	partitionBy []physical.ColumnExpression
 
 	// start and end timestamps are equal for instant queries.
-	startTs       time.Time      // start timestamp of the query
-	endTs         time.Time      // end timestamp of the query
-	rangeInterval time.Duration  // range interval
-	step          *time.Duration // step used for range queries, nil for instant queries
+	startTs       time.Time     // start timestamp of the query
+	endTs         time.Time     // end timestamp of the query
+	rangeInterval time.Duration // range interval
+	step          time.Duration // step used for range queries
 }
 
 // RangeAggregationPipeline is a pipeline that performs aggregations over a time window.

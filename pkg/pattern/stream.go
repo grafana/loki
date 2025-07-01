@@ -40,7 +40,7 @@ func newStream(
 	instanceID string,
 	drainCfg *drain.Config,
 	drainLimits drain.Limits,
-	writer aggregation.EntryWriter,
+	patternWriter aggregation.EntryWriter,
 ) (*stream, error) {
 	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
 	if err != nil {
@@ -49,7 +49,7 @@ func newStream(
 
 	patterns := make(map[string]*drain.Drain, len(constants.LogLevels))
 	for _, lvl := range constants.LogLevels {
-		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, writer, &drain.Metrics{
+		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, patternWriter, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),

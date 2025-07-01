@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -36,9 +38,10 @@ type Uploader struct {
 	bucket        objstore.Bucket
 	tenantID      string
 	metrics       *metrics
+	logger        log.Logger
 }
 
-func New(cfg Config, bucket objstore.Bucket, tenantID string) *Uploader {
+func New(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *Uploader {
 	metrics := newMetrics(cfg.SHAPrefixSize)
 
 	return &Uploader{
@@ -46,6 +49,7 @@ func New(cfg Config, bucket objstore.Bucket, tenantID string) *Uploader {
 		bucket:        bucket,
 		tenantID:      tenantID,
 		metrics:       metrics,
+		logger:        logger,
 	}
 }
 
@@ -67,6 +71,8 @@ func (d *Uploader) getKey(object *bytes.Buffer) string {
 
 // Upload uploads an object to the configured bucket and returns the key.
 func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, error) {
+	start := time.Now()
+
 	timer := prometheus.NewTimer(d.metrics.uploadTime)
 	defer timer.ObserveDuration()
 
@@ -78,16 +84,26 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 		MaxRetries: 20,
 	})
 
-	var lastErr error
+	size := len(object.Bytes())
+
+	var err error
 	for backoff.Ongoing() {
-		err := d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
+		err = d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
 		if err == nil {
-			return objectPath, nil
+			break
 		}
-		lastErr = err
 		backoff.Wait()
 	}
 
-	d.metrics.uploadFailures.Inc()
-	return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), lastErr)
+	d.metrics.uploadTotal.Inc()
+
+	if err != nil {
+		d.metrics.uploadFailures.Inc()
+		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
+		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
+	}
+
+	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
+	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath, "size", size, "duration", time.Since(start))
+	return objectPath, nil
 }

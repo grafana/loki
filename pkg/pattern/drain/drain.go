@@ -144,18 +144,18 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, writer aggregation.EntryWriter, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, patternWriter aggregation.EntryWriter, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:   config,
-		rootNode: createNode(),
-		metrics:  metrics,
-		format:   format,
-		writer:   writer,
+		config:        config,
+		rootNode:      createNode(),
+		metrics:       metrics,
+		format:        format,
+		patternWriter: patternWriter,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -203,7 +203,7 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
-	writer          aggregation.EntryWriter
+	patternWriter   aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -313,8 +313,8 @@ func (d *Drain) writePattern(
 		{Name: constants.LevelLabel, Value: lvl},
 	}
 
-	if d.writer != nil {
-		d.writer.WriteEntry(
+	if d.patternWriter != nil {
+		d.patternWriter.WriteEntry(
 			ts.Time(),
 			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
 			newLbls,
