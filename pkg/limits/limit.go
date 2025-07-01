@@ -95,7 +95,7 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	for _, stream := range rejected {
 		results = append(results, &proto.ExceedsLimitsResult{
 			StreamHash: stream.StreamHash,
-			Reason:     uint32(ReasonExceedsMaxStreams),
+			Reason:     uint32(ReasonMaxStreams),
 		})
 	}
 

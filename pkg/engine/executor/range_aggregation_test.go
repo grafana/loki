@@ -81,10 +81,9 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		startTs:       now,
 		endTs:         now,
 		rangeInterval: 10 * time.Minute,
-		step:          nil, // instant query
 	}
 
-	pipeline, err := NewRangeAggregationPipeline([]Pipeline{input1, input2}, &expressionEvaluator{}, opts)
+	pipeline, err := NewRangeAggregationPipeline([]Pipeline{input1, input2}, expressionEvaluator{}, opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

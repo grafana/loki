@@ -24,13 +24,14 @@ type mockExceedsLimitsGatherer struct {
 
 	expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
 	exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
+	err                          error
 }
 
-func (g *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
-	if expected := g.expectedExceedsLimitsRequest; expected != nil {
-		require.Equal(g.t, expected, req)
+func (m *mockExceedsLimitsGatherer) ExceedsLimits(_ context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+	if expected := m.expectedExceedsLimitsRequest; expected != nil {
+		require.Equal(m.t, expected, req)
 	}
-	return g.exceedsLimitsResponses, nil
+	return m.exceedsLimitsResponses, m.err
 }
 
 // mockIngestLimitsClient mocks proto.IngestLimitsClient.

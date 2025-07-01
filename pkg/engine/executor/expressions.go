@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -46,7 +45,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				}, nil
 			}
 		}
-		return nil, fmt.Errorf("unknown column %s: %w", expr.Ref.String(), errors.ErrKey)
+		// A non-existent column is represented as a string scalar with zero-value.
+		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
+		return &Scalar{
+			value: datatype.NewStringLiteral(""),
+			rows:  input.NumRows(),
+			ct:    types.ColumnTypeGenerated,
+		}, nil
 
 	case *physical.UnaryExpr:
 		lhr, err := e.eval(expr.Left, input)

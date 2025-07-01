@@ -240,21 +240,44 @@ func (ms Metric) SetEmptySummary() Summary {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Metric) CopyTo(dest Metric) {
 	dest.state.AssertMutable()
-	dest.SetName(ms.Name())
-	dest.SetDescription(ms.Description())
-	dest.SetUnit(ms.Unit())
-	ms.Metadata().CopyTo(dest.Metadata())
-	switch ms.Type() {
-	case MetricTypeGauge:
-		ms.Gauge().CopyTo(dest.SetEmptyGauge())
-	case MetricTypeSum:
-		ms.Sum().CopyTo(dest.SetEmptySum())
-	case MetricTypeHistogram:
-		ms.Histogram().CopyTo(dest.SetEmptyHistogram())
-	case MetricTypeExponentialHistogram:
-		ms.ExponentialHistogram().CopyTo(dest.SetEmptyExponentialHistogram())
-	case MetricTypeSummary:
-		ms.Summary().CopyTo(dest.SetEmptySummary())
-	}
+	copyOrigMetric(dest.orig, ms.orig)
+}
 
+func copyOrigMetric(dest, src *otlpmetrics.Metric) {
+	dest.Name = src.Name
+	dest.Description = src.Description
+	dest.Unit = src.Unit
+	dest.Metadata = internal.CopyOrigMap(dest.Metadata, src.Metadata)
+	switch t := src.Data.(type) {
+	case *otlpmetrics.Metric_Gauge:
+		gauge := &otlpmetrics.Gauge{}
+		copyOrigGauge(gauge, t.Gauge)
+		dest.Data = &otlpmetrics.Metric_Gauge{
+			Gauge: gauge,
+		}
+	case *otlpmetrics.Metric_Sum:
+		sum := &otlpmetrics.Sum{}
+		copyOrigSum(sum, t.Sum)
+		dest.Data = &otlpmetrics.Metric_Sum{
+			Sum: sum,
+		}
+	case *otlpmetrics.Metric_Histogram:
+		histogram := &otlpmetrics.Histogram{}
+		copyOrigHistogram(histogram, t.Histogram)
+		dest.Data = &otlpmetrics.Metric_Histogram{
+			Histogram: histogram,
+		}
+	case *otlpmetrics.Metric_ExponentialHistogram:
+		exponentialhistogram := &otlpmetrics.ExponentialHistogram{}
+		copyOrigExponentialHistogram(exponentialhistogram, t.ExponentialHistogram)
+		dest.Data = &otlpmetrics.Metric_ExponentialHistogram{
+			ExponentialHistogram: exponentialhistogram,
+		}
+	case *otlpmetrics.Metric_Summary:
+		summary := &otlpmetrics.Summary{}
+		copyOrigSummary(summary, t.Summary)
+		dest.Data = &otlpmetrics.Metric_Summary{
+			Summary: summary,
+		}
+	}
 }

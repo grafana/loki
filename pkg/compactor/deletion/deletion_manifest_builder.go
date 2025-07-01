@@ -229,9 +229,13 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount)), strings.NewReader(unsafeGetString(batchJSON)))
+	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 	return path.Join(fmt.Sprint(d.creationTime.UnixNano()), filename)
+}
+
+func (d *deletionManifestBuilder) path() string {
+	return fmt.Sprint(d.creationTime.UnixNano())
 }
