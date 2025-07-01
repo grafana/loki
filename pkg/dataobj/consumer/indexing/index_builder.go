@@ -327,9 +327,6 @@ func (p *IndexBuilder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 
 	metastoreUpdater := metastore.NewUpdater(indexStorageBucket, events[0].Tenant, p.logger)
-	// TODO: Remove references to the old objects that are being indexed (from a full implementation)
-	// TODO: Check if this is idempotent for the same index file. Probably not?
-	// TODO: Rewrite with a new name
 	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
 		level.Error(p.logger).Log("msg", "failed to get min/max timestamps", "min", stats.MinTimestamp, "max", stats.MaxTimestamp)
 		return errors.New("failed to get min/max timestamps")
@@ -375,7 +372,6 @@ func (p *IndexBuilder) processStreamsSection(objLogger log.Logger, section *data
 				level.Error(objLogger).Log("msg", "failed to append stream", "err", err)
 				return err
 			}
-			// TODO(benclive): Do we need to discard the size/count etc. and recompute it in the index? Maybe we should compute it in the logs objects and just copy it here?
 			p.mtx.Lock()
 			p.builder.RecordStreamRef(objectPath, stream.ID, newStreamID)
 			p.mtx.Unlock()
