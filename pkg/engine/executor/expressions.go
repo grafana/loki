@@ -13,31 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-// Column type precedence for ambiguous column resolution (highest to lowest):
-// Generated > Parsed > Metadata > Label > Builtin
-const (
-	PrecedenceGenerated = iota // 0 - highest precedence
-	PrecedenceParsed           // 1
-	PrecedenceMetadata         // 2
-	PrecedenceLabel            // 3
-	PrecedenceBuiltin          // 4 - lowest precedence
-)
-
-func getColumnTypePrecedence(ct types.ColumnType) int {
-	switch ct {
-	case types.ColumnTypeGenerated:
-		return PrecedenceGenerated
-	case types.ColumnTypeParsed:
-		return PrecedenceParsed
-	case types.ColumnTypeMetadata:
-		return PrecedenceMetadata
-	case types.ColumnTypeLabel:
-		return PrecedenceLabel
-	default:
-		return PrecedenceBuiltin // Default to lowest precedence
-	}
-}
-
 type expressionEvaluator struct{}
 
 func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
@@ -106,7 +81,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if len(vecs) > 1 {
 					// Multiple matches - sort by precedence and create CoalesceVector
 					slices.SortFunc(vecs, func(a, b ColumnVector) int {
-						return getColumnTypePrecedence(a.ColumnType()) - getColumnTypePrecedence(b.ColumnType())
+						return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
 					})
 
 					return &CoalesceVector{
