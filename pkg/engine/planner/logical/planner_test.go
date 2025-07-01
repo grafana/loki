@@ -14,10 +14,11 @@ import (
 )
 
 type query struct {
-	statement  string
-	start, end int64
-	direction  logproto.Direction
-	limit      uint32
+	statement      string
+	start, end     int64
+	step, interval time.Duration
+	direction      logproto.Direction
+	limit          uint32
 }
 
 // Direction implements logql.Params.
@@ -72,7 +73,7 @@ func (q *query) Shards() []string {
 
 // Step implements logql.Params.
 func (q *query) Step() time.Duration {
-	panic("unimplemented")
+	return q.step
 }
 
 var _ logql.Params = (*query)(nil)
@@ -110,6 +111,41 @@ func TestConvertAST_Success(t *testing.T) {
 %19 = SELECT %13 [predicate=%18]
 %20 = LIMIT %19 [skip=0, fetch=1000]
 RETURN %20
+`
+
+	require.Equal(t, expected, logicalPlan.String())
+
+	var sb strings.Builder
+	PrintTree(&sb, logicalPlan.Value())
+
+	t.Logf("\n%s\n", sb.String())
+}
+
+func TestConvertAST_MetricQuery_Success(t *testing.T) {
+	q := &query{
+		statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
+		start:     3600,
+		end:       7200,
+		interval:  5 * time.Minute,
+	}
+
+	logicalPlan, err := BuildPlan(q)
+	require.NoError(t, err)
+	t.Logf("\n%s\n", logicalPlan.String())
+
+	expected := `%1 = EQ label.cluster "prod"
+%2 = MATCH_RE label.namespace "loki-.*"
+%3 = AND %1 %2
+%4 = MAKETABLE [selector=%3, shard=0_of_1]
+%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = MATCH_STR builtin.message "metric.go"
+%10 = SELECT %8 [predicate=%9]
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+RETURN %12
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -179,7 +215,27 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `{env="prod"} |= "metric.go" | retry > 2`,
 		},
 		{
-			statement: `sum(rate({env="prod"}[1m]))`,
+			statement: `sum by (level) (count_over_time({env="prod"}[1m]))`,
+			expected:  true,
+		},
+		{
+			// both vector and range aggregation are required
+			statement: `count_over_time({env="prod"}[1m])`,
+		},
+		{
+			// group by labels are required
+			statement: `sum(count_over_time({env="prod"}[1m]))`,
+		},
+		{
+			// rate is not supported
+			statement: `sum by (level) (rate({env="prod"}[1m]))`,
+		},
+		{
+			// max is not supported
+			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
+		},
+		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m] offset 5m))`,
 		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {

@@ -41,35 +41,32 @@ type Catalog interface {
 	// ResolveDataObj returns a list of data object paths,
 	// a list of stream IDs for each data data object,
 	// and a list of sections for each data object
-	ResolveDataObj(Expression) ([]DataObjLocation, [][]int64, [][]int, error)
-	ResolveDataObjWithShard(Expression, ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error)
+	ResolveDataObj(Expression, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
+	ResolveDataObjWithShard(Expression, ShardInfo, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
 }
 
-// Context is the default implementation of [Catalog].
-type Context struct {
-	ctx           context.Context
-	metastore     metastore.Metastore
-	from, through time.Time
+// MetastoreCatalog is the default implementation of [Catalog].
+type MetastoreCatalog struct {
+	ctx       context.Context
+	metastore metastore.Metastore
 }
 
-// NewContext creates a new instance of [Context] for query planning.
-func NewContext(ctx context.Context, ms metastore.Metastore, from, through time.Time) *Context {
-	return &Context{
+// NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
+func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *MetastoreCatalog {
+	return &MetastoreCatalog{
 		ctx:       ctx,
 		metastore: ms,
-		from:      from,
-		through:   through,
 	}
 }
 
 // ResolveDataObj resolves DataObj locations and streams IDs based on a given
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
-func (c *Context) ResolveDataObj(selector Expression) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(selector, noShard)
+func (c *MetastoreCatalog) ResolveDataObj(selector Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+	return c.ResolveDataObjWithShard(selector, noShard, from, through)
 }
 
-func (c *Context) ResolveDataObjWithShard(selector Expression, shard ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	if c.metastore == nil {
 		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
@@ -79,7 +76,7 @@ func (c *Context) ResolveDataObjWithShard(selector Expression, shard ShardInfo) 
 		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
+	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
@@ -187,4 +184,4 @@ func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
 	return ty, nil
 }
 
-var _ Catalog = (*Context)(nil)
+var _ Catalog = (*MetastoreCatalog)(nil)

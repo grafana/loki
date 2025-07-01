@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -22,7 +23,7 @@ type RangeAggregation struct {
 	Operation     types.RangeAggregationType // The type of aggregation operation to perform.
 	Start         time.Time
 	End           time.Time
-	Step          *time.Duration // optional for instant queries
+	Step          time.Duration
 	RangeInterval time.Duration
 }
 
@@ -41,10 +42,7 @@ func (r *RangeAggregation) Name() string {
 
 // String returns the disassembled SSA form of the RangeAggregation instruction.
 func (r *RangeAggregation) String() string {
-	props := fmt.Sprintf("operation=%s, start_ts=%s, end_ts=%s, range=%s", r.Operation, r.Start, r.End, r.RangeInterval)
-	if r.Step != nil {
-		props += fmt.Sprintf(", step=%s", r.Step)
-	}
+	props := fmt.Sprintf("operation=%s, start_ts=%s, end_ts=%s, step=%s, range=%s", r.Operation, util.FormatTimeRFC3339Nano(r.Start), util.FormatTimeRFC3339Nano(r.End), r.Step, r.RangeInterval)
 
 	if len(r.PartitionBy) > 0 {
 		partitionBy := ""
