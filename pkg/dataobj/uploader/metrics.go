@@ -1,6 +1,7 @@
 package uploader
 
 import (
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -11,21 +12,24 @@ type metrics struct {
 }
 
 func newMetrics(shaPrefixSize int) *metrics {
+	subsystem := "dataobj_uploader"
 	metrics := &metrics{
 		uploadFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_upload_failures_total",
-			Help: "Total number of upload failures",
+			Namespace: constants.Loki,
+			Subsystem: subsystem,
+			Name:      "upload_failures_total",
+			Help:      "Total number of upload failures",
 		}),
 		uploadTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
+			Namespace: constants.Loki,
+			Subsystem: subsystem,
 			Name:      "upload_time_seconds",
 			Help:      "Time taken writing data objects to object storage.",
 			Buckets:   prometheus.DefBuckets,
 		}),
 		shaPrefixSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
+			Namespace: constants.Loki,
+			Subsystem: subsystem,
 			Name:      "sha_prefix_size",
 			Help:      "The size of the SHA prefix used for object storage keys.",
 		}),
