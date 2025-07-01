@@ -124,6 +124,22 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
+
+	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+		query := q.engineV2.Query(params)
+		result, err := query.Exec(ctx)
+		if err == nil {
+			return result, err
+		}
+
+		logger := utillog.WithContext(ctx, q.logger)
+		if !errors.Is(err, engine.ErrNotSupported) {
+			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
+			return result, errors.Wrap(err, "failed with new execution engine")
+		}
+		level.Warn(logger).Log("msg", "falling back to legacy query engine", "err", err)
+	}
+
 	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
 }
