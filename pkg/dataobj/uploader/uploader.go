@@ -71,6 +71,8 @@ func (d *Uploader) getKey(object *bytes.Buffer) string {
 
 // Upload uploads an object to the configured bucket and returns the key.
 func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, error) {
+	start := time.Now()
+
 	timer := prometheus.NewTimer(d.metrics.uploadTime)
 	defer timer.ObserveDuration()
 
@@ -102,6 +104,6 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 
 	d.metrics.uploadCount.WithLabelValues(statusSuccess).Inc()
 	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
-	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath)
+	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath, "size", size, "duration", time.Since(start))
 	return objectPath, nil
 }
