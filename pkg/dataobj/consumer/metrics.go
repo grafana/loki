@@ -6,8 +6,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type partitionOffsetMetrics struct {
@@ -30,36 +28,25 @@ type partitionOffsetMetrics struct {
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
-	subsystem := "dataobj_consumer"
 	p := &partitionOffsetMetrics{
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "commit_failures_total",
-			Help:      "Total number of commit failures",
+			Name: "loki_dataobj_consumer_commit_failures_total",
+			Help: "Total number of commit failures",
 		}),
 		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "append_failures_total",
-			Help:      "Total number of append failures",
+			Name: "loki_dataobj_consumer_append_failures_total",
+			Help: "Total number of append failures",
 		}),
 		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "appends_total",
-			Help:      "Total number of appends",
+			Name: "loki_dataobj_consumer_appends_total",
+			Help: "Total number of appends",
 		}),
 		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "commits_total",
-			Help:      "Total number of commits",
+			Name: "loki_dataobj_consumer_commits_total",
+			Help: "Total number of commits",
 		}),
 		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Subsystem:                       subsystem,
-			Name:                            "processing_delay_seconds",
+			Name:                            "loki_dataobj_consumer_processing_delay_seconds",
 			Help:                            "Time difference between record timestamp and processing time in seconds",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
@@ -67,19 +54,15 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		bytesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "bytes_processed_total",
-			Help:      "Total number of bytes processed from this partition",
+			Name: "loki_dataobj_consumer_bytes_processed_total",
+			Help: "Total number of bytes processed from this partition",
 		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "current_offset",
-			Help:      "The last consumed offset for this partition",
+			Name: "loki_dataobj_consumer_current_offset",
+			Help: "The last consumed offset for this partition",
 		},
 		p.getCurrentOffset,
 	)
