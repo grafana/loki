@@ -181,7 +181,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
-			col, ok := col.(*array.Float64)
+			col, ok := col.(*array.Int64)
 			if !ok {
 				return promql.Sample{}, false
 			}
