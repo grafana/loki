@@ -11,18 +11,23 @@ var (
 )
 
 type metrics struct {
-	uploadCount   *prometheus.CounterVec
-	uploadTime    prometheus.Histogram
-	uploadSize    *prometheus.HistogramVec
-	shaPrefixSize prometheus.Gauge
+	uploadFailures prometheus.Counter
+	uploadTotal    prometheus.Counter
+	uploadTime     prometheus.Histogram
+	uploadSize     *prometheus.HistogramVec
+	shaPrefixSize  prometheus.Gauge
 }
 
 func newMetrics(shaPrefixSize int) *metrics {
 	metrics := &metrics{
-		uploadCount: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_uploader_upload_count_total",
-			Help: "Total number of uploads grouped by status",
-		}, []string{labelStatus}),
+		uploadFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_upload_failures_total",
+			Help: "Total number of failed uploads to object storage.",
+		}),
+		uploadTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_upload_total",
+			Help: "Total number of uploads to object storage.",
+		}),
 		uploadTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_uploader_upload_time_seconds",
 			Help:    "Time taken writing data objects to object storage.",
@@ -45,7 +50,8 @@ func newMetrics(shaPrefixSize int) *metrics {
 
 func (m *metrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		m.uploadCount,
+		m.uploadFailures,
+		m.uploadTotal,
 		m.uploadTime,
 		m.uploadSize,
 		m.shaPrefixSize,
@@ -63,7 +69,8 @@ func (m *metrics) register(reg prometheus.Registerer) error {
 
 func (m *metrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
-		m.uploadCount,
+		m.uploadFailures,
+		m.uploadTotal,
 		m.uploadTime,
 		m.uploadSize,
 		m.shaPrefixSize,

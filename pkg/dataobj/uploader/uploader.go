@@ -84,8 +84,7 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 		MaxRetries: 20,
 	})
 
-	r := bytes.NewReader(object.Bytes())
-	size := r.Size()
+	size := len(object.Bytes())
 
 	var err error
 	for backoff.Ongoing() {
@@ -96,13 +95,14 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 		backoff.Wait()
 	}
 
+	d.metrics.uploadTotal.Inc()
+
 	if err != nil {
-		d.metrics.uploadCount.WithLabelValues(statusFailure).Inc()
+		d.metrics.uploadFailures.Inc()
 		d.metrics.uploadSize.WithLabelValues(statusFailure).Observe(float64(size))
 		return "", fmt.Errorf("uploading object after %d retries: %w", backoff.NumRetries(), err)
 	}
 
-	d.metrics.uploadCount.WithLabelValues(statusSuccess).Inc()
 	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
 	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath, "size", size, "duration", time.Since(start))
 	return objectPath, nil
