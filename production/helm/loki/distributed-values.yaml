@@ -46,8 +46,6 @@ compactor:
 indexGateway:
   replicas: 2
   maxUnavailable: 1
-patternIngester:
-  replicas: 2
 
 # optional experimental components
 bloomPlanner:
