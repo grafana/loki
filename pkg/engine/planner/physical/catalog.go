@@ -43,6 +43,7 @@ type Catalog interface {
 	// and a list of sections for each data object
 	ResolveDataObj(Expression, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
 	ResolveDataObjWithShard(Expression, ShardInfo, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
+	ResolveSections(Expression, Expression) ([]metastore.DataobjSectionDescriptor, error)
 }
 
 // MetastoreCatalog is the default implementation of [Catalog].
@@ -104,10 +105,43 @@ func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSec
 			locations = append(locations, DataObjLocation(paths[i]))
 			streams = append(streams, streamIDs[i])
 			sections = append(sections, sec)
+
+			// {
+			//   location: "path/abcd/object"
+			//   streamIDs: [1, 2, 3]
+			//   sections: [1, 3, 5]
+			// }
 		}
 	}
 
 	return locations, streams, sections, nil
+}
+
+// ResolveDataObj resolves DataObj locations and streams IDs based on a given
+// [Expression]. The expression is required to be a (tree of) [BinaryExpression]
+// with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
+func (c *Context) ResolveSections(selector Expression, tableHint Expression) ([]metastore.DataobjSectionDescriptor, error) {
+	if c.metastore == nil {
+		return nil, errors.New("no metastore to resolve objects")
+	}
+
+	matchers, err := expressionToMatchers(selector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
+	}
+
+	/* 	// TODO(benclive): Handle these ambiguous column cases in a less hacky way
+	   	tableHintMatchers, err := expressionToMatchers(tableHint)
+	   	if err != nil {
+	   		return nil, nil, fmt.Errorf("failed to convert table hint expression into matchers: %w", err)
+	   	} */
+
+	sectionDescriptors, err := c.metastore.StreamIDsBySections(c.ctx, c.from, c.through, matchers...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve data object locations: %w", err)
+	}
+
+	return sectionDescriptors, err
 }
 
 func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {

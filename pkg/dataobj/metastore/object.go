@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -35,6 +37,16 @@ type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
 	logger      log.Logger
+}
+
+type DataobjSectionDescriptor struct {
+	ObjectPath string
+	SectionIdx int64
+	StreamIDs  []int64
+	Lines      int
+	Size       int64
+	Start      time.Time
+	End        time.Time
 }
 
 func metastorePath(tenantID string, window time.Time) string {
@@ -128,6 +140,10 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
 	}
 
+	if len(streamIDs) == 0 {
+		return paths, streamIDs, sections, nil
+	}
+
 	// Remove objects that do not contain any matching streams
 	level.Debug(m.logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(paths), "streams", len(streamIDs), "sections", len(sections))
 	for i := 0; i < len(paths); i++ {
@@ -141,6 +157,35 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	}
 
 	return paths, streamIDs, sections, nil
+}
+
+func (m *ObjectMetastore) StreamIDsBySections(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]DataobjSectionDescriptor, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get all metastore paths for the time range
+	var storePaths []string
+	for path := range iterStorePaths(tenantID, start, end) {
+		storePaths = append(storePaths, path)
+	}
+
+	// List objects from all stores concurrently
+	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	// Search the stream sections of the matching objects to find matching streams
+	predicate := predicateFromMatchers(start, end, matchers...)
+	sectionPointers, err := m.listSectionsFromIndexes(ctx, paths, predicate)
+
+	if len(sectionPointers) == 0 {
+		return nil, errors.New("no relevant sections returned")
+	}
+
+	return sectionPointers, err
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
@@ -266,6 +311,30 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) st
 	return current
 }
 
+func pointerPredicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) pointers.RowPredicate {
+	if len(matchers) == 0 {
+		return nil
+	}
+
+	predicates := make([]pointers.RowPredicate, 0, len(matchers)+1)
+	for _, matcher := range matchers {
+		switch matcher.Type {
+		case labels.MatchEqual:
+			predicates = append(predicates, pointers.BloomExistencePredicate{
+				Name:  matcher.Name,
+				Value: matcher.Value,
+			})
+		}
+	}
+
+	if len(predicates) == 1 {
+		return predicates[0]
+	}
+
+	panic("multiple bloom filters not implemented")
+	return nil
+}
+
 // listObjectsFromStores concurrently lists objects from multiple metastore files
 func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths []string, start, end time.Time) ([]string, error) {
 	objects := make([][]string, len(storePaths))
@@ -324,6 +393,10 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 }
 
 func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
+	startTime := time.Now()
+	defer func() {
+		fmt.Printf("listStreamIDsFromObjects duration=%s paths=%d\n", time.Since(startTime), len(paths))
+	}()
 	streamIDs := make([][]int64, len(paths))
 	sections := make([]int, len(paths))
 
@@ -337,6 +410,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 				if err != nil {
 					return fmt.Errorf("getting object from bucket: %w", err)
 				}
+
 				sections[idx] = object.Sections().Count(logs.CheckSection)
 				streamIDs[idx] = make([]int64, 0, 8)
 
@@ -352,6 +426,138 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	}
 
 	return streamIDs, sections, nil
+}
+
+func (m *ObjectMetastore) listSectionsFromIndexes(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]DataobjSectionDescriptor, error) {
+	startTime := time.Now()
+	defer func() {
+		fmt.Printf("listStreamIDsFromIndexes duration=%s paths=%d\n", time.Since(startTime), len(paths))
+	}()
+
+	mtx := sync.Mutex{}
+	sectionPointers := make([]DataobjSectionDescriptor, 0, len(paths)*12)
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	for i, path := range paths {
+		func(idx int) {
+			g.Go(func() error {
+				downloadStartTime := time.Now()
+				idxFile, err := m.bucket.Get(ctx, path)
+				if err != nil {
+					return fmt.Errorf("getting object from bucket: %w", err)
+				}
+				idxBytes, err := io.ReadAll(idxFile)
+				if err != nil {
+					return fmt.Errorf("reading object from bucket: %w", err)
+				}
+				idxObject, err := dataobj.FromReaderAt(bytes.NewReader(idxBytes), int64(len(idxBytes)))
+				if err != nil {
+					return fmt.Errorf("getting object from bucket: %w", err)
+				}
+				downloadDuration := time.Since(downloadStartTime)
+
+				streamReadStartTime := time.Now()
+				var indexStreamIDs []int64
+				streamLabels := make([]*labels.Labels, 0, 1024)
+				forEachStream(ctx, idxObject, predicate, func(stream streams.Stream) {
+					indexStreamIDs = append(indexStreamIDs, stream.ID)
+					streamLabels = append(streamLabels, &stream.Labels)
+				})
+				streamReadDuration := time.Since(streamReadStartTime)
+				fmt.Printf("path=%s matching_streams=%d\n", path, len(indexStreamIDs))
+
+				// TODO: Implement time-range predicate for Pointers here too to further restrict the number of section pointers
+				sectionPointerReadStartTime := time.Now()
+				locators := map[string]*DataobjSectionDescriptor{}
+				forEachObjPointer(ctx, idxObject, nil, indexStreamIDs, func(pointer pointers.SectionPointer) {
+					key := fmt.Sprintf("%s-%d", pointer.Path, pointer.Section)
+					sectionPointer, ok := locators[key]
+					if !ok {
+						newSectionPointer := &DataobjSectionDescriptor{
+							ObjectPath: pointer.Path,
+							SectionIdx: pointer.Section,
+							StreamIDs:  []int64{pointer.StreamIDRef},
+							Lines:      int(pointer.LineCount),
+							Size:       pointer.UncompressedSize,
+							Start:      pointer.StartTs,
+							End:        pointer.EndTs,
+						}
+						locators[key] = newSectionPointer
+						return
+					}
+					sectionPointer.StreamIDs = append(sectionPointer.StreamIDs, pointer.StreamIDRef)
+					sectionPointer.Lines += int(pointer.LineCount)
+					sectionPointer.Size += pointer.UncompressedSize
+					if pointer.StartTs.Before(sectionPointer.Start) {
+						sectionPointer.Start = pointer.StartTs
+					}
+					if pointer.EndTs.After(sectionPointer.End) {
+						sectionPointer.End = pointer.EndTs
+					}
+				})
+
+				sectionPointerReadDuration := time.Since(sectionPointerReadStartTime)
+
+				mtx.Lock()
+				for _, locator := range locators {
+					sectionPointers = append(sectionPointers, *locator)
+				}
+				mtx.Unlock()
+
+				fmt.Printf("listSectionsFromIndexesSingle download=%s streamRead=%s sectionPointerRead=%s path=%s\n", downloadDuration, streamReadDuration, sectionPointerReadDuration, path)
+
+				return nil
+			})
+		}(i)
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return sectionPointers, nil
+}
+
+// Checks for the column key & value existing in paths
+func (m *ObjectMetastore) checkExistenceFromObjects(ctx context.Context, paths []string, predicate pointers.RowPredicate) ([][]string, error) {
+	startTime := time.Now()
+	defer func() {
+		fmt.Printf("checkExistenceFromObjects duration=%s paths=%d\n", time.Since(startTime), len(paths))
+	}()
+	pathsWithData := make([][]string, len(paths))
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	for i, path := range paths {
+		func(idx int) {
+			g.Go(func() error {
+				idxFile, err := m.bucket.Get(ctx, path)
+				if err != nil {
+					return fmt.Errorf("getting object from bucket: %w", err)
+				}
+				idxBytes, err := io.ReadAll(idxFile)
+				if err != nil {
+					return fmt.Errorf("reading object from bucket: %w", err)
+				}
+				idxObject, err := dataobj.FromReaderAt(bytes.NewReader(idxBytes), int64(len(idxBytes)))
+				if err != nil {
+					return fmt.Errorf("getting object from bucket: %w", err)
+				}
+
+				return forEachObjPointer(ctx, idxObject, predicate, nil, func(pointer pointers.SectionPointer) {
+					pathsWithData[idx] = append(pathsWithData[idx], pointer.Path)
+				})
+			})
+		}(i)
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return pathsWithData, nil
 }
 
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
@@ -458,7 +664,7 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 	var reader streams.RowReader
 	defer reader.Close()
 
-	buf := make([]streams.Stream, 1024)
+	buf := make([]streams.Stream, 2048)
 
 	for _, section := range object.Sections() {
 		if !streams.CheckSection(section) {
@@ -487,6 +693,59 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 			}
 			for _, stream := range buf[:num] {
 				f(stream)
+			}
+		}
+	}
+	return nil
+}
+
+func sliceIter(matchIDs []int64) iter.Seq[int64] {
+	return func(yield func(int64) bool) {
+		for _, id := range matchIDs {
+			if !yield(id) {
+				return
+			}
+		}
+	}
+}
+
+func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
+	var reader pointers.RowReader
+	defer reader.Close()
+
+	buf := make([]pointers.SectionPointer, 1024)
+
+	for _, section := range object.Sections() {
+		if !pointers.CheckSection(section) {
+			continue
+		}
+
+		sec, err := pointers.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		if len(matchIDs) > 0 {
+			reader.MatchStreams(sliceIter(matchIDs))
+		}
+
+		reader.Reset(sec)
+		if predicate != nil {
+			err := reader.SetPredicate(predicate)
+			if err != nil {
+				return err
+			}
+		}
+		for {
+			num, err := reader.Read(ctx, buf)
+			if err != nil && err != io.EOF {
+				return err
+			}
+			if num == 0 && err == io.EOF {
+				break
+			}
+			for _, pointer := range buf[:num] {
+				f(pointer)
 			}
 		}
 	}

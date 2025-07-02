@@ -1,9 +1,11 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/thanos-io/objstore"
 
@@ -83,7 +85,18 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		predicates = append(predicates, conv)
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	// TODO(benclive): Do not merge Get & ReaderAt, it's just for testing without having to download whole objects constantly, as I have a FS cache in place.
+	// nocommit
+	objReader, err := c.bucket.Get(ctx, string(node.Location))
+	if err != nil {
+		return errorPipeline(fmt.Errorf("getting data object: %w", err))
+	}
+	buf, err := io.ReadAll(objReader)
+	if err != nil {
+		return errorPipeline(fmt.Errorf("reading data object: %w", err))
+	}
+
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
 	if err != nil {
 		return errorPipeline(fmt.Errorf("creating data object: %w", err))
 	}

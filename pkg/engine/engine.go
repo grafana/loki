@@ -33,7 +33,9 @@ func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg
 
 	var ms metastore.Metastore
 	if bucket != nil {
-		ms = metastore.NewObjectMetastore(bucket, logger)
+		// TODO(benclive): Grab this from config instead of hardcoding it
+		metastoreBucket := objstore.NewPrefixedBucket(bucket, "indexing-v0/")
+		ms = metastore.NewObjectMetastore(metastoreBucket, logger)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -75,7 +77,6 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 //  3. Evaluate the physical plan with the executor.
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	start := time.Now()
-
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 

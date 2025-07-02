@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	fmt "fmt"
 	"io"
 	"strconv"
 	"sync"
@@ -130,6 +131,9 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp) {
+		if m.prefix != "" {
+			metastorePath = fmt.Sprintf("%s/%s", m.prefix, metastorePath)
+		}
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
@@ -146,9 +150,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 				m.metastoreBuilder.Reset()
 				m.builder.Reset()
-				var (
-					ty = m.cfg.StorageFormat
-				)
+				ty := m.cfg.StorageFormat
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
