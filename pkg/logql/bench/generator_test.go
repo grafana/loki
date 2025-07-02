@@ -137,8 +137,8 @@ func TestQueryDeterminism(t *testing.T) {
 	}
 
 	// Generate test cases with the same configuration
-	cases1 := cfg.GenerateTestCases()
-	cases2 := cfg.GenerateTestCases()
+	cases1 := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: "range"}, &cfg).Generate()
+	cases2 := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: "range"}, &cfg).Generate()
 
 	require.Equal(t, len(cases1), len(cases2), "Number of test cases should match")
 
