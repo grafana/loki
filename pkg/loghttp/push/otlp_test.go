@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -593,7 +594,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				log.NewNopLogger(),
 				streamResolver,
-				"otlp",
+				constants.OTLP,
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
@@ -1032,7 +1033,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
-		"otlp",
+		constants.OTLP,
 	)
 
 	// Verify there is exactly one stream
@@ -1217,7 +1218,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
-		"otlp",
+		constants.OTLP,
 	)
 
 	// Debug: Print the actual streams we got

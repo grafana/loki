@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -81,7 +82,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, "loki")
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
 
 		// unprocessable code because there are no streams in the request.
 		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
@@ -108,7 +109,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		parser.parseErr = push.ErrAllLogsFiltered
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, "loki")
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
 
 		require.True(t, called)
 		require.Equal(t, http.StatusNoContent, rec.Code)
@@ -131,7 +132,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		parser.parseErr = push.ErrRequestBodyTooLarge
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, "loki")
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
 
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 	})
@@ -153,7 +154,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		parser.parseErr = push.ErrRequestBodyTooLarge
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, "loki")
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
 
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 		// The test should complete without panicking
