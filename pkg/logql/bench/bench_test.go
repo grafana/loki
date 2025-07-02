@@ -366,7 +366,10 @@ func BenchmarkLogQL(b *testing.B) {
 }
 
 func TestPrintBenchmarkQueries(t *testing.T) {
-	cases := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: *rangeType}, &defaultGeneratorConfig).Generate()
+	cases := NewTestCaseGenerator(
+		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+		&defaultGeneratorConfig,
+	).Generate()
 
 	t.Log("Benchmark Queries:")
 	t.Log("================")
