@@ -209,8 +209,8 @@ func compareRows(a, b dataset.Row) int {
 		bTimestamp = b.Values[1].Int64()
 	)
 
-	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
+	if res := cmp.Compare(bTimestamp, aTimestamp); res != 0 {
 		return res
 	}
-	return cmp.Compare(aTimestamp, bTimestamp)
+	return cmp.Compare(aStreamID, bStreamID)
 }
