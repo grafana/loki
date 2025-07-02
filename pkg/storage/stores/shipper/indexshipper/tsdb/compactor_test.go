@@ -858,7 +858,8 @@ func TestCompactedIndex(t *testing.T) {
 			}
 
 			for _, chk := range tc.addChunks {
-				_, err := compactedIndex.IndexChunk(chk)
+				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 

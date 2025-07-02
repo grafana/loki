@@ -680,15 +680,31 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return err
 	}
 
+	defer table.cleanup()
+
 	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalMayHaveExpiredChunks := false
 	if applyRetention {
 		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
-	err = table.compact(intervalMayHaveExpiredChunks)
+	err = table.compact()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		return err
+	}
+
+	if intervalMayHaveExpiredChunks {
+		err = table.applyRetention()
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+			return err
+		}
+	}
+
+	err = table.done()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to finish the processing of table", "table", tableName, "err", err)
 		return err
 	}
 

@@ -1149,7 +1149,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
-# github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
 ## explicit; go 1.23.0
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.5.1
