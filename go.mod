@@ -125,6 +125,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/coder/quartz v0.2.1
 	github.com/d4l3k/messagediff v1.2.1
+	github.com/dave/jennifer v1.7.1
 	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/fsnotify/fsnotify v1.9.0
@@ -143,6 +144,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.25.6
+	github.com/tetratelabs/wazero v1.9.0
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.18.1
@@ -453,7 +455,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.33.0
 	google.golang.org/genproto v0.0.0-20250505200425-f936aa4a68b2 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822

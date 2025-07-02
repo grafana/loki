@@ -1,9 +1,12 @@
 auth_enabled: false
 
+tracing:
+  enabled: false
+
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
-  log_level: debug
+  log_level: info
   grpc_server_max_concurrent_streams: 1000
 
 common:

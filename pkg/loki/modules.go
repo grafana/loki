@@ -71,6 +71,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/pattern"
+	"github.com/grafana/loki/v3/pkg/plugins"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -163,6 +164,7 @@ const (
 	Read                     = "read"
 	Write                    = "write"
 	Backend                  = "backend"
+	PluginMiddleware         = "plugin-middleware"
 )
 
 const (
@@ -2162,6 +2164,23 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	)
 
 	return t.dataObjConsumer, nil
+}
+
+func (t *Loki) initPluginMiddleware() (services.Service, error) {
+	if !t.Cfg.DatabasePluginsConfig.Enabled {
+		return nil, nil
+	}
+
+	var err error
+	pluginMiddleware, err := plugins.NewPluginMiddleware(context.Background(), prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO we should wrap the wrap if one exists but ATM one doesn't so just set it
+	t.PushParserWrapper = pluginMiddleware.HandlePushRequestWrapper
+
+	return nil, nil
 }
 
 func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {

@@ -1,0 +1,3 @@
+*.wasm
+wazero_bindgen
+*_gen.go
