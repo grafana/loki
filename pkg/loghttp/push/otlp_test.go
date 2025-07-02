@@ -1032,6 +1032,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		"otlp",
 	)
 
 	// Verify there is exactly one stream
