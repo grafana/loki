@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -14,10 +15,14 @@ func TestCanWriteARequest(t *testing.T) {
 	c := client.New(tenantID, "", "http://localhost:3100")
 	require.NotNil(t, c)
 
+	now := time.Now()
 	err := c.PushLogLine("test message", time.Now(), nil, nil)
 	require.NoError(t, err)
 
-	resp, err := c.RunRangeQuery(t.Context(), `{job=~".+"} |= "test message"`)
+	resp, err := c.RunRangeQueryWithStartEnd(t.Context(), `{job=~".+"} |= "test message"`, now, time.Now())
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+
+	json, err := json.Marshal(resp)
+	t.Logf("Response: %v", string(json))
 }

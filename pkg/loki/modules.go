@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -2171,10 +2172,19 @@ func (t *Loki) initPluginMiddleware() (services.Service, error) {
 		return nil, nil
 	}
 
-	var err error
 	pluginMiddleware, err := plugins.NewPluginMiddleware(context.Background(), prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
+	}
+
+	extractMetadataPath, err := filepath.Abs("./pkg/plugins/demoplugins/extractmetadata/extractmetadata.wasm")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for extractmetadata plugin: %w", err)
+	}
+
+	err = pluginMiddleware.Register(context.Background(), extractMetadataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register extractmetadata plugin: %w", err)
 	}
 
 	// TODO we should wrap the wrap if one exists but ATM one doesn't so just set it

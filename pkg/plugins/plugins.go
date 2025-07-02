@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"unsafe"
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/plugins/host"
 	"github.com/grafana/loki/v3/pkg/plugins/metrics"
+	"github.com/grafana/loki/v3/pkg/plugins/pushrequest"
 	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
@@ -57,6 +59,7 @@ func NewPluginMiddleware(ctx context.Context, reg prometheus.Registerer) (*Plugi
 	exchange.AddImports(hostModuleBuilder)
 
 	metrics.AddImport(hostModuleBuilder, exchange, metrics.NewHostPluginMetrics(reg))
+	pushrequest.AddImport(hostModuleBuilder, exchange, pushrequest.HostPluginPushRequest{Exchange: exchange})
 
 	_, err = hostModuleBuilder.Instantiate(ctx)
 
@@ -77,14 +80,49 @@ func (p *PluginMiddleware) HandlePushRequestWrapper(inner push.RequestParser) pu
 			return req, stats, err
 		}
 
-		level.Info(logger).Log("msg", "I made it!")
-
-		err = p.call(r.Context(), "process_push_request")
+		reqPtr := uint64(uintptr(unsafe.Pointer(req)))
+		err = p.call(r.Context(), "process_push_request", reqPtr)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to process push request with plugin", "err", err)
 		}
 		return req, stats, nil
 	}
+}
+
+func (p *PluginMiddleware) Register(ctx context.Context, pluginFile string) error {
+	wasmBytes, err := os.ReadFile(pluginFile)
+	if err != nil {
+		return fmt.Errorf("failed to read WASM file: %w", err)
+	}
+
+	compiledModule, err := p.runtime.CompileModule(ctx, wasmBytes)
+	if err != nil {
+		return fmt.Errorf("failed to compile WASM module: %w", err)
+	}
+
+	moduleCfg := wazero.NewModuleConfig().WithStdout(os.Stdout).WithStderr(os.Stderr).WithName(pluginFile)
+	plugin, err := p.runtime.InstantiateModule(ctx, compiledModule, moduleCfg)
+	if err != nil {
+		return fmt.Errorf("failed to instantiate WASM module: %w", err)
+	}
+
+	if _, ok := plugin.ExportedFunctionDefinitions()["setup"]; ok {
+		_, err = plugin.ExportedFunction("setup").Call(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to call setup function: %w", err)
+		}
+	}
+
+	p.plugins = append(p.plugins, plugin)
+
+	return nil
+}
+
+func (p *PluginMiddleware) Close(ctx context.Context) {
+	for _, plugin := range p.plugins {
+		plugin.Close(ctx)
+	}
+	p.runtime.Close(ctx)
 }
 
 func (p *PluginMiddleware) call(ctx context.Context, name string, params ...uint64) error {
@@ -102,11 +140,4 @@ func (p *PluginMiddleware) call(ctx context.Context, name string, params ...uint
 		}
 	}
 	return nil
-}
-
-func (p *PluginMiddleware) Close(ctx context.Context) {
-	for _, plugin := range p.plugins {
-		plugin.Close(ctx)
-	}
-	p.runtime.Close(ctx)
 }
