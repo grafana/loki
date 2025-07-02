@@ -6933,6 +6933,9 @@ null
   "failureThreshold": 6,
   "initialDelaySeconds": 5,
   "periodSeconds": 5,
+  "tcpSocket": {
+    "port": "client"
+  },
   "timeoutSeconds": 3
 }
 </pre>
