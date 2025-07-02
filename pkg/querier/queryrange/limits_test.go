@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -181,7 +180,7 @@ func Test_seriesLimiter(t *testing.T) {
 	// 2 series should not be allowed.
 	c := new(int)
 	m := &sync.Mutex{}
-	h = base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+	h = queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		m.Lock()
 		defer m.Unlock()
 		defer func() {
@@ -235,7 +234,7 @@ func Test_seriesLimiterDrilldown(t *testing.T) {
 
 	callCount := 0
 	// Create a handler that returns 1 series on first call, then 1 more series on second call
-	h := base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		var result []queryrangebase.SampleStream
 
 		if callCount == 0 {
@@ -565,7 +564,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 
 	var count atomic.Int32
 	var maxVal atomic.Int32
-	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		cur := count.Inc()
 		if cur > maxVal.Load() {
 			maxVal.Store(cur)
@@ -573,14 +572,14 @@ func Test_MaxQueryParallelism(t *testing.T) {
 		defer count.Dec()
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
 	_, _ = NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
-		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
@@ -601,17 +600,17 @@ func Test_MaxQueryParallelism(t *testing.T) {
 func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	maxQueryParallelism := 2
 
-	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
 	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
-		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, r)
@@ -628,17 +627,17 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 func Test_MaxQueryParallelismDisable(t *testing.T) {
 	maxQueryParallelism := 0
 
-	h := base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		// simulate some work
 		time.Sleep(20 * time.Millisecond)
-		return base.NewEmptyPrometheusResponse(model.ValMatrix), nil
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
 	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
-		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return queryrangebase.HandlerFunc(func(c context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})
@@ -678,7 +677,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	called := false
-	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 		called = true
 		return nil, nil
 	})
@@ -697,8 +696,8 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 
 	now := time.Now()
 	type tcase struct {
-		request          base.Request
-		expectedResponse base.Response
+		request          queryrangebase.Request
+		expectedResponse queryrangebase.Response
 	}
 	cases := []tcase{
 		{
@@ -719,7 +718,7 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})
 
@@ -1033,12 +1032,12 @@ func Test_MaxQuerySize(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
-			middlewares := []base.Middleware{
+			middlewares := []queryrangebase.Middleware{
 				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
 				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
-			_, err := base.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
+			_, err := queryrangebase.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
 
 			if tc.shouldErr {
 				require.Error(t, err)
@@ -1061,7 +1060,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 		maxQuerierBytesRead: 1 << 10,
 	}
 
-	statsHandler := base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
 		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
@@ -1074,7 +1073,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 
 	for _, tc := range []struct {
 		desc       string
-		middleware base.Middleware
+		middleware queryrangebase.Middleware
 	}{
 		{
 			desc:       "QuerySizeLimiter",
@@ -1095,7 +1094,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			}
 
 			handler := tc.middleware.Wrap(
-				base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+				queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 					return &LokiResponse{}, nil
 				}),
 			)
