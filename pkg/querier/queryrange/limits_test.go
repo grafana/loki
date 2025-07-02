@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -219,6 +220,87 @@ func Test_seriesLimiter(t *testing.T) {
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.LessOrEqual(t, *c, 4)
+}
+
+func Test_seriesLimiterDrilldown(t *testing.T) {
+	// Test the drilldown scenario directly using the series limiter middleware
+	middleware := newSeriesLimiter(1) // limit to 1 series
+
+	// Create context with drilldown request headers
+	tenantCtx := user.InjectOrgID(context.Background(), "1")
+	ctx := httpreq.InjectQueryTags(tenantCtx, "Source="+constants.LogsDrilldownAppName)
+
+	// Create metadata context to capture warnings
+	md, ctx := metadata.NewContext(ctx)
+
+	callCount := 0
+	// Create a handler that returns 1 series on first call, then 1 more series on second call
+	h := base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+		var result []queryrangebase.SampleStream
+
+		if callCount == 0 {
+			// First call: return 1 series
+			result = []queryrangebase.SampleStream{
+				{
+					Labels: []logproto.LabelAdapter{
+						{Name: "filename", Value: "/var/hostlog/app.log"},
+						{Name: "job", Value: "firstjob"},
+					},
+					Samples: []logproto.LegacySample{{Value: 0.013333333333333334}},
+				},
+			}
+		} else {
+			// Second call: return 1 different series (this should trigger the drilldown logic)
+			result = []queryrangebase.SampleStream{
+				{
+					Labels: []logproto.LabelAdapter{
+						{Name: "filename", Value: "/var/hostlog/apport.log"},
+						{Name: "job", Value: "anotherjob"},
+					},
+					Samples: []logproto.LegacySample{{Value: 0.026666666666666668}},
+				},
+			}
+		}
+		callCount++
+
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Data: queryrangebase.PrometheusData{
+					ResultType: "matrix",
+					Result:     result,
+				},
+			},
+		}, nil
+	})
+
+	wrappedHandler := middleware.Wrap(h)
+
+	// First call - should succeed and add 1 series to the limiter
+	resp1, err := wrappedHandler.Do(ctx, &LokiRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp1)
+
+	// Should have no warnings yet
+	require.Len(t, md.Warnings(), 0)
+
+	// Second call - should trigger drilldown logic and return with warning
+	resp2, err := wrappedHandler.Do(ctx, &LokiRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp2)
+
+	// Verify that a warning was added about partial results
+	warnings := md.Warnings()
+	require.Len(t, warnings, 1)
+	require.Contains(t, warnings[0], "maximum number of series (1) reached for a single query; returning partial results")
+
+	// The second response should be the original response since drilldown returns early
+	lokiResp, ok := resp2.(*LokiPromResponse)
+	require.True(t, ok)
+	require.Len(t, lokiResp.Response.Data.Result, 1)
+
+	// A request without the drilldown header should produce an error
+	_, err = wrappedHandler.Do(tenantCtx, &LokiRequest{})
+	require.Error(t, err)
 }
 
 func TestSeriesLimiter_PerVariantLimits(t *testing.T) {
