@@ -127,7 +127,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
-	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","), "err", err)
+	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(paths, ","), "err", err)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -430,12 +430,12 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 
 func (m *ObjectMetastore) listSectionsFromIndexes(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]DataobjSectionDescriptor, error) {
 	startTime := time.Now()
+	sectionPointers := make([]DataobjSectionDescriptor, 0, len(paths)*12)
 	defer func() {
-		fmt.Printf("listStreamIDsFromIndexes duration=%s paths=%d\n", time.Since(startTime), len(paths))
+		fmt.Printf("listStreamIDsFromIndexes duration=%s paths=%d pointers=%d\n", time.Since(startTime), len(paths), len(sectionPointers))
 	}()
 
 	mtx := sync.Mutex{}
-	sectionPointers := make([]DataobjSectionDescriptor, 0, len(paths)*12)
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
