@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	fmt "fmt"
 	"io"
 	"strconv"
 	"sync"
@@ -40,6 +41,7 @@ var metastoreBuilderCfg = logsobj.BuilderConfig{
 
 type Updater struct {
 	metastoreBuilder *logsobj.Builder
+	prefix           string
 	tenantID         string
 	metrics          *metastoreMetrics
 	bucket           objstore.Bucket
@@ -102,6 +104,9 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp) {
+		if m.prefix != "" {
+			metastorePath = fmt.Sprintf("%s/%s", m.prefix, metastorePath)
+		}
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
