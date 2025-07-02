@@ -307,6 +307,8 @@ Commands which will probably not be implemented:
     - ~~RESTORE~~
     - ~~WAIT~~
  - Scripting
+    - ~~FCALL / FCALL_RO *~~
+    - ~~FUNCTION *~~
     - ~~SCRIPT DEBUG~~
     - ~~SCRIPT KILL~~
  - Server

@@ -248,6 +248,10 @@ func (m Map) All() iter.Seq2[string, Value] {
 func (m Map) MoveTo(dest Map) {
 	m.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if m.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *m.getOrig()
 	*m.getOrig() = nil
 }
@@ -255,28 +259,7 @@ func (m Map) MoveTo(dest Map) {
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
 	dest.getState().AssertMutable()
-	newLen := len(*m.getOrig())
-	oldCap := cap(*dest.getOrig())
-	if newLen <= oldCap {
-		// New slice fits in existing slice, no need to reallocate.
-		*dest.getOrig() = (*dest.getOrig())[:newLen:oldCap]
-		for i := range *m.getOrig() {
-			akv := &(*m.getOrig())[i]
-			destAkv := &(*dest.getOrig())[i]
-			destAkv.Key = akv.Key
-			newValue(&akv.Value, m.getState()).CopyTo(newValue(&destAkv.Value, dest.getState()))
-		}
-		return
-	}
-
-	// New slice is bigger than exist slice. Allocate new space.
-	origs := make([]otlpcommon.KeyValue, len(*m.getOrig()))
-	for i := range *m.getOrig() {
-		akv := &(*m.getOrig())[i]
-		origs[i].Key = akv.Key
-		newValue(&akv.Value, m.getState()).CopyTo(newValue(&origs[i].Value, dest.getState()))
-	}
-	*dest.getOrig() = origs
+	*dest.getOrig() = internal.CopyOrigMap(*dest.getOrig(), *m.getOrig())
 }
 
 // AsRaw returns a standard go map representation of this Map.

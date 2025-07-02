@@ -90,6 +90,9 @@
         "chat": {
             "component": "chat"
         },
+        "chronicle": {
+            "component": "chronicle"
+        },
         "cloudbuild": {
             "component": "cloudbuild"
         },
@@ -164,6 +167,9 @@
         },
         "developerconnect": {
             "component": "developerconnect"
+        },
+        "devicestreaming": {
+            "component": "devicestreaming"
         },
         "dialogflow": {
             "component": "dialogflow"
@@ -246,6 +252,9 @@
         "longrunning": {
             "component": "longrunning"
         },
+        "lustre": {
+            "component": "lustre"
+        },
         "managedidentities": {
             "component": "managedidentities"
         },
@@ -269,6 +278,9 @@
         },
         "migrationcenter": {
             "component": "migrationcenter"
+        },
+        "modelarmor": {
+            "component": "modelarmor"
         },
         "monitoring": {
             "component": "monitoring"
@@ -396,8 +408,14 @@
         "shopping": {
             "component": "shopping"
         },
+        "spanner/benchmarks": {
+            "component": "spanner/benchmarks"
+        },
         "speech": {
             "component": "speech"
+        },
+        "storagebatchoperations": {
+            "component": "storagebatchoperations"
         },
         "storageinsights": {
             "component": "storageinsights"

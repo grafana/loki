@@ -356,7 +356,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 				streamLbls.Add(
 					logql_log.ParsedLabel,
-					labels.Label{Name: field.Name, Value: field.Value},
+					labels.FromStrings(field.Name, field.Value),
 				)
 			}
 
@@ -499,7 +499,7 @@ func Test_parseDetectedFields(t *testing.T) {
 
 				nginxStreamLbls.Add(
 					logql_log.ParsedLabel,
-					labels.Label{Name: field.Name, Value: field.Value},
+					labels.FromStrings(field.Name, field.Value),
 				)
 			}
 

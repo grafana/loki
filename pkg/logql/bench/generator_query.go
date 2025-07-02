@@ -33,6 +33,18 @@ func (c TestCase) Name() string {
 	return fmt.Sprintf("%s [%v]", c.Query, c.Direction)
 }
 
+// Kind returns the kind of the test case based on the query type.
+func (c TestCase) Kind() string {
+	expr, err := syntax.ParseExpr(c.Query)
+	if err != nil {
+		return "invalid"
+	}
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return "metric"
+	}
+	return "log"
+}
+
 // Description returns a detailed description of the test case including time range
 func (c TestCase) Description() string {
 	var b strings.Builder
@@ -158,13 +170,19 @@ func (c *GeneratorConfig) GenerateTestCases() []TestCase {
 		addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, c.StartTime, end)
 
 		// Metric queries with structured metadata
-		baseMetricQuery := fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [5m])`, selector)
+		baseRangeAggregationQueries := []string{
+			fmt.Sprintf(`count_over_time(%s[5m])`, selector),
+			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [5m])`, selector),
+			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [5m])`, selector),
+		}
 
 		// Single dimension aggregations
-		dimensions := []string{"pod", "namespace", "env"}
+		dimensions := []string{"pod", "namespace", "env", "detected_level"}
 		for _, dim := range dimensions {
-			query := fmt.Sprintf(`sum by (%s) (%s)`, dim, baseMetricQuery)
-			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+			for _, baseMetricQuery := range baseRangeAggregationQueries {
+				query := fmt.Sprintf(`sum by (%s) (%s)`, dim, baseMetricQuery)
+				addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+			}
 		}
 
 		// Two dimension aggregations
@@ -173,8 +191,10 @@ func (c *GeneratorConfig) GenerateTestCases() []TestCase {
 			{"env", "component"},
 		}
 		for _, dims := range twoDimCombos {
-			query := fmt.Sprintf(`sum by (%s, %s) (%s)`, dims[0], dims[1], baseMetricQuery)
-			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+			for _, baseMetricQuery := range baseRangeAggregationQueries {
+				query := fmt.Sprintf(`sum by (%s, %s) (%s)`, dims[0], dims[1], baseMetricQuery)
+				addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
+			}
 		}
 
 		// Error rates by severity

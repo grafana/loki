@@ -102,8 +102,8 @@ func Test_Retention(t *testing.T) {
 				},
 			},
 			[]chunk.Chunk{
-				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
-				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
+				createChunk(t, "1", labels.FromStrings("foo", "bar"), start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.FromStrings("foo", "buzz"), start.Add(26*time.Hour), start.Add(27*time.Hour)),
 			},
 			[]bool{
 				true,
@@ -119,8 +119,8 @@ func Test_Retention(t *testing.T) {
 				},
 			},
 			[]chunk.Chunk{
-				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
-				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
+				createChunk(t, "1", labels.FromStrings("foo", "bar"), start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.FromStrings("foo", "buzz"), start.Add(26*time.Hour), start.Add(27*time.Hour)),
 			},
 			[]bool{
 				false,
@@ -141,10 +141,10 @@ func Test_Retention(t *testing.T) {
 				},
 			},
 			[]chunk.Chunk{
-				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, start, start.Add(1*time.Hour)),
-				createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "fuzz"}}, start.Add(26*time.Hour), start.Add(27*time.Hour)),
-				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, model.Now().Add(-2*time.Hour), model.Now().Add(-1*time.Hour)),
-				createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}}, model.Now().Add(-7*time.Hour), model.Now().Add(-6*time.Hour)),
+				createChunk(t, "1", labels.FromStrings("foo", "bar"), start, start.Add(1*time.Hour)),
+				createChunk(t, "2", labels.FromStrings("foo", "fuzz"), start.Add(26*time.Hour), start.Add(27*time.Hour)),
+				createChunk(t, "1", labels.FromStrings("foo", "buzz"), model.Now().Add(-2*time.Hour), model.Now().Add(-1*time.Hour)),
+				createChunk(t, "1", labels.FromStrings("foo", "buzz"), model.Now().Add(-7*time.Hour), model.Now().Add(-6*time.Hour)),
 			},
 			[]bool{
 				false,
@@ -178,7 +178,7 @@ func Test_Retention(t *testing.T) {
 			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
+				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
 				require.Nil(t, err)
 			}
 
@@ -247,9 +247,9 @@ func (n *noopWriter) Close() error { return nil }
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
 	store := newTestStore(t)
-	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, schema.from, schema.from.Add(1*time.Hour))
-	c2 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, schema.from, schema.from.Add(1*time.Hour))
-	c3 := createChunk(t, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, schema.from, schema.from.Add(1*time.Hour))
+	c1 := createChunk(t, "1", labels.FromStrings("foo", "bar"), schema.from, schema.from.Add(1*time.Hour))
+	c2 := createChunk(t, "2", labels.FromStrings("foo", "buzz", "bar", "foo"), schema.from, schema.from.Add(1*time.Hour))
+	c3 := createChunk(t, "2", labels.FromStrings("foo", "buzz", "bar", "buzz"), schema.from, schema.from.Add(1*time.Hour))
 
 	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 		c1, c2, c3,
@@ -319,7 +319,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
 	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && len(ls) == 1 {
+	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
 	var b strings.Builder
@@ -328,9 +328,9 @@ func labelsString(ls labels.Labels) string {
 	b.WriteString(metricName)
 	b.WriteByte('{')
 	i := 0
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			continue
+			return
 		}
 		if i > 0 {
 			b.WriteByte(',')
@@ -341,7 +341,7 @@ func labelsString(ls labels.Labels) string {
 		var buf [1000]byte
 		b.Write(strconv.AppendQuote(buf[:0], l.Value))
 		i++
-	}
+	})
 	b.WriteByte('}')
 
 	return b.String()
@@ -366,8 +366,8 @@ func TestChunkRewriter(t *testing.T) {
 	}{
 		{
 			name:  "no rewrites",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
-			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
+			filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -376,8 +376,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "no rewrites with chunk spanning multiple tables",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
-			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
+			filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -388,8 +388,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite first half",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true
@@ -412,10 +412,10 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite first half using structured metadata",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string, structuredMetadata ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string, structuredMetadata labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
-				if labels.Labels(structuredMetadata).Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
+				if structuredMetadata.Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
 					todaysTableInterval.Start.UnixNano() <= tsUnixNano &&
 					tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true
@@ -438,8 +438,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite second half",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.Add(time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano() {
 					return true
@@ -462,8 +462,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite multiple intervals",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(12*time.Hour)),
-			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.Start, todaysTableInterval.Start.Add(12*time.Hour)),
+			filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano()) ||
 					(todaysTableInterval.Start.Add(5*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(9*time.Hour).UnixNano()) ||
@@ -492,8 +492,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete partially for each day",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
+			filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.End.Add(-71*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-47*time.Hour).UnixNano()) ||
 					(todaysTableInterval.End.Add(-40*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-30*time.Hour).UnixNano()) ||
@@ -538,8 +538,8 @@ func TestChunkRewriter(t *testing.T) {
 		},
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete just one whole day",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+			chunk: createChunk(t, "1", labels.FromStrings("foo", "bar"), todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
+			filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.UnixNano() {
 					return true
@@ -584,7 +584,7 @@ func TestChunkRewriter(t *testing.T) {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
 				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
-					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					ChunkID: getChunkID(tt.chunk.ChunkRef),
 					From:    tt.chunk.From,
 					Through: tt.chunk.Through,
 				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
@@ -631,6 +631,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
+							Parsed:             logproto.EmptyLabelAdapters(),
 						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
@@ -684,7 +685,7 @@ func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ 
 	time.Sleep(m.delay)
 	m.numExpiryChecks++
 
-	ce := m.chunksExpiry[string(chk.ChunkID)]
+	ce := m.chunksExpiry[chk.ChunkID]
 	return ce.isExpired, ce.filterFunc
 }
 
@@ -698,6 +699,10 @@ func (m *mockExpirationChecker) MarkPhaseTimedOut() {
 
 func (m *mockExpirationChecker) CanSkipSeries(_ []byte, lbls labels.Labels, _ []byte, _ model.Time, _ string, _ model.Time) bool {
 	return m.skipSeries[lbls.String()]
+}
+
+func (m *mockExpirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
 }
 
 func TestMarkForDelete_SeriesCleanup(t *testing.T) {
@@ -720,7 +725,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "no chunk and series deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -744,12 +749,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "chunk deleted with filter but no lines matching",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
+					filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool {
 						return false
 					},
 				},
@@ -771,7 +776,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "only one chunk in store which gets deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -795,12 +800,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "only one chunk in store which gets partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true
@@ -827,8 +832,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one of two chunks deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "2"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -839,7 +844,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.Labels{labels.Label{Name: "foo", Value: "2"}}.Hash(): struct{}{}},
+				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -855,8 +860,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one of two series skipped",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "2"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			skipSeries: map[string]bool{`{foo="1"}`: true},
 			expiry: []chunkExpiry{
@@ -868,7 +873,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.Labels{labels.Label{Name: "foo", Value: "2"}}.Hash(): struct{}{}},
+				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -884,8 +889,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "all series skipped",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "2"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			skipSeries: map[string]bool{`{foo="1"}`: true, `{foo="2"}`: true},
 			expiry: []chunkExpiry{
@@ -913,8 +918,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one of two chunks partially deleted",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+				createChunk(t, userID, labels.FromStrings("foo", "2"), todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
 			},
 			expiry: []chunkExpiry{
 				{
@@ -922,7 +927,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true
@@ -949,12 +954,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one big chunk partially deleted for yesterdays table without rewrite",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start.Add(-time.Hour), now),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start.Add(-time.Hour), now),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
 					},
 				},
@@ -976,12 +981,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		{
 			name: "one big chunk partially deleted for yesterdays table with rewrite",
 			chunks: []chunk.Chunk{
-				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start.Add(-time.Hour), now),
+				createChunk(t, userID, labels.FromStrings("foo", "1"), todaysTableInterval.Start.Add(-time.Hour), now),
 			},
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
 					},
 				},
@@ -1038,8 +1043,8 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 
 func TestDeleteTimeout(t *testing.T) {
 	chunks := []chunk.Chunk{
-		createChunk(t, "user", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, model.Now(), model.Now().Add(270*time.Hour)),
-		createChunk(t, "user", labels.Labels{labels.Label{Name: "foo", Value: "2"}}, model.Now(), model.Now().Add(270*time.Hour)),
+		createChunk(t, "user", labels.FromStrings("foo", "1"), model.Now(), model.Now().Add(270*time.Hour)),
+		createChunk(t, "user", labels.FromStrings("foo", "2"), model.Now(), model.Now().Add(270*time.Hour)),
 	}
 
 	for _, tc := range []struct {
@@ -1085,13 +1090,13 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	retentionPeriod := now.Sub(todaysTableInterval.Start) / 2
 
 	// chunks in retention
-	c1 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, now)
-	c2 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "2"}}, todaysTableInterval.Start.Add(-7*24*time.Hour), now)
+	c1 := createChunk(t, "1", labels.FromStrings("foo", "1"), todaysTableInterval.Start, now)
+	c2 := createChunk(t, "1", labels.FromStrings("foo", "2"), todaysTableInterval.Start.Add(-7*24*time.Hour), now)
 
 	// chunks out of retention
-	c3 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, now.Add(-retentionPeriod))
-	c4 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "3"}}, todaysTableInterval.Start.Add(-12*time.Hour), todaysTableInterval.Start.Add(-10*time.Hour))
-	c5 := createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "4"}}, todaysTableInterval.Start, now.Add(-retentionPeriod))
+	c3 := createChunk(t, "1", labels.FromStrings("foo", "1"), todaysTableInterval.Start, now.Add(-retentionPeriod))
+	c4 := createChunk(t, "1", labels.FromStrings("foo", "3"), todaysTableInterval.Start.Add(-12*time.Hour), todaysTableInterval.Start.Add(-10*time.Hour))
+	c5 := createChunk(t, "1", labels.FromStrings("foo", "4"), todaysTableInterval.Start, now.Add(-retentionPeriod))
 
 	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 		c1, c2, c3, c4, c5,
@@ -1163,4 +1168,59 @@ func TestMigrateMarkers(t *testing.T) {
 		require.NoError(t, CopyMarkers(workDir, dst))
 		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
+}
+
+func TestDuplicateSeriesDetection(t *testing.T) {
+	chk := createChunk(t, "1", labels.FromStrings("foo", "1"), model.Now().Add(-time.Hour), model.Now())
+
+	expirationChecker := newMockExpirationChecker(map[string]chunkExpiry{
+		getChunkID(chk.ChunkRef): {isExpired: false},
+	}, nil)
+
+	// Create a custom index processor that will loop on same series
+	loopIndexProcessor := &loopIndexProcessor{
+		series: series{
+			seriesID: []byte(chk.Metric.String()),
+			userID:   []byte(chk.UserID),
+			labels:   chk.Metric,
+			chunks: []Chunk{
+				{
+					ChunkID: getChunkID(chk.ChunkRef),
+					From:    chk.From,
+					Through: chk.Through,
+				},
+			},
+		},
+	}
+
+	// Attempt to mark for deletion - this should fail due to duplicate series
+	empty, isModified, err := markForDelete(
+		context.Background(),
+		0,
+		"test_table",
+		&noopWriter{},
+		loopIndexProcessor,
+		expirationChecker,
+		nil,
+		util_log.Logger,
+	)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "series should not be repeated")
+	require.False(t, empty)
+	require.False(t, isModified)
+}
+
+// loopIndexProcessor implements IndexProcessor which loops on same series for iteration
+type loopIndexProcessor struct {
+	IndexProcessor
+	series series
+}
+
+func (p *loopIndexProcessor) ForEachSeries(_ context.Context, callback SeriesCallback) error {
+	for {
+		if err := callback(&p.series); err != nil {
+			return err
+		}
+	}
 }

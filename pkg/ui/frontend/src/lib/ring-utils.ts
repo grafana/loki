@@ -122,6 +122,18 @@ export const RingServices: Record<
     ringPath: "/distributor/ring",
     needsTokens: false,
   },
+  "ingest-limits-frontend": {
+    title: "Ingest Limits Frontend",
+    ringName: RingTypes.INGEST_LIMITS_FRONTEND,
+    ringPath: "/ingest-limits-frontend/ring",
+    needsTokens: false,
+  },
+  "ingest-limits": {
+    title: "Ingest Limits",
+    ringName: RingTypes.INGEST_LIMITS,
+    ringPath: "/ingest-limits/ring",
+    needsTokens: false,
+  },
   "pattern-ingester": {
     title: "Pattern Ingester",
     ringName: RingTypes.PATTERN_INGESTER,

@@ -98,7 +98,7 @@ type Config struct {
 
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WorkingDirectory, "compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
+	f.StringVar(&cfg.WorkingDirectory, "compactor.working-directory", "/var/loki/compactor", "Directory where files can be downloaded for compaction.")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
@@ -680,15 +680,31 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return err
 	}
 
+	defer table.cleanup()
+
 	interval := retention.ExtractIntervalFromTableName(tableName)
 	intervalMayHaveExpiredChunks := false
 	if applyRetention {
 		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
 	}
 
-	err = table.compact(intervalMayHaveExpiredChunks)
+	err = table.compact()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+		return err
+	}
+
+	if intervalMayHaveExpiredChunks {
+		err = table.applyRetention()
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+			return err
+		}
+	}
+
+	err = table.done()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to finish the processing of table", "table", tableName, "err", err)
 		return err
 	}
 
@@ -888,6 +904,14 @@ func (e *expirationChecker) DropFromIndex(userID []byte, chk retention.Chunk, la
 
 func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool {
 	return e.retentionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now) && e.deletionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now)
+}
+
+func (e *expirationChecker) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
+	if err := e.retentionExpiryChecker.MarkSeriesAsProcessed(userID, seriesID, lbls, tableName); err != nil {
+		return err
+	}
+
+	return e.deletionExpiryChecker.MarkSeriesAsProcessed(userID, seriesID, lbls, tableName)
 }
 
 func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

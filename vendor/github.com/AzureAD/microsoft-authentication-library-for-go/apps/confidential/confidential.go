@@ -65,6 +65,13 @@ type AuthenticationScheme = authority.AuthenticationScheme
 
 type Account = shared.Account
 
+type TokenSource = base.TokenSource
+
+const (
+	TokenSourceIdentityProvider = base.TokenSourceIdentityProvider
+	TokenSourceCache            = base.TokenSourceCache
+)
+
 // CertFromPEM converts a PEM file (.pem or .key) for use with [NewCredFromCert]. The file
 // must contain the public certificate and the private key. If a PEM block is encrypted and
 // password is not an empty string, it attempts to decrypt the PEM blocks using the password.
@@ -639,7 +646,7 @@ func (cca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []s
 	if err != nil {
 		return AuthResult{}, err
 	}
-	return cca.base.AuthResultFromToken(ctx, authParams, token, true)
+	return cca.base.AuthResultFromToken(ctx, authParams, token)
 }
 
 // acquireTokenByAuthCodeOptions contains the optional parameters used to acquire an access token using the authorization code flow.
@@ -733,7 +740,7 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 	if err != nil {
 		return AuthResult{}, err
 	}
-	return cca.base.AuthResultFromToken(ctx, authParams, token, true)
+	return cca.base.AuthResultFromToken(ctx, authParams, token)
 }
 
 // acquireTokenOnBehalfOfOptions contains optional configuration for AcquireTokenOnBehalfOf
