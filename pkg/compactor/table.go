@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,7 +24,7 @@ const (
 	gzipExtension = ".gz"
 )
 
-var errRetentionFileCountNotOne = fmt.Errorf("can't apply retention when index file count is not one")
+var errFileCountNotOne = fmt.Errorf("can't apply retention or index updates when index file count is not one")
 
 type tableExpirationChecker interface {
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
@@ -63,6 +64,15 @@ type TableCompactor interface {
 	// CompactTable compacts the table.
 	// After compaction is done successfully, it should set the new/updated CompactedIndex for relevant IndexSets.
 	CompactTable() (err error)
+}
+
+type Chunk interface {
+	GetFrom() model.Time
+	GetThrough() model.Time
+	GetFingerprint() uint64
+	GetChecksum() uint32
+	GetSize() uint32
+	GetEntriesCount() uint32
 }
 
 type MakeEmptyUserIndexSetFunc func(userID string) (IndexSet, error)
@@ -115,7 +125,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 	return &table, nil
 }
 
-func (t *table) compact(applyRetention bool) error {
+func (t *table) compact() error {
 	t.indexStorageClient.RefreshIndexTableCache(t.ctx, t.name)
 	indexFiles, usersWithPerUserIndex, err := t.indexStorageClient.ListFiles(t.ctx, t.name, false)
 	if err != nil {
@@ -130,16 +140,6 @@ func (t *table) compact(applyRetention bool) error {
 	t.usersWithPerUserIndex = usersWithPerUserIndex
 
 	level.Info(t.logger).Log("msg", "listed files", "count", len(indexFiles))
-
-	defer func() {
-		for _, is := range t.indexSets {
-			is.cleanup()
-		}
-
-		if err := os.RemoveAll(t.workingDirectory); err != nil {
-			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to remove working directory %s", t.workingDirectory), "err", err)
-		}
-	}()
 
 	t.indexSets[""], err = newCommonIndexSet(t.ctx, t.name, t.baseCommonIndexSet, t.workingDirectory, t.logger)
 	if err != nil {
@@ -169,21 +169,11 @@ func (t *table) compact(applyRetention bool) error {
 		return t.indexSets[userID], err
 	}, t.periodConfig)
 
-	err = tableCompactor.CompactTable()
-	if err != nil {
-		return err
-	}
-
-	if applyRetention {
-		err := t.applyRetention()
-		if err != nil {
-			return err
-		}
-	}
-
-	return t.done()
+	return tableCompactor.CompactTable()
 }
 
+// done takes care of uploading the index to the object storage and removing any source index files that were compacted away.
+// No index updates must be done after calling this method.
 func (t *table) done() error {
 	userIDs := make([]string, 0, len(t.indexSets))
 	for userID := range t.indexSets {
@@ -219,8 +209,10 @@ func (t *table) applyRetention() error {
 	tableInterval := retention.ExtractIntervalFromTableName(t.name)
 	// call runRetention on the index sets which may have expired chunks
 	for userID, is := range t.indexSets {
-		// make sure we do not apply retention on common index set which got compacted away to per-user index
-		if userID == "" && is.compactedIndex == nil && is.removeSourceObjects && !is.uploadCompactedDB {
+		// Make sure we do not apply retention on common index set when one of the following is true:
+		// 1. It got compacted away to the per-user indexes.
+		// 2. There are no common index files.
+		if userID == "" && is.compactedIndex == nil && ((is.removeSourceObjects && !is.uploadCompactedDB) || len(is.ListSourceFiles()) == 0) {
 			continue
 		}
 
@@ -230,8 +222,8 @@ func (t *table) applyRetention() error {
 
 		// compactedIndex is only set in indexSet when files have been compacted,
 		// so we need to open the compacted index file for applying retention if compactedIndex is nil
-		if is.compactedIndex == nil && len(is.ListSourceFiles()) == 1 {
-			if err := t.openCompactedIndexForRetention(is); err != nil {
+		if is.compactedIndex == nil {
+			if err := t.openCompactedIndexForUpdates(is); err != nil {
 				return err
 			}
 		}
@@ -245,10 +237,10 @@ func (t *table) applyRetention() error {
 	return nil
 }
 
-func (t *table) openCompactedIndexForRetention(idxSet *indexSet) error {
+func (t *table) openCompactedIndexForUpdates(idxSet *indexSet) error {
 	sourceFiles := idxSet.ListSourceFiles()
 	if len(sourceFiles) != 1 {
-		return errRetentionFileCountNotOne
+		return errFileCountNotOne
 	}
 
 	downloadedAt, err := idxSet.GetSourceFile(sourceFiles[0])
@@ -266,10 +258,47 @@ func (t *table) openCompactedIndexForRetention(idxSet *indexSet) error {
 	return nil
 }
 
+// applyStorageUpdates applies storage updates for a single stream of a user
+func (t *table) applyStorageUpdates(userID, labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+	is, ok := t.indexSets[userID]
+	if !ok {
+		return nil
+	}
+
+	// compactedIndex is only set in indexSet when files have been compacted,
+	// so we need to open the compacted index file for applying index updates if compactedIndex is nil
+	if is.compactedIndex == nil {
+		if err := t.openCompactedIndexForUpdates(is); err != nil {
+			return err
+		}
+	}
+
+	if err := is.applyUpdates(labelsStr, chunksToDelete, chunksToDeIndex, chunksToIndex); err != nil {
+		return err
+	}
+
+	return t.tableMarker.MarkChunksForDeletion(t.name, chunksToDelete)
+}
+
+// cleanup takes care of cleaning up any local data on disk
+func (t *table) cleanup() {
+	for _, is := range t.indexSets {
+		is.cleanup()
+	}
+
+	if err := os.RemoveAll(t.workingDirectory); err != nil {
+		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to remove working directory %s", t.workingDirectory), "err", err)
+	}
+}
+
 // tableHasUncompactedIndex returns true if we have more than "1" common index files.
 // We are checking for more than "1" because earlier boltdb-shipper index type did not have per tenant index so there would be only common index files.
 // In case of per tenant index, it is okay to consider it compacted since having just 1 uncompacted index file for a while should be fine.
 func tableHasUncompactedIndex(ctx context.Context, tableName string, indexStorageClient storage.Client) (bool, error) {
 	commonIndexFiles, _, err := indexStorageClient.ListFiles(ctx, tableName, false)
 	return len(commonIndexFiles) > 1, err
+}
+
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }

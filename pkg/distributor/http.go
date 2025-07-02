@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/grafana/dskit/tenant"
@@ -23,14 +25,14 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError)
+	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError, constants.Loki)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError)
+	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
 }
 
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -50,7 +52,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
 	filterPushRequestStreamsIPs := d.tenantConfigs.FilterPushRequestStreamsIPs(tenantID)
 	presumedAgentIP := extractPresumedAgentIP(r)
-	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, d.tenantConfigs, pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP)
+	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, d.tenantConfigs,
+		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
 	if err != nil {
 		switch {
 		case errors.Is(err, push.ErrRequestBodyTooLarge):
@@ -72,7 +75,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			if r.ContentLength > 0 {
 				// Add empty values for retention_hours and policy labels since we don't have
 				// that information for request body too large errors
-				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "").Add(float64(r.ContentLength))
+				validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, tenantID, "", "", format).Add(float64(r.ContentLength))
 			} else {
 				level.Error(logger).Log(
 					"msg", "negative content length observed",
@@ -136,7 +139,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver)
+	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
