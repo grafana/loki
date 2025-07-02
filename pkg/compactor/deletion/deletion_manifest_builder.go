@@ -22,8 +22,8 @@ const (
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 type ChunksGroup struct {
-	Requests []DeleteRequest `json:"requests"`
-	Chunks   []string        `json:"chunks"`
+	Requests []DeleteRequest     `json:"requests"`
+	Chunks   map[string][]string `json:"chunks"` // mapping of series labels to a list of ChunkIDs
 }
 
 // segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
@@ -94,6 +94,8 @@ func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteReq
 // It also ensures that the current segment does not exceed the maximum number of chunks.
 func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName string, series retention.Series) error {
 	userIDStr := unsafeGetString(series.UserID())
+	currentLabels := series.Labels().String()
+
 	if userIDStr != d.currentUserID || tableName != d.currentTableName {
 		if err := d.flushCurrentBatch(ctx); err != nil {
 			return err
@@ -118,7 +120,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 			d.currentSegmentChunksCount = 0
 			for chunksGroupIdentifier := range d.currentSegment {
 				group := d.currentSegment[chunksGroupIdentifier]
-				group.Chunks = group.Chunks[:0]
+				group.Chunks = map[string][]string{}
 				d.currentSegment[chunksGroupIdentifier] = group
 			}
 		}
@@ -149,17 +151,19 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 						Query:     deleteRequest.Query,
 						StartTime: deleteRequest.StartTime,
 						EndTime:   deleteRequest.EndTime,
+						UserID:    deleteRequest.UserID,
 					})
 				}
 			}
 
 			d.currentSegment[chunksGroupIdentifier] = ChunksGroup{
 				Requests: deleteRequests,
+				Chunks:   make(map[string][]string),
 			}
 		}
 
 		group := d.currentSegment[chunksGroupIdentifier]
-		group.Chunks = append(group.Chunks, chk.ChunkID)
+		group.Chunks[currentLabels] = append(group.Chunks[currentLabels], chk.ChunkID)
 		d.currentSegment[chunksGroupIdentifier] = group
 	}
 

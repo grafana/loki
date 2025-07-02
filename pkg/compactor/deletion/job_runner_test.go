@@ -104,7 +104,7 @@ func TestJobRunner_Run(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		deleteRequests []DeleteRequest
-		expectedResult *JobResult
+		expectedResult *storageUpdates
 		expectError    bool
 	}{
 		{
@@ -129,7 +129,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   now,
 				},
 			},
-			expectedResult: &JobResult{},
+			expectedResult: &storageUpdates{},
 		},
 		{
 			name: "single delete request deleting some data",
@@ -141,7 +141,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
 				ChunksToIndex: []Chunk{
 					{
@@ -168,7 +168,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
 				ChunksToIndex: []Chunk{
 					{
@@ -189,7 +189,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(-23 * time.Hour),
 				},
 			},
-			expectedResult: &JobResult{},
+			expectedResult: &storageUpdates{},
 		},
 		{
 			name: "delete request with structured metadata filter",
@@ -201,7 +201,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(2 * time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
 				ChunksToIndex: []Chunk{
 					{
@@ -222,7 +222,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(3 * time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
 				ChunksToIndex: []Chunk{
 					{
@@ -243,7 +243,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(7 * time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
 			},
 		},
@@ -257,7 +257,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(7 * time.Hour),
 				},
 			},
-			expectedResult: &JobResult{
+			expectedResult: &storageUpdates{
 				ChunksToDeIndex: []string{chunkKey(chk)},
 			},
 		},
@@ -300,7 +300,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			result := &JobResult{}
+			result := &storageUpdates{}
 			require.NoError(t, json.Unmarshal(resultJSON, result))
 
 			// For test cases where we expect no changes

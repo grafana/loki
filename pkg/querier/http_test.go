@@ -422,32 +422,35 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	return api
 }
 
-func TestPatternsHandler(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-	ctx := user.InjectOrgID(context.Background(), "test")
-
-	now := time.Now()
-
-	// Mock pattern responses
-	mockPatternResponse := func(patterns []string) *logproto.QueryPatternsResponse {
-		resp := &logproto.QueryPatternsResponse{
-			Series: make([]*logproto.PatternSeries, 0),
-		}
-		for i, pattern := range patterns {
-			resp.Series = append(resp.Series, &logproto.PatternSeries{
-				Pattern: pattern,
-				Level:   constants.LogLevelInfo,
-				Samples: []*logproto.PatternSample{
-					{
-						Timestamp: model.Time(now.Unix() * 1000),
-						Value:     int64((i + 1) * 100),
-					},
-				},
-			})
-		}
-		return resp
+// Mock pattern responses
+var mockPatternResponse = func(now time.Time, patterns []string) *logproto.QueryPatternsResponse {
+	resp := &logproto.QueryPatternsResponse{
+		Series: make([]*logproto.PatternSeries, 0),
 	}
+	for i, pattern := range patterns {
+		resp.Series = append(resp.Series, &logproto.PatternSeries{
+			Pattern: pattern,
+			Level:   constants.LogLevelInfo,
+			Samples: []*logproto.PatternSample{
+				{
+					Timestamp: model.Time(now.Unix() * 1000),
+					Value:     int64((i + 1) * 100),
+				},
+			},
+		})
+	}
+	return resp
+}
+
+func TestPatternsHandler(t *testing.T) {
+	// Enable pattern persistence for most tests
+	limitsConfig := defaultLimitsTestConfig()
+	limitsConfig.PatternPersistenceEnabled = true
+	limits, err := validation.NewOverrides(limitsConfig, nil)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
 
 	tests := []struct {
 		name                          string
@@ -472,7 +475,7 @@ func TestPatternsHandler(t *testing.T) {
 				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
 					// Should query recent data only (within queryIngestersWithin)
 					return req.Start.After(now.Add(-3*time.Hour)) && req.End.Equal(now)
-				})).Return(mockPatternResponse([]string{"pattern1", "pattern2"}), nil)
+				})).Return(mockPatternResponse(now, []string{"pattern1", "pattern2"}), nil)
 				return q
 			},
 			patternsFromStore: []string{"pattern3", "pattern4"},
@@ -501,7 +504,7 @@ func TestPatternsHandler(t *testing.T) {
 				q := &querierMock{}
 				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
 					return req.Start.Equal(now.Add(-30*time.Minute)) && req.End.Equal(now)
-				})).Return(mockPatternResponse([]string{"recent_pattern1", "recent_pattern2"}), nil)
+				})).Return(mockPatternResponse(now, []string{"recent_pattern1", "recent_pattern2"}), nil)
 				return q
 			},
 			patternsFromStore: []string{"old_pattern1", "old_pattern2"},
@@ -527,7 +530,7 @@ func TestPatternsHandler(t *testing.T) {
 			queryIngestersWithin: 3 * time.Hour,
 			setupQuerier: func() Querier {
 				q := &querierMock{}
-				q.On("Patterns", mock.Anything, mock.Anything).Return(mockPatternResponse([]string{"ingester_only_pattern"}), nil)
+				q.On("Patterns", mock.Anything, mock.Anything).Return(mockPatternResponse(now, []string{"ingester_only_pattern"}), nil)
 				return q
 			},
 			patternsFromStore: []string{"store_only_pattern"},
@@ -640,6 +643,120 @@ func TestPatternsHandler(t *testing.T) {
 			// Check expected patterns from ingester
 			for _, pattern := range tc.expectedPatterns {
 				require.True(t, foundPatterns[pattern], "Expected pattern %s, not found", pattern)
+			}
+
+			require.Equal(t, len(tc.expectedPatterns), len(resp.Series), "Unexpected number of patterns in response")
+
+			// Verify mocks were called as expected (if it's a mock)
+			if q, ok := querier.(*querierMock); ok {
+				q.AssertExpectations(t)
+			}
+		})
+	}
+}
+
+func TestPatternsHandlerDisabled(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
+	// Add test case for when pattern persistence is disabled
+	tests := []struct {
+		name                          string
+		start, end                    time.Time
+		queryIngestersWithin          time.Duration
+		queryPatternIngestersWithin   time.Duration
+		ingesterQueryStoreMaxLookback time.Duration
+		setupQuerier                  func() Querier
+		patternsFromStore             []string
+		expectedPatterns              []string
+		expectedError                 error
+		queryStoreOnly                bool
+		queryIngesterOnly             bool
+	}{
+		{
+			name:                          "skip store query when pattern persistence is disabled",
+			start:                         now.Add(-5 * time.Hour),
+			end:                           now,
+			queryIngestersWithin:          3 * time.Hour,
+			ingesterQueryStoreMaxLookback: 1 * time.Hour,
+			setupQuerier: func() Querier {
+				q := &querierMock{}
+				q.On("Patterns", mock.Anything, mock.MatchedBy(func(req *logproto.QueryPatternsRequest) bool {
+					// Should query recent data only (within queryIngestersWithin)
+					return req.Start.After(now.Add(-3*time.Hour)) && req.End.Equal(now)
+				})).Return(mockPatternResponse(now, []string{"ingester_pattern1", "ingester_pattern2"}), nil)
+				return q
+			},
+			patternsFromStore: []string{"store_pattern1", "store_pattern2"},       // These should NOT be returned
+			expectedPatterns:  []string{"ingester_pattern1", "ingester_pattern2"}, // Only ingester patterns
+		},
+	}
+
+	// Test cases for when pattern persistence is disabled
+	for _, tc := range tests {
+		t.Run(tc.name+" (pattern persistence disabled)", func(t *testing.T) {
+			// Use limits without pattern persistence enabled
+			limitsConfigDisabled := defaultLimitsTestConfig()
+			limitsConfigDisabled.PatternPersistenceEnabled = false
+			limitsDisabled, err := validation.NewOverrides(limitsConfigDisabled, nil)
+			require.NoError(t, err)
+
+			conf := mockQuerierConfig()
+			conf.QueryIngestersWithin = tc.queryIngestersWithin
+			if tc.queryPatternIngestersWithin != 0 {
+				conf.QueryPatternIngestersWithin = tc.queryPatternIngestersWithin
+			} else {
+				conf.QueryPatternIngestersWithin = tc.queryIngestersWithin
+			}
+			conf.IngesterQueryStoreMaxLookback = tc.ingesterQueryStoreMaxLookback
+			conf.QueryStoreOnly = tc.queryStoreOnly
+			conf.QueryIngesterOnly = tc.queryIngesterOnly
+
+			querier := tc.setupQuerier()
+
+			// Create a mock engine that returns the expected patterns from store
+			// This should NOT be called when pattern persistence is disabled
+			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
+
+			api := &QuerierAPI{
+				cfg:      conf,
+				querier:  querier,
+				limits:   limitsDisabled, // Use the disabled limits
+				engineV1: engineMock,
+				logger:   log.NewNopLogger(),
+			}
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test-service"}`,
+				Start: tc.start,
+				End:   tc.end,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			resp, err := api.PatternsHandler(ctx, req)
+
+			if tc.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+
+			// Collect all patterns from response
+			foundPatterns := make(map[string]bool)
+			for _, series := range resp.Series {
+				foundPatterns[series.Pattern] = true
+			}
+
+			// Check expected patterns from ingester only
+			for _, pattern := range tc.expectedPatterns {
+				require.True(t, foundPatterns[pattern], "Expected pattern %s, not found", pattern)
+			}
+
+			// Ensure store patterns are NOT included
+			for _, pattern := range tc.patternsFromStore {
+				require.False(t, foundPatterns[pattern], "Store pattern %s should not be included when pattern persistence is disabled", pattern)
 			}
 
 			require.Equal(t, len(tc.expectedPatterns), len(resp.Series), "Unexpected number of patterns in response")

@@ -21,6 +21,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -46,7 +48,7 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
 	return req, stats, nil
 }
 
@@ -105,7 +107,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -330,6 +332,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					entryLbs = lbs
 				}
 
+				// Calculate the entry's own metadata size BEFORE adding resource and scope attributes
+				// This preserves the intent of tracking entry-specific metadata separately without requiring subtraction
+				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
+
 				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
 				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
 				if cap(entry.StructuredMetadata) < len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen {
@@ -347,19 +353,19 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
 				entryPolicy := streamResolver.PolicyFor(entryLbs)
 
-				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-
 				if _, ok := stats.StructuredMetadataBytes[entryPolicy]; !ok {
 					stats.StructuredMetadataBytes[entryPolicy] = make(map[time.Duration]int64)
 				}
-				stats.StructuredMetadataBytes[entryPolicy][entryRetentionPeriod] += metadataSize
+				// Use the entry's own metadata size (calculated before adding resource/scope attributes)
+				// This keeps the same accounting intention without risk of negative values
+				stats.StructuredMetadataBytes[entryPolicy][entryRetentionPeriod] += entryOwnMetadataSize
 
 				if _, ok := stats.LogLinesBytes[entryPolicy]; !ok {
 					stats.LogLinesBytes[entryPolicy] = make(map[time.Duration]int64)
 				}
 				stats.LogLinesBytes[entryPolicy][entryRetentionPeriod] += int64(len(entry.Line))
 
-				totalBytesReceived += metadataSize
+				totalBytesReceived += entryOwnMetadataSize
 				totalBytesReceived += int64(len(entry.Line))
 
 				stats.PolicyNumLines[entryPolicy]++
@@ -368,12 +374,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				}
 
 				if tracker != nil && len(logLabels) > 0 {
-					tracker.ReceivedBytesAdd(ctx, userID, entryRetentionPeriod, entryLbs, float64(totalBytesReceived))
+					tracker.ReceivedBytesAdd(ctx, userID, entryRetentionPeriod, entryLbs, float64(totalBytesReceived), format)
 				}
 			}
 
 			if tracker != nil {
-				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(totalBytesReceived))
+				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(totalBytesReceived), format)
 			}
 		}
 	}
