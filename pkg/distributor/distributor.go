@@ -342,7 +342,7 @@ func New(
 			Namespace: constants.Loki,
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
-		}, []string{"tenant"}),
+		}, []string{"tenant", "format"}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -649,11 +649,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
 					if normalized != structuredMetadata[i].Name {
 						structuredMetadata[i].Name = normalized
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
 						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 				}
 				if shouldDiscoverLevels {
