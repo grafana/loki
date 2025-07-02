@@ -210,23 +210,25 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			for {
-				buf := make([]logs.Record, 1024) // do not re-use buffer
-				n, err := reader.Read(ctx, buf)
-				if n == 0 && errors.Is(err, io.EOF) {
-					return nil
-				} else if err != nil && !errors.Is(err, io.EOF) {
-					return err
-				}
 
-				gotData.Store(true)
-
-				heapMut.Lock()
-				for _, rec := range buf[:n] {
-					heap.Push(rec)
-				}
-				heapMut.Unlock()
+			buf := make([]logs.Record, 100) // use engine batch size
+			n, err := reader.Read(ctx, buf)
+			if n == 0 && errors.Is(err, io.EOF) {
+				return nil
+			} else if err != nil && !errors.Is(err, io.EOF) {
+				return err
 			}
+
+			gotData.Store(true)
+
+			heapMut.Lock()
+			for _, rec := range buf[:n] {
+				heap.Push(rec)
+			}
+			heapMut.Unlock()
+
+			return nil
+
 		})
 	}
 
