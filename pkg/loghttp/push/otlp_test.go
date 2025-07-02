@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
 

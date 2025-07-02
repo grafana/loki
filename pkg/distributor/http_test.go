@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
