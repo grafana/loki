@@ -50,6 +50,8 @@ type dataobjScanOptions struct {
 
 	Direction physical.SortOrder // Order of timestamps to return (ASC=Forward, DESC=Backward)
 	Limit     uint32             // A limit on the number of rows to return (0=unlimited).
+
+	batchSize int64
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -211,7 +213,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	for _, reader := range s.readers {
 		g.Go(func() error {
 
-			buf := make([]logs.Record, 100) // use engine batch size
+			buf := make([]logs.Record, s.opts.batchSize)
 			n, err := reader.Read(ctx, buf)
 			if n == 0 && errors.Is(err, io.EOF) {
 				return nil
