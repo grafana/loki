@@ -1176,7 +1176,7 @@ gcs:
 {{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
 {{- else if eq .type "azure" }}
 azure:
-{{ toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
+{{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
 {{- end }}
 storage_prefix: {{ .storage_prefix }}
 {{- end }}
