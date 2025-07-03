@@ -217,18 +217,14 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		return dataset.FalsePredicate{}
 	}
 
-	var values []dataset.Value
+	lookup := make(map[interface{}]dataset.Value)
 	for id := range ids {
-		values = append(values, dataset.Int64Value(id))
-	}
-
-	if len(values) == 0 {
-		return nil
+		lookup[id] = dataset.Int64Value(id)
 	}
 
 	return dataset.InPredicate{
-		Column: streamIDColumn,
-		Values: values,
+		Column:    streamIDColumn,
+		ValuesMap: lookup,
 	}
 }
 

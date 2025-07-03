@@ -322,14 +322,22 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 			panic(fmt.Sprintf("column %p not found in column lookup", p.Column))
 		}
 
-		vals := make([]dataset.Value, len(p.Values))
+		lookup := make(map[interface{}]dataset.Value, len(p.Values))
 		for i := range p.Values {
-			vals[i] = arrowconv.FromScalar(p.Values[i], mustConvertType(p.Values[i].DataType()))
+			value := arrowconv.FromScalar(p.Values[i], mustConvertType(p.Values[i].DataType()))
+			switch value.Type() {
+			case datasetmd.VALUE_TYPE_INT64:
+				lookup[value.Int64()] = value
+			case datasetmd.VALUE_TYPE_UINT64:
+				lookup[value.Uint64()] = value
+			case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+				lookup[value.ByteArray()] = value
+			}
 		}
 
 		return dataset.InPredicate{
-			Column: col,
-			Values: vals,
+			Column:    col,
+			ValuesMap: lookup,
 		}
 
 	case GreaterThanPredicate:

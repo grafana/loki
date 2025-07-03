@@ -343,11 +343,11 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			name: "InPredicate with values inside and outside page ranges",
 			predicate: InPredicate{
 				Column: cols[1], // timestamp column
-				Values: []Value{
-					Int64Value(50),  // Inside page 1 (0-100)
-					Int64Value(300), // Inside page 2 (200-500)
-					Int64Value(150), // Outside all pages
-					Int64Value(600), // Outside all pages
+				ValuesMap: map[interface{}]Value{
+					50:  Int64Value(50),  // Inside page 1 (0-100)
+					300: Int64Value(300), // Inside page 2 (200-500)
+					150: Int64Value(150), // Outside all pages
+					600: Int64Value(600), // Outside all pages
 				},
 			},
 			want: rowRanges{
@@ -359,9 +359,9 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			name: "InPredicate with values all outside page ranges",
 			predicate: InPredicate{
 				Column: cols[1], // timestamp column
-				Values: []Value{
-					Int64Value(150), // Outside all pages
-					Int64Value(600), // Outside all pages
+				ValuesMap: map[interface{}]Value{
+					150: Int64Value(150), // Outside all pages
+					600: Int64Value(600), // Outside all pages
 				},
 			},
 			want: nil, // No pages should be included

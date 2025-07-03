@@ -32,8 +32,8 @@ type (
 	// An InPredicate is a [Predicate] which asserts that a row may only be
 	// included if the Value of the Column is present in the provided Values.
 	InPredicate struct {
-		Column Column  // Column to check.
-		Values []Value // Values to check for inclusion.
+		Column    Column                // Column to check.
+		ValuesMap map[interface{}]Value // Map of value content to value, for fast lookup.
 	}
 
 	// A GreaterThanPredicate is a [Predicate] which asserts that a row may only
