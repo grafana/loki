@@ -53,8 +53,8 @@ type manifest struct {
 // deletionManifestBuilder helps with building the manifest for listing out which chunks to process for a batch of delete requests.
 // It is not meant to be used concurrently.
 type deletionManifestBuilder struct {
-	deleteStoreClient  client.ObjectClient
-	deleteRequestBatch deleteRequestBatch
+	deletionStoreClient client.ObjectClient
+	deleteRequestBatch  *deleteRequestBatch
 
 	currentSegment            map[uint64]ChunksGroup
 	currentSegmentChunksCount int
@@ -67,7 +67,7 @@ type deletionManifestBuilder struct {
 	overallChunksCount int
 }
 
-func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteRequestBatch deleteRequestBatch) (*deletionManifestBuilder, error) {
+func newDeletionManifestBuilder(deletionStoreClient client.ObjectClient, deleteRequestBatch *deleteRequestBatch) (*deletionManifestBuilder, error) {
 	requestCount := 0
 	for _, userRequests := range deleteRequestBatch.deleteRequestsToProcess {
 		requestCount += len(userRequests.requests)
@@ -80,10 +80,10 @@ func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteReq
 	}
 
 	builder := &deletionManifestBuilder{
-		deleteStoreClient:  deleteStoreClient,
-		deleteRequestBatch: deleteRequestBatch,
-		currentSegment:     make(map[uint64]ChunksGroup),
-		creationTime:       time.Now(),
+		deletionStoreClient: deletionStoreClient,
+		deleteRequestBatch:  deleteRequestBatch,
+		currentSegment:      make(map[uint64]ChunksGroup),
+		creationTime:        time.Now(),
 	}
 
 	return builder, nil
@@ -197,7 +197,7 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
+	return d.deletionStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
@@ -233,7 +233,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
+	return d.deletionStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
