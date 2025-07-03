@@ -8,13 +8,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type indexUpdatesRecorder struct {
 	CompactedIndex
-	indexedChunks map[string][]Chunk
+	indexedChunks map[string][]deletion.Chunk
 	removedChunks map[string][]string
 }
 
@@ -22,7 +23,7 @@ func (i indexUpdatesRecorder) IndexChunk(chunkRef logproto.ChunkRef, lbls labels
 	lblsString := lbls.String()
 	indexedChunks, ok := i.indexedChunks[lblsString]
 	if !ok {
-		i.indexedChunks[lblsString] = []Chunk{}
+		i.indexedChunks[lblsString] = []deletion.Chunk{}
 		indexedChunks = i.indexedChunks[lblsString]
 	}
 	indexedChunks = append(indexedChunks, dummyChunk{
@@ -128,7 +129,7 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 		expectedChunksToRemove = append(expectedChunksToRemove, chunkID)
 	}
 
-	var chunksToIndex []Chunk
+	var chunksToIndex []deletion.Chunk
 	for i := 20; i < 30; i++ {
 		chunksToIndex = append(chunksToIndex, dummyChunk{
 			from:        model.Time(i),
@@ -143,7 +144,7 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	indexSet := &indexSet{
 		userID: userID,
 		compactedIndex: &indexUpdatesRecorder{
-			indexedChunks: map[string][]Chunk{},
+			indexedChunks: map[string][]deletion.Chunk{},
 			removedChunks: map[string][]string{},
 		},
 	}
@@ -159,5 +160,5 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, map[string][]string{lblFoo.String(): expectedChunksToRemove}, indexSet.compactedIndex.(*indexUpdatesRecorder).removedChunks)
-	require.Equal(t, map[string][]Chunk{lblFoo.String(): chunksToIndex}, indexSet.compactedIndex.(*indexUpdatesRecorder).indexedChunks)
+	require.Equal(t, map[string][]deletion.Chunk{lblFoo.String(): chunksToIndex}, indexSet.compactedIndex.(*indexUpdatesRecorder).indexedChunks)
 }

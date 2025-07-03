@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -28,34 +28,43 @@ type JobRunner struct {
 	getChunkClientForTableFunc GetChunkClientForTableFunc
 }
 
-type Chunk struct {
+type Chunk interface {
+	GetFrom() model.Time
+	GetThrough() model.Time
+	GetFingerprint() uint64
+	GetChecksum() uint32
+	GetSize() uint32
+	GetEntriesCount() uint32
+}
+
+type chunk struct {
 	From, Through model.Time
 	Fingerprint   uint64
 	Checksum      uint32
 	KB, Entries   uint32
 }
 
-func (c Chunk) GetFrom() model.Time {
+func (c chunk) GetFrom() model.Time {
 	return c.From
 }
 
-func (c Chunk) GetThrough() model.Time {
+func (c chunk) GetThrough() model.Time {
 	return c.Through
 }
 
-func (c Chunk) GetFingerprint() uint64 {
+func (c chunk) GetFingerprint() uint64 {
 	return c.Fingerprint
 }
 
-func (c Chunk) GetChecksum() uint32 {
+func (c chunk) GetChecksum() uint32 {
 	return c.Checksum
 }
 
-func (c Chunk) GetSize() uint32 {
+func (c chunk) GetSize() uint32 {
 	return c.KB
 }
 
-func (c Chunk) GetEntriesCount() uint32 {
+func (c chunk) GetEntriesCount() uint32 {
 	return c.Entries
 }
 
@@ -65,7 +74,7 @@ func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobR
 	}
 }
 
-func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
+func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 	var deletionJob deletionJob
 	var updates storageUpdates
 
@@ -96,13 +105,13 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
 	// ToDo(Sandeep): Make chunk processing concurrent with a reasonable concurrency.
 	for _, chunkID := range deletionJob.ChunkIDs {
-		chk, err := chunk.ParseExternalKey(deletionJob.UserID, chunkID)
+		chk, err := storage_chunk.ParseExternalKey(deletionJob.UserID, chunkID)
 		if err != nil {
 			return nil, err
 		}
 
 		// get the chunk from storage
-		chks, err := chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
+		chks, err := chunkClient.GetChunks(ctx, []storage_chunk.Chunk{chk})
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +149,7 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 			return false
 		})
 		if err != nil {
-			if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+			if errors.Is(err, storage_chunk.ErrSliceNoDataInRange) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
 				updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
 				continue
@@ -168,7 +177,7 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		}
 
 		// upload the new chunk to object storage
-		newChunk := chunk.NewChunk(
+		newChunk := storage_chunk.NewChunk(
 			deletionJob.UserID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			newChunkStart,
@@ -180,13 +189,13 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 			return nil, err
 		}
 
-		err = chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+		err = chunkClient.PutChunks(ctx, []storage_chunk.Chunk{newChunk})
 		if err != nil {
 			return nil, err
 		}
 
 		// add the new chunk details to the list of chunks to index
-		updates.ChunksToIndex = append(updates.ChunksToIndex, Chunk{
+		updates.ChunksToIndex = append(updates.ChunksToIndex, chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,
