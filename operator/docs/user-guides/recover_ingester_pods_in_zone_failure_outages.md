@@ -36,8 +36,8 @@ This document outlines steps that can be taken to recover stateful Loki pods whe
       size: 1x.small
       storage:
         schemas:
-          - version: v12
-            effectiveDate: "2022-06-01"
+        - version: v12
+          effectiveDate: "2022-06-01"
         secret:
           name: test
         type: s3
@@ -45,8 +45,8 @@ This document outlines steps that can be taken to recover stateful Loki pods whe
       replication:
         factor: 2
         zones:
-          - topologyKey: topology.kubernetes.io/zone
-            maxSkew: 1
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
     ```
 
 ## Steps
