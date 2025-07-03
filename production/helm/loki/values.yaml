@@ -354,7 +354,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    compactor_address: '{{ include "loki.compactorAddress" . }}'
+    compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
