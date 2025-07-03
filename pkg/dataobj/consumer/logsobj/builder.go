@@ -217,7 +217,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 
 		// If our logs section has gotten big enough, we want to flush it to the
 		// encoder and start a new section.
-		if b.logs.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if b.logs.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := b.builder.Append(b.logs); err != nil {
 				return err
 			}
