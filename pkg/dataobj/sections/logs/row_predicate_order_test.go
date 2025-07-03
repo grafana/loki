@@ -155,12 +155,12 @@ func TestGetPredicateSelectivity(t *testing.T) {
 					min:         25,
 					max:         75,
 				}).ToMemColumn(t),
-				ValuesMap: map[interface{}]dataset.Value{
-					20: dataset.Int64Value(20),
-					50: dataset.Int64Value(50),
-					60: dataset.Int64Value(60),
-					80: dataset.Int64Value(80),
-				}, // 2 values in range. ~200 matching rows
+				Values: dataset.NewInt64ValueSet([]dataset.Value{
+					dataset.Int64Value(20),
+					dataset.Int64Value(50),
+					dataset.Int64Value(60),
+					dataset.Int64Value(80),
+				}), // 2 values in range. ~200 matching rows
 			},
 			want: selectivityScore(0.2), // 0.1 + 0.1
 		},

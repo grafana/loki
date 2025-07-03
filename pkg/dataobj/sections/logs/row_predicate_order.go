@@ -80,13 +80,13 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 			return getBaseSelectivity(p)
 		}
 
-		valuesInRange := len(p.ValuesMap)
+		valuesInRange := p.Values.Size()
 		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
 			var minValue, maxValue dataset.Value
 			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
 				valuesInRange = 0
 
-				for _, v := range p.ValuesMap {
+				for v := range p.Values.Iter() {
 					if dataset.CompareValues(v, minValue) >= 0 && dataset.CompareValues(v, maxValue) <= 0 {
 						valuesInRange++
 					}
