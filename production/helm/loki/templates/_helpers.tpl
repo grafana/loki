@@ -1173,7 +1173,7 @@ s3:
 {{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
 {{- else if eq .type "gcs" }}
 gcs:
-{{ toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
+{{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
 {{- else if eq .type "azure" }}
 azure:
 {{ toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
