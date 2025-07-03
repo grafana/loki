@@ -860,17 +860,18 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
-		if !keep(c) {
-			continue
-		}
-
 		idx, ok := r.origColumnLookup[c]
 		if !ok {
 			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
 		}
 
+		c := r.dl.AllColumns()[idx]
+		if !keep(c) {
+			continue
+		}
+
 		idxs = append(idxs, idx)
-		ret = append(ret, r.dl.AllColumns()[idx])
+		ret = append(ret, c)
 	}
 
 	return ret, idxs, nil

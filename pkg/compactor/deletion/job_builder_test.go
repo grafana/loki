@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"path/filepath"
+	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -17,32 +17,71 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
+// tableUpdatesRecorder collects all the storage updates we get post processing of a manifest
+type tableUpdatesRecorder struct {
+	updates map[string]map[string]map[string]storageUpdates
+}
+
+func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []chunk) error {
+	if _, ok := t.updates[tableName]; !ok {
+		t.updates[tableName] = map[string]map[string]storageUpdates{
+			userID: {
+				labels: {},
+			},
+		}
+	}
+	if _, ok := t.updates[tableName][userID]; !ok {
+		t.updates[tableName][userID] = map[string]storageUpdates{
+			labels: {},
+		}
+	}
+
+	updates := t.updates[tableName][userID][labels]
+
+	updates.ChunksToDelete = append(updates.ChunksToDelete, chunksToDelete...)
+	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
+	updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex...)
+
+	t.updates[tableName][userID][labels] = updates
+
+	return nil
+}
+
 func TestJobBuilder_buildJobs(t *testing.T) {
 	now := model.Now()
 
 	for _, tc := range []struct {
 		name                 string
-		setupManifest        func(client client.ObjectClient) string
+		setupManifest        func(client client.ObjectClient) []DeleteRequest
 		expectedJobs         []grpc.Job
-		expectedIndexUpdates map[string][]byte
+		expectedTableUpdates map[string]map[string]map[string]storageUpdates
 	}{
 		{
 			name: "no manifests in storage",
-			setupManifest: func(_ client.ObjectClient) string {
-				return ""
+			setupManifest: func(_ client.ObjectClient) []DeleteRequest {
+				return []DeleteRequest{}
 			},
+			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{},
 		},
 		{
 			name: "one manifest in storage with less than maxChunksPerJob",
-			setupManifest: func(client client.ObjectClient) string {
+			setupManifest: func(client client.ObjectClient) []DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(nil)
-				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
-					UserID:    user1,
-					Query:     lblFooBar,
-					StartTime: 0,
-					EndTime:   now,
-				})
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				requestsToAdd := []DeleteRequest{
+					{
+						RequestID: req1,
+						UserID:    user1,
+						Query:     lblFooBar,
+						StartTime: 0,
+						EndTime:   now,
+					},
+				}
+
+				for i := range requestsToAdd {
+					req := requestsToAdd[i]
+					deleteRequestBatch.addDeleteRequest(&req)
+				}
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -53,7 +92,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 
-				return manifestBuilder.path()
+				return requestsToAdd
 			},
 			expectedJobs: []grpc.Job{
 				{
@@ -65,6 +104,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
 						DeleteRequests: []DeleteRequest{
 							{
+								RequestID: req1,
 								UserID:    user1,
 								Query:     lblFooBar,
 								StartTime: 0,
@@ -74,21 +114,32 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 1),
+			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+				table1: {
+					user1: {
+						lblFooBar: buildStorageUpdates(0, 1),
+					},
+				},
 			},
 		},
 		{
 			name: "one manifest in storage with more than maxChunksPerJob",
-			setupManifest: func(client client.ObjectClient) string {
+			setupManifest: func(client client.ObjectClient) []DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(nil)
-				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
-					UserID:    user1,
-					Query:     lblFooBar,
-					StartTime: 0,
-					EndTime:   now,
-				})
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				requestsToAdd := []DeleteRequest{
+					{
+						RequestID: req1,
+						UserID:    user1,
+						Query:     lblFooBar,
+						StartTime: 0,
+						EndTime:   now,
+					},
+				}
+				for i := range requestsToAdd {
+					req := requestsToAdd[i]
+					deleteRequestBatch.addDeleteRequest(&req)
+				}
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -98,7 +149,8 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}))
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
-				return manifestBuilder.path()
+
+				return requestsToAdd
 			},
 			expectedJobs: []grpc.Job{
 				{
@@ -110,6 +162,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
 						DeleteRequests: []DeleteRequest{
 							{
+								RequestID: req1,
 								UserID:    user1,
 								Query:     lblFooBar,
 								StartTime: 0,
@@ -127,6 +180,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
 						DeleteRequests: []DeleteRequest{
 							{
+								RequestID: req1,
 								UserID:    user1,
 								Query:     lblFooBar,
 								StartTime: 0,
@@ -136,39 +190,50 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 2),
+			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+				table1: {
+					user1: {
+						lblFooBar: buildStorageUpdates(0, 2),
+					},
+				},
 			},
 		},
 		{
 			name: "one manifest in storage with multiple groups",
-			setupManifest: func(client client.ObjectClient) string {
+			setupManifest: func(client client.ObjectClient) []DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(nil)
-				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
-					UserID:    user1,
-					RequestID: req1,
-					Query:     lblFooBar,
-					StartTime: 0,
-					EndTime:   100,
-				})
-				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
-					UserID:    user1,
-					RequestID: req2,
-					Query:     lblFizzBuzz,
-					StartTime: 51,
-					EndTime:   100,
-				})
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				requestsToAdd := []DeleteRequest{
+					{
+						UserID:    user1,
+						RequestID: req1,
+						Query:     lblFooBar,
+						StartTime: 0,
+						EndTime:   100,
+					},
+					{
+						UserID:    user1,
+						RequestID: req2,
+						Query:     lblFizzBuzz,
+						StartTime: 51,
+						EndTime:   100,
+					},
+				}
+				for i := range requestsToAdd {
+					req := requestsToAdd[i]
+					deleteRequestBatch.addDeleteRequest(&req)
+				}
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
 					userID: user1,
-					labels: mustParseLabel(lblFooBarAndFizzBuzz),
+					labels: mustParseLabel(lblFizzBuzzAndFooBar),
 					chunks: buildRetentionChunks(25, 50),
 				}))
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
-				return manifestBuilder.path()
+
+				return requestsToAdd
 			},
 			expectedJobs: []grpc.Job{
 				{
@@ -215,21 +280,32 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 2),
+			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+				table1: {
+					user1: {
+						lblFizzBuzzAndFooBar: buildStorageUpdates(0, 2),
+					},
+				},
 			},
 		},
 		{
 			name: "one manifest in storage with multiple segments due to multiple tables",
-			setupManifest: func(client client.ObjectClient) string {
+			setupManifest: func(client client.ObjectClient) []DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(nil)
-				deleteRequestBatch.addDeleteRequest(&DeleteRequest{
-					UserID:    user1,
-					Query:     lblFooBar,
-					StartTime: 0,
-					EndTime:   now,
-				})
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				requestsToAdd := []DeleteRequest{
+					{
+						RequestID: req1,
+						UserID:    user1,
+						Query:     lblFooBar,
+						StartTime: 0,
+						EndTime:   now,
+					},
+				}
+				for i := range requestsToAdd {
+					req := requestsToAdd[i]
+					deleteRequestBatch.addDeleteRequest(&req)
+				}
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -245,7 +321,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}))
 
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
-				return manifestBuilder.path()
+				return requestsToAdd
 			},
 			expectedJobs: []grpc.Job{
 				{
@@ -257,6 +333,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, 100)),
 						DeleteRequests: []DeleteRequest{
 							{
+								RequestID: req1,
 								UserID:    user1,
 								Query:     lblFooBar,
 								StartTime: 0,
@@ -274,6 +351,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(100, 100)),
 						DeleteRequests: []DeleteRequest{
 							{
+								RequestID: req1,
 								UserID:    user1,
 								Query:     lblFooBar,
 								StartTime: 0,
@@ -283,9 +361,17 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedIndexUpdates: map[string][]byte{
-				fmt.Sprintf("%d%s", 0, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table1, 0, 1),
-				fmt.Sprintf("%d%s", 1, indexUpdatesFilenameSuffix): buildIndexUpdates(t, table2, 1, 1),
+			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+				table1: {
+					user1: {
+						lblFooBar: buildStorageUpdates(0, 1),
+					},
+				},
+				table2: {
+					user1: {
+						lblFooBar: buildStorageUpdates(1, 1),
+					},
+				},
 			},
 		},
 	} {
@@ -294,9 +380,25 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				Directory: t.TempDir(),
 			})
 			require.NoError(t, err)
-			manifestPath := tc.setupManifest(objectClient)
+			addedRequests := tc.setupManifest(objectClient)
+			requestsMarkedAsProcessed := []DeleteRequest{}
+			tableUpdatesRecorder := &tableUpdatesRecorder{
+				updates: map[string]map[string]map[string]storageUpdates{},
+			}
 
-			builder := NewJobBuilder(objectClient)
+			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
+				for iterator.Next() {
+					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, *(*[]chunk)(unsafe.Pointer(&chunksToIndex)))
+					}); err != nil {
+						return err
+					}
+				}
+
+				return iterator.Err()
+			}, func(requests []DeleteRequest) {
+				requestsMarkedAsProcessed = requests
+			})
 			jobsChan := make(chan *grpc.Job)
 
 			var jobsBuilt []grpc.Job
@@ -307,7 +409,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					err := builder.OnJobResponse(&grpc.JobResult{
 						JobId:   job.Id,
 						JobType: job.Type,
-						Result:  mustMarshal(t, buildDeletionJobResult(cnt)),
+						Result:  mustMarshal(t, buildStorageUpdates(cnt, 1)),
 					})
 					require.NoError(t, err)
 					cnt++
@@ -320,16 +422,23 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			require.Equal(t, len(tc.expectedJobs), len(jobsBuilt))
 			require.Equal(t, tc.expectedJobs, jobsBuilt)
 
-			for filename, expectedIndexUpdate := range tc.expectedIndexUpdates {
-				readCloser, _, err := objectClient.GetObject(context.Background(), filepath.Join(manifestPath, filename))
-				require.NoError(t, err)
+			// verify operations and data post-processing of the manifests
+			require.Equal(t, tc.expectedTableUpdates, tableUpdatesRecorder.updates)
+			slices.SortFunc(requestsMarkedAsProcessed, func(a, b DeleteRequest) int {
+				if len(a.RequestID) < len(b.RequestID) {
+					return -1
+				} else if len(a.RequestID) > len(b.RequestID) {
+					return 1
+				}
 
-				indexUpdateJSON, err := io.ReadAll(readCloser)
-				require.NoError(t, err)
-				require.NoError(t, readCloser.Close())
+				return 0
+			})
+			require.Equal(t, addedRequests, requestsMarkedAsProcessed)
 
-				require.Equal(t, expectedIndexUpdate, indexUpdateJSON)
-			}
+			// we should have cleaned up all the manifests from storage
+			_, commonPrefixes, err := objectClient.List(context.Background(), "", "/")
+			require.NoError(t, err)
+			require.Equal(t, 0, len(commonPrefixes))
 		})
 	}
 }
@@ -354,7 +463,9 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			builder := NewJobBuilder(objectClient)
+			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
+				return nil
+			}, func(_ []DeleteRequest) {})
 
 			// Create a test manifest
 			manifest := &manifest{
@@ -371,7 +482,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 				TableName: "table1",
 				ChunksGroups: []ChunksGroup{
 					{
-						Chunks: []string{"chunk1", "chunk2"},
+						Chunks: map[string][]string{"": {"chunk1", "chunk2"}},
 						Requests: []DeleteRequest{
 							{Query: "{job=\"test\"}"},
 						},
@@ -396,7 +507,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 				}
 			}()
 
-			err = builder.processManifest(context.Background(), "test-manifest", jobsChan)
+			err = builder.processManifest(context.Background(), manifest, "test-manifest", jobsChan)
 			if tc.jobProcessingError != "" {
 				require.ErrorIs(t, err, context.Canceled)
 			} else {
@@ -415,36 +526,21 @@ func mustMarshalPayload(job *deletionJob) []byte {
 	return payload
 }
 
-func buildDeletionJobResult(jobCounter int) JobResult {
-	deletionJobResult := JobResult{
-		ChunksToDelete:  []string{fmt.Sprintf("%d-d", jobCounter)},
-		ChunksToDeIndex: []string{fmt.Sprintf("%d-i", jobCounter)},
-		ChunksToIndex: []Chunk{
-			{
-				From:        model.Time(jobCounter),
-				Through:     model.Time(jobCounter),
-				Fingerprint: uint64(jobCounter),
-				Checksum:    uint32(jobCounter),
-				KB:          uint32(jobCounter),
-				Entries:     uint32(jobCounter),
-			},
-		},
+func buildStorageUpdates(jobNumStart, numJobs int) storageUpdates {
+	s := storageUpdates{}
+	for i := 0; i < numJobs; i++ {
+		jobNum := jobNumStart + i
+		s.ChunksToDelete = append(s.ChunksToDelete, fmt.Sprintf("%d-d", jobNum))
+		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
+		s.ChunksToIndex = append(s.ChunksToIndex, chunk{
+			From:        model.Time(jobNum),
+			Through:     model.Time(jobNum),
+			Fingerprint: uint64(jobNum),
+			Checksum:    uint32(jobNum),
+			KB:          uint32(jobNum),
+			Entries:     uint32(jobNum),
+		})
 	}
 
-	return deletionJobResult
-}
-
-func buildIndexUpdates(t *testing.T, tableName string, jobIndexStart, totalJobs int) []byte {
-	indexUpdates := indexUpdates{
-		TableName: tableName,
-	}
-
-	for i := 0; i < totalJobs; i++ {
-		indexUpdates.addUpdates(buildDeletionJobResult(jobIndexStart + i))
-	}
-
-	indexUpdatesJSON, err := indexUpdates.encode()
-	require.NoError(t, err)
-
-	return indexUpdatesJSON
+	return s
 }

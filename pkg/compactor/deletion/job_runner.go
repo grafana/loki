@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -28,19 +28,44 @@ type JobRunner struct {
 	getChunkClientForTableFunc GetChunkClientForTableFunc
 }
 
-type Chunk struct {
+type Chunk interface {
+	GetFrom() model.Time
+	GetThrough() model.Time
+	GetFingerprint() uint64
+	GetChecksum() uint32
+	GetSize() uint32
+	GetEntriesCount() uint32
+}
+
+type chunk struct {
 	From, Through model.Time
 	Fingerprint   uint64
 	Checksum      uint32
 	KB, Entries   uint32
 }
 
-// JobResult holds details of chunks to be deleted from index and new chunk entries to be added to it.
-// ToDo(Sandeep): Use proto for encoding instead of json for better performance and resource usage.
-type JobResult struct {
-	ChunksToDelete  []string // List of chunks to be deleted from object storage and removed from the index of the current table
-	ChunksToDeIndex []string // List of chunks only to be removed from the index of the current table
-	ChunksToIndex   []Chunk  // List of chunks to be indexed in the current table
+func (c chunk) GetFrom() model.Time {
+	return c.From
+}
+
+func (c chunk) GetThrough() model.Time {
+	return c.Through
+}
+
+func (c chunk) GetFingerprint() uint64 {
+	return c.Fingerprint
+}
+
+func (c chunk) GetChecksum() uint32 {
+	return c.Checksum
+}
+
+func (c chunk) GetSize() uint32 {
+	return c.KB
+}
+
+func (c chunk) GetEntriesCount() uint32 {
+	return c.Entries
 }
 
 func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobRunner {
@@ -49,9 +74,9 @@ func NewJobRunner(getStorageClientForTableFunc GetChunkClientForTableFunc) *JobR
 	}
 }
 
-func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
+func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 	var deletionJob deletionJob
-	var jobResult JobResult
+	var updates storageUpdates
 
 	if err := json.Unmarshal(job.Payload, &deletionJob); err != nil {
 		return nil, err
@@ -80,13 +105,13 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
 	// ToDo(Sandeep): Make chunk processing concurrent with a reasonable concurrency.
 	for _, chunkID := range deletionJob.ChunkIDs {
-		chk, err := chunk.ParseExternalKey(deletionJob.UserID, chunkID)
+		chk, err := storage_chunk.ParseExternalKey(deletionJob.UserID, chunkID)
 		if err != nil {
 			return nil, err
 		}
 
 		// get the chunk from storage
-		chks, err := chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
+		chks, err := chunkClient.GetChunks(ctx, []storage_chunk.Chunk{chk})
 		if err != nil {
 			return nil, err
 		}
@@ -124,9 +149,9 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 			return false
 		})
 		if err != nil {
-			if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+			if errors.Is(err, storage_chunk.ErrSliceNoDataInRange) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
-				jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
+				updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
 				continue
 			}
 			return nil, err
@@ -147,12 +172,12 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		// the new chunk is out of range for the table in process, so don't upload and index it
 		if newChunkStart > tableInterval.End || newChunkEnd < tableInterval.Start {
 			// only remove the index entry from the current table since the new chunk is out of its range
-			jobResult.ChunksToDeIndex = append(jobResult.ChunksToDeIndex, chunkID)
+			updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunkID)
 			continue
 		}
 
 		// upload the new chunk to object storage
-		newChunk := chunk.NewChunk(
+		newChunk := storage_chunk.NewChunk(
 			deletionJob.UserID, chks[0].FingerprintModel(), chks[0].Metric,
 			facade,
 			newChunkStart,
@@ -164,13 +189,13 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 			return nil, err
 		}
 
-		err = chunkClient.PutChunks(ctx, []chunk.Chunk{newChunk})
+		err = chunkClient.PutChunks(ctx, []storage_chunk.Chunk{newChunk})
 		if err != nil {
 			return nil, err
 		}
 
 		// add the new chunk details to the list of chunks to index
-		jobResult.ChunksToIndex = append(jobResult.ChunksToIndex, Chunk{
+		updates.ChunksToIndex = append(updates.ChunksToIndex, chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,
@@ -180,10 +205,10 @@ func (jr *JobRunner) Run(ctx context.Context, job grpc.Job) ([]byte, error) {
 		})
 
 		// Add the ID of original chunk to the list of ChunksToDelete
-		jobResult.ChunksToDelete = append(jobResult.ChunksToDelete, chunkID)
+		updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
 	}
 
-	jobResultJSON, err := json.Marshal(jobResult)
+	jobResultJSON, err := json.Marshal(updates)
 	if err != nil {
 		return nil, err
 	}

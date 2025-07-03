@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -106,7 +108,7 @@ type chunkIndexer interface {
 	// The implementation could skip indexing a chunk due to it not belonging to the table.
 	// ToDo(Sandeep): We already have a check in the caller of IndexChunk to check if the chunk belongs to the table.
 	// See if we can drop the redundant check in the underlying implementation.
-	IndexChunk(chunk chunk.Chunk) (chunkIndexed bool, err error)
+	IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (chunkIndexed bool, err error)
 }
 
 type IndexProcessor interface {
@@ -119,8 +121,11 @@ var errNoChunksFound = errors.New("no chunks found in table, please check if the
 	"see if there is a bug causing us to drop whole index table")
 
 type TableMarker interface {
-	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
-	MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
+	// FindAndMarkChunksForDeletion marks chunks to delete for a given table and returns if it's empty or modified.
+	FindAndMarkChunksForDeletion(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error)
+
+	// MarkChunksForDeletion marks the given list of chunks for deletion
+	MarkChunksForDeletion(tableName string, chunks []string) error
 }
 
 type Marker struct {
@@ -141,8 +146,8 @@ func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeou
 	}, nil
 }
 
-// MarkForDelete marks all chunks expired for a given table.
-func (t *Marker) MarkForDelete(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
+// FindAndMarkChunksForDeletion finds expired chunks using the ExpirationChecker from the given table and marks them for deletion.
+func (t *Marker) FindAndMarkChunksForDeletion(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
 	start := time.Now()
 	status := statusSuccess
 	defer func() {
@@ -191,6 +196,27 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 	}
 	t.markerMetrics.tableProcessedTotal.WithLabelValues(tableName, userID, tableActionModified).Inc()
 	return empty, modified, nil
+}
+
+// MarkChunksForDeletion marks the given list of chunks for deletion
+func (t *Marker) MarkChunksForDeletion(tableName string, chunks []string) error {
+	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to create marker writer: %w", err)
+	}
+
+	for _, chunk := range chunks {
+		if err := markerWriter.Put(unsafeGetBytes(chunk)); err != nil {
+			return err
+		}
+	}
+
+	t.markerMetrics.tableMarksCreatedTotal.WithLabelValues(tableName).Add(float64(markerWriter.Count()))
+	if err := markerWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close marker writer: %w", err)
+	}
+
+	return nil
 }
 
 func markForDelete(
@@ -502,7 +528,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false, false, err
 	}
 
-	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk)
+	approxKB := math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))
+	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk.ChunkRef, newChunk.Metric, uint32(approxKB), uint32(newChunk.Data.Entries()))
 	if err != nil {
 		return false, false, err
 	}
