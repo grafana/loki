@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/cachingbucket"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/executor"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
@@ -30,6 +31,10 @@ var (
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
 func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+
+	// nocommit
+	// just testing
+	bucket = cachingbucket.New(bucket, "dataobj-dev")
 
 	var ms metastore.Metastore
 	if bucket != nil {
