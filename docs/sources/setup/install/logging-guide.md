@@ -1,40 +1,79 @@
 ---
 title: Grafana Log Dashboard Guide
 menuTitle: Grafana Log Dashboard Guide
-description: Step-by-step guide for setting up Grafana, Loki, and Promtail for log aggregation and visualization.
+description: Step-by-step guide for setting up Grafana, Loki, and Grafana Alloy for log aggregation and visualization.
 weight: 310
 ---
 
----
-
-This guide walks you through the process of setting up a Grafana Server Log Monitoring Dashboard, including the installation and configuration of Grafana, Loki, and Promtail for log aggregation and visualization. It also covers setting up scripts for automating log retrieval and dashboard updates.
+This guide provides an official, end-to-end reference for deploying a unified log monitoring system using Grafana, Loki, and Grafana Alloy. Centralized log collection is essential for rapid troubleshooting, security auditing, and system performance analysis. By automating both log transfer and ingestion, this setup minimizes operational overhead and ensures that logs from multiple sources arrive in Grafana in near real time.
 
 ---
 
 ## Step 1: Install Grafana via CLI
 
-1. **Install Grafana** on your server using the following instructions for Debian-based systems:
-   - Follow the installation guide here: [Grafana Installation on Debian](https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/)
+Grafana is the visualization layer for metrics and logs. Installing via CLI guarantees reproducible deployments and supports automated provisioning in production environments.  
+* For complete installation instructions on all supported platforms, see the official Grafana guide: [Grafana Installation](https://grafana.com/docs/grafana/latest/setup-grafana/installation/)  
+* This example uses Ubuntu/Debian; if you’re on another OS, adapt the commands below as needed.
 
-2. Once installed, start Grafana and make sure it's accessible via a port (default: `3000`).
+```bash
+sudo apt-get update
+sudo apt-get install -y gnupg2 curl
+curl https://packages.grafana.com/gpg.key | sudo apt-key add -
+sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
+sudo apt-get update
+sudo apt-get install -y grafana
+sudo systemctl start grafana-server
+sudo systemctl enable grafana-server
+````
 
-3. After Grafana is running, create an admin account. Once logged in, you'll land on the Grafana homepage.
+* Once installed, start Grafana and make sure it's accessible via a port (default: `3000`).
+* After Grafana is running, create an admin account. Once logged in, you'll land on the Grafana homepage.
 
 ---
 
-## Step 2: Install Loki
+## Step 2: Deploy Loki for Log Storage
 
-1. **Install Loki** by following the official instructions for Docker:
-   - [Loki Installation via Docker](https://grafana.com/docs/loki/latest/setup/install/docker/)
+Loki provides a scalable and cost-effective approach to storing and querying logs alongside your metrics data. Installing Loki next ensures that you have the backend log store ready for ingestion before configuring collection agents.
 
----
-
-## Step 3: Create a Docker Compose File for Loki
-
-To set up Loki with Grafana, create a `docker-compose.yml` file:
+* For complete installation instructions on all supported platforms, see the official Loki guide: [Loki Installation](https://grafana.com/docs/loki/latest/setup/install/)
+* This example uses Docker/Docker Compose; if you’re using another approach, adapt the commands below as needed.
 
 ```yaml
-version: "3"  # The version can be removed if you're using a recent Docker Compose version.
+version: "3.8"
+
+services:
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki-data
+    command: -config.file=/etc/loki/local-config.yaml
+
+volumes:
+  loki-data:
+```
+
+This configuration:
+
+* Exposes Loki’s HTTP API on port **3100**.
+* Persists index and chunk data in the named volume **loki-data**.
+* Loads default settings from **local-config.yaml**.
+
+Launch with:
+
+```bash
+docker-compose up -d
+```
+
+---
+
+## Step 3: Combine Grafana and Loki via Docker Compose
+
+Co-locating Grafana and Loki in a single Docker Compose file establishes a private network between the services, simplifies configuration, and ensures version compatibility. It also provides a single command to bring up the entire stack.
+
+```yaml
+version: "3.8"
 
 services:
   grafana:
@@ -42,205 +81,208 @@ services:
     ports:
       - "3000:3000"
     networks:
-      - loki
+      - loki-net
     volumes:
-      - grafana-data:/path # [CHANGE THIS LINE] Adding persistence for Grafana data 
+      - grafana-data:/var/lib/grafana
 
   loki:
     image: grafana/loki:latest
     ports:
       - "3100:3100"
     networks:
-      - loki
+      - loki-net
     volumes:
-      - ./path  # [CHANGE THIS LINE] Local directory for Loki data
-    user: "10001"  # Run Loki as the appropriate user to avoid permission issues
-
-  promtail:
-    image: grafana/promtail:latest
-    command: "-config.file=/etc/promtail/config.yaml" # [CHANGE THIS LINE] 
-    networks:
-      - loki
-    volumes:
-      - "/var/log:/var/log"  # [CHANGE THIS LINE] Mounting host logs
+      - loki-data:/loki-data
+    command: -config.file=/etc/loki/local-config.yaml
 
 networks:
-  loki:
+  loki-net:
 
 volumes:
-  grafana-data:  # Declaring the volume for Grafana
+  grafana-data:
+  loki-data:
 ```
 
----
+* **loki-net** isolates traffic between services.
+* **grafana-data** stores dashboards, users, and plugins persistently.
 
-## Step 4: Install Promtail
-
-1. **Install Promtail** by following the official instructions:
-   - [Promtail Installation Guide](https://grafana.com/docs/loki/latest/send-data/promtail/installation/)
-
----
-
-## Step 5: Configure Data Sources (Logs)
-
-To aggregate logs from other servers, we set up a method of transferring logs to the Grafana server. The logs are pulled into the Grafana server, where they are processed and rendered on a Grafana dashboard.
-
-Here’s the updated section of the `README` with the requested changes marked. The rest remains unchanged.
-
----
-
-## Step 5: Configure Data Sources (Logs)
-
-### 5.1: Write a Bash Script to Pull Logs
-
-Here’s an example of a script (`transfer_logs.sh`) to pull logs from another server:
+Bring up both services:
 
 ```bash
-#!/bin/bash
-
-# Define variables
-REMOTE_SERVER="root@server_ip"  # [CHANGE THIS LINE] Remote server IP
-SSH_KEY_PATH="path"  # [CHANGE THIS LINE] Path to SSH key
-DEST_DIR="path"  # [CHANGE THIS LINE] Destination directory on the Grafana server
-
-# Define paths for logs
-DOCKER_LOG="path/to/docker/log"  # [CHANGE THIS LINE] Path to Docker log on remote server
-NGINX_LOG="path/to/nginx/log"  # [CHANGE THIS LINE] Path to NGINX log on remote server
-SYSLOG="path/to/syslog"  # [CHANGE THIS LINE] Path to syslog on remote server
-
-# Create directories if they don't exist
-mkdir -p "$DEST_DIR/docker" "$DEST_DIR/nginx" "$DEST_DIR/syslog"
-
-# Transfer logs
-echo "Transferring Docker log..."
-ssh -i $SSH_KEY_PATH $REMOTE_SERVER "cat $DOCKER_LOG" > "$DEST_DIR/docker/docker.log"
-
-echo "Transferring NGINX log..."
-ssh -i $SSH_KEY_PATH $REMOTE_SERVER "cat $NGINX_LOG" > "$DEST_DIR/nginx/error.log"
-
-echo "Transferring syslog..."
-ssh -i $SSH_KEY_PATH $REMOTE_SERVER "cat $SYSLOG" > "$DEST_DIR/syslog/syslog.log"
-
-echo "All logs have been successfully transferred."
+docker-compose up -d
 ```
 
 ---
 
-### 5.2: Configure Promtail to Scrape Logs
+## Step 4: Install and Configure Grafana Alloy
 
-Next, create a `promtail-config.yaml` file to let Promtail know where the logs are located:
+Although Grafana and Loki provide visualization and storage, you need a log collector that reads files, applies labels, and pushes to Loki. Grafana Alloy is the unified log collector that handles file watching, labeling, and direct ingestion into Loki.
+* For complete installation instructions on all supported platforms, see the official Alloy guide: [Grafana Alloy Installation](https://grafana.com/docs/alloy/latest/set-up/install/)  
+*  This example uses the standalone approach; if you’re using another approach, adapt the commands below as needed.
+
+```bash
+wget https://dl.grafana.com/oss/alloy/alloy-linux-amd64.tar.gz
+tar -xzf alloy-linux-amd64.tar.gz
+sudo mv alloy /usr/local/bin/
+sudo chmod +x /usr/local/bin/alloy
+```
+
+Create the Alloy configuration file **alloy-config.yaml**:
 
 ```yaml
 server:
   http_listen_port: 9080
-  grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/alloy/positions.yaml
 
 clients:
-  - url: http://server_ip:3100/loki/api/v1/push  # [CHANGE THIS LINE] Loki's URL
+  - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
   - job_name: docker_logs
     static_configs:
-      labels:
-        job: docker
-        __path__: /path/to/logs/on/grafana/server/docker/*.log  # [CHANGE THIS LINE] Path to Docker logs
+      - targets: ["localhost"]
+        labels:
+          job: docker
+          __path__: /var/log/docker/*.log
+
   - job_name: nginx_logs
     static_configs:
-      labels:
-        job: nginx
-        __path__: /path/to/logs/on/grafana/server/nginx/*.log  # [CHANGE THIS LINE] Path to NGINX logs
-  - job_name: syslog_logs
+      - targets: ["localhost"]
+        labels:
+          job: nginx
+          __path__: /var/log/nginx/*.log
+
+  - job_name: syslog
     static_configs:
-      labels:
-        job: syslog
-        __path__: /path/to/logs/on/grafana/server/syslog/*.log  # [CHANGE THIS LINE] Path to syslog logs
+      - targets: ["localhost"]
+        labels:
+          job: syslog
+          __path__: /var/log/syslog
+```
+
+* **positions.yaml** tracks read offsets to guarantee exactly-once ingestion.
+* **clients.url** points to Loki’s push endpoint.
+* **scrape\_configs** define which log files to monitor and how they are labeled in Loki.
+
+Start Alloy in the background:
+
+```bash
+sudo alloy -config.file=alloy-config.yaml &
+```
+
+---
+
+## Step 5: Automate Remote Log Transfer (`transfer_logs.sh`)
+
+In distributed environments, logs are often generated on multiple hosts (application servers, edge devices, etc.). Automating the transfer of those logs to a central location ensures that Alloy can scrape them and that all logs appear in your Grafana dashboards.
+
+```bash
+#!/usr/bin/env bash
+
+REMOTE="root@REMOTE_IP"
+SSH_KEY="~/.ssh/id_rsa"
+DEST="/var/log/remote"
+
+mkdir -p "$DEST/docker" "$DEST/nginx" "$DEST/syslog"
+
+echo "Fetching Docker logs..."
+ssh -i "$SSH_KEY" "$REMOTE" "cat /var/lib/docker/containers/*/*.log" > "$DEST/docker/docker.log"
+
+echo "Fetching Nginx logs..."
+ssh -i "$SSH_KEY" "$REMOTE" "cat /var/log/nginx/error.log" > "$DEST/nginx/error.log"
+
+echo "Fetching Syslog..."
+ssh -i "$SSH_KEY" "$REMOTE" "cat /var/log/syslog" > "$DEST/syslog/syslog.log"
+
+echo "Log transfer complete."
+```
+
+* **DEST directories** mirror the local paths defined in Alloy’s config.
+* **SSH fetching** ensures secure, on-demand transfer without installing agents on remote hosts.
+
+Make the script executable:
+
+```bash
+chmod +x transfer_logs.sh
 ```
 
 ---
 
 ## Step 6: Configure Grafana to Use Loki
 
-1. Open Grafana’s homepage and click the **three vertical lines** in the top-left corner.
+After you have set up Loki, you must register it in Grafana so that Grafana knows where to query for logs when building dashboards and using Explore.
 
-2. Navigate to **Data Sources**, then click **Add Data Source**.
-
-3. Select **Loki** as the data source type.
-
-4. Define the **URL** of your Loki instance, which is typically `http://localhost:3100`.
-
-5. Click **Save & Test**. You should see a success message confirming the connection.
+1. In Grafana’s sidebar, go to the three vertical lines and click **Data Sources → Add data source**.
+2. Select **Loki**.
+3. Set **URL** to `http://loki:3100` (or `http://localhost:3100`).
+4. Click **Save & Test**. A green banner confirms successful connection.
 
 ---
 
-## Step 7: Explore Data in Grafana
+## Step 7: Explore Logs in Grafana
 
-1. Go to the **Explore** section in Grafana.
+Before building dashboards, use Grafana’s **Explore** section to validate that logs are arriving correctly and to experiment with queries. Explore provides an ad-hoc interface to run LogQL queries, filter by labels, and visualize log lines in real time.
 
-2. Use label filters and run queries to see the logs coming from Promtail. The labels in the filters correspond to the `labels` defined in the `promtail-config.yaml`.
+* Use label filters such as `{job="docker"}` or `{job="nginx"}`.
+* Or even LogQL operators (e.g., `|= "ERROR"`) to refine results.
 
 ---
 
-## Step 8: Create a Dashboard
+## Step 8: Build a Dedicated Dashboard
 
-1. On the left sidebar in Grafana, click **Dashboards** > **New Dashboard**.
+Once you've validated queries in Explore, you can save them as panels in a dashboard to provide continuous, at-a-glance monitoring of your log streams. Dashboards allow operators to quickly spot error spikes, trends, and anomalies across different services.
 
-2. Click **Add Panel** to create a new panel.
-
-3. Under **Data Source**, select **Loki**.
-
-4. Write queries to retrieve logs for display. Use different labels to filter log data as needed.
-
-5. Choose a visualization type (e.g., **Logs**).
-
-6. Repeat the process to add more visualizations, then adjust the layout and size to suit your needs.
-
-7. Save the dashboard once you are satisfied with the layout.
+1. Go to the left sidebar, click **Dashboards → New dashboard → Add panel**.
+2. Choose **Loki** as the data source.
+3. Enter a LogQL query (for example, `{job="syslog"} |= "WARN"`).
+4. Select the **Logs** visualization.
+5. Repeat for each log stream, adjust panel layouts, and **Save** the dashboard with a descriptive name.
 
 ---
 
 ## Step 9: Automate Log Retrieval and Update Dashboard
 
-To make the process of pulling logs and updating the Grafana dashboard more automated, create two Python scripts:
+Now, you have your logging dashboard set up. To receive the most up to date logs of your services, we outline an automation process below. Automating the retrieval of new logs and refreshing your Grafana dashboard is crucial for maintaining an up-to-date view without manual CLI steps. To do so, create two minimal Python HTTP servers:
 
 ### 9.1: `transfer_server.py`
 
-This script triggers the Promtail process to start log scraping when accessed via an HTTP request:
+This script triggers the Alloy process to reload its configuration and pick up new files when accessed via HTTP:
 
 ```python
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import subprocess
 
-COMMAND = "sudo ./promtail-linux-amd64 -config.file=promtail-config.yaml"
+COMMAND = "sudo alloy -config.file=alloy-config.yaml"
 
 class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/run":
+        if self.path == "/reload":
             try:
                 subprocess.Popen(COMMAND, shell=True)
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b"Command executed successfully.")
+                self.wfile.write(b"Alloy reloaded successfully.")
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
-                self.wfile.write(f"Error executing command: {e}".encode())
+                self.wfile.write(f"Error reloading Alloy: {e}".encode())
         else:
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b"Not found.")
 
 if __name__ == "__main__":
-    server_address = ('server_ip', 8081)
+    server_address = ('', 8081)
     httpd = HTTPServer(server_address, RequestHandler)
-    print("Server running on http://server_ip. Access /run to execute the command.")
+    print("Starting reload server on port 8081. Access /reload to reload Alloy.")
     httpd.serve_forever()
 ```
 
 ### 9.2: `server.py`
 
-This script pulls the logs by executing the previously created bash script:
+This script pulls logs by executing the transfer script when accessed via HTTP:
 
 ```python
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -248,31 +290,34 @@ import subprocess
 
 class ScriptHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        script_path = "/path/to/transfer_logs.sh" # [CHANGE THIS LINE] 
-
-        try:
-            subprocess.run([script_path], check=True)
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
+        if self.path == "/pull":
+            try:
+                subprocess.run(["/path/to/transfer_logs.sh"], check=True) # for reference, this bash script is outlined in step 5
+                self.send_response(200)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Logs pulled successfully.")
+            except subprocess.CalledProcessError:
+                self.send_response(500)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Failed to pull logs.")
+        else:
+            self.send_response(404)
             self.end_headers()
-            self.wfile.write(b"Logs Pulled Successfully.")
-        except subprocess.CalledProcessError:
-            self.send_response(500)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"Failed to pull logs.")
+            self.wfile.write(b"Not found.")
 
 def run(server_class=HTTPServer, handler_class=ScriptHandler, port=8080):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
-    print(f"Starting http server on port {port}")
+    print(f"Starting pull server on port {port}")
     httpd.serve_forever()
 
 if __name__ == "__main__":
     run()
 ```
 
-Run both Python scripts in the background using `nohup`:
+Run both in the background:
 
 ```bash
 nohup python3 transfer_server.py > transfer_server.log 2>&1 &
@@ -283,8 +328,17 @@ nohup python3 server.py > server.log 2>&1 &
 
 ## Step 10: Add Buttons to Grafana Dashboard
 
-1. In Grafana, go to **Settings** > **Links**.
+Now, to use these scripts from your dashboard, to enable on demand log updates, add buttons! Embedding one-click buttons in your dashboard is important because it empowers your team to refresh log data and reload the collector without switching to a terminal. To configure:
 
-2. Add the links to the above Python scripts with the appropriate port (`8080` for log pulling and `8081` for triggering Promtail).
+1. In the dashboard view, click the **gear icon → Links**.
 
-3. This will enable users to pull logs instantly as they wish. Make sure promtail activation button is run first when opening dashboard, and then pulling logs button after.
+2. Add:
+
+   * **Pull Logs** → `http://<server>:8080/pull`
+   * **Reload Collector** → `http://<server>:8081/reload`
+
+3. Save the dashboard. Now, authorized users can trigger both log pulls and Alloy reloads directly from Grafana.
+
+---
+
+With this guide, organizations can deploy a robust log monitoring solution that leverages Grafana Alloy for streamlined ingestion, Loki for efficient storage and querying, and Grafana dashboards for real-time visualization and operational insight.
