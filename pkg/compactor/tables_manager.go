@@ -383,7 +383,7 @@ func (c *tablesManager) compactTable(ctx context.Context, tableName string, appl
 	if intervalMayHaveExpiredChunks {
 		err = table.applyRetention()
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
+			level.Error(util_log.Logger).Log("msg", "failed to apply retention", "table", tableName, "err", err)
 			return err
 		}
 	}
