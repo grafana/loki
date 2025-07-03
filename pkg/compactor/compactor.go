@@ -306,6 +306,8 @@ func (c *Compactor) init(
 		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
+	} else {
+		c.expirationChecker = retention.NeverExpiringExpirationChecker(limits)
 	}
 
 	legacyMarkerDirs := make(map[string]struct{})
@@ -381,7 +383,13 @@ func (c *Compactor) init(
 	c.metrics = newMetrics(r)
 	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
 
-	return c.deleteRequestsManager.Init(c.tablesManager)
+	if c.cfg.RetentionEnabled {
+		if err := c.deleteRequestsManager.Init(c.tablesManager); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits) error {
