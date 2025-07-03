@@ -2028,6 +2028,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for chunks-cache pods</td>
@@ -2101,17 +2110,6 @@ null
 			<td>Annotations for chunks-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>chunksCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -10331,6 +10329,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
@@ -10395,17 +10402,6 @@ null
 			<td>Annotations for results-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>resultsCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
