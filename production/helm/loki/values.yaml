@@ -3299,9 +3299,8 @@ resultsCache:
   #  whenUnsatisfiable: ScheduleAnyway
   # -- Tolerations for results-cache pods
   tolerations: []
-  # -- Pod Disruption Budget
-  podDisruptionBudget:
-    maxUnavailable: 1
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- The name of the PriorityClass for results-cache pods
   priorityClassName: null
   # -- Labels for results-cache pods
@@ -3405,9 +3404,8 @@ chunksCache:
   #  whenUnsatisfiable: ScheduleAnyway
   # -- Tolerations for chunks-cache pods
   tolerations: []
-  # -- Pod Disruption Budget
-  podDisruptionBudget:
-    maxUnavailable: 1
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- The name of the PriorityClass for chunks-cache pods
   priorityClassName: null
   # -- Labels for chunks-cache pods
