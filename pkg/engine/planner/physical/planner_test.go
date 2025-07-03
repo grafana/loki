@@ -108,26 +108,30 @@ func TestMockCatalog(t *testing.T) {
 
 }
 
-func locations(t *testing.T, nodes []Node) []string {
+func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+		for _, scan := range plan.Children(n) {
+			obj, ok := scan.(*DataObjScan)
+			if !ok {
+				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+			}
+			res = append(res, string(obj.Location))
 		}
-		res = append(res, string(obj.Location))
 	}
 	return res
 }
 
-func sections(t *testing.T, nodes []Node) [][]int {
+func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+		for _, scan := range plan.Children(n) {
+			obj, ok := scan.(*DataObjScan)
+			if !ok {
+				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+			}
+			res = append(res, obj.Sections)
 		}
-		res = append(res, obj.Sections)
 	}
 	return res
 }
@@ -157,8 +161,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 	}{
 		{
 			shard:       logical.NewShard(0, 1), // no sharding
-			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
-			expSections: [][]int{{0, 1}, {0, 1}, {0, 1}, {0, 1}, {0, 1}},
+			expPaths:    []string{"obj1", "obj1", "obj2", "obj2", "obj3", "obj3", "obj4", "obj4", "obj5", "obj5"},
+			expSections: [][]int{{0}, {1}, {0}, {1}, {0}, {1}, {0}, {1}, {0}, {1}},
 		},
 		{
 			shard:       logical.NewShard(0, 2), // shard 1 of 2
@@ -199,9 +203,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
-
-			require.Equal(t, tt.expPaths, locations(t, nodes))
-			require.Equal(t, tt.expSections, sections(t, nodes))
+			require.Equal(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.Equal(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }
