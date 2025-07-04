@@ -1,33 +1,38 @@
 package executor
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
 		}, nil),
 
-		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer builder.Release()
 
-			for i := int64(0); i < sz; i++ {
-				builder.Append(offset + i)
+			rows := int64(0)
+			for ; rows < batchSize && offset+rows < maxRows; rows++ {
+				builder.Append(offset + rows)
 			}
 
 			data := builder.NewArray()
 			defer data.Release()
 
 			columns := []arrow.Array{data}
-			return array.NewRecord(schema, columns, sz)
+			return array.NewRecord(schema, columns, rows)
 		},
 	)
 )
@@ -48,20 +53,21 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64},
+			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
 		}, nil),
 
-		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer idColBuilder.Release()
 
-			tsColBuilder := array.NewUint64Builder(memory.DefaultAllocator)
+			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 			defer tsColBuilder.Release()
 
-			for i := int64(0); i < sz; i++ {
-				idColBuilder.Append(offset + i)
-				tsColBuilder.Append(uint64(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
+			rows := int64(0)
+			for ; rows < batchSize && offset+rows < maxRows; rows++ {
+				idColBuilder.Append(offset + rows)
+				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(rows)*time.Millisecond)).UnixNano()))
 			}
 
 			idData := idColBuilder.NewArray()
@@ -71,17 +77,19 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			defer tsData.Release()
 
 			columns := []arrow.Array{idData, tsData}
-			return array.NewRecord(schema, columns, sz)
+			return array.NewRecord(schema, columns, rows)
 		},
 	)
 }
 
+type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record
+
 type recordGenerator struct {
 	schema *arrow.Schema
-	batch  func(offset, sz int64, schema *arrow.Schema) arrow.Record
+	batch  batchFunc
 }
 
-func newRecordGenerator(schema *arrow.Schema, batch func(offset, sz int64, schema *arrow.Schema) arrow.Record) *recordGenerator {
+func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator {
 	return &recordGenerator{
 		schema: schema,
 		batch:  batch,
@@ -96,7 +104,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 			if pos >= rows {
 				return Exhausted
 			}
-			batch := p.batch(pos, batchSize, p.schema)
+			batch := p.batch(pos, rows, batchSize, p.schema)
 			pos += batch.NumRows()
 			return successState(batch)
 		},
@@ -108,7 +116,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	for {
 		err := pipeline.Read()
-		if err == EOF {
+		if errors.Is(err, EOF) {
 			break
 		}
 		if err != nil {

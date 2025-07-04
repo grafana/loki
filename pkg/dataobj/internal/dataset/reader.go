@@ -24,11 +24,12 @@ type ReaderOptions struct {
 	// are considered non-predicate columns.
 	Columns []Column
 
-	// Predicate filters the data returned by a Reader. Predicate is optional; if
+	// Predicates filter the data returned by a Reader. Predicates are optional; if
 	// nil, all rows from Columns are returned.
 	//
 	// Expressions in Predicate may only reference columns in Columns.
-	Predicate Predicate
+	// Holds a list of predicates that can be sequentially applied to the dataset.
+	Predicates []Predicate
 
 	// TargetCacheSize configures the amount of memory to target for caching
 	// pages in memory. The cache may exceed this size if the combined size of
@@ -125,40 +126,37 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	}
 	r.dl.SetReadRange(readRange)
 
-	count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
-	if err != nil && !errors.Is(err, io.EOF) {
-		return n, err
-	} else if count == 0 && errors.Is(err, io.EOF) {
-		return 0, io.EOF
-	}
+	var (
+		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
+		passCount  int // tracks how many rows passed the predicate
+		statistics = stats.FromContext(ctx)
+	)
 
-	var primaryColumnBytes int64
-	var primaryColumnPostFilterBytes int64
-	var totalBytesAfterFill int64
-	var passCount int // passCount tracks how many rows pass the predicate.
+	// If there are no predicates, read all columns in the dataset
+	if len(r.opts.Predicates) == 0 {
+		count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
+		if err != nil && !errors.Is(err, io.EOF) {
+			return n, err
+		} else if count == 0 && errors.Is(err, io.EOF) {
+			return 0, io.EOF
+		}
 
-	if r.opts.Predicate == nil {
-		// If there's no predicate, all rows are valid.
+		rowsRead = count
 		passCount = count
+
+		statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
+		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
+		statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
 	} else {
-		for i := range count {
-			size := s[i].SizeOfColumns(r.primaryColumnIndexes)
-
-			primaryColumnBytes += size
-			if !checkPredicate(r.opts.Predicate, r.origColumnLookup, s[i]) {
-				continue
-			}
-			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
-			// result in the Row.Values slice existing in two places in the buffer,
-			// which causes memory corruption when filling in rows.
-			s[passCount], s[i] = s[i], s[passCount]
-			passCount++
-			primaryColumnPostFilterBytes += size
+		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], statistics)
+		if err != nil {
+			return n, err
 		}
 	}
+	statistics.AddPostPredicateRows(int64(passCount))
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
 		// Mask out any ranges that aren't in s[:passCount], so that filling in
@@ -178,26 +176,101 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		} else if count != passCount {
 			return n, fmt.Errorf("failed to fill rows: expected %d, got %d", n, count)
 		}
+
+		var totalBytesFilled int64
 		for i := range count {
-			totalBytesAfterFill += s[i].Size()
+			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
+		statistics.AddPostPredicateDecompressedBytes(totalBytesFilled)
 	}
 
 	n += passCount
 
-	statistics := stats.FromContext(ctx)
-	statistics.AddPrePredicateDecompressedRows(int64(count))
-	statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
-	statistics.AddPostPredicateRows(int64(passCount))
-	// Fill is not called when there is no predicate
-	if totalBytesAfterFill > 0 {
-		statistics.AddPostPredicateDecompressedBytes(totalBytesAfterFill - primaryColumnPostFilterBytes)
-	}
-
 	// We only advance r.row after we successfully read and filled rows. This
 	// allows the caller to retry reading rows if a sporadic error occurs.
-	r.row += int64(count)
+	r.row += int64(rowsRead)
 	return n, nil
+}
+
+// readAndFilterPrimaryColumns reads the primary columns from the dataset
+// and filters the rows by sequentially applying the predicates.
+//
+// For each predicate evaluation, only the required columns are loaded.
+// Rows are filtered at each step with subsequent predicates only having to fill
+// the columns on the reduced row range.
+//
+// It returns the max rows read, rows that passed all the predicates, and any error
+func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *stats.Context) (int, int, error) {
+	var (
+		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
+		passCount          int // number of rows that passed the predicate
+		primaryColumnBytes int64
+		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
+	)
+
+	// sequentially apply the predicates.
+	for i, p := range r.opts.Predicates {
+		columns, idxs, err := r.predicateColumns(p, func(c Column) bool {
+			// keep only columns that haven't been filled yet.
+			_, ok := filledColumns[c]
+			return !ok
+		})
+		if err != nil {
+			return rowsRead, 0, err
+		}
+
+		var count int
+		// read the requested number of rows for the first predicate.
+		if i == 0 {
+			count, err = r.inner.ReadColumns(ctx, columns, s[:readSize])
+			if err != nil && !errors.Is(err, io.EOF) {
+				return 0, 0, err
+			} else if count == 0 && errors.Is(err, io.EOF) {
+				return 0, 0, io.EOF
+			}
+
+			rowsRead = count
+		} else if len(columns) > 0 {
+			count, err = r.inner.Fill(ctx, columns, s[:readSize])
+			if err != nil && !errors.Is(err, io.EOF) {
+				return rowsRead, 0, err
+			} else if count != readSize {
+				return rowsRead, 0, fmt.Errorf("failed to fill rows: expected %d, got %d", len(s), count)
+			}
+		} else {
+			count = readSize // required columns are already filled
+		}
+
+		passCount = 0
+		for i := range count {
+			size := s[i].SizeOfColumns(idxs)
+			primaryColumnBytes += size
+
+			if !checkPredicate(p, r.origColumnLookup, s[i]) {
+				continue
+			}
+			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
+			// result in the Row.Values slice existing in two places in the buffer,
+			// which causes memory corruption when filling in rows.
+			s[passCount], s[i] = s[i], s[passCount]
+			passCount++
+		}
+
+		if passCount == 0 {
+			// No rows passed the predicate, so we can stop early.
+			break
+		}
+
+		for _, c := range columns {
+			filledColumns[c] = struct{}{}
+		}
+
+		readSize = passCount
+	}
+
+	stats.AddPrePredicateDecompressedRows(int64(rowsRead))
+	stats.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+	return rowsRead, passCount, nil
 }
 
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
@@ -392,30 +465,32 @@ func (r *Reader) validatePredicate() error {
 
 	var err error
 
-	WalkPredicate(r.opts.Predicate, func(p Predicate) bool {
-		if err != nil {
-			return false
-		}
+	for _, pp := range r.opts.Predicates {
+		WalkPredicate(pp, func(p Predicate) bool {
+			if err != nil {
+				return false
+			}
 
-		switch p := p.(type) {
-		case EqualPredicate:
-			err = process(p.Column)
-		case InPredicate:
-			err = process(p.Column)
-		case GreaterThanPredicate:
-			err = process(p.Column)
-		case LessThanPredicate:
-			err = process(p.Column)
-		case FuncPredicate:
-			err = process(p.Column)
-		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
-			// No columns to process.
-		default:
-			panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
-		}
+			switch p := p.(type) {
+			case EqualPredicate:
+				err = process(p.Column)
+			case InPredicate:
+				err = process(p.Column)
+			case GreaterThanPredicate:
+				err = process(p.Column)
+			case LessThanPredicate:
+				err = process(p.Column)
+			case FuncPredicate:
+				err = process(p.Column)
+			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+				// No columns to process.
+			default:
+				panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
+			}
 
-		return true // Continue walking the Predicate.
-	})
+			return true // Continue walking the Predicate.
+		})
+	}
 
 	return err
 }
@@ -445,10 +520,28 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		}
 	}
 
-	ranges, err := r.buildPredicateRanges(ctx, r.opts.Predicate)
-	if err != nil {
-		return err
+	var ranges rowRanges
+	var err error
+	if len(r.opts.Predicates) == 0 { // no predicates, build full range
+		ranges, err = r.buildPredicateRanges(ctx, nil)
+		if err != nil {
+			return err
+		}
+	} else {
+		for _, p := range r.opts.Predicates {
+			rr, err := r.buildPredicateRanges(ctx, p)
+			if err != nil {
+				return err
+			}
+
+			if ranges == nil {
+				ranges = rr
+			} else {
+				ranges = intersectRanges(nil, ranges, rr)
+			}
+		}
 	}
+
 	r.dl.SetDatasetRanges(ranges)
 	r.ranges = ranges
 
@@ -474,34 +567,36 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 	}
 
 	// If there's no predicate, all columns are primary.
-	if r.opts.Predicate == nil {
+	if len(r.opts.Predicates) == 0 {
 		for _, c := range r.opts.Columns {
 			process(c)
 		}
 		return
 	}
 
-	// If there is a predicate, primary columns are those used in the predicate.
-	WalkPredicate(r.opts.Predicate, func(p Predicate) bool {
-		switch p := p.(type) {
-		case EqualPredicate:
-			process(p.Column)
-		case InPredicate:
-			process(p.Column)
-		case GreaterThanPredicate:
-			process(p.Column)
-		case LessThanPredicate:
-			process(p.Column)
-		case FuncPredicate:
-			process(p.Column)
-		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
-			// No columns to process.
-		default:
-			panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
-		}
+	for _, pp := range r.opts.Predicates {
+		// If there is a predicate, primary columns are those used in the predicate.
+		WalkPredicate(pp, func(p Predicate) bool {
+			switch p := p.(type) {
+			case EqualPredicate:
+				process(p.Column)
+			case InPredicate:
+				process(p.Column)
+			case GreaterThanPredicate:
+				process(p.Column)
+			case LessThanPredicate:
+				process(p.Column)
+			case FuncPredicate:
+				process(p.Column)
+			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+				// No columns to process.
+			default:
+				panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
+			}
 
-		return true // Continue walking the Predicate.
-	})
+			return true // Continue walking the Predicate.
+		})
+	}
 }
 
 // buildPredicateRanges returns a set of rowRanges that are valid to read based
@@ -737,4 +832,47 @@ func readMinMax(stats *datasetmd.Statistics) (minValue Value, maxValue Value, er
 		return Value{}, Value{}, fmt.Errorf("failed to unmarshal max value: %w", err)
 	}
 	return
+}
+
+func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Column, []int, error) {
+	columns := make(map[Column]struct{})
+
+	WalkPredicate(p, func(p Predicate) bool {
+		switch p := p.(type) {
+		case EqualPredicate:
+			columns[p.Column] = struct{}{}
+		case InPredicate:
+			columns[p.Column] = struct{}{}
+		case GreaterThanPredicate:
+			columns[p.Column] = struct{}{}
+		case LessThanPredicate:
+			columns[p.Column] = struct{}{}
+		case FuncPredicate:
+			columns[p.Column] = struct{}{}
+		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			// No columns to process.
+		default:
+			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
+		}
+		return true
+	})
+
+	ret := make([]Column, 0, len(columns))
+	idxs := make([]int, 0, len(columns))
+	for c := range columns {
+		idx, ok := r.origColumnLookup[c]
+		if !ok {
+			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
+		}
+
+		c := r.dl.AllColumns()[idx]
+		if !keep(c) {
+			continue
+		}
+
+		idxs = append(idxs, idx)
+		ret = append(ret, c)
+	}
+
+	return ret, idxs, nil
 }

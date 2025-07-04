@@ -256,7 +256,7 @@ func routeAndProcess(ctx context.Context) error {
 		if logger.V(2) {
 			logger.Infof("RPC on connection with xDS Configuration error: %v", rc.Err)
 		}
-		return status.Error(codes.Unavailable, "error from xDS configuration for matched route configuration")
+		return status.Error(codes.Unavailable, fmt.Sprintf("error from xDS configuration for matched route configuration: %v", rc.Err))
 	}
 
 	mn, ok := grpc.Method(ctx)
@@ -273,7 +273,7 @@ func routeAndProcess(ctx context.Context) error {
 	authority := md.Get(":authority")
 	vh := xdsresource.FindBestMatchingVirtualHostServer(authority[0], rc.VHS)
 	if vh == nil {
-		return status.Error(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
+		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
 	}
 
 	var rwi *xdsresource.RouteWithInterceptors
@@ -283,21 +283,22 @@ func routeAndProcess(ctx context.Context) error {
 	}
 	for _, r := range vh.Routes {
 		if r.M.Match(rpcInfo) {
-			// "NonForwardingAction is expected for all Routes used on server-side; a route with an inappropriate action causes
-			// RPCs matching that route to fail with UNAVAILABLE." - A36
+			// "NonForwardingAction is expected for all Routes used on
+			// server-side; a route with an inappropriate action causes RPCs
+			// matching that route to fail with UNAVAILABLE." - A36
 			if r.ActionType != xdsresource.RouteActionNonForwardingAction {
-				return status.Error(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
+				return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
 			}
 			rwi = &r
 			break
 		}
 	}
 	if rwi == nil {
-		return status.Error(codes.Unavailable, "the incoming RPC did not match a configured Route")
+		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
 	}
 	for _, interceptor := range rwi.Interceptors {
 		if err := interceptor.AllowRPC(ctx); err != nil {
-			return status.Errorf(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
+			return rc.StatusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
 		}
 	}
 	return nil

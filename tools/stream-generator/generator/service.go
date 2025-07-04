@@ -42,6 +42,10 @@ type Generator struct {
 	// payload
 	streams map[string][]distributor.KeyedStream
 
+	// active streams
+	activeStreams    int
+	activeStreamsMtx sync.RWMutex
+
 	// kafka
 	writer *client.Producer
 
@@ -138,7 +142,7 @@ func (s *Generator) starting(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
 	// Calculate optimal QPS to match the desired rate
-	s.cfg.QPSPerTenant = calculateOptimalQPS(s.cfg.DesiredRate, s.cfg.BatchSize, s.logger)
+	s.cfg.QPSPerTenant = calculateOptimalQPS(s.cfg.DesiredRate, s.cfg.CreateBatchSize, s.logger)
 	level.Info(s.logger).Log("msg", fmt.Sprintf("Adjusted QPS per tenant to %d to match desired rate of %d bytes/s",
 		s.cfg.QPSPerTenant, s.cfg.DesiredRate))
 
@@ -161,53 +165,12 @@ func (s *Generator) running(ctx context.Context) error {
 	// Create error channel to collect errors from goroutines
 	errCh := make(chan error, s.cfg.NumTenants)
 
-	// Start a goroutine for each tenant
+	// Start goroutines for each tenant:
+	// - create: creates new streams in intervals
+	// - keepAlive: keeps existing streams alive by re-sending them to the backend
 	for tenant, streams := range s.streams {
-		s.wg.Add(1)
-		go func(tenant string, streams []distributor.KeyedStream) {
-			defer s.wg.Done()
-
-			// Create a ticker for rate limiting based on QPSPerTenant
-			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
-			defer ticker.Stop()
-
-			// Keep track of current stream index and whether we've completed first pass
-			streamIdx := 0
-			firstPassComplete := false
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if streamIdx >= len(streams) {
-						streamIdx = 0
-						firstPassComplete = true
-					}
-
-					batchSize := s.cfg.BatchSize
-					if streamIdx+batchSize > len(streams) {
-						batchSize = len(streams) - streamIdx
-					}
-
-					streamsBatch := streams[streamIdx : streamIdx+batchSize]
-
-					switch s.cfg.PushMode {
-					case PushStreamMetadataOnly:
-						s.sendStreamMetadata(ctx, streamsBatch, streamIdx, batchSize, tenant, errCh)
-					case PushStream:
-						s.sendStreams(ctx, streamsBatch, streamIdx, batchSize, tenant, errCh)
-					}
-
-					// Only increment during the first pass
-					if !firstPassComplete {
-						s.metrics.activeStreamsTotal.WithLabelValues(tenant).Add(float64(batchSize))
-					}
-
-					streamIdx += batchSize
-				}
-			}
-		}(tenant, streams)
+		go s.create(ctx, tenant, streams, errCh)
+		go s.keepAlive(ctx, tenant, streams, errCh)
 	}
 
 	// Wait for context cancellation, subservice failure, or tenant error
@@ -243,6 +206,81 @@ func (s *Generator) GetMemberlist() *memberlist.KVInitService {
 
 func (s *Generator) GetFrontendRing() *ring.Ring {
 	return s.frontendRing
+}
+
+func (s *Generator) create(ctx context.Context, tenant string, streams []distributor.KeyedStream, errCh chan<- error) {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
+	createT := time.NewTicker(s.cfg.CreateNewStreamsInterval)
+	total := len(streams)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-createT.C:
+			func() {
+				s.activeStreamsMtx.Lock()
+				defer s.activeStreamsMtx.Unlock()
+
+				if s.activeStreams >= total {
+					createT.Stop()
+					return
+				}
+
+				batchSize := s.cfg.CreateBatchSize
+				if s.activeStreams+batchSize > total {
+					batchSize = total - s.activeStreams
+				}
+
+				batch := streams[s.activeStreams : s.activeStreams+batchSize]
+				s.pushStreams(ctx, tenant, batch, errCh)
+
+				s.metrics.streamsCreatedTotal.WithLabelValues(tenant).Inc()
+				s.activeStreams += batchSize
+			}()
+		}
+	}
+}
+
+func (s *Generator) keepAlive(ctx context.Context, tenant string, streams []distributor.KeyedStream, errCh chan<- error) {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
+	// Create a aliveT to create new streams in intervals
+	aliveT := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
+	defer aliveT.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-aliveT.C:
+			func() {
+				s.activeStreamsMtx.RLock()
+				defer s.activeStreamsMtx.RUnlock()
+
+				if s.activeStreams < s.cfg.CreateBatchSize {
+					// Skip until first batch is created
+					return
+				}
+
+				batch := streams[:s.activeStreams-1]
+				s.pushStreams(ctx, tenant, batch, errCh)
+				s.metrics.streamsKeepAliveTotal.WithLabelValues(tenant).Inc()
+			}()
+		}
+	}
+}
+
+func (s *Generator) pushStreams(ctx context.Context, tenant string, streams []distributor.KeyedStream, errCh chan<- error) {
+	switch s.cfg.PushMode {
+	case PushStreamMetadataOnly:
+		s.sendStreamMetadata(ctx, tenant, streams, errCh)
+	case PushStream:
+		s.sendStreams(ctx, tenant, streams, errCh)
+	}
 }
 
 // calculateOptimalQPS calculates the optimal QPS to achieve the desired ingestion rate

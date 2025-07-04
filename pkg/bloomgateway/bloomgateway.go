@@ -16,9 +16,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -31,6 +32,8 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/bloomgateway")
 
 const (
 	metricsSubsystem        = "bloom_gateway"
@@ -205,16 +208,16 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
+	ctx, sp := tracer.Start(ctx, "bloomgateway.FilterChunkRefs")
 	stats, ctx := ContextWithEmptyStats(ctx)
-	logger := spanlogger.FromContextWithFallback(
+	logger := spanlogger.FromContext(
 		ctx,
 		utillog.WithContext(ctx, g.logger),
 	)
 
 	defer func() {
 		level.Info(logger).Log(stats.KVArgs()...)
-		sp.Finish()
+		sp.End()
 	}()
 
 	// start time == end time --> empty response
@@ -256,11 +259,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	seriesByDay := partitionRequest(req)
 	stats.NumTasks = len(seriesByDay)
 
-	sp.LogKV(
-		"matchers", len(matchers),
-		"days", len(seriesByDay),
-		"blocks", len(req.Blocks),
-		"series_requested", len(req.Refs),
+	sp.SetAttributes(
+		attribute.Int("matchers", len(matchers)),
+		attribute.Int("days", len(seriesByDay)),
+		attribute.Int("blocks", len(req.Blocks)),
+		attribute.Int("series_requested", len(req.Refs)),
 	)
 
 	// len(seriesByDay) should never be 0
@@ -345,7 +348,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	stats.ChunksRequested = preFilterChunks
 	stats.ChunksFiltered = preFilterChunks - postFilterChunks
 
-	sp.LogKV("msg", "return filtered chunk refs")
+	sp.AddEvent("return filtered chunk refs")
 
 	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }

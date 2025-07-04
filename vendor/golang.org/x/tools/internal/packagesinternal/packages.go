@@ -15,6 +15,3 @@ type PackageError struct {
 
 var TypecheckCgo int
 var DepsErrors int // must be set as a LoadMode to call GetDepsErrors
-
-var SetModFlag = func(config any, value string) {}
-var SetModFile = func(config interface{}, value string) {}

@@ -27,8 +27,8 @@ type DeleteRequest struct {
 	Status    DeleteRequestStatus `json:"status"`
 	CreatedAt model.Time          `json:"created_at"`
 
-	UserID          string                 `json:"-"`
-	SequenceNum     int64                  `json:"-"`
+	UserID          string                 `json:"user_id,omitempty"`
+	SequenceNum     int64                  `json:"sequence_num,omitempty"`
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 	timeInterval    *timeInterval          `json:"-"`
@@ -106,12 +106,10 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 	return true
 }
 
-// IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
-// It returns a filter.Func if the chunk is supposed to be deleted partially or the delete request contains line filters.
-// If the filter.Func is nil, the whole chunk is supposed to be deleted.
-func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+// IsDeleted checks if the given chunk entry would have data requested for deletion.
+func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) bool {
 	if d.UserID != unsafeGetString(userID) {
-		return false, nil
+		return false
 	}
 
 	if !intervalsOverlap(model.Interval{
@@ -121,7 +119,7 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 		Start: d.StartTime,
 		End:   d.EndTime,
 	}) {
-		return false, nil
+		return false
 	}
 
 	if d.logSelectorExpr == nil {
@@ -133,11 +131,21 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 				"user", d.UserID,
 				"err", err,
 			)
-			return false, nil
+			return false
 		}
 	}
 
 	if !labels.Selector(d.matchers).Matches(lbls) {
+		return false
+	}
+
+	return true
+}
+
+// GetChunkFilter tells whether the chunk is covered by the DeleteRequest and
+// optionally returns a filter.Func if the chunk is supposed to be deleted partially or the delete request has line filters.
+func (d *DeleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+	if !d.IsDeleted(userID, lbls, chunk) {
 		return false, nil
 	}
 

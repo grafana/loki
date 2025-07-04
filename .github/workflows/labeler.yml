@@ -4,10 +4,16 @@ on:
 
 jobs:
   triage:
+    # We don't run the triaging for PRs from forks because those can't access "loki-github-bot" secrets in vault.
+    # We don't use GitHub actions app (secrets.GITHUB_TOKEN) because PRs created by the bot don't trigger CI.
+    # Also only run if the PR is merged, as an extra safe-guard.
+    if: ${{ ! github.event.pull_request.head.repo.fork && github.event.pull_request.merged == true }}
+
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write        
+      pull-requests: write
+      id-token: write
     steps:
     - name: Checkout Actions
       uses: actions/checkout@v4
@@ -25,8 +31,8 @@ jobs:
       uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760
       with:
         repo_secrets: |
-          APP_ID=loki-github-bot:app-id
-          PRIVATE_KEY=loki-github-bot:private-key            
+          APP_ID=loki-gh-app:app-id
+          PRIVATE_KEY=loki-gh-app:private-key
 
     - name: Generate GitHub App Token
       id: app-token

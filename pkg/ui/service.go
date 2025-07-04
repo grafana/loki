@@ -92,10 +92,8 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 }
 
 func (s *Service) run(ctx context.Context) error {
-	if err := s.node.ChangeState(ctx, peer.StateParticipant); err != nil {
-		level.Error(s.logger).Log("msg", "failed to change state to participant", "err", err)
-		return err
-	}
+	var joinOnce sync.Once
+
 	peers, err := s.getBootstrapPeers()
 	if err != nil {
 		// Warn when failed to get peers on startup as it can result in a split brain. We do not fail hard here
@@ -141,6 +139,23 @@ func (s *Service) run(ctx context.Context) error {
 							continue
 						}
 					}
+
+					// Only change state to participant after we've had a chance to join
+					// the cluster. This is an optional small optimization to reduce the
+					// total amount of network traffic required to synchronize with the
+					// cluster state; see [ckit.Node.ChangeState] for more details.
+					joinOnce.Do(func() {
+						if err := s.node.ChangeState(ctx, peer.StateParticipant); err != nil {
+							level.Error(s.logger).Log("msg", "failed to change state to participant", "err", err)
+
+							// ChangeState only fails when making an invalid state
+							// transition. We can log the error but otherwise safely avoid
+							// it, since the error means that either:
+							//
+							// 1. We're already in the participant state, or
+							// 2. We're immediately terminating and shouldn't change state.
+						}
+					})
 				}
 			}
 		}()

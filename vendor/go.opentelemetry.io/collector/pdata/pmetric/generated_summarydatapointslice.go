@@ -109,6 +109,10 @@ func (es SummaryDataPointSlice) AppendEmpty() SummaryDataPoint {
 func (es SummaryDataPointSlice) MoveAndAppendTo(dest SummaryDataPointSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -141,22 +145,7 @@ func (es SummaryDataPointSlice) RemoveIf(f func(SummaryDataPoint) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SummaryDataPointSlice) CopyTo(dest SummaryDataPointSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newSummaryDataPoint((*es.orig)[i], es.state).CopyTo(newSummaryDataPoint((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.SummaryDataPoint, srcLen)
-	wrappers := make([]*otlpmetrics.SummaryDataPoint, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newSummaryDataPoint((*es.orig)[i], es.state).CopyTo(newSummaryDataPoint(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigSummaryDataPointSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the SummaryDataPoint elements within SummaryDataPointSlice given the
@@ -165,4 +154,19 @@ func (es SummaryDataPointSlice) CopyTo(dest SummaryDataPointSlice) {
 func (es SummaryDataPointSlice) Sort(less func(a, b SummaryDataPoint) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigSummaryDataPointSlice(dest, src []*otlpmetrics.SummaryDataPoint) []*otlpmetrics.SummaryDataPoint {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.SummaryDataPoint, len(src))
+		data := make([]otlpmetrics.SummaryDataPoint, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigSummaryDataPoint(dest[i], src[i])
+	}
+	return dest
 }

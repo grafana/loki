@@ -9,7 +9,7 @@ import (
 )
 
 func TestTTLCache_Get(t *testing.T) {
-	c := NewTTLCache[string, string](time.Minute)
+	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// The value should be absent.
@@ -41,7 +41,7 @@ func TestTTLCache_Get(t *testing.T) {
 }
 
 func TestTTLCache_Set(t *testing.T) {
-	c := NewTTLCache[string, string](time.Minute)
+	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	c.Set("foo", "bar")
@@ -63,7 +63,7 @@ func TestTTLCache_Set(t *testing.T) {
 }
 
 func TestTTLCache_Delete(t *testing.T) {
-	c := NewTTLCache[string, string](time.Minute)
+	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// Set the value and it should be present.
@@ -79,7 +79,7 @@ func TestTTLCache_Delete(t *testing.T) {
 }
 
 func TestTTLCache_Reset(t *testing.T) {
-	c := NewTTLCache[string, string](time.Minute)
+	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	// Set two values, both should be present.
@@ -107,7 +107,7 @@ func TestTTLCache_Reset(t *testing.T) {
 }
 
 func TestTTLCache_EvictExpired(t *testing.T) {
-	c := NewTTLCache[string, string](time.Minute)
+	c := newTTLCache[string, string](time.Minute)
 	clock := quartz.NewMock(t)
 	c.clock = clock
 	c.Set("foo", "bar")
@@ -193,7 +193,7 @@ func TestTTLCache_EvictExpired(t *testing.T) {
 }
 
 func TestNopCache(t *testing.T) {
-	c := NewNopCache[string, string]()
+	c := newNopCache[string, string]()
 	// The value should be absent.
 	value, ok := c.Get("foo")
 	require.Equal(t, "", value)

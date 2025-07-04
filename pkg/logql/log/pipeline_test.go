@@ -29,7 +29,7 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, true, matches)
 
 	structuredMetadata := labels.FromStrings("y", "1", "z", "2")
-	expectedLabelsResults := append(lbs, structuredMetadata...)
+	expectedLabelsResults := appendLabels(lbs, structuredMetadata)
 	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), structuredMetadata)
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
@@ -91,8 +91,8 @@ func TestPipeline(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = [numValidCategories]labels.Labels{
-		ParsedLabel: labels.FromStrings("baz", "blip"),
+	p.baseBuilder.add = [numValidCategories][]labels.Label{
+		ParsedLabel: {{Name: "baz", Value: "blip"}},
 	}
 
 	p.Reset()
@@ -106,7 +106,7 @@ func TestPipeline(t *testing.T) {
 func TestPipelineWithStructuredMetadata(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	structuredMetadata := labels.FromStrings("user", "bob")
-	expectedLabelsResults := append(lbs, structuredMetadata...)
+	expectedLabelsResults := appendLabels(lbs, structuredMetadata)
 	p := NewPipeline([]Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
@@ -130,7 +130,7 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	// test duplicated structured metadata with stream labels
 	expectedNonIndexedLabels := labels.FromStrings("user", "bob", "foo_extracted", "baz")
 	expectedLabelsResults = labels.FromStrings("foo", "bar", "foo_extracted", "baz")
-	expectedLabelsResults = append(expectedLabelsResults, structuredMetadata...)
+	expectedLabelsResults = appendLabels(expectedLabelsResults, structuredMetadata)
 	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.Equal(t, []byte("lbs bar bob"), l)
 	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
@@ -167,8 +167,8 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = [numValidCategories]labels.Labels{
-		ParsedLabel: labels.FromStrings("baz", "blip"),
+	p.baseBuilder.add = [numValidCategories][]labels.Label{
+		ParsedLabel: {{Name: "baz", Value: "blip"}},
 	}
 
 	p.Reset()
@@ -177,6 +177,16 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	for _, v := range p.baseBuilder.add {
 		require.Len(t, v, 0)
 	}
+}
+
+func appendLabels(base labels.Labels, l labels.Labels) labels.Labels {
+	b := labels.NewBuilder(base)
+
+	l.Range(func(l labels.Label) {
+		b.Set(l.Name, l.Value)
+	})
+
+	return b.Labels()
 }
 
 func TestFilteringPipeline(t *testing.T) {
@@ -188,22 +198,22 @@ func TestFilteringPipeline(t *testing.T) {
 		structuredMetadata labels.Labels
 		ok                 bool
 	}{
-		{"it is before the timerange", 1, "line", labels.FromStrings("baz", "foo"), nil, true},
-		{"it is after the timerange", 6, "line", labels.FromStrings("baz", "foo"), nil, true},
-		{"it doesn't match the filter", 3, "all good", labels.FromStrings("baz", "foo"), nil, true},
-		{"it doesn't match all the selectors", 3, "line", labels.FromStrings("foo", "bar"), nil, true},
-		{"it doesn't match any selectors", 3, "line", labels.FromStrings("beep", "boop"), nil, true},
-		{"it matches all selectors", 3, "line", labels.FromStrings("foo", "bar", "bar", "baz"), nil, false},
+		{"it is before the timerange", 1, "line", labels.FromStrings("baz", "foo"), labels.EmptyLabels(), true},
+		{"it is after the timerange", 6, "line", labels.FromStrings("baz", "foo"), labels.EmptyLabels(), true},
+		{"it doesn't match the filter", 3, "all good", labels.FromStrings("baz", "foo"), labels.EmptyLabels(), true},
+		{"it doesn't match all the selectors", 3, "line", labels.FromStrings("foo", "bar"), labels.EmptyLabels(), true},
+		{"it doesn't match any selectors", 3, "line", labels.FromStrings("beep", "boop"), labels.EmptyLabels(), true},
+		{"it matches all selectors", 3, "line", labels.FromStrings("foo", "bar", "bar", "baz"), labels.EmptyLabels(), false},
 		{"it doesn't match all structured metadata", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "alice"), true},
 		{"it matches all structured metadata", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), false},
-		{"it tries all the filters", 5, "line", labels.FromStrings("baz", "foo"), nil, false},
+		{"it tries all the filters", 5, "line", labels.FromStrings("baz", "foo"), labels.EmptyLabels(), false},
 	}
 
 	for _, test := range tt {
 		downstream := newStubPipeline()
 		p := NewFilteringPipeline([]PipelineFilter{
-			newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), nil, "e"),
-			newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), nil, "e"),
+			newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), labels.EmptyLabels(), "e"),
+			newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), labels.EmptyLabels(), "e"),
 			newPipelineFilter(3, 5, labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), "e"),
 		}, downstream)
 
@@ -380,8 +390,8 @@ func TestDropLabelsPipeline(t *testing.T) {
 		for i, line := range tt.lines {
 			_, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-			require.Nil(t, finalLbs.Stream())
-			require.Nil(t, finalLbs.StructuredMetadata())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 		}
@@ -502,13 +512,9 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				finalLine, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 				require.Equal(t, tt.wantLine[i], finalLine)
 				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-				require.Nil(t, finalLbs.Stream())
-				require.Nil(t, finalLbs.StructuredMetadata())
-				if len(tt.wantLabels[i]) > 0 {
-					require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
-				} else {
-					require.Nil(t, finalLbs.Parsed())
-				}
+				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
+				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 				require.Equal(t, tt.wantLabels[i].String(), finalLbs.String())
 			}
@@ -615,13 +621,27 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line, labels.EmptyLabels())
+			samples, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString, labels.EmptyLabels())
+			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 
@@ -632,13 +652,27 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.Process(0, line, labels.EmptyLabels())
+			samples, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			resSample, resLbs, resMatches = ex.ProcessString(0, lineString, labels.EmptyLabels())
+			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok && len(samples) > 0 {
+				resSample = samples[0].Value
+				resLbs = samples[0].Labels
+				resMatches = true
+			} else {
+				resMatches = false
+			}
 		}
 	})
 }

@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
 func BenchmarkWriteMetastores(t *testing.B) {
@@ -35,9 +35,9 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	flushStats := make([]dataobj.FlushStats, 1000)
+	flushStats := make([]logsobj.FlushStats, 1000)
 	for i := 0; i < 1000; i++ {
-		flushStats[i] = dataobj.FlushStats{
+		flushStats[i] = logsobj.FlushStats{
 			MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
 			MaxTimestamp: now,
 		}
@@ -47,7 +47,8 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	t.ReportAllocs()
 	for i := 0; i < t.N; i++ {
 		// Test writing metastores
-		err := m.Update(ctx, "path", flushStats[i%len(flushStats)])
+		stats := flushStats[i%len(flushStats)]
+		err := m.Update(ctx, "path", stats.MinTimestamp, stats.MaxTimestamp)
 		require.NoError(t, err)
 	}
 
@@ -71,7 +72,7 @@ func TestWriteMetastores(t *testing.T) {
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	flushStats := dataobj.FlushStats{
+	flushStats := logsobj.FlushStats{
 		MinTimestamp: now.Add(-1 * time.Hour),
 		MaxTimestamp: now,
 	}
@@ -79,7 +80,7 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err := m.Update(ctx, "test-dataobj-path", flushStats)
+	err := m.Update(ctx, "test-dataobj-path", flushStats.MinTimestamp, flushStats.MaxTimestamp)
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)
@@ -88,12 +89,12 @@ func TestWriteMetastores(t *testing.T) {
 		originalSize = len(obj)
 	}
 
-	flushResult2 := dataobj.FlushStats{
+	flushResult2 := logsobj.FlushStats{
 		MinTimestamp: now.Add(-15 * time.Minute),
 		MaxTimestamp: now,
 	}
 
-	err = m.Update(ctx, "different-dataobj-path", flushResult2)
+	err = m.Update(ctx, "different-dataobj-path", flushResult2.MinTimestamp, flushResult2.MaxTimestamp)
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)
@@ -240,14 +241,11 @@ func TestDataObjectsPaths(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		err := m.Update(ctx, tc.path, dataobj.FlushStats{
-			MinTimestamp: tc.startTime,
-			MaxTimestamp: tc.endTime,
-		})
+		err := m.Update(ctx, tc.path, tc.startTime, tc.endTime)
 		require.NoError(t, err)
 	}
 
-	ms := NewObjectMetastore(bucket)
+	ms := NewObjectMetastore(bucket, log.NewNopLogger())
 
 	t.Run("finds objects within current window", func(t *testing.T) {
 		paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)

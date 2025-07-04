@@ -6,6 +6,7 @@
   release: import 'release.libsonnet',
   validate: import 'validate.libsonnet',
   validateGel: import 'validate-gel.libsonnet',
+
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildArtifactsBucket='loki-build-artifacts',
@@ -28,6 +29,8 @@
     useGCR=false,
     versioningStrategy='always-bump-patch',
                     ) {
+    local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+
     name: 'create release PR',
     on: {
       push: {
@@ -37,7 +40,6 @@
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
-      'id-token': 'read',
     },
     concurrency: {
       group: 'create-release-pr-${{ github.sha }}',
@@ -54,18 +56,19 @@
       SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
+      GITHUB_APP: githubApp,
     } + if releaseAs != null then {
       RELEASE_AS: releaseAs,
     } else {},
     local validationSteps = ['check'],
     jobs: {
       check: {
-        permissions: {
-          contents: 'write',
-          'pull-requests': 'write',
-          'id-token': 'write',
-        },
-      } + $.job.withUses(checkTemplate)
+               permissions: {
+                 contents: 'write',
+                 'pull-requests': 'write',
+                 'id-token': 'write',
+               },
+             } + $.job.withUses(checkTemplate)
              + $.job.with({
                skip_validation: skipValidation,
                build_image: buildImage,
@@ -77,7 +80,13 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets) + $.common.job.withNeeds(['version']),
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets)
+            + $.common.job.withNeeds(['version'])
+            + $.common.job.withPermissions({
+              contents: 'write',
+              'pull-requests': 'write',
+              'id-token': 'write',
+            }),
     } + std.mapWithKey(function(name, job) job + $.common.job.withNeeds(['version']), imageJobs) + {
       local buildImageSteps = ['dist'] + std.objectFields(imageJobs),
       'create-release-pr': $.release.createReleasePR + $.common.job.withNeeds(buildImageSteps),
@@ -99,6 +108,8 @@
     dockerPluginPath='clients/cmd/docker-driver',
     publishDockerPlugins=true,
                   ) {
+    local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+
     name: 'create release',
     on: {
       push: {
@@ -108,7 +119,6 @@
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
-      'id-token': 'read',
     },
     concurrency: {
       group: 'create-release-${{ github.sha }}',
@@ -119,6 +129,7 @@
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
+      GITHUB_APP: githubApp,
     } + if publishToGCS then {
       PUBLISH_BUCKET: publishBucket,
       PUBLISH_TO_GCS: true,
@@ -126,14 +137,14 @@
       PUBLISH_TO_GCS: false,
     },
     jobs: {
-      shouldRelease: $.release.shouldRelease + {
+      shouldRelease: $.release.shouldRelease {
         permissions: {
           contents: 'write',
           'pull-requests': 'write',
           'id-token': 'write',
         },
       },
-      createRelease: $.release.createRelease + {
+      createRelease: $.release.createRelease {
         permissions: {
           contents: 'write',
           'pull-requests': 'write',
@@ -190,7 +201,6 @@
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
-      'id-token': 'read',
     },
     concurrency: {
       group: 'check-${{ github.sha }}',
@@ -247,7 +257,6 @@
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
-      'id-token': 'read',
     },
     concurrency: {
       group: 'check-${{ github.sha }}',

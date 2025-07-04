@@ -103,6 +103,7 @@ type Connection struct {
 	ApplicationCredentialId     string            // Application Credential ID
 	ApplicationCredentialName   string            // Application Credential Name
 	ApplicationCredentialSecret string            // Application Credential Secret
+	Token                       string            // Token used for v3token authentication
 	AuthUrl                     string            // Auth URL
 	Retries                     int               // Retries on error (default is 3)
 	UserAgent                   string            // Http User agent (default goswift/1.0)

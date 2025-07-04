@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"math"
@@ -46,23 +47,17 @@ var testEncodings = []compression.Codec{
 }
 
 var (
-	testBlockSize  = 256 * 1024
-	testTargetSize = 1500 * 1024
-	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
-	countExtractor = func() log.StreamSampleExtractor {
-		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-		if err != nil {
-			panic(err)
-		}
-		return ex.ForStream(labels.Labels{})
-	}()
-	bytesExtractor = func() log.StreamSampleExtractor {
-		ex, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
-		if err != nil {
-			panic(err)
-		}
-		return ex.ForStream(labels.Labels{})
-	}()
+	testBlockSize     = 256 * 1024
+	testTargetSize    = 1500 * 1024
+	testBlockSizes    = []int{64 * 1024, 256 * 1024, 512 * 1024}
+	multiVariantQuery = `variants(
+    count_over_time({app="myapp"} [5m]),
+    bytes_over_time({app="myapp"} [5m])
+  ) of ({app="foo"} [5m])`
+	multiVariantCountOnlyQuery = `variants(
+    count_over_time({app="myapp"} [5m])
+  ) of ({app="foo"} [5m])`
+
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
 		chunkFormat  byte
@@ -235,6 +230,9 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
+				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "myapp"))
+				require.NoError(t, err)
+				countExtractor := extractors[0]
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -248,12 +246,11 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
+
 				t.Run("multi-extractor", func(t *testing.T) {
-					// Wrap extractors in variant extractors so they get a variant index we can use later for differentiating counts and bytes
-					extractors := []log.StreamSampleExtractor{
-						log.NewVariantsStreamSampleExtractorWrapper(0, countExtractor),
-						log.NewVariantsStreamSampleExtractorWrapper(1, bytesExtractor),
-					}
+					extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
+					require.NoError(t, err)
+
 					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 					idx = 0
 
@@ -530,7 +527,7 @@ func TestSerialization(t *testing.T) {
 							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
-							require.Nil(t, e.StructuredMetadata)
+							require.Empty(t, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 						}
 					}
 					require.NoError(t, it.Err())
@@ -1002,6 +999,9 @@ func BenchmarkRead(b *testing.B) {
 		}
 	}
 
+	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	require.NoError(b, err)
+	countExtractor := extractors[0]
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncodings {
 			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
@@ -1120,6 +1120,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					for iter.Next() {
 						_ = iter.At()
 					}
+					iter.Close()
 				}
 			})
 		}
@@ -1145,6 +1146,10 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				b.ResetTimer()
 
+				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+				require.NoError(b, err)
+				countExtractor := extractors[0]
+
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
 
@@ -1156,6 +1161,30 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 			})
 		}
 	}
+}
+
+func getMultiVariantExtractors(query string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
+	expr, err := syntax.ParseSampleExpr(query)
+	if err != nil {
+		return nil, err
+	}
+
+	multiVariantExpr, ok := expr.(*syntax.MultiVariantExpr)
+	if !ok {
+		return nil, errors.New("expected multi-variant expression")
+	}
+
+	extractors, err := multiVariantExpr.Extractors()
+	if err != nil {
+		return nil, err
+	}
+
+	streamExtractors := make([]log.StreamSampleExtractor, len(extractors))
+	for i, extractor := range extractors {
+		streamExtractors[i] = extractor.ForStream(lbls)
+	}
+
+	return streamExtractors, nil
 }
 
 func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
@@ -1177,8 +1206,10 @@ func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 
 				b.ResetTimer()
 
+				extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
+				require.NoError(b, err)
 				for n := 0; n < b.N; n++ {
-					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor, bytesExtractor)
+					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
 
 					for iter.Next() {
 						_ = iter.At()

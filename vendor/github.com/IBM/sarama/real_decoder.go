@@ -115,7 +115,7 @@ func (rd *realDecoder) getArrayLength() (int, error) {
 	if tmp > rd.remaining() {
 		rd.off = len(rd.raw)
 		return -1, ErrInsufficientData
-	} else if tmp > 2*math.MaxUint16 {
+	} else if tmp > int(MaxResponseSize) {
 		return -1, errInvalidArrayLength
 	}
 	return tmp, nil

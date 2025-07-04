@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -72,8 +71,8 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 		offsetByteWidth = arrow.Int64SizeBytes
 	}
 
-	b := &BinaryBuilder{
-		builder:         builder{refCount: 1, mem: mem},
+	bb := &BinaryBuilder{
+		builder:         builder{mem: mem},
 		dtype:           dtype,
 		offsets:         offsets,
 		values:          newByteBufferBuilder(mem),
@@ -82,7 +81,8 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 		offsetByteWidth: offsetByteWidth,
 		getOffsetVal:    getOffsetVal,
 	}
-	return b
+	bb.builder.refCount.Add(1)
+	return bb
 }
 
 func (b *BinaryBuilder) Type() arrow.DataType { return b.dtype }
@@ -91,9 +91,9 @@ func (b *BinaryBuilder) Type() arrow.DataType { return b.dtype }
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (b *BinaryBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -387,18 +387,19 @@ type BinaryViewBuilder struct {
 }
 
 func NewBinaryViewBuilder(mem memory.Allocator) *BinaryViewBuilder {
-	return &BinaryViewBuilder{
+	bvb := &BinaryViewBuilder{
 		dtype: arrow.BinaryTypes.BinaryView,
 		builder: builder{
-			refCount: 1,
-			mem:      mem,
+			mem: mem,
 		},
 		blockBuilder: multiBufferBuilder{
-			refCount:  1,
 			blockSize: dfltBlockSize,
 			mem:       mem,
 		},
 	}
+	bvb.builder.refCount.Add(1)
+	bvb.blockBuilder.refCount.Add(1)
+	return bvb
 }
 
 func (b *BinaryViewBuilder) SetBlockSize(sz uint) {
@@ -408,9 +409,9 @@ func (b *BinaryViewBuilder) SetBlockSize(sz uint) {
 func (b *BinaryViewBuilder) Type() arrow.DataType { return b.dtype }
 
 func (b *BinaryViewBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) != 0 {
+	if b.refCount.Add(-1) != 0 {
 		return
 	}
 
@@ -673,7 +674,8 @@ func (b *BinaryViewBuilder) newData() (data *Data) {
 
 	dataBuffers := b.blockBuilder.Finish()
 	data = NewData(b.dtype, b.length, append([]*memory.Buffer{
-		b.nullBitmap, b.data}, dataBuffers...), nil, b.nulls, 0)
+		b.nullBitmap, b.data,
+	}, dataBuffers...), nil, b.nulls, 0)
 	b.reset()
 
 	if b.data != nil {

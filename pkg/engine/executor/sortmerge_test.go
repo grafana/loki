@@ -1,10 +1,11 @@
 package executor
 
 import (
-	"math"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
@@ -13,8 +14,8 @@ import (
 )
 
 func TestSortMerge(t *testing.T) {
-	now := time.Date(2024, 04, 15, 0, 0, 0, 0, time.UTC)
-	var batchSize = int64(10)
+	now := time.Unix(1000000, 0)
+	var batchSize = int64(3)
 
 	c := &Context{
 		batchSize: batchSize,
@@ -24,30 +25,30 @@ func TestSortMerge(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "invalid",
+					Column: "not_a_timestamp_column",
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
 		}
 
 		inputs := []Pipeline{
-			ascendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 100),
-			ascendingTimestampPipeline(now.Add(2*time.Nanosecond)).Pipeline(batchSize, 100),
-			ascendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 100),
+			ascendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 10),
+			ascendingTimestampPipeline(now.Add(2*time.Nanosecond)).Pipeline(batchSize, 10),
+			ascendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 10),
 		}
 
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
 		err = pipeline.Read()
-		require.ErrorContains(t, err, "key error")
+		require.ErrorContains(t, err, "column is not a timestamp column")
 	})
 
 	t.Run("ascending timestamp", func(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "timestamp",
+					Column: types.ColumnNameBuiltinTimestamp,
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
@@ -55,15 +56,15 @@ func TestSortMerge(t *testing.T) {
 		}
 
 		inputs := []Pipeline{
-			ascendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 100),
-			ascendingTimestampPipeline(now.Add(2*time.Nanosecond)).Pipeline(batchSize, 100),
-			ascendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 100),
+			ascendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 10),
+			ascendingTimestampPipeline(now.Add(2*time.Millisecond)).Pipeline(batchSize, 10),
+			ascendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64
+		timestamps := make([]arrow.Timestamp, 0, 30)
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -77,29 +78,24 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Timestamp)
 
-			// Check if ts column is sorted
-			for i := 0; i < arr.Len()-1; i++ {
-				require.LessOrEqual(t, arr.Value(i), arr.Value(i+1))
-				// also check ascending order across batches
-				require.GreaterOrEqual(t, arr.Value(i), lastTs)
-				lastTs = arr.Value(i + 1)
-			}
+			timestamps = append(timestamps, arr.Values()...)
 			batches++
 			rows += batch.NumRows()
 		}
 
-		// The test scenario is worst case and produces single-row records.
-		// require.Equal(t, int64(30), batches)
-		require.Equal(t, int64(300), rows)
+		// Check if ts column is sorted
+		require.Truef(t,
+			slices.IsSortedFunc(timestamps, func(a, b arrow.Timestamp) int { return int(a - b) }),
+			"timestamps are not sorted in ASC order: %v", timestamps)
 	})
 
 	t.Run("descending timestamp", func(t *testing.T) {
 		merge := &physical.SortMerge{
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
-					Column: "timestamp",
+					Column: types.ColumnNameBuiltinTimestamp,
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
@@ -107,15 +103,15 @@ func TestSortMerge(t *testing.T) {
 		}
 
 		inputs := []Pipeline{
-			descendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 100),
-			descendingTimestampPipeline(now.Add(2*time.Nanosecond)).Pipeline(batchSize, 100),
-			descendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 100),
+			descendingTimestampPipeline(now.Add(1*time.Nanosecond)).Pipeline(batchSize, 10),
+			descendingTimestampPipeline(now.Add(2*time.Millisecond)).Pipeline(batchSize, 10),
+			descendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
 		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
-		var lastTs uint64 = math.MaxUint64
+		timestamps := make([]arrow.Timestamp, 0, 30)
 		var batches, rows int64
 		for {
 			err := pipeline.Read()
@@ -129,21 +125,16 @@ func TestSortMerge(t *testing.T) {
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
-			arr := tsCol.ToArray().(*array.Uint64)
+			arr := tsCol.ToArray().(*array.Timestamp)
 
-			// Check if ts column is sorted
-			for i := 0; i < arr.Len()-1; i++ {
-				require.GreaterOrEqual(t, arr.Value(i), arr.Value(i+1))
-				// also check descending order across batches
-				require.LessOrEqual(t, arr.Value(i), lastTs)
-				lastTs = arr.Value(i + 1)
-			}
+			timestamps = append(timestamps, arr.Values()...)
 			batches++
 			rows += batch.NumRows()
 		}
 
-		// The test scenario is worst case and produces single-row records.
-		// require.Equal(t, int64(30), batches)
-		require.Equal(t, int64(300), rows)
+		// Check if ts column is sorted
+		require.Truef(t,
+			slices.IsSortedFunc(timestamps, func(a, b arrow.Timestamp) int { return int(b - a) }),
+			"timestamps are not sorted in DESC order: %v", timestamps)
 	})
 }

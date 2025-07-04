@@ -20,13 +20,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/internal/compute"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	grpcgoogle "google.golang.org/grpc/credentials/google"
 )
+
+var logRateLimiter = rate.Sometimes{Interval: 1 * time.Second}
 
 func isDirectPathEnabled(endpoint string, opts *Options) bool {
 	if opts.InternalOptions != nil && !opts.InternalOptions.EnableDirectPath {
@@ -111,14 +115,16 @@ func isDirectPathBoundTokenEnabled(opts *InternalOptions) bool {
 // configuration allows the use of direct path. If it does not the provided
 // grpcOpts and endpoint are returned.
 func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint string, creds *auth.Credentials) ([]grpc.DialOption, string, error) {
+	logRateLimiter.Do(func() {
+		logDirectPathMisconfig(endpoint, creds, opts)
+	})
 	if isDirectPathEnabled(endpoint, opts) && compute.OnComputeEngine() && isTokenProviderDirectPathCompatible(creds, opts) {
 		// Overwrite all of the previously specific DialOptions, DirectPath uses its own set of credentials and certificates.
 		defaultCredetialsOptions := grpcgoogle.DefaultCredentialsOptions{PerRPCCreds: &grpcCredentialsProvider{creds: creds}}
 		if isDirectPathBoundTokenEnabled(opts.InternalOptions) && isTokenProviderComputeEngine(creds) {
-			opts.DetectOpts.TokenBindingType = credentials.ALTSHardBinding
-			altsCreds, err := credentials.DetectDefault(opts.resolveDetectOptions())
-			// Revert it back since the same opts will be used in subsequent dial() calls.
-			opts.DetectOpts.TokenBindingType = credentials.NoBinding
+			optsClone := opts.resolveDetectOptions()
+			optsClone.TokenBindingType = credentials.ALTSHardBinding
+			altsCreds, err := credentials.DetectDefault(optsClone)
 			if err != nil {
 				return nil, "", err
 			}
@@ -151,4 +157,21 @@ func configureDirectPath(grpcOpts []grpc.DialOption, opts *Options, endpoint str
 		// TODO: add support for system parameters (quota project, request reason) via chained interceptor.
 	}
 	return grpcOpts, endpoint, nil
+}
+
+func logDirectPathMisconfig(endpoint string, creds *auth.Credentials, o *Options) {
+
+	// Case 1: does not enable DirectPath
+	if !isDirectPathEnabled(endpoint, o) {
+		o.logger().Warn("DirectPath is disabled. To enable, please set the EnableDirectPath option along with the EnableDirectPathXds option.")
+	} else {
+		// Case 2: credential is not correctly set
+		if !isTokenProviderDirectPathCompatible(creds, o) {
+			o.logger().Warn("DirectPath is disabled. Please make sure the token source is fetched from GCE metadata server and the default service account is used.")
+		}
+		// Case 3: not running on GCE
+		if !compute.OnComputeEngine() {
+			o.logger().Warn("DirectPath is disabled. DirectPath is only available in a GCE environment.")
+		}
+	}
 }

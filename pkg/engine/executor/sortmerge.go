@@ -13,12 +13,12 @@ import (
 
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
 func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
-	var compare func(a, b uint64) bool
+	var compare func(a, b int64) bool
 	switch order {
 	case physical.ASC:
-		compare = func(a, b uint64) bool { return a <= b }
+		compare = func(a, b int64) bool { return a <= b }
 	case physical.DESC:
-		compare = func(a, b uint64) bool { return a >= b }
+		compare = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
@@ -42,7 +42,7 @@ type KWayMerge struct {
 	exhausted   []bool
 	offsets     []int64
 	columnEval  evalFunc
-	compare     func(a, b uint64) bool
+	compare     func(a, b int64) bool
 }
 
 var _ Pipeline = (*KWayMerge)(nil)
@@ -92,7 +92,7 @@ func (p *KWayMerge) init() {
 	p.offsets = make([]int64, n)
 
 	if p.compare == nil {
-		p.compare = func(a, b uint64) bool { return a <= b }
+		p.compare = func(a, b int64) bool { return a <= b }
 	}
 }
 
@@ -106,7 +106,7 @@ func (p *KWayMerge) read() error {
 		p.state.batch.Release()
 	}
 
-	timestamps := make([]uint64, 0, len(p.inputs))
+	timestamps := make([]int64, 0, len(p.inputs))
 	batchIndexes := make([]int, 0, len(p.inputs))
 
 	for i := range len(p.inputs) {
@@ -119,7 +119,7 @@ func (p *KWayMerge) read() error {
 		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			err := p.inputs[i].Read()
 			if err != nil {
-				if err == EOF {
+				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
 					continue
 				}
@@ -131,12 +131,18 @@ func (p *KWayMerge) read() error {
 			p.batches[i], _ = p.inputs[i].Value()
 		}
 
+		// Prevent out-of-bounds error: `p.inputs[i].Read()` returned a batch with 0 rows, and therefore does not have a value at offset `p.offsets[i]`.
+		// However, since the call did not return EOF, the next read may return rows again, so we only skip without marking the input as exhausted.
+		if p.batches[i].NumRows() == 0 {
+			continue
+		}
+
 		// Fetch timestamp value at current offset
 		col, err := p.columnEval(p.batches[i])
 		if err != nil {
 			return err
 		}
-		tsCol, ok := col.ToArray().(*array.Uint64)
+		tsCol, ok := col.ToArray().(*array.Timestamp)
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}
@@ -144,7 +150,7 @@ func (p *KWayMerge) read() error {
 
 		// Populate slices for sorting
 		batchIndexes = append(batchIndexes, i)
-		timestamps = append(timestamps, ts)
+		timestamps = append(timestamps, int64(ts))
 	}
 
 	// Pipeline is exhausted if no more input batches are available
@@ -158,20 +164,20 @@ func (p *KWayMerge) read() error {
 		j := batchIndexes[0]
 		start := p.offsets[j]
 		end := p.batches[j].NumRows()
+
+		// check against empty batch
+		if start > end || end == 0 {
+			p.state = successState(p.batches[j])
+			p.offsets[j] = end
+			return nil
+		}
+
 		p.state = successState(p.batches[j].NewSlice(start, end))
 		p.offsets[j] = end
 		return nil
 	}
 
-	// Sort inputs based on timestamps
-	sort.Slice(batchIndexes, func(i, j int) bool {
-		return p.compare(timestamps[i], timestamps[j])
-	})
-
-	// Sort timestamps based on timestamps
-	sort.Slice(timestamps, func(i, j int) bool {
-		return p.compare(timestamps[i], timestamps[j])
-	})
+	sortIndexesByTimestamps(batchIndexes, timestamps, p.compare)
 
 	// Return the slice of the current record
 	j := batchIndexes[0]
@@ -182,23 +188,56 @@ func (p *KWayMerge) read() error {
 		return err
 	}
 	// We assume the column is a Uint64 array
-	tsCol, ok := col.ToArray().(*array.Uint64)
+	tsCol, ok := col.ToArray().(*array.Timestamp)
 	if !ok {
 		return errors.New("column is not a timestamp column")
 	}
 
 	// Calculate start/end of the sub-slice of the record
 	start := p.offsets[j]
-	end := start
-	for end < p.batches[j].NumRows() {
+	end := start + 1
+	for ; end < p.batches[j].NumRows(); end++ {
 		ts := tsCol.Value(int(end))
-		end++
-		if p.compare(ts, timestamps[1]) {
+		if !p.compare(int64(ts), timestamps[1]) {
 			break
 		}
+	}
+
+	// check against empty batch
+	if start > end || end == 0 {
+		p.state = successState(p.batches[j])
+		p.offsets[j] = end
+		return nil
 	}
 
 	p.state = successState(p.batches[j].NewSlice(start, end))
 	p.offsets[j] = end
 	return nil
+}
+
+func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn func(a, b int64) bool) {
+	if len(indexes) != len(timestamps) {
+		panic("lengths of indexes and timestamps must match")
+	}
+
+	pairs := make([]inputTimestampPair, len(indexes))
+	for i := range indexes {
+		pairs[i] = inputTimestampPair{indexes[i], timestamps[i]}
+	}
+
+	// Sort pairs by timestamp
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return lessFn(pairs[i].timestamp, pairs[j].timestamp)
+	})
+
+	// Unpack the sorted pairs back into the original slices
+	for i := range pairs {
+		indexes[i] = pairs[i].index
+		timestamps[i] = pairs[i].timestamp
+	}
+}
+
+type inputTimestampPair struct {
+	index     int
+	timestamp int64
 }
