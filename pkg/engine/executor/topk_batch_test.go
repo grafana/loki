@@ -210,10 +210,4 @@ func Test_topkBatch_MaxUnused(t *testing.T) {
 		assert.Equal(t, tc.expectUsed, used, "unexpected number of used rows after record %d", i)
 		assert.Equal(t, tc.expectUnused, unused, "unexpected number of unused rows after record %d", i)
 	}
-
-	for _, rows := range records {
-		rec := rows.Record(alloc, rows.Schema())
-		b.Put(alloc, rec)
-		rec.Release()
-	}
 }

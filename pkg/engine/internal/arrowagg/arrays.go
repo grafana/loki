@@ -18,20 +18,21 @@ type Arrays struct {
 
 // NewArrays creates a new [Arrays] that aggregates a set of arrays of the same
 // data type. The data type of incoming arrays is not checked until calling
-// [Arrays.Flush].
+// [Arrays.Aggregate].
 func NewArrays(mem memory.Allocator, dt arrow.DataType) *Arrays {
 	return &Arrays{mem: mem, dt: dt}
 }
 
 // Append appends the entirety of the given array to the builder. The data type
-// of arr is not checked until calling [arrayBuilder.Flush].
+// of arr is not checked until calling [Arrays.Aggregate].
 func (a *Arrays) Append(arr arrow.Array) {
 	arr.Retain()
+	a.nrows++
 	a.in = append(a.in, arr)
 }
 
 // AppendSlice appends a slice of the given array to the builder. The data type
-// of arr is not checked until calling [arrayBuilder.Flush].
+// of arr is not checked until calling [Arrays.Aggregate].
 func (a *Arrays) AppendSlice(arr arrow.Array, i, j int64) {
 	a.nrows += max(0, int(j-i))
 	a.in = append(a.in, array.NewSlice(arr, i, j))
