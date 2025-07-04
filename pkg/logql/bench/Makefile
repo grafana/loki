@@ -1,8 +1,10 @@
-.PHONY: generate bench list run run-debug stream
+.PHONY: all generate bench list run run-debug stream
 
 # Default size for data generation (2GB)
 SIZE ?= 2147483648
 TENANT ?= test-tenant
+
+all: clean generate prepare-for-local-testing
 
 generate:
 	@echo "Generating benchmark data..."
@@ -23,3 +25,12 @@ run-debug:
 
 stream:
 	@go run ./cmd/stream/main.go | less
+
+clean:
+	@echo "Clean data directory..."
+	@rm -rf data/
+
+prepare-for-local-testing:
+	@echo "Prepare file structure for local Loki setup..."
+	@mv data/chunks/* data/
+	@mv data/index_* data/index/
