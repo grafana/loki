@@ -28,9 +28,9 @@ stream:
 
 clean:
 	@echo "Clean data directory..."
-	@rm -rf data/
+	rm -rf data/
 
 prepare-for-local-testing:
 	@echo "Prepare file structure for local Loki setup..."
-	@mv data/chunks/* data/
-	@mv data/index_* data/index/
+	mv data/chunks/* data/
+	mv data/index_19723 data/index_cache
