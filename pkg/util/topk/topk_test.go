@@ -82,3 +82,25 @@ func TestHeap_Range_Empty(t *testing.T) {
 		}
 	})
 }
+
+func TestHeap_Push(t *testing.T) {
+	heap := &topk.Heap[int]{
+		Limit: 2,
+		Less:  func(a, b int) bool { return a < b },
+	}
+
+	// Fill the heap.
+	res, _ := heap.Push(50)
+	require.Equal(t, topk.PushResultPushed, res, "should push the first value into the heap")
+	res, _ = heap.Push(100)
+	require.Equal(t, topk.PushResultPushed, res, "should push the second value into the heap")
+
+	// Try adding a value that is smaller than the values in the heap.
+	res, _ = heap.Push(10)
+	require.Equal(t, topk.PushResultNone, res, "should not push a value smaller than the current heap values")
+
+	// Push a value that is larger than the smallest value in the heap.
+	res, prev := heap.Push(1000)
+	require.Equal(t, topk.PushResultReplaced, res, "should replace the smallest value in the heap")
+	require.Equal(t, 50, prev, "should return the previous smallest value that was replaced")
+}
