@@ -879,10 +879,8 @@ http {
     {{- $rulerUrl = $backendUrl }}
     {{- $compactorUrl = $backendUrl }}
     {{- $schedulerUrl = $backendUrl }}
-    {{- else if eq (include "loki.deployment.isDistributed" .) "true"}}
-    {{- if .Values.ingester.zoneAwareReplication.enabled }}
+    {{- else if and (eq (include "loki.deployment.isDistributed" .) "true") .Values.ingester.zoneAwareReplication.enabled }}
     {{- $ingesterUrl = printf "%s://ingester" $httpSchema }}
-    {{- end -}}
     {{- end -}}
 
     {{- if .Values.loki.ui.gateway.enabled }}
