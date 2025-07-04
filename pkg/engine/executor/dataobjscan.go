@@ -200,7 +200,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	var (
 		heapMut sync.Mutex
 		heap    = topk.Heap[logs.Record]{
-			Limit: int(s.opts.Limit),
+			Limit: 0, // unlimited
 			Less:  s.getLessFunc(s.opts.Direction),
 		}
 	)
