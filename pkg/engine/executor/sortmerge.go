@@ -119,15 +119,18 @@ func (p *KWayMerge) read() error {
 
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+			// Reset offset
+			p.offsets[i] = 0
+
 			err := p.inputs[i].Read()
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
+					p.batches[i] = nil // remove reference to arrow.Record from slice
 					continue
 				}
 				return err
 			}
-			p.offsets[i] = 0
 			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
 			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
 			p.batches[i], _ = p.inputs[i].Value()
@@ -167,11 +170,10 @@ func (p *KWayMerge) read() error {
 		start := p.offsets[j]
 		end := p.batches[j].NumRows()
 
-		// check against empty batch
-		if start > end || end == 0 {
-			p.state = successState(p.batches[j])
-			p.offsets[j] = end
-			return nil
+		// check against empty last batch
+		if start >= end || end == 0 {
+			p.state = Exhausted
+			return p.state.err
 		}
 
 		p.state = successState(p.batches[j].NewSlice(start, end))
