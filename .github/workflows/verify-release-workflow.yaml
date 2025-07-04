@@ -3,8 +3,14 @@ on: [pull_request]
 jobs:
   check-release-changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
     - name: setup go
       uses: actions/setup-go@v5
       with:

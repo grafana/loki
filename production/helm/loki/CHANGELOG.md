@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.29.1
 
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled
+- [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
 
 ## 6.29.0
 

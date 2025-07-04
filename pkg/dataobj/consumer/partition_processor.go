@@ -235,6 +235,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
+	p.metrics.incAppendsTotal()
 	if err := p.builder.Append(stream); err != nil {
 		if err != dataobj.ErrBuilderFull {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
@@ -259,6 +260,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
+		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
@@ -278,6 +280,7 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
+		p.metrics.incCommitsTotal()
 		err := p.client.CommitRecords(p.ctx, record)
 		if err == nil {
 			return nil

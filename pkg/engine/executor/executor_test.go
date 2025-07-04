@@ -39,13 +39,6 @@ func TestExecutor_SortMerge(t *testing.T) {
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
 	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeSortMerge(context.TODO(), &physical.SortMerge{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
-	})
 }
 
 func TestExecutor_Limit(t *testing.T) {
@@ -70,13 +63,6 @@ func TestExecutor_Filter(t *testing.T) {
 		pipeline := c.executeFilter(context.TODO(), &physical.Filter{}, nil)
 		err := pipeline.Read()
 		require.ErrorContains(t, err, EOF.Error())
-	})
-
-	t.Run("is not implemented", func(t *testing.T) {
-		c := &Context{}
-		pipeline := c.executeFilter(context.TODO(), &physical.Filter{}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read()
-		require.ErrorContains(t, err, errNotImplemented.Error())
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {

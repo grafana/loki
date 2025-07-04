@@ -74,7 +74,7 @@
       <rule pattern="(for|in)\b">
         <token type="Keyword"/>
       </rule>
-      <rule pattern="(module|count|data|each|var)">
+      <rule pattern="(module|count|data|each|var)\b">
         <token type="NameBuiltin"/>
       </rule>
       <rule pattern="(parseint|signum|floor|ceil|log|max|min|abs|pow)\b">
@@ -104,7 +104,7 @@
       <rule pattern="(tostring|tonumber|tobool|tolist|tomap|toset|can|try)\b">
         <token type="NameBuiltin"/>
       </rule>
-      <rule pattern="(name|x|default|type|description|value)">
+      <rule pattern="(^|[^.\w])(name|x|default|type|description|value)(_[a-zA-Z]\w*)*">
         <token type="NameAttribute"/>
       </rule>
       <rule pattern="=(?!&gt;)|\+|-|\*|\/|:|!|%|&gt;|&lt;(?!&lt;)|&gt;=|&lt;=|==|!=|&amp;&amp;|\||\?">
