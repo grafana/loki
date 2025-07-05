@@ -29,6 +29,7 @@ type (
 		MetadataSize     uint64
 		ValuesCount      uint64
 		Cardinality      uint64
+		ColumnIndex      int64
 
 		Pages []PageStats
 	}
@@ -79,6 +80,7 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 			MetadataSize:     col.Info.MetadataSize,
 			ValuesCount:      col.Info.ValuesCount,
 			Cardinality:      col.Info.Statistics.GetCardinalityCount(),
+			ColumnIndex:      int64(i),
 		}
 
 		for _, pages := range pageSets[i] {
