@@ -834,6 +834,8 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+  # -- Toggle this to true to allow the use of hostPath volumes on OpenShift
+  sccAllowHostDirVolumePlugin: false
   # -- Specify PSP annotations
   # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
   pspAnnotations: {}
