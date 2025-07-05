@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 func init() {
@@ -123,13 +124,13 @@ func (dec *plainBytesDecoder) decode(v *Value) error {
 		return err
 	}
 
-	dst := v.Buffer(int(sz))
+	dst := slicegrow.GrowToCap(v.Buffer(), int(sz))
 	dst = dst[:sz]
 	if _, err := io.ReadFull(dec.r, dst); err != nil {
 		return err
 	}
 
-	v.SetByteArrayValue(dst)
+	*v = ByteArrayValue(dst)
 	return nil
 }
 
