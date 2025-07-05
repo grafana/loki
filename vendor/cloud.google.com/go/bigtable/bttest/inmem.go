@@ -29,6 +29,19 @@ To use a Server, create it, and then connect to it with no security:
 	client, err := bigtable.NewClient(ctx, proj, instance,
 	        option.WithGRPCConn(conn))
 	...
+
+To use a Server with an in-memory connection, provide a bufconn listener:
+
+	l := bufconn.Listen(1024 * 1024)
+	srv, err := bttest.NewServerWithListener(l)
+	...
+	conn, err := grpc.Dial(
+		"bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return l.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	...
 */
 package bttest // import "cloud.google.com/go/bigtable/bttest"
 
@@ -85,9 +98,10 @@ var validLabelTransformer = regexp.MustCompile(`[a-z0-9\-]{1,15}`)
 type Server struct {
 	Addr string
 
-	l   net.Listener
-	srv *grpc.Server
-	s   *server
+	l            net.Listener
+	srv          *grpc.Server
+	s            *server
+	ownsListener bool
 }
 
 // server is the real implementation of the fake.
@@ -105,6 +119,15 @@ type server struct {
 	btpb.BigtableServer
 }
 
+// noopCloserListener wraps a net.Listener, but its Close method is a no-op.
+// This is used to prevent the gRPC server from closing a listener that was
+// provided by a user.
+type noopCloserListener struct {
+	net.Listener
+}
+
+func (n *noopCloserListener) Close() error { return nil }
+
 // NewServer creates a new Server.
 // The Server will be listening for gRPC connections, without TLS,
 // on the provided address. The resolved address is named by the Addr field.
@@ -121,7 +144,10 @@ func NewServer(laddr string, opt ...grpc.ServerOption) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newServer(l, true, opt...), nil
+}
 
+func newServer(l net.Listener, ownsListener bool, opt ...grpc.ServerOption) *Server {
 	s := &Server{
 		Addr: l.Addr().String(),
 		l:    l,
@@ -130,14 +156,29 @@ func NewServer(laddr string, opt ...grpc.ServerOption) (*Server, error) {
 			tables:    make(map[string]*table),
 			instances: make(map[string]*btapb.Instance),
 		},
+		ownsListener: ownsListener,
 	}
 	btapb.RegisterBigtableInstanceAdminServer(s.srv, s.s)
 	btapb.RegisterBigtableTableAdminServer(s.srv, s.s)
 	btpb.RegisterBigtableServer(s.srv, s.s)
 
-	go s.srv.Serve(s.l)
+	listenerForGRPC := l
+	if !ownsListener {
+		// If the user owns the listener, wrap it so srv.Stop() doesn't close it.
+		listenerForGRPC = &noopCloserListener{Listener: l}
+	}
+	go s.srv.Serve(listenerForGRPC)
+	return s
+}
 
-	return s, nil
+// NewServerWithListener creates a new Server using the provided listener.
+// The Addr field of the returned Server will be the listener's address.
+//
+// The caller is responsible for closing the listener. The server's Close method
+// will not close the provided listener, nor will it clean up any underlying
+// resources like unix socket files.
+func NewServerWithListener(l net.Listener, opt ...grpc.ServerOption) (*Server, error) {
+	return newServer(l, false, opt...), nil
 }
 
 // Close shuts down the server.
@@ -149,10 +190,12 @@ func (s *Server) Close() {
 	s.s.mu.Unlock()
 
 	s.srv.Stop()
-	s.l.Close()
+	if s.ownsListener {
+		s.l.Close()
+	}
 
 	// clean up unix socket
-	if strings.Contains(s.Addr, "/") {
+	if s.ownsListener && strings.Contains(s.Addr, "/") {
 		_ = os.Remove(s.Addr)
 	}
 }
