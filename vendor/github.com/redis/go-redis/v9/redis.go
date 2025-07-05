@@ -776,13 +776,6 @@ func (c *Client) Conn() *Conn {
 	return newConn(c.opt, pool.NewStickyConnPool(c.connPool), &c.hooksMixin)
 }
 
-// Do create a Cmd from the args and processes the cmd.
-func (c *Client) Do(ctx context.Context, args ...interface{}) *Cmd {
-	cmd := NewCmd(ctx, args...)
-	_ = c.Process(ctx, cmd)
-	return cmd
-}
-
 func (c *Client) Process(ctx context.Context, cmd Cmder) error {
 	err := c.processHook(ctx, cmd)
 	cmd.SetErr(err)
