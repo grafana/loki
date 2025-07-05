@@ -1,5 +1,59 @@
 # Release History
 
+## 1.6.0 (2025-01-23)
+
+### Features Added
+* Upgraded service version to `2025-01-05`.
+
+## 1.6.0-beta.1 (2025-01-13)
+
+### Features Added
+* Added permissions & resourcetype parameters in listblob response.
+* Added BlobProperties field in BlobPrefix definition in listblob response.
+
+### Bugs Fixed
+* Fix FilterBlob API if Query contains a space character. Fixes [#23546](https://github.com/Azure/azure-sdk-for-go/issues/23546)
+
+## 1.5.0 (2024-11-13)
+
+### Features Added
+* Fix compareHeaders custom sorting algorithm for String To Sign.
+
+## 1.5.0-beta.1 (2024-10-22)
+
+### Other Changes
+* Updated `azcore` version to `1.16.0`
+* Updated `azidentity` version to `1.8.0`
+
+## 1.4.1 (2024-09-18)
+
+### Features Added
+* Added crc64 response header to Put Blob.
+* Upgraded service version to `2024-08-04`.
+
+## 1.4.1-beta.1 (2024-08-27)
+
+### Features Added
+* Upgraded service version to `2024-08-04`.
+
+### Other Changes
+* Updated `azcore` version to `1.14.0`
+
+## 1.4.0 (2024-07-18)
+
+### Other Changes
+* GetProperties() was called twice in DownloadFile method. Enhanced to call it only once, reducing latency.
+* Updated `azcore` version to `1.13.0`
+
+## 1.4.0-beta.1 (2024-06-14)
+
+### Features Added
+* Updated service version to `2024-05-04`.
+
+### Other Changes
+* Updated `azidentity` version to `1.6.0`
+* Updated `azcore` version to `1.12.0`
+
 ## 1.3.2 (2024-04-09)
 
 ### Bugs Fixed
