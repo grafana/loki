@@ -11,6 +11,8 @@ querier common labels
 {{- define "loki.querierLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: querier
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
