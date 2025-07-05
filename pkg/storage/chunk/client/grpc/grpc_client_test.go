@@ -95,20 +95,11 @@ func TestGrpcStore(t *testing.T) {
 				Through:     1587997054298,
 				Checksum:    3651208117,
 			},
-			Metric: labels.Labels{
-				{
-					Name:  "_name_",
-					Value: "prometheus_sd_file_scan_duration_seconds_sum",
-				},
-				{
-					Name:  "instance",
-					Value: "localhost:9090",
-				},
-				{
-					Name:  "job",
-					Value: "prometheus",
-				},
-			},
+			Metric: labels.FromStrings(
+				"_name_", "prometheus_sd_file_scan_duration_seconds_sum",
+				"instance", "localhost:9090",
+				"job", "prometheus",
+			),
 			Encoding: chunkenc.LogChunk,
 			Data:     newChunkData(),
 		},
@@ -125,20 +116,11 @@ func TestGrpcStore(t *testing.T) {
 				Through:     1587997054298,
 				Checksum:    3651208117,
 			},
-			Metric: labels.Labels{
-				{
-					Name:  "_name_",
-					Value: "prometheus_sd_file_scan_duration_seconds_sum",
-				},
-				{
-					Name:  "instance",
-					Value: "localhost:9090",
-				},
-				{
-					Name:  "job",
-					Value: "prometheus",
-				},
-			},
+			Metric: labels.FromStrings(
+				"_name_", "prometheus_sd_file_scan_duration_seconds_sum",
+				"instance", "localhost:9090",
+				"job", "prometheus",
+			),
 			Encoding: chunkenc.LogChunk,
 			Data:     newChunkData(),
 		},
