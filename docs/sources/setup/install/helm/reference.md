@@ -1893,6 +1893,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for chunks-cache pods</td>
@@ -6252,30 +6261,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.memcached</td>
-			<td>object</td>
-			<td>Configure memcached as an external cache for chunk and results cache. Disabled by default must enable and specify a host for each cache you would like to use.</td>
-			<td><pre lang="json">
-{
-  "chunk_cache": {
-    "batch_size": 256,
-    "enabled": false,
-    "host": "",
-    "parallelism": 10,
-    "service": "memcached-client"
-  },
-  "results_cache": {
-    "default_validity": "12h",
-    "enabled": false,
-    "host": "",
-    "service": "memcached-client",
-    "timeout": "500ms"
-  }
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki.pattern_ingester</td>
 			<td>object</td>
 			<td>Optional pattern ingester configuration</td>
@@ -6871,6 +6856,15 @@ false
   },
   "readOnlyRootFilesystem": true
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.enabled</td>
+			<td>bool</td>
+			<td>Enable the built in memcached server provided by the chart</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -10165,6 +10159,15 @@ null
 			<td>Topology Spread Constraints for read pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc"
 </pre>
 </td>
 		</tr>
