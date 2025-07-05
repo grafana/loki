@@ -121,6 +121,14 @@ func (p *pipeline) addMultiCallback(c multiCallback) (unregister func()) {
 //
 // This method is safe to call concurrently.
 func (p *pipeline) produce(ctx context.Context, rm *metricdata.ResourceMetrics) error {
+	// Only check if context is already cancelled before starting, not inside or after callback loops.
+	// If this method returns after executing some callbacks but before running all aggregations,
+	// internal aggregation state can be corrupted and result in incorrect data returned
+	// by future produce calls.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	p.Lock()
 	defer p.Unlock()
 
@@ -130,25 +138,12 @@ func (p *pipeline) produce(ctx context.Context, rm *metricdata.ResourceMetrics) 
 		if e := c(ctx); e != nil {
 			err = errors.Join(err, e)
 		}
-		if err := ctx.Err(); err != nil {
-			rm.Resource = nil
-			clear(rm.ScopeMetrics) // Erase elements to let GC collect objects.
-			rm.ScopeMetrics = rm.ScopeMetrics[:0]
-			return err
-		}
 	}
 	for e := p.multiCallbacks.Front(); e != nil; e = e.Next() {
 		// TODO make the callbacks parallel. ( #3034 )
 		f := e.Value.(multiCallback)
 		if e := f(ctx); e != nil {
 			err = errors.Join(err, e)
-		}
-		if err := ctx.Err(); err != nil {
-			// This means the context expired before we finished running callbacks.
-			rm.Resource = nil
-			clear(rm.ScopeMetrics) // Erase elements to let GC collect objects.
-			rm.ScopeMetrics = rm.ScopeMetrics[:0]
-			return err
 		}
 	}
 
