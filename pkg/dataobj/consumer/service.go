@@ -47,8 +47,10 @@ type Service struct {
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+	logger = log.With(logger, "component", groupName)
+
 	s := &Service{
-		logger:            log.With(logger, "component", groupName),
+		logger:            logger,
 		cfg:               cfg,
 		bucket:            bucket,
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
@@ -95,9 +97,10 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 }
 
 func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
+
+	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
 
 	for topic, parts := range partitions {
 		tenant, virtualShard, err := s.codec.Decode(topic)
@@ -120,13 +123,14 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 }
 
 func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
 	if s.State() == services.Stopping {
 		// On shutdown, franz-go will send one more partitionRevoked event which we need to ignore to shutdown gracefully.
 		return
 	}
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
+
+	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
 
 	var wg sync.WaitGroup
 	for topic, parts := range partitions {

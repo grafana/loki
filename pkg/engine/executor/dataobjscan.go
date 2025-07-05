@@ -50,6 +50,8 @@ type dataobjScanOptions struct {
 
 	Direction physical.SortOrder // Order of timestamps to return (ASC=Forward, DESC=Backward)
 	Limit     uint32             // A limit on the number of rows to return (0=unlimited).
+
+	batchSize int64
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -198,7 +200,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	var (
 		heapMut sync.Mutex
 		heap    = topk.Heap[logs.Record]{
-			Limit: int(s.opts.Limit),
+			Limit: 0, // unlimited
 			Less:  s.getLessFunc(s.opts.Direction),
 		}
 	)
@@ -210,23 +212,25 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for _, reader := range s.readers {
 		g.Go(func() error {
-			for {
-				buf := make([]logs.Record, 1024) // do not re-use buffer
-				n, err := reader.Read(ctx, buf)
-				if n == 0 && errors.Is(err, io.EOF) {
-					return nil
-				} else if err != nil && !errors.Is(err, io.EOF) {
-					return err
-				}
 
-				gotData.Store(true)
-
-				heapMut.Lock()
-				for _, rec := range buf[:n] {
-					heap.Push(rec)
-				}
-				heapMut.Unlock()
+			buf := make([]logs.Record, s.opts.batchSize)
+			n, err := reader.Read(ctx, buf)
+			if n == 0 && errors.Is(err, io.EOF) {
+				return nil
+			} else if err != nil && !errors.Is(err, io.EOF) {
+				return err
 			}
+
+			gotData.Store(true)
+
+			heapMut.Lock()
+			for _, rec := range buf[:n] {
+				heap.Push(rec)
+			}
+			heapMut.Unlock()
+
+			return nil
+
 		})
 	}
 

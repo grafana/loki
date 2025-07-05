@@ -97,6 +97,8 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 
 		Direction: node.Direction,
 		Limit:     node.Limit,
+
+		batchSize: c.batchSize,
 	})
 }
 
