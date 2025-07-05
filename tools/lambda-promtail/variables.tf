@@ -90,6 +90,12 @@ variable "drop_labels" {
   default     = ""
 }
 
+variable "relabel_configs" {
+  type        = string
+  description = "JSON-encoded array of relabel rules, in Prometheus relabel_configs format, applied by lambda-promtail to every log entry."
+  default     = ""
+}
+
 variable "omit_extra_labels_prefix" {
   type        = bool
   description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
