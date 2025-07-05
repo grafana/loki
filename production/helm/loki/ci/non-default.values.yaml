@@ -1,0 +1,21 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+read:
+  replicas: 1
+write:
+  replicas: 1
+backend:
+  replicas: 1
+chunksCache:
+  suffix: "l1"
+  enabled: true
+l2:
+  enabled: true
