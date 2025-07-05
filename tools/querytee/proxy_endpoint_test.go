@@ -424,3 +424,44 @@ type mockComparator struct{}
 func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) {
 	return &ComparisonSummary{missingMetrics: 12}, nil
 }
+
+func Test_extractTenant(t *testing.T) {
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		expected string
+	}{
+		{
+			name:     "tenant ID present in header",
+			headers:  map[string]string{"X-Scope-OrgID": "tenant-123"},
+			expected: "tenant-123",
+		},
+		{
+			name:     "no tenant header present",
+			headers:  map[string]string{},
+			expected: "anonymous",
+		},
+		{
+			name:     "empty tenant header",
+			headers:  map[string]string{"X-Scope-OrgID": ""},
+			expected: "anonymous",
+		},
+		{
+			name:     "tenant with special characters",
+			headers:  map[string]string{"X-Scope-OrgID": "tenant-with-dashes_and_underscores"},
+			expected: "tenant-with-dashes_and_underscores",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+
+			result := extractTenant(req)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
