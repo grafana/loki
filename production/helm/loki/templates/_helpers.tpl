@@ -1023,12 +1023,12 @@ http {
   {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
   {{- if and $isDistributed .Values.ingester.zoneAwareReplication.enabled }}
   upstream ingester {
-    {{- $ingesterZoneAURL    := printf "%s://%s-zone-a-headless.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneAURL }}
-    {{- $ingesterZoneBURL    := printf "%s://%s-zone-b-headless.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneBURL }}
-    {{- $ingesterZoneCURL    := printf "%s://%s-zone-c-headless.%s.svc.%s:%s" $httpSchema $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneCURL }}
+    {{- $ingesterZoneAURL    := printf "%s-zone-a-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    server {{ $ingesterZoneAURL }};
+    {{- $ingesterZoneBURL    := printf "%s-zone-b-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    server {{ $ingesterZoneBURL }};
+    {{- $ingesterZoneCURL    := printf "%s-zone-c-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    server {{ $ingesterZoneCURL }};
   }
   {{- end }}
 }
