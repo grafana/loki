@@ -11016,7 +11016,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.5"
+"1.30.6"
 </pre>
 </td>
 		</tr>

@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -259,7 +260,7 @@ func (t *table) openCompactedIndexForUpdates(idxSet *indexSet) error {
 }
 
 // applyStorageUpdates applies storage updates for a single stream of a user
-func (t *table) applyStorageUpdates(userID, labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+func (t *table) applyStorageUpdates(userID, labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
 	is, ok := t.indexSets[userID]
 	if !ok {
 		return nil
@@ -289,6 +290,23 @@ func (t *table) cleanup() {
 	if err := os.RemoveAll(t.workingDirectory); err != nil {
 		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to remove working directory %s", t.workingDirectory), "err", err)
 	}
+}
+
+func (t *table) GetUserIndex(userID string) (retention.SeriesIterator, error) {
+	is, ok := t.indexSets[userID]
+	if !ok {
+		return nil, nil
+	}
+
+	// compactedIndex is only set in indexSet when files have been compacted,
+	// so we need to open the compacted index file for applying index updates if compactedIndex is nil
+	if is.compactedIndex == nil {
+		if err := t.openCompactedIndexForUpdates(is); err != nil {
+			return nil, err
+		}
+	}
+
+	return is.compactedIndex, nil
 }
 
 // tableHasUncompactedIndex returns true if we have more than "1" common index files.
