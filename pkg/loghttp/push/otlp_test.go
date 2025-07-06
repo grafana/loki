@@ -19,6 +19,8 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -593,6 +595,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				log.NewNopLogger(),
 				streamResolver,
+				constants.OTLP,
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
@@ -929,6 +932,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		"otlp",
 	)
 
 	// Debug: Print the actual streams we got
@@ -1030,6 +1034,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		constants.OTLP,
 	)
 
 	// Verify there is exactly one stream
@@ -1214,6 +1219,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
+		constants.OTLP,
 	)
 
 	// Debug: Print the actual streams we got

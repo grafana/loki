@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ type tableUpdatesRecorder struct {
 	updates map[string]map[string]map[string]storageUpdates
 }
 
-func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []chunk) error {
 	if _, ok := t.updates[tableName]; !ok {
 		t.updates[tableName] = map[string]map[string]storageUpdates{
 			userID: {
@@ -80,7 +81,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					req := requestsToAdd[i]
 					deleteRequestBatch.addDeleteRequest(&req)
 				}
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -138,7 +139,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					req := requestsToAdd[i]
 					deleteRequestBatch.addDeleteRequest(&req)
 				}
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -221,7 +222,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					req := requestsToAdd[i]
 					deleteRequestBatch.addDeleteRequest(&req)
 				}
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -304,7 +305,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					req := requestsToAdd[i]
 					deleteRequestBatch.addDeleteRequest(&req)
 				}
-				manifestBuilder, err := newDeletionManifestBuilder(client, *deleteRequestBatch)
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
 
 				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
@@ -388,16 +389,15 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
 				for iterator.Next() {
 					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
-						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
+						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, *(*[]chunk)(unsafe.Pointer(&chunksToIndex)))
 					}); err != nil {
 						return err
 					}
 				}
 
 				return iterator.Err()
-			}, func(requests []DeleteRequest) error {
+			}, func(requests []DeleteRequest) {
 				requestsMarkedAsProcessed = requests
-				return nil
 			})
 			jobsChan := make(chan *grpc.Job)
 
@@ -465,9 +465,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
 				return nil
-			}, func(_ []DeleteRequest) error {
-				return nil
-			})
+			}, func(_ []DeleteRequest) {})
 
 			// Create a test manifest
 			manifest := &manifest{
@@ -534,7 +532,7 @@ func buildStorageUpdates(jobNumStart, numJobs int) storageUpdates {
 		jobNum := jobNumStart + i
 		s.ChunksToDelete = append(s.ChunksToDelete, fmt.Sprintf("%d-d", jobNum))
 		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
-		s.ChunksToIndex = append(s.ChunksToIndex, Chunk{
+		s.ChunksToIndex = append(s.ChunksToIndex, chunk{
 			From:        model.Time(jobNum),
 			Through:     model.Time(jobNum),
 			Fingerprint: uint64(jobNum),

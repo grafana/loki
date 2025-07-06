@@ -11,25 +11,24 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 type mockChunkClient struct {
 	client.Client
-	chunks map[string]chunk.Chunk
+	chunks map[string]storage_chunk.Chunk
 }
 
-func (m *mockChunkClient) GetChunks(_ context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	var result []chunk.Chunk
+func (m *mockChunkClient) GetChunks(_ context.Context, chunks []storage_chunk.Chunk) ([]storage_chunk.Chunk, error) {
+	var result []storage_chunk.Chunk
 	for _, chk := range chunks {
 		if storedChk, ok := m.chunks[chunkKey(chk)]; ok {
 			result = append(result, storedChk)
@@ -38,7 +37,7 @@ func (m *mockChunkClient) GetChunks(_ context.Context, chunks []chunk.Chunk) ([]
 	return result, nil
 }
 
-func (m *mockChunkClient) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
+func (m *mockChunkClient) PutChunks(_ context.Context, chunks []storage_chunk.Chunk) error {
 	for _, chk := range chunks {
 		m.chunks[chunkKey(chk)] = chk
 	}
@@ -55,12 +54,12 @@ func toLabelsAdapter(lbls labels.Labels) push.LabelsAdapter {
 }
 
 // Helper to generate a unique key for a chunk (for test map)
-func chunkKey(c chunk.Chunk) string {
+func chunkKey(c storage_chunk.Chunk) string {
 	return fmt.Sprintf("%s/%x/%x:%x:%x", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
 }
 
 // Helper to create a test chunk with data
-func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, through model.Time, logLine string, structuredMetadata push.LabelsAdapter, logInterval time.Duration) chunk.Chunk {
+func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, through model.Time, logLine string, structuredMetadata push.LabelsAdapter, logInterval time.Duration) storage_chunk.Chunk {
 	t.Helper()
 	const (
 		targetSize = 1500 * 1024
@@ -83,7 +82,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 	}
 
 	require.NoError(t, chunkEnc.Close())
-	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
+	c := storage_chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
 }
@@ -143,7 +142,7 @@ func TestJobRunner_Run(t *testing.T) {
 			},
 			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []Chunk{
+				ChunksToIndex: []chunk{
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -170,7 +169,7 @@ func TestJobRunner_Run(t *testing.T) {
 			},
 			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []Chunk{
+				ChunksToIndex: []chunk{
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -203,7 +202,7 @@ func TestJobRunner_Run(t *testing.T) {
 			},
 			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []Chunk{
+				ChunksToIndex: []chunk{
 					{
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -224,7 +223,7 @@ func TestJobRunner_Run(t *testing.T) {
 			},
 			expectedResult: &storageUpdates{
 				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []Chunk{
+				ChunksToIndex: []chunk{
 					{
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -265,7 +264,7 @@ func TestJobRunner_Run(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup mock chunk client
 			mockClient := &mockChunkClient{
-				chunks: map[string]chunk.Chunk{
+				chunks: map[string]storage_chunk.Chunk{
 					chunkKey(chk): chk,
 				},
 			}
@@ -292,7 +291,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Run job
-			resultJSON, err := runner.Run(context.Background(), job)
+			resultJSON, err := runner.Run(context.Background(), &job)
 
 			if tc.expectError {
 				require.Error(t, err)

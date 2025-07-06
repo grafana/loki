@@ -660,7 +660,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v28.3.0+incompatible
+# github.com/docker/docker v28.3.1+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -1149,7 +1149,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
-# github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
 ## explicit; go 1.23.0
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.5.1
@@ -2379,7 +2379,7 @@ golang.org/x/tools/internal/versions
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.239.0
+# google.golang.org/api v0.240.0
 ## explicit; go 1.23.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1

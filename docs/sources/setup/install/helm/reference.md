@@ -6925,6 +6925,23 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached pods (probe port defaults to container port)</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 3
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
@@ -8169,6 +8186,7 @@ null
   },
   "initContainers": [],
   "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -8342,6 +8360,15 @@ null
 			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -10989,7 +11016,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.3"
+"1.30.6"
 </pre>
 </td>
 		</tr>
