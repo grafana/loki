@@ -34,10 +34,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -144,18 +140,17 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, patternWriter aggregation.EntryWriter, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:        config,
-		rootNode:      createNode(),
-		metrics:       metrics,
-		format:        format,
-		patternWriter: patternWriter,
+		config:   config,
+		rootNode: createNode(),
+		metrics:  metrics,
+		format:   format,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -203,12 +198,12 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
-	patternWriter   aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
+
 
 func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
 	if !d.limiter.Allow() {
@@ -260,16 +255,7 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 			Chunks:     Chunks{},
 		}
 		modeTs := model.TimeFromUnixNano(ts)
-		previousSample := matchCluster.append(modeTs)
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(modeTs)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -277,50 +263,11 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		previousSample := matchCluster.append(model.TimeFromUnixNano(ts))
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
-}
-
-func (d *Drain) writePattern(
-	ts model.Time,
-	streamLbls labels.Labels,
-	pattern string,
-	count int64,
-	lvl string,
-) {
-	service := streamLbls.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
-	newLbls := labels.Labels{
-		labels.Label{Name: constants.PatternLabel, Value: service},
-	}
-
-	newStructuredMetadata := []logproto.LabelAdapter{
-		{Name: constants.LevelLabel, Value: lvl},
-	}
-
-	if d.patternWriter != nil {
-		d.patternWriter.WriteEntry(
-			ts.Time(),
-			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
-			newLbls,
-			newStructuredMetadata,
-		)
-	}
 }
 
 func deduplicatePlaceholders(line string, placeholder string) string {

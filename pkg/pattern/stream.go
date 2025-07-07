@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
@@ -20,13 +21,14 @@ import (
 )
 
 type stream struct {
-	fp           model.Fingerprint
-	labels       labels.Labels
-	labelsString string
-	labelHash    uint64
-	patterns     map[string]*drain.Drain
-	mtx          sync.Mutex
-	logger       log.Logger
+	fp            model.Fingerprint
+	labels        labels.Labels
+	labelsString  string
+	labelHash     uint64
+	patterns      map[string]*drain.Drain
+	mtx           sync.Mutex
+	logger        log.Logger
+	patternWriter aggregation.EntryWriter
 
 	lastTs int64
 }
@@ -49,7 +51,7 @@ func newStream(
 
 	patterns := make(map[string]*drain.Drain, len(constants.LogLevels))
 	for _, lvl := range constants.LogLevels {
-		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, patternWriter, &drain.Metrics{
+		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
@@ -60,12 +62,13 @@ func newStream(
 	}
 
 	return &stream{
-		fp:           fp,
-		labels:       labels,
-		labelsString: labels.String(),
-		labelHash:    labels.Hash(),
-		logger:       logger,
-		patterns:     patterns,
+		fp:            fp,
+		labels:        labels,
+		labelsString:  labels.String(),
+		labelHash:     labels.Hash(),
+		logger:        logger,
+		patterns:      patterns,
+		patternWriter: patternWriter,
 	}, nil
 }
 
@@ -124,10 +127,22 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	defer s.mtx.Unlock()
 
 	totalClusters := 0
-	for _, pattern := range s.patterns {
+	for lvl, pattern := range s.patterns {
 		clusters := pattern.Clusters()
 		for _, cluster := range clusters {
-			cluster.Prune(olderThan)
+			prunedSamples := cluster.Prune(olderThan)
+			// Write patterns for pruned chunks
+			if len(prunedSamples) > 0 {
+				var totalValue int64
+				var latestTimestamp model.Time
+				for _, sample := range prunedSamples {
+					totalValue += sample.Value
+					if sample.Timestamp > latestTimestamp {
+						latestTimestamp = sample.Timestamp
+					}
+				}
+				s.writePattern(latestTimestamp, s.labels, cluster.String(), totalValue, lvl)
+			}
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
 			}
@@ -138,4 +153,34 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	}
 
 	return totalClusters == 0
+}
+
+func (s *stream) writePattern(
+	ts model.Time,
+	streamLbls labels.Labels,
+	pattern string,
+	count int64,
+	lvl string,
+) {
+	service := streamLbls.Get(push.LabelServiceName)
+	if service == "" {
+		service = push.ServiceUnknown
+	}
+
+	newLbls := labels.Labels{
+		labels.Label{Name: constants.PatternLabel, Value: service},
+	}
+
+	newStructuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: lvl},
+	}
+
+	if s.patternWriter != nil {
+		s.patternWriter.WriteEntry(
+			ts.Time(),
+			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
+			newLbls,
+			newStructuredMetadata,
+		)
+	}
 }

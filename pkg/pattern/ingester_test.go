@@ -145,61 +145,6 @@ func TestInstancePushQuery(t *testing.T) {
 		"foo=baz num=<_>",
 		"ts=<_> msg=hello",
 	}, patterns)
-
-	mockWriter.AssertCalled(
-		t,
-		"WriteEntry",
-		now.Time(),
-		aggregation.PatternEntry(
-			now.Time(),
-			1,
-			"ts=<_> msg=hello",
-			lbs,
-		),
-		labels.New(
-			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
-		),
-		[]logproto.LabelAdapter{
-			{Name: constants.LevelLabel, Value: constants.LogLevelInfo},
-		},
-	)
-
-	mockWriter.AssertCalled(
-		t,
-		"WriteEntry",
-		now.Time(),
-		aggregation.PatternEntry(
-			now.Time(),
-			5,
-			"foo=bar num=<_>",
-			lbs,
-		),
-		labels.New(
-			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
-		),
-		[]logproto.LabelAdapter{
-			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
-		},
-	)
-
-	// writes a sample every 10s
-	mockWriter.AssertCalled(
-		t,
-		"WriteEntry",
-		now.Add(10*time.Second).Time(),
-		aggregation.PatternEntry(
-			now.Add(10*time.Second).Time(),
-			5,
-			"foo=bar num=<_>",
-			lbs,
-		),
-		labels.New(
-			labels.Label{Name: constants.PatternLabel, Value: "test_service"},
-		),
-		[]logproto.LabelAdapter{
-			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
-		},
-	)
 }
 
 func TestInstancePushAggregateMetrics(t *testing.T) {

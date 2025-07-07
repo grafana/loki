@@ -187,17 +187,23 @@ func (c *Chunks) merge(samples []*logproto.PatternSample) []logproto.PatternSamp
 	return result
 }
 
-func (c *Chunks) prune(olderThan time.Duration) {
+func (c *Chunks) prune(olderThan time.Duration) []*logproto.PatternSample {
 	if len(*c) == 0 {
-		return
+		return nil
 	}
+	var prunedSamples []*logproto.PatternSample
 	// go for every chunks, check the last timestamp is after duration from now and remove the chunk
 	for i := 0; i < len(*c); i++ {
 		if time.Since((*c)[i].Samples[len((*c)[i].Samples)-1].Timestamp.Time()) > olderThan {
+			// collect all samples from the pruned chunk
+			for j := range (*c)[i].Samples {
+				prunedSamples = append(prunedSamples, &(*c)[i].Samples[j])
+			}
 			*c = append((*c)[:i], (*c)[i+1:]...)
 			i--
 		}
 	}
+	return prunedSamples
 }
 
 func (c *Chunks) size() int {
