@@ -1,7 +1,6 @@
 package magic
 
 import (
-	"bufio"
 	"bytes"
 	"strings"
 	"time"
@@ -121,7 +120,7 @@ var (
 		[]byte("/usr/bin/env wish"),
 	)
 	// Rtf matches a Rich Text Format file.
-	Rtf = prefix([]byte("{\\rtf1"))
+	Rtf = prefix([]byte("{\\rtf"))
 )
 
 // Text matches a plain text file.
@@ -234,9 +233,10 @@ func GeoJSON(raw []byte, limit uint32) bool {
 // types.
 func NdJSON(raw []byte, limit uint32) bool {
 	lCount, hasObjOrArr := 0, false
-	sc := bufio.NewScanner(dropLastLine(raw, limit))
-	for sc.Scan() {
-		l := sc.Bytes()
+	raw = dropLastLine(raw, limit)
+	var l []byte
+	for len(raw) != 0 {
+		l, raw = scanLine(raw)
 		// Empty lines are allowed in NDJSON.
 		if l = trimRWS(trimLWS(l)); len(l) == 0 {
 			continue
@@ -301,20 +301,15 @@ func Svg(raw []byte, limit uint32) bool {
 }
 
 // Srt matches a SubRip file.
-func Srt(in []byte, _ uint32) bool {
-	s := bufio.NewScanner(bytes.NewReader(in))
-	if !s.Scan() {
-		return false
-	}
-	// First line must be 1.
-	if s.Text() != "1" {
-		return false
-	}
+func Srt(raw []byte, _ uint32) bool {
+	line, raw := scanLine(raw)
 
-	if !s.Scan() {
+	// First line must be 1.
+	if string(line) != "1" {
 		return false
 	}
-	secondLine := s.Text()
+	line, raw = scanLine(raw)
+	secondLine := string(line)
 	// Timestamp format (e.g: 00:02:16,612 --> 00:02:19,376) limits secondLine
 	// length to exactly 29 characters.
 	if len(secondLine) != 29 {
@@ -325,14 +320,12 @@ func Srt(in []byte, _ uint32) bool {
 	if strings.Contains(secondLine, ".") {
 		return false
 	}
-	// For Go <1.17, comma is not recognised as a decimal separator by `time.Parse`.
-	secondLine = strings.ReplaceAll(secondLine, ",", ".")
 	// Second line must be a time range.
 	ts := strings.Split(secondLine, " --> ")
 	if len(ts) != 2 {
 		return false
 	}
-	const layout = "15:04:05.000"
+	const layout = "15:04:05,000"
 	t0, err := time.Parse(layout, ts[0])
 	if err != nil {
 		return false
@@ -345,8 +338,9 @@ func Srt(in []byte, _ uint32) bool {
 		return false
 	}
 
+	line, _ = scanLine(raw)
 	// A third line must exist and not be empty. This is the actual subtitle text.
-	return s.Scan() && len(s.Bytes()) != 0
+	return len(line) != 0
 }
 
 // Vtt matches a Web Video Text Tracks (WebVTT) file. See
@@ -372,4 +366,16 @@ func Vtt(raw []byte, limit uint32) bool {
 	// Exact match.
 	return bytes.Equal(raw, []byte{0xEF, 0xBB, 0xBF, 0x57, 0x45, 0x42, 0x56, 0x54, 0x54}) || // UTF-8 BOM and "WEBVTT"
 		bytes.Equal(raw, []byte{0x57, 0x45, 0x42, 0x56, 0x54, 0x54}) // "WEBVTT"
+}
+
+// dropCR drops a terminal \r from the data.
+func dropCR(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+		return data[0 : len(data)-1]
+	}
+	return data
+}
+func scanLine(b []byte) (line, remainder []byte) {
+	line, remainder, _ = bytes.Cut(b, []byte("\n"))
+	return dropCR(line), remainder
 }

@@ -1,6 +1,24 @@
 ## Changelog
 
 
+## v2.35.0
+
+- add Lua redis.setresp({2,3})
+- embed gopher-json package
+- fix XAUTOCLAIM (thanks @kgunning)
+- fix writeXpending (thanks @gnpaone)
+- fix BLMOVE TTL special case
+- constants for key types @alyssaruth
+
+
+### v2.34.0
+
+- fix ZINTERSTORE where target is one of the source sets
+- added support for ZRank and ZRevRank with score (thanks Jeff Howell)
+- fix MEMORY subcommand casing (thanks @joshaber)
+- use streamCmp in Xtrim (thanks @daniel-cohere)
+
+
 ### v2.33.0
 
 - minimum Go version is now 1.17

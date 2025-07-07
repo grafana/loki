@@ -39,12 +39,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.patternIngesterSelectorLabels" . | nindent 8 }}
+        {{- include "loki.patternIngesterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.patternIngester.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.patternIngester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -76,7 +73,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=pattern-ingester
-            {{- with .Values.patternIngester.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.patternIngester.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -89,11 +86,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.patternIngester.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.patternIngester.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.patternIngester.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.patternIngester.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -113,7 +110,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.patternIngester.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.patternIngester.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.patternIngester.resources }}
@@ -134,7 +131,7 @@ spec:
       {{- with .Values.patternIngester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
-      {{- end }}      
+      {{- end }}
       {{- with .Values.patternIngester.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
@@ -160,13 +157,15 @@ spec:
         - name: data
           emptyDir: {}
         {{- end }}
-        {{- with .Values.patternIngester.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.patternIngester.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if .Values.patternIngester.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.patternIngester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

@@ -4,8 +4,8 @@
 package internal // import "go.opentelemetry.io/collector/pdata/internal"
 
 import (
-	otlpcollectorprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/profiles/v1experimental"
-	otlpprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1experimental"
+	otlpcollectorprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/profiles/v1development"
+	otlpprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 )
 
 type Profiles struct {
@@ -33,6 +33,7 @@ func NewProfiles(orig *otlpcollectorprofile.ExportProfilesServiceRequest, state 
 func ProfilesToProto(l Profiles) otlpprofile.ProfilesData {
 	return otlpprofile.ProfilesData{
 		ResourceProfiles: l.orig.ResourceProfiles,
+		Dictionary:       l.orig.Dictionary,
 	}
 }
 
@@ -42,5 +43,6 @@ func ProfilesFromProto(orig otlpprofile.ProfilesData) Profiles {
 	state := StateMutable
 	return NewProfiles(&otlpcollectorprofile.ExportProfilesServiceRequest{
 		ResourceProfiles: orig.ResourceProfiles,
+		Dictionary:       orig.Dictionary,
 	}, &state)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -138,7 +139,14 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 	return s
 }
 
-func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
+	if !f(d) {
+		return
+	}
+	if d.SampleExpr != nil {
+		d.SampleExpr.Walk(f)
+	}
+}
 
 var defaultMaxDepth = 4
 
@@ -171,8 +179,15 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
-	f(c.next)
+	if !f(c) {
+		return
+	}
+	if c.SampleExpr != nil {
+		c.SampleExpr.Walk(f)
+	}
+	if c.next != nil {
+		c.next.Walk(f)
+	}
 }
 
 // ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
@@ -269,8 +284,15 @@ func (e QuantileSketchEvalExpr) String() string {
 }
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	e.quantileMergeExpr.Walk(f)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	if e.quantileMergeExpr != nil {
+		e.quantileMergeExpr.Walk(f)
+	}
 }
 
 type QuantileSketchMergeExpr struct {
@@ -295,7 +317,12 @@ func (e QuantileSketchMergeExpr) String() string {
 }
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -304,6 +331,7 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	offset      time.Duration
 }
 
 func (e MergeFirstOverTimeExpr) String() string {
@@ -323,7 +351,12 @@ func (e MergeFirstOverTimeExpr) String() string {
 }
 
 func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -332,6 +365,7 @@ func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
 type MergeLastOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	offset      time.Duration
 }
 
 func (e MergeLastOverTimeExpr) String() string {
@@ -351,7 +385,12 @@ func (e MergeLastOverTimeExpr) String() string {
 }
 
 func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -375,11 +414,19 @@ func (e CountMinSketchEvalExpr) String() string {
 
 		sb.WriteString(d.String())
 	}
+	if len(e.downstreams) == 0 {
+		sb.WriteString(e.SampleExpr.String())
+	}
 	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
 }
 
 func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -590,7 +637,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
 	case *MergeLastOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -625,7 +672,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
 	case *CountMinSketchEvalExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -663,6 +710,15 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
+}
+
+func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
+	_ context.Context,
+	_ syntax.VariantsExpr,
+	_ Params,
+) (StepEvaluator, error) {
+	// TODO(twhitney): does the downstream evaluator need to handle variants?
+	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
 }
 
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr

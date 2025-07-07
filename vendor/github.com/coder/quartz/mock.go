@@ -13,8 +13,9 @@ import (
 // Mock is the testing implementation of Clock.  It tracks a time that monotonically increases
 // during a test, triggering any timers or tickers automatically.
 type Mock struct {
-	tb testing.TB
-	mu sync.Mutex
+	tb       testing.TB
+	mu       sync.Mutex
+	testOver bool
 
 	// cur is the current time
 	cur time.Time
@@ -190,12 +191,15 @@ func (m *Mock) removeEventLocked(e event) {
 	}
 }
 
-func (m *Mock) matchCallLocked(c *Call) {
+func (m *Mock) matchCallLocked(c *apiCall) {
 	var traps []*Trap
 	for _, t := range m.traps {
 		if t.matches(c) {
 			traps = append(traps, t)
 		}
+	}
+	if !m.testOver {
+		m.tb.Logf("Mock Clock - %s call, matched %d traps", c, len(traps))
 	}
 	if len(traps) == 0 {
 		return
@@ -260,6 +264,9 @@ func (m *Mock) Advance(d time.Duration) AdvanceWaiter {
 	m.tb.Helper()
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
 	m.mu.Lock()
+	if !m.testOver {
+		m.tb.Logf("Mock Clock - Advance(%s)", d)
+	}
 	fin := m.cur.Add(d)
 	// nextTime.IsZero implies no events scheduled.
 	if m.nextTime.IsZero() || fin.Before(m.nextTime) {
@@ -307,6 +314,9 @@ func (m *Mock) Set(t time.Time) AdvanceWaiter {
 	m.tb.Helper()
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
 	m.mu.Lock()
+	if !m.testOver {
+		m.tb.Logf("Mock Clock - Set(%s)", t)
+	}
 	if t.Before(m.cur) {
 		defer close(w.ch)
 		defer m.mu.Unlock()
@@ -343,12 +353,16 @@ func (m *Mock) Set(t time.Time) AdvanceWaiter {
 // wait for the timer/tick event(s) to finish.
 func (m *Mock) AdvanceNext() (time.Duration, AdvanceWaiter) {
 	m.mu.Lock()
+	if !m.testOver {
+		m.tb.Logf("Mock Clock - AdvanceNext()")
+	}
 	m.tb.Helper()
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
 	if m.nextTime.IsZero() {
 		defer close(w.ch)
 		defer m.mu.Unlock()
 		m.tb.Error("cannot AdvanceNext because there are no timers or tickers running")
+		return 0, w
 	}
 	d := m.nextTime.Sub(m.cur)
 	m.cur = m.nextTime
@@ -430,11 +444,14 @@ func (m *Mock) Trap() Trapper {
 func (m *Mock) newTrap(fn clockFunction, tags []string) *Trap {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.testOver {
+		m.tb.Logf("Mock Clock - Trap %s(..., %v)", fn, tags)
+	}
 	tr := &Trap{
 		fn:    fn,
 		tags:  tags,
 		mock:  m,
-		calls: make(chan *Call),
+		calls: make(chan *apiCall),
 		done:  make(chan struct{}),
 	}
 	m.traps = append(m.traps, tr)
@@ -449,10 +466,17 @@ func NewMock(tb testing.TB) *Mock {
 	if err != nil {
 		panic(err)
 	}
-	return &Mock{
+	m := &Mock{
 		tb:  tb,
 		cur: cur,
 	}
+	tb.Cleanup(func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.testOver = true
+		tb.Logf("Mock Clock - test cleanup; will no longer log clock events")
+	})
+	return m
 }
 
 var _ Clock = &Mock{}
@@ -556,9 +580,41 @@ const (
 	clockFunctionUntil
 )
 
-type callArg func(c *Call)
+func (c clockFunction) String() string {
+	switch c {
+	case clockFunctionNewTimer:
+		return "NewTimer"
+	case clockFunctionAfterFunc:
+		return "AfterFunc"
+	case clockFunctionTimerStop:
+		return "Timer.Stop"
+	case clockFunctionTimerReset:
+		return "Timer.Reset"
+	case clockFunctionTickerFunc:
+		return "TickerFunc"
+	case clockFunctionTickerFuncWait:
+		return "TickerFunc.Wait"
+	case clockFunctionNewTicker:
+		return "NewTicker"
+	case clockFunctionTickerReset:
+		return "Ticker.Reset"
+	case clockFunctionTickerStop:
+		return "Ticker.Stop"
+	case clockFunctionNow:
+		return "Now"
+	case clockFunctionSince:
+		return "Since"
+	case clockFunctionUntil:
+		return "Until"
+	default:
+		return fmt.Sprintf("Unknown clockFunction(%d)", c)
+	}
+}
 
-type Call struct {
+type callArg func(c *apiCall)
+
+// apiCall represents a single call to one of the Clock APIs.
+type apiCall struct {
 	Time     time.Time
 	Duration time.Duration
 	Tags     []string
@@ -568,25 +624,91 @@ type Call struct {
 	complete chan struct{}
 }
 
-func (c *Call) Release() {
-	c.releases.Done()
-	<-c.complete
+func (a *apiCall) String() string {
+	switch a.fn {
+	case clockFunctionNewTimer:
+		return fmt.Sprintf("NewTimer(%s, %v)", a.Duration, a.Tags)
+	case clockFunctionAfterFunc:
+		return fmt.Sprintf("AfterFunc(%s, <fn>, %v)", a.Duration, a.Tags)
+	case clockFunctionTimerStop:
+		return fmt.Sprintf("Timer.Stop(%v)", a.Tags)
+	case clockFunctionTimerReset:
+		return fmt.Sprintf("Timer.Reset(%s, %v)", a.Duration, a.Tags)
+	case clockFunctionTickerFunc:
+		return fmt.Sprintf("TickerFunc(<ctx>, %s, <fn>, %s)", a.Duration, a.Tags)
+	case clockFunctionTickerFuncWait:
+		return fmt.Sprintf("TickerFunc.Wait(%v)", a.Tags)
+	case clockFunctionNewTicker:
+		return fmt.Sprintf("NewTicker(%s, %v)", a.Duration, a.Tags)
+	case clockFunctionTickerReset:
+		return fmt.Sprintf("Ticker.Reset(%s, %v)", a.Duration, a.Tags)
+	case clockFunctionTickerStop:
+		return fmt.Sprintf("Ticker.Stop(%v)", a.Tags)
+	case clockFunctionNow:
+		return fmt.Sprintf("Now(%v)", a.Tags)
+	case clockFunctionSince:
+		return fmt.Sprintf("Since(%s, %v)", a.Time, a.Tags)
+	case clockFunctionUntil:
+		return fmt.Sprintf("Until(%s, %v)", a.Time, a.Tags)
+	default:
+		return fmt.Sprintf("Unknown clockFunction(%d)", a.fn)
+	}
+}
+
+// Call represents an apiCall that has been trapped.
+type Call struct {
+	Time     time.Time
+	Duration time.Duration
+	Tags     []string
+
+	tb      testing.TB
+	apiCall *apiCall
+	trap    *Trap
+}
+
+// Release the call and wait for it to complete. If the provided context expires before the call completes, it returns
+// an error.
+//
+// IMPORTANT: If a call is trapped by more than one trap, they all must release the call before it can complete, and
+// they must do so from different goroutines.
+func (c *Call) Release(ctx context.Context) error {
+	c.apiCall.releases.Done()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("timed out waiting for release; did more than one trap capture the call?: %w", ctx.Err())
+	case <-c.apiCall.complete:
+		// OK
+	}
+	c.trap.callReleased()
+	return nil
+}
+
+// MustRelease releases the call and waits for it to complete. If the provided context expires before the call
+// completes, it fails the test.
+//
+// IMPORTANT: If a call is trapped by more than one trap, they all must release the call before it can complete, and
+// they must do so from different goroutines.
+func (c *Call) MustRelease(ctx context.Context) {
+	if err := c.Release(ctx); err != nil {
+		c.tb.Helper()
+		c.tb.Fatal(err.Error())
+	}
 }
 
 func withTime(t time.Time) callArg {
-	return func(c *Call) {
+	return func(c *apiCall) {
 		c.Time = t
 	}
 }
 
 func withDuration(d time.Duration) callArg {
-	return func(c *Call) {
+	return func(c *apiCall) {
 		c.Duration = d
 	}
 }
 
-func newCall(fn clockFunction, tags []string, args ...callArg) *Call {
-	c := &Call{
+func newCall(fn clockFunction, tags []string, args ...callArg) *apiCall {
+	c := &apiCall{
 		fn:       fn,
 		Tags:     tags,
 		complete: make(chan struct{}),
@@ -601,19 +723,23 @@ type Trap struct {
 	fn    clockFunction
 	tags  []string
 	mock  *Mock
-	calls chan *Call
+	calls chan *apiCall
 	done  chan struct{}
+
+	// mu protects the unreleasedCalls count
+	mu              sync.Mutex
+	unreleasedCalls int
 }
 
-func (t *Trap) catch(c *Call) {
+func (t *Trap) catch(c *apiCall) {
 	select {
 	case t.calls <- c:
 	case <-t.done:
-		c.Release()
+		c.releases.Done()
 	}
 }
 
-func (t *Trap) matches(c *Call) bool {
+func (t *Trap) matches(c *apiCall) bool {
 	if t.fn != c.fn {
 		return false
 	}
@@ -628,12 +754,22 @@ func (t *Trap) matches(c *Call) bool {
 func (t *Trap) Close() {
 	t.mock.mu.Lock()
 	defer t.mock.mu.Unlock()
+	if t.unreleasedCalls != 0 {
+		t.mock.tb.Helper()
+		t.mock.tb.Errorf("trap Closed() with %d unreleased calls", t.unreleasedCalls)
+	}
 	for i, tr := range t.mock.traps {
 		if t == tr {
 			t.mock.traps = append(t.mock.traps[:i], t.mock.traps[i+1:]...)
 		}
 	}
 	close(t.done)
+}
+
+func (t *Trap) callReleased() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.unreleasedCalls--
 }
 
 var ErrTrapClosed = errors.New("trap closed")
@@ -644,7 +780,18 @@ func (t *Trap) Wait(ctx context.Context) (*Call, error) {
 		return nil, ctx.Err()
 	case <-t.done:
 		return nil, ErrTrapClosed
-	case c := <-t.calls:
+	case a := <-t.calls:
+		c := &Call{
+			Time:     a.Time,
+			Duration: a.Duration,
+			Tags:     a.Tags,
+			apiCall:  a,
+			trap:     t,
+			tb:       t.mock.tb,
+		}
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		t.unreleasedCalls++
 		return c, nil
 	}
 }

@@ -613,12 +613,12 @@ func ToUint64E(i interface{}) (uint64, error) {
 
 	switch s := i.(type) {
 	case string:
-		v, err := strconv.ParseInt(trimZeroDecimal(s), 0, 0)
+		v, err := strconv.ParseUint(trimZeroDecimal(s), 0, 0)
 		if err == nil {
 			if v < 0 {
 				return 0, errNegativeNotAllowed
 			}
-			return uint64(v), nil
+			return v, nil
 		}
 		return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
 	case json.Number:

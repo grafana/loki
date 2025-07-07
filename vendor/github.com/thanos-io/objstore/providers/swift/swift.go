@@ -218,6 +218,8 @@ func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool,
 	}, nil
 }
 
+func (c *Container) Provider() objstore.ObjProvider { return objstore.SWIFT }
+
 // Name returns the container name for swift.
 func (c *Container) Name() string {
 	return c.name
@@ -371,6 +373,10 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 		return errors.Wrap(err, "uploading object")
 	}
 	return nil
+}
+
+func (b *Container) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: Swift.GetAndReplace")
 }
 
 // Delete removes the object with the given name.

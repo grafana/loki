@@ -1,11 +1,12 @@
 ---
-title: Recording Rules
-menuTitle:  
-description: Working with recording rules.
+title: Manage recording rules
+menuTitle: Recording rules
+description: Describes how to setup and use recording rules in Grafana Loki.
 weight:  
 ---
+# Manage recording rules
 
-# Recording Rules
+Recording rules are queries that run in an interval and produce metrics from logs that can be pushed to a Prometheus compatible backend.
 
 Recording rules are evaluated by the `ruler` component. Each `ruler` acts as its own `querier`, in the sense that it
 executes queries against the store without using the `query-frontend` or `querier` components. It will respect all query

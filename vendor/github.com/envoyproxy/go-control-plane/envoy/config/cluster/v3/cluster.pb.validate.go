@@ -647,6 +647,36 @@ func (m *Cluster) validate(all bool) error {
 		}
 	}
 
+	if d := m.GetDnsJitter(); d != nil {
+		dur, err := d.AsDuration(), d.CheckValid()
+		if err != nil {
+			err = ClusterValidationError{
+				field:  "DnsJitter",
+				reason: "value is not a valid duration",
+				cause:  err,
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		} else {
+
+			gte := time.Duration(0*time.Second + 0*time.Nanosecond)
+
+			if dur < gte {
+				err := ClusterValidationError{
+					field:  "DnsJitter",
+					reason: "value must be greater than or equal to 0s",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
+		}
+	}
+
 	if all {
 		switch v := interface{}(m.GetDnsFailureRefreshRate()).(type) {
 		case interface{ ValidateAll() error }:

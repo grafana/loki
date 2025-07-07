@@ -9,6 +9,8 @@ weight:
 
 # limit
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `limit` stage is a rate-limiting stage that throttles logs based on several options. 
 
 ## Limit stage schema

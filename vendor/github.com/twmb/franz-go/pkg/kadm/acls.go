@@ -3,6 +3,7 @@ package kadm
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
@@ -1114,4 +1115,56 @@ func createDelDescACL(b *ACLBuilder) ([]kmsg.DeleteACLsRequestFilter, []*kmsg.De
 		}
 	}
 	return deletions, describes, nil
+}
+
+// DecodeACLOperations decodes an int32 bitfield into a slice of
+// kmsg.ACLOperation values.
+//
+// This function is used to interpret the `AuthorizedOperations` field returned
+// by the Kafka APIs, which specifies the operations a client is allowed to
+// perform on a cluster, topic, or consumer group. It is utilized in multiple
+// Kafka API responses, including Metadata, DescribeCluster, and
+// DescribeGroupsResponseGroup.
+//
+// Caveats with Metadata API
+//  1. To include authorized operations in the Metadata response, the client must explicitly
+//     opt in by setting `IncludeClusterAuthorizedOperations` and/or `IncludeTopicAuthorizedOperations`.
+//     These options were introduced in Kafka 2.3.0 as part of KIP-430.
+//  2. In Kafka 2.8.0 (Metadata v11), the `AuthorizedOperations` for the cluster was removed from the
+//     Metadata response. Instead, clients should use the DescribeCluster API to retrieve cluster-level
+//     permissions.
+//
+// Function Behavior
+//   - If the bitfield equals `math.MinInt32` (-2147483648), it indicates that "AUTHORIZED_OPERATIONS_OMITTED"
+//     is set, and the function returns an empty slice.
+//   - For non-omitted values, the function iterates through all 32 bits of the bitfield. Each bit that
+//     is set (`1`) corresponds to an ACL operation, which is then mapped to its respective `kmsg.ACLOperation` value.
+//   - Undefined or unknown bits (e.g., bit 0 for `kmsg.ACLOperationUnknown`) are ignored.
+//
+// Supported Use Cases
+// - Cluster Operations: Retrieved via the DescribeCluster API or older Metadata API versions (v8–v10).
+// - Topic Operations: Retrieved via the Metadata API when `IncludeTopicAuthorizedOperations` is set.
+// - Group Operations: Retrieved in the DescribeGroups API response.
+func DecodeACLOperations(bitfield int32) []ACLOperation {
+	var operations []ACLOperation
+
+	// MinInt32 represents "AUTHORIZED_OPERATIONS_OMITTED"
+	if bitfield == math.MinInt32 {
+		return operations
+	}
+
+	// Helper function to determine if an operation is valid.
+	isValidOperation := func(op kmsg.ACLOperation) bool {
+		return op >= kmsg.ACLOperationRead && op <= kmsg.ACLOperationDescribeTokens
+	}
+
+	for i := 0; i < 32; i++ {
+		if bitfield&(1<<i) != 0 {
+			operation := kmsg.ACLOperation(i)
+			if isValidOperation(operation) {
+				operations = append(operations, operation)
+			}
+		}
+	}
+	return operations
 }

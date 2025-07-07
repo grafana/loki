@@ -273,7 +273,7 @@ func (s *streamKey) trimBefore(id string) int {
 	s.mu.Lock()
 	var delete []string
 	for _, entry := range s.entries {
-		if entry.ID < id {
+		if streamCmp(entry.ID, id) < 0 {
 			delete = append(delete, entry.ID)
 		} else {
 			break
@@ -438,6 +438,13 @@ func (s *streamKey) delete(ids []string) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+func (g *streamGroup) pendingAfterOrEqual(id string) []pendingEntry {
+	pos := sort.Search(len(g.pending), func(i int) bool {
+		return streamCmp(id, g.pending[i].id) <= 0
+	})
+	return g.pending[pos:]
 }
 
 func (g *streamGroup) pendingAfter(id string) []pendingEntry {

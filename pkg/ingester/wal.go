@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -82,7 +83,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, wlog.CompressionNone)
+	tsdbWAL, err := wlog.NewSize(util_log.SlogFromGoKit(util_log.Logger), registerer, cfg.Dir, walSegmentSize, compression.None)
 	if err != nil {
 		return nil, err
 	}

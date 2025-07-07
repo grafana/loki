@@ -3,8 +3,10 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +16,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -219,7 +220,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
-	tables := maps.Keys(tm.tables)
+	tables := slices.Collect(maps.Keys(tm.tables))
 	tm.tablesMtx.RUnlock()
 
 	start := time.Now()

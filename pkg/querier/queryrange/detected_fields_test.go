@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-func Test_parseDetectedFeilds(t *testing.T) {
+func Test_parseDetectedFields(t *testing.T) {
 	now := time.Now()
 
 	t.Run("when no parsers are supplied", func(t *testing.T) {
@@ -356,7 +356,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 				streamLbls.Add(
 					logql_log.ParsedLabel,
-					labels.Label{Name: field.Name, Value: field.Value},
+					labels.FromStrings(field.Name, field.Value),
 				)
 			}
 
@@ -499,7 +499,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 				nginxStreamLbls.Add(
 					logql_log.ParsedLabel,
-					labels.Label{Name: field.Name, Value: field.Value},
+					labels.FromStrings(field.Name, field.Value),
 				)
 			}
 
@@ -993,6 +993,7 @@ func logHandler(stream logproto.Stream) base.Handler {
 		})
 }
 
+// TODO(twhitney): Is this releated to the now deprecated Querier endpoint?
 func TestQuerier_DetectedFields(t *testing.T) {
 	limits := fakeLimits{
 		maxSeries:               math.MaxInt32,
@@ -1317,6 +1318,92 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			}, secondValues)
 		},
 	)
+
+	t.Run("correctly formats bytes values for detected fields", func(t *testing.T) {
+		lbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
+		metric, err := parser.ParseMetric(lbls)
+		require.NoError(t, err)
+		now := time.Now()
+
+		infoDetectdFiledMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "info",
+			},
+		}
+
+		lines := []push.Entry{
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1024",
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+			{
+				Timestamp:          now,
+				Line:               `ts=2024-09-05T15:36:38.698375619Z caller=grpc_logging.go:66 tenant=29 level=info bytes="1024 MB"`,
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.629424175Z caller=grpc_logging.go:66 tenant=2919 level=info bytes=1024KB",
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+		}
+		stream := push.Stream{
+			Labels:  lbls,
+			Entries: lines,
+			Hash:    metric.Hash(),
+		}
+
+		handler := NewDetectedFieldsHandler(
+			limitedHandler(stream),
+			logHandler(stream),
+			limits,
+		)
+
+		request := DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Start:     time.Now().Add(-1 * time.Minute),
+				End:       time.Now(),
+				Query:     `{cluster="us-east-1"} | logfmt`,
+				LineLimit: 1000,
+				Limit:     3,
+				Values:    true,
+				Name:      "bytes",
+			},
+			"/loki/api/v1/detected_field/bytes/values",
+		}
+
+		detectedFieldValues := handleRequest(handler, request).Values
+		slices.Sort(detectedFieldValues)
+		require.Equal(t, []string{
+			"1.0GB",
+			"1.0MB",
+			"1024",
+		}, detectedFieldValues)
+
+		// does not affect other numeric values
+		request = DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Start:     time.Now().Add(-1 * time.Minute),
+				End:       time.Now(),
+				Query:     `{cluster="us-east-1"} | logfmt`,
+				LineLimit: 1000,
+				Limit:     3,
+				Values:    true,
+				Name:      "tenant",
+			},
+			"/loki/api/v1/detected_field/tenant/values",
+		}
+
+		detectedFieldValues = handleRequest(handler, request).Values
+		slices.Sort(detectedFieldValues)
+		require.Equal(t, []string{
+			"2419",
+			"29",
+			"2919",
+		}, detectedFieldValues)
+	})
 }
 
 func BenchmarkQuerierDetectedFields(b *testing.B) {
@@ -1359,4 +1446,183 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		_, ok := resp.(*DetectedFieldsResponse)
 		require.True(b, ok)
 	}
+}
+
+func TestNestedJSONFieldDetection(t *testing.T) {
+	t.Run("correctly detects nested JSON fields", func(t *testing.T) {
+		now := time.Now()
+
+		nestedJSONLines := []push.Entry{
+			{
+				Timestamp: now,
+				Line: `{
+        "user":{
+          "id":123,
+          "name":"alice",
+          "settings":{
+            "theme":"dark",
+            "notifications":true
+          }
+        },
+        "app":{
+          "version":"1.0",
+          "metrics":{
+            "cpu":45.6,
+            "memory":"1.5GB"
+          }
+        }
+      }`,
+				StructuredMetadata: []push.LabelAdapter{},
+			},
+			{
+				Timestamp: now,
+				Line: `{
+        "user":{
+          "id":456,
+          "name":"bob",
+          "settings":{
+            "theme":"light",
+            "notifications":false
+          }
+        },
+        "app":{
+          "version":"1.0",
+          "metrics":{
+            "cpu":32.1,
+            "memory":"2.0GB"
+          }
+        }
+      }`,
+				StructuredMetadata: []push.LabelAdapter{},
+			},
+		}
+
+		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
+		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		require.NoError(t, err)
+
+		nestedJSONStream := push.Stream{
+			Labels:  nestedJSONLbls,
+			Entries: nestedJSONLines,
+			Hash:    nestedJSONMetric.Hash(),
+		}
+
+		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))
+
+		// Test for nested fields
+		expectedNestedFieldTypes := map[string]logproto.DetectedFieldType{
+			"user_id":                     logproto.DetectedFieldInt,
+			"user_name":                   logproto.DetectedFieldString,
+			"user_settings_theme":         logproto.DetectedFieldString,
+			"user_settings_notifications": logproto.DetectedFieldBoolean,
+			"app_version":                 logproto.DetectedFieldFloat,
+			"app_metrics_cpu":             logproto.DetectedFieldFloat,
+			"app_metrics_memory":          logproto.DetectedFieldBytes,
+		}
+
+		expectFieldsToPaths := map[string][]string{
+			"user_id":                     {"user", "id"},
+			"user_name":                   {"user", "name"},
+			"user_settings_theme":         {"user", "settings", "theme"},
+			"user_settings_notifications": {"user", "settings", "notifications"},
+			"app_version":                 {"app", "version"},
+			"app_metrics_cpu":             {"app", "metrics", "cpu"},
+			"app_metrics_memory":          {"app", "metrics", "memory"},
+		}
+
+		for field, expectedType := range expectedNestedFieldTypes {
+			require.Contains(t, df, field, "Missing expected nested field: %s", field)
+			require.Equal(t, expectedType, df[field].fieldType, "Wrong type for field %s", field)
+		}
+
+		for field, expectedPath := range expectFieldsToPaths {
+			require.Contains(t, df, field, "Missing expected nested field: %s", field)
+			require.Equal(t, expectedPath, df[field].jsonPath, "Wrong json path for field %s", field)
+		}
+	})
+
+	t.Run("correctly detects sanitized JSON fields, including difficult keys", func(t *testing.T) {
+		now := time.Now()
+
+		nestedJSONLines := []push.Entry{
+			{
+				Timestamp: now,
+				Line: `{
+        "user":{
+          "id":123,
+          "name":"alice",
+          "settings":{
+            "theme":"dark",
+            "notifications":true,
+          }
+        },
+        "app-id": "abc",
+			  "app_name": "foo",
+        "app": {
+          "terrible/key/name": "four",
+        },
+        "other.bad.key.name": "three",
+        "key with spaces": "space",
+        "nested key with spaces": {
+          "nest": "thermostat",
+        }
+      }`,
+				StructuredMetadata: []push.LabelAdapter{},
+			},
+			{
+				Timestamp: now,
+				Line: `{
+        "user":{
+          "id":456,
+          "name":"bob",
+          "settings":{
+            "theme":"light",
+            "notifications":false
+          },
+        },
+        "app-id": "xyz",
+			  "app_name": "bar",
+        "app": {
+          "terrible/key/name": "four",
+        },
+        "other.bad.key.name": "five",
+        "key with spaces": "blank",
+        "nested key with spaces": {
+          "nest": "protect",
+        }
+      }`,
+				StructuredMetadata: []push.LabelAdapter{},
+			},
+		}
+
+		nestedJSONLbls := `{cluster="test-cluster", job="json-test"}`
+		nestedJSONMetric, err := parser.ParseMetric(nestedJSONLbls)
+		require.NoError(t, err)
+
+		nestedJSONStream := push.Stream{
+			Labels:  nestedJSONLbls,
+			Entries: nestedJSONLines,
+			Hash:    nestedJSONMetric.Hash(),
+		}
+
+		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))
+
+		expectFieldsToPaths := map[string][]string{
+			"user_id":                     {"user", "id"},
+			"user_name":                   {"user", "name"},
+			"user_settings_theme":         {"user", "settings", "theme"},
+			"user_settings_notifications": {"user", "settings", "notifications"},
+			"app_id":                      {"app-id"},
+			"app_name":                    {"app_name"},
+			"app_terrible_key_name":       {"app", "terrible/key/name"},
+			"other_bad_key_name":          {"other.bad.key.name"},
+			"key_with_spaces":             {"key with spaces"},
+			"nested_key_with_spaces_nest": {"nested key with spaces", "nest"},
+		}
+
+		for field, expectedPath := range expectFieldsToPaths {
+			require.Contains(t, df, field, "Missing expected nested field: %s", field)
+			require.Equal(t, expectedPath, df[field].jsonPath, "Wrong json path for field %s", field)
+		}
+	})
 }

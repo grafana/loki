@@ -713,7 +713,10 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 }
 
 func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
-	if len(f.tasks) == 0 {
+	f.mx.Lock()
+	tasksLen := len(f.tasks)
+	f.mx.Unlock()
+	if tasksLen == 0 {
 		// First call to Recv answers with builderID
 		return &protos.BuilderToPlanner{
 			BuilderID: f.id,

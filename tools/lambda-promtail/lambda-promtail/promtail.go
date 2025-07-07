@@ -58,6 +58,11 @@ func newBatch(ctx context.Context, pClient Client, entries ...entry) (*batch, er
 }
 
 func (b *batch) add(ctx context.Context, e entry) error {
+	// Skip entries with no labels (filtered out by relabeling)
+	if e.labels == nil {
+		return nil
+	}
+
 	labels := labelsMapToString(e.labels, reservedLabelTenantID)
 	stream, ok := b.streams[labels]
 	if !ok {

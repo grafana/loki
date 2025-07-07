@@ -71,7 +71,6 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		Logger:                  b.logger,
 		SubBalancerCloseTimeout: DefaultSubBalancerCloseTimeout,
 	})
-	b.bg.Start()
 	go b.run()
 	b.logger.Infof("Created")
 	return b
@@ -123,6 +122,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
 
 	b.mu.Lock()
 	// Create and remove children, since we know all children from the config
@@ -142,6 +142,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 			cb := newChildBalancer(name, b, bb.Name(), b.cc)
 			cb.updateConfig(newSubConfig, resolver.State{
 				Addresses:     addressesSplit[name],
+				Endpoints:     endpointsSplit[name],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			})
@@ -163,6 +164,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 		// be built, if it's a low priority).
 		currentChild.updateConfig(newSubConfig, resolver.State{
 			Addresses:     addressesSplit[name],
+			Endpoints:     endpointsSplit[name],
 			ServiceConfig: s.ResolverState.ServiceConfig,
 			Attributes:    s.ResolverState.Attributes,
 		})
@@ -208,6 +210,9 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 }
 
 func (b *priorityBalancer) ResolverError(err error) {
+	if b.logger.V(2) {
+		b.logger.Infof("Received error from the resolver: %v", err)
+	}
 	b.bg.ResolverError(err)
 }
 

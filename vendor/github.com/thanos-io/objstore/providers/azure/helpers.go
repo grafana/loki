@@ -71,17 +71,7 @@ func getContainerClient(conf Config, wrapRoundtripper func(http.RoundTripper) ht
 	}
 
 	// Otherwise use a token credential
-	var cred azcore.TokenCredential
-
-	// Use Managed Identity Credential if a user assigned ID is set
-	if conf.UserAssignedID != "" {
-		msiOpt := &azidentity.ManagedIdentityCredentialOptions{}
-		msiOpt.ID = azidentity.ClientID(conf.UserAssignedID)
-		cred, err = azidentity.NewManagedIdentityCredential(msiOpt)
-	} else {
-		// Otherwise use Default Azure Credential
-		cred, err = azidentity.NewDefaultAzureCredential(nil)
-	}
+	cred, err := getTokenCredential(conf)
 
 	if err != nil {
 		return nil, err
@@ -93,4 +83,18 @@ func getContainerClient(conf Config, wrapRoundtripper func(http.RoundTripper) ht
 	}
 
 	return containerClient, nil
+}
+
+func getTokenCredential(conf Config) (azcore.TokenCredential, error) {
+	if conf.ClientSecret != "" && conf.AzTenantID != "" && conf.ClientID != "" {
+		return azidentity.NewClientSecretCredential(conf.AzTenantID, conf.ClientID, conf.ClientSecret, &azidentity.ClientSecretCredentialOptions{})
+	}
+
+	if conf.UserAssignedID == "" {
+		return azidentity.NewDefaultAzureCredential(nil)
+	}
+
+	msiOpt := &azidentity.ManagedIdentityCredentialOptions{}
+	msiOpt.ID = azidentity.ClientID(conf.UserAssignedID)
+	return azidentity.NewManagedIdentityCredential(msiOpt)
 }

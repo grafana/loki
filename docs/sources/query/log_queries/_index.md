@@ -33,6 +33,8 @@ This is specially useful when writing a regular expression which contains multip
 
 ## Log stream selector
 
+{{< shared id="log-stream-selector" >}}
+
 The stream selector determines which log streams to include in a query's results.
 A log stream is a unique source of log content, such as a file.
 A more granular log stream selector then reduces the number of searched streams to a manageable volume.
@@ -40,6 +42,8 @@ This means that the labels passed to the log stream selector will affect the rel
 
 The log stream selector is specified by one or more comma-separated key-value pairs. Each key is a log label and each value is that label's value.
 Curly braces (`{` and `}`) delimit the stream selector.
+
+{{< /shared >}}
 
 Consider this stream selector:
 
@@ -200,7 +204,7 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
-Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
+Line filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 
 ### Removing color codes
@@ -240,7 +244,7 @@ Using Duration, Number and Bytes will convert the label value prior to compariso
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{< relref "..#pipeline-errors" >}}) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -271,11 +275,11 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
-Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
+Label filter expressions have support matching IP addresses. See [Matching IP addresses](../ip/) for details.
 
 ### Parser expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations](../metric_queries/).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -295,7 +299,7 @@ If an extracted label key name already exists in the original log stream, the ex
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
-Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{< relref "../query_examples#examples-that-use-multiple-parsers" >}}).
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](../query_examples/#examples-that-use-multiple-parsers).
 
 #### JSON
 
@@ -340,6 +344,8 @@ The **json** parser operates in two modes:
    "request_method" => "GET"
    "request_host" => "foo.grafana.net"
    "request_size" => "55"
+   "request_headers_Accept" => "*/*"
+   "request_headers_User_Agent" => "curl/7.68.0"
    "response_status" => "401"
    "response_size" => "228"
    "response_latency_seconds" => "6.031"
@@ -553,7 +559,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../../send-data/promtail/stages/pack.md" >}}).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage](../../send-data/promtail/stages/pack/).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

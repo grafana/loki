@@ -34,10 +34,12 @@ const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
 
-	STORAGE_CLASS_STANDARD    = "STANDARD"
-	STORAGE_CLASS_STANDARD_IA = "STANDARD_IA"
-	STORAGE_CLASS_COLD        = "COLD"
-	STORAGE_CLASS_ARCHIVE     = "ARCHIVE"
+	STORAGE_CLASS_STANDARD        = "STANDARD"
+	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
+	STORAGE_CLASS_COLD            = "COLD"
+	STORAGE_CLASS_ARCHIVE         = "ARCHIVE"
+	STORAGE_CLASS_MAZ_STANDARD    = "MAZ_STANDARD"
+	STORAGE_CLASS_MAZ_STANDARD_IA = "MAZ_STANDARD_IA"
 
 	FETCH_MODE_SYNC  = "sync"
 	FETCH_MODE_ASYNC = "async"
@@ -64,8 +66,12 @@ const (
 	FORBID_OVERWRITE_FALSE = "false"
 	FORBID_OVERWRITE_TRUE  = "true"
 
-	NAMESPACE_BUCKET  = "namespace"
-	BOS_CONFIG_PREFIX = "bos://"
+	NAMESPACE_BUCKET   = "namespace"
+	BOS_CONFIG_PREFIX  = "bos://"
+	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
+
+	// BOS Client error message format
+	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -73,10 +79,12 @@ var DEFAULT_CNAME_LIKE_LIST = []string{
 }
 
 var VALID_STORAGE_CLASS_TYPE = map[string]int{
-	STORAGE_CLASS_STANDARD:    0,
-	STORAGE_CLASS_STANDARD_IA: 1,
-	STORAGE_CLASS_COLD:        2,
-	STORAGE_CLASS_ARCHIVE:     3,
+	STORAGE_CLASS_STANDARD:        0,
+	STORAGE_CLASS_STANDARD_IA:     1,
+	STORAGE_CLASS_COLD:            2,
+	STORAGE_CLASS_ARCHIVE:         3,
+	STORAGE_CLASS_MAZ_STANDARD:    4,
+	STORAGE_CLASS_MAZ_STANDARD_IA: 5,
 }
 
 var VALID_RESTORE_TIER = map[string]int{
@@ -197,7 +205,7 @@ func toHttpHeaderKey(key string) string {
 	return result.String()
 }
 
-func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
+func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 	for k, v := range args {
 		if len(v) == 0 {
 			continue
@@ -229,6 +237,13 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 			fallthrough
 		case http.BCE_CONTENT_CRC32:
 			fallthrough
+		case http.BCE_CONTENT_CRC32C:
+			fallthrough
+		case http.BCE_CONTENT_CRC32C_FLAG:
+			if v == "false" {
+				continue
+			}
+			fallthrough
 		case http.BCE_COPY_SOURCE_RANGE:
 			fallthrough
 		case http.BCE_COPY_SOURCE_IF_MATCH:
@@ -243,7 +258,7 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 	}
 }
 
-func setUserMetadata(req *bce.BceRequest, meta map[string]string) error {
+func setUserMetadata(req *BosRequest, meta map[string]string) error {
 	if meta == nil {
 		return nil
 	}
@@ -271,13 +286,14 @@ func isCnameLikeHost(host string) bool {
 	return false
 }
 
-func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext) error {
+func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
-	if err = cli.SendRequest(req, resp); err != nil {
+	req.SetContext(ctx.Ctx)
+	if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -292,7 +308,7 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequest(req, resp); err != nil {
+			if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 				return err
 			}
 		}
@@ -300,13 +316,13 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 	return err
 }
 
-func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext, content []byte) error {
+func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext, content []byte) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
-	if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -321,7 +337,7 @@ func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResp
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+			if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 				return err
 			}
 		}
@@ -392,9 +408,9 @@ func replaceEndpointByBucket(bucket, endpoint string) string {
 	return strings.Join(arr, ".")
 }
 
-func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, endpoint string) {
+func setUriAndEndpoint(cli bce.Client, req *BosRequest, ctx *BosContext, endpoint string) {
 	origin_uri := req.Uri()
-	bucket := ctx.Bucket
+	bucket := req.Bucket()
 	protocol := bce.DEFAULT_PROTOCOL
 	// deal with protocal
 	if strings.HasPrefix(endpoint, "https://") {
@@ -422,6 +438,9 @@ func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, end
 		} else {
 			req.SetEndpoint(endpoint)
 		}
+	} else {
+		// user define custom endpoint
+		req.SetEndpoint(endpoint)
 	}
 	req.SetProtocol(protocol)
 }

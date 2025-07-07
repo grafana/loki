@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -36,12 +37,14 @@ func VirtualMemory() (*VirtualMemoryStat, error) {
 	return VirtualMemoryWithContext(context.Background())
 }
 
-func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
+func VirtualMemoryWithContext(_ context.Context) (*VirtualMemoryStat, error) {
 	var memInfo memoryStatusEx
 	memInfo.cbSize = uint32(unsafe.Sizeof(memInfo))
-	mem, _, _ := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memInfo)))
+	// GlobalMemoryStatusEx returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	mem, _, err := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memInfo)))
 	if mem == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
 
 	ret := &VirtualMemoryStat{
@@ -76,7 +79,7 @@ func SwapMemory() (*SwapMemoryStat, error) {
 	return SwapMemoryWithContext(context.Background())
 }
 
-func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
+func SwapMemoryWithContext(_ context.Context) (*SwapMemoryStat, error) {
 	// Use the performance counter to get the swap usage percentage
 	counter, err := common.NewWin32PerformanceCounter("swap_percentage", `\Paging File(_Total)\% Usage`)
 	if err != nil {
@@ -92,9 +95,11 @@ func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
 	// Get total memory from performance information
 	var perfInfo performanceInformation
 	perfInfo.cb = uint32(unsafe.Sizeof(perfInfo))
-	mem, _, _ := procGetPerformanceInfo.Call(uintptr(unsafe.Pointer(&perfInfo)), uintptr(perfInfo.cb))
+	// GetPerformanceInfo returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	mem, _, err := procGetPerformanceInfo.Call(uintptr(unsafe.Pointer(&perfInfo)), uintptr(perfInfo.cb))
 	if mem == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
 	totalPhys := perfInfo.physicalTotal * perfInfo.pageSize
 	totalSys := perfInfo.commitLimit * perfInfo.pageSize
@@ -150,7 +155,7 @@ func SwapDevices() ([]*SwapDevice, error) {
 	return SwapDevicesWithContext(context.Background())
 }
 
-func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
+func SwapDevicesWithContext(_ context.Context) ([]*SwapDevice, error) {
 	pageSizeOnce.Do(func() {
 		var sysInfo systemInfo
 		procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&sysInfo)))
@@ -160,9 +165,11 @@ func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
 	// the following system call invokes the supplied callback function once for each page file before returning
 	// see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumpagefilesw
 	var swapDevices []*SwapDevice
-	result, _, _ := procEnumPageFilesW.Call(windows.NewCallback(pEnumPageFileCallbackW), uintptr(unsafe.Pointer(&swapDevices)))
+	// EnumPageFilesW returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	result, _, err := procEnumPageFilesW.Call(windows.NewCallback(pEnumPageFileCallbackW), uintptr(unsafe.Pointer(&swapDevices)))
 	if result == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
 
 	return swapDevices, nil

@@ -2254,6 +2254,21 @@ scheduling of all Loki components to be deployed.</p>
 <tbody>
 <tr>
 <td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>compactor</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-LokiComponentSpec">
@@ -2729,8 +2744,11 @@ bool
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
-<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or
-stored as structured metadata.</p>
+<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.</p>
+<p>Attributes need to be listed by their &ldquo;OpenTelemetry name&rdquo; and not the representation used by Loki. Please consult
+the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+are emitted.</p>
+<p>Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.</p>
 </div>
 <table>
 <thead>
@@ -2756,7 +2774,7 @@ OTLPStreamLabelSpec
 </tr>
 <tr>
 <td>
-<code>structuredMetadata</code><br/>
+<code>drop</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-OTLPMetadataSpec">
 OTLPMetadataSpec
@@ -2765,7 +2783,7 @@ OTLPMetadataSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>StructuredMetadata configures which attributes are saved in structured metadata.</p>
+<p>Drop configures which attributes are dropped from the log entry.</p>
 </td>
 </tr>
 </tbody>
@@ -3098,15 +3116,27 @@ bool
 </td>
 <td>
 <em>(Optional)</em>
-<p>DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
-metadata.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-meta information to not be available as stream labels or structured metadata, potentially making queries more
-expensive and less performant.</p>
-<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
-added to the configuration, even if this field is set to true.</p>
-<p>This option is supposed to be combined with a custom label configuration customizing the labels for the specific
-usecase.</p>
+<p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
+<p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
 </tbody>
@@ -3382,7 +3412,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -7163,7 +7193,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>

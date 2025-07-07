@@ -126,8 +126,9 @@ func WriteSeriesResponseJSON(series []logproto.SeriesIdentifier, w io.Writer) er
 	}
 
 	for _, series := range series {
-		m := make(map[string]string, 0)
-		for _, pair := range series.GetLabels() {
+		labels := series.GetLabels()
+		m := make(map[string]string, len(labels))
+		for _, pair := range labels {
 			m[pair.Key] = pair.Value
 		}
 		adapter.Data = append(adapter.Data, m)
@@ -204,6 +205,9 @@ func WriteQueryPatternsResponseJSON(r *logproto.QueryPatternsResponse, w io.Writ
 			s.WriteObjectStart()
 			s.WriteObjectField("pattern")
 			s.WriteStringWithHTMLEscaped(series.Pattern)
+			s.WriteMore()
+			s.WriteObjectField("level")
+			s.WriteString(series.Level)
 			s.WriteMore()
 			s.WriteObjectField("samples")
 			s.WriteArrayStart()

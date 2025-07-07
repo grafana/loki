@@ -32,9 +32,7 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
 - A running Kubernetes cluster (must have at least 3 nodes).
 
 
-
 ## Deploying the Helm chart for development and testing
-
 
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
 
@@ -71,10 +69,7 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
         limits_config:
           allow_structured_metadata: true
           volume_enabled: true
-          retention_period: 672h
-        compactor:
-          retention_enabled: true 
-          delete_request_store: s3
+
 
      deploymentMode: Distributed
 
@@ -374,7 +369,7 @@ singleBinary:
 ```
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
 
 ## Deploying the Loki Helm chart to a Production Environment
 
@@ -383,7 +378,8 @@ We are actively working on providing more guides for deploying Loki in productio
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
-- [Deploy Loki on AWS]({{< relref "../deployment-guides/aws" >}})
+- [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
+- [Deploy Loki on Azure](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/azure/)
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).

@@ -26,6 +26,22 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type ObjProvider string
+
+const (
+	MEMORY     ObjProvider = "MEMORY"
+	FILESYSTEM ObjProvider = "FILESYSTEM"
+	GCS        ObjProvider = "GCS"
+	S3         ObjProvider = "S3"
+	AZURE      ObjProvider = "AZURE"
+	SWIFT      ObjProvider = "SWIFT"
+	COS        ObjProvider = "COS"
+	ALIYUNOSS  ObjProvider = "ALIYUNOSS"
+	BOS        ObjProvider = "BOS"
+	OCI        ObjProvider = "OCI"
+	OBS        ObjProvider = "OBS"
+)
+
 const (
 	OpIter       = "iter"
 	OpGet        = "get"
@@ -42,9 +58,16 @@ type Bucket interface {
 	io.Closer
 	BucketReader
 
+	Provider() ObjProvider
+
 	// Upload the contents of the reader as an object into the bucket.
 	// Upload should be idempotent.
 	Upload(ctx context.Context, name string, r io.Reader) error
+
+	// GetAndReplace an existing object with a new object
+	// If the previous object is created or updated before the new object is uploaded, then the call will fail with an error.
+	// The existing reader will be nil in the case it did not previously exist.
+	GetAndReplace(ctx context.Context, name string, f func(existing io.Reader) (io.Reader, error)) error
 
 	// Delete removes the object with the given name.
 	// If object does not exist in the moment of deletion, Delete should throw error.
@@ -583,6 +606,10 @@ type metricBucket struct {
 	metrics *Metrics
 }
 
+func (b *metricBucket) Provider() ObjProvider {
+	return b.bkt.Provider()
+}
+
 func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
 	return &metricBucket{
 		bkt: b.bkt,
@@ -707,6 +734,10 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		b.metrics.opsFetchedBytes,
 		b.metrics.opsTransferredBytes,
 	), nil
+}
+
+func (b *metricBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	return b.bkt.GetAndReplace(ctx, name, f)
 }
 
 func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {

@@ -87,17 +87,6 @@ type picker struct {
 	telemetryLabels map[string]string
 }
 
-func (b *clusterImplBalancer) newPicker(config *dropConfigs) *picker {
-	return &picker{
-		drops:           config.drops,
-		s:               b.childState,
-		loadStore:       b.loadWrapper,
-		counter:         config.requestCounter,
-		countMax:        config.requestCountMax,
-		telemetryLabels: b.telemetryLabels,
-	}
-}
-
 func telemetryLabels(ctx context.Context) map[string]string {
 	if ctx == nil {
 		return nil
@@ -140,7 +129,7 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			if d.loadStore != nil {
 				d.loadStore.CallDropped("")
 			}
-			return balancer.PickResult{}, status.Errorf(codes.Unavailable, err.Error())
+			return balancer.PickResult{}, status.Error(codes.Unavailable, err.Error())
 		}
 	}
 
@@ -150,13 +139,9 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// This OK check also covers the case err!=nil, because SubConn will be
 		// nil.
 		pr.SubConn = scw.SubConn
-		var e error
 		// If locality ID isn't found in the wrapper, an empty locality ID will
 		// be used.
-		lIDStr, e = scw.localityID().ToString()
-		if e != nil {
-			logger.Infof("failed to marshal LocalityID: %#v, loads won't be reported", scw.localityID())
-		}
+		lIDStr = scw.localityID().ToString()
 	}
 
 	if err != nil {

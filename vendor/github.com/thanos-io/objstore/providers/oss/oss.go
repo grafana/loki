@@ -68,6 +68,8 @@ func NewTestBucket(t testing.TB) (objstore.Bucket, func(), error) {
 	return NewTestBucketFromConfig(t, c, false)
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.ALIYUNOSS }
+
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(_ context.Context, name string, r io.Reader) error {
 	// TODO(https://github.com/thanos-io/thanos/issues/678): Remove guessing length when minio provider will support multipart upload without this.
@@ -423,4 +425,8 @@ func (b *Bucket) IsAccessDeniedErr(err error) bool {
 		}
 	}
 	return false
+}
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: OSS.GetAndReplace")
 }

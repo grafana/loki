@@ -134,7 +134,6 @@ helm.sh/chart: {{ include "loki.chart" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
@@ -205,6 +204,10 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
+object_store:
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- else }}
 {{- if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
@@ -306,6 +309,7 @@ swift:
 filesystem:
   chunks_directory: {{ .chunks_directory }}
   rules_directory: {{ .rules_directory }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -425,10 +429,21 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Ruler Thanos Storage Config */}}
+{{- define "loki.rulerThanosStorageConfig" -}}
+{{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+  backend: {{ .Values.loki.storage.object_store.type }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- if .Values.minio.enabled }}
+  {{- if .Values.loki.storage.use_thanos_objstore }}
+  backend: {{ .Values.loki.storage.object_store.type }}
+    {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
+  {{- else if .Values.minio.enabled }}
   backend: "s3"
   s3:
     bucket_name: admin
@@ -594,7 +609,6 @@ Generate list of ingress service paths based on deployment type
 {{- end -}}
 {{- end -}}
 
-
 {{/*
 Ingress service paths for distributed deployment
 */}}
@@ -710,7 +724,11 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
+{{- if .Values.enterprise.tokengen.adminTokenSecret }}
+{{- .Values.enterprise.tokengen.adminTokenSecret -}}
+{{- else }}
 {{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
 {{- end -}}
 
 {{/* Prefix for provisioned secrets created for each provisioned tenant */}}
@@ -863,6 +881,12 @@ http {
     {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
 
+    {{- if .Values.loki.ui.gateway.enabled }}
+    location ^~ /ui {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
+    {{- end }}
+
     # Distributor
     location = /api/prom/push {
       proxy_pass       {{ $distributorUrl }}$request_uri;
@@ -975,7 +999,14 @@ http {
     location = /api/prom {
       internal;        # to suppress 301
     }
+    # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
+    set $query_tags $http_x_query_tags;
+    if ($query_tags !~* '') {
+      set $query_tags "noop=";
+    }
     location ^~ /loki/api/v1/ {
+      # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+      proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
@@ -1084,7 +1115,7 @@ enableServiceLinks: false
 {{- end }}
 
 {{- define "loki.config.checksum" -}}
-checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
 {{- end -}}
 
 {{/*
@@ -1121,3 +1152,50 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+compute a ConfigMap or Secret checksum only based on its .data content.
+This function needs to be called with a context object containing the following keys:
+- ctx: the current Helm context (what '.' is at the call site)
+- name: the file name of the ConfigMap or Secret
+*/}}
+{{- define "loki.configMapOrSecretContentHash" -}}
+{{ get (include (print .ctx.Template.BasePath .name) .ctx | fromYaml) "data" | toYaml | sha256sum }}
+{{- end }}
+
+{{/* Thanos object storage configuration helper to build
+the thanos_storage_config model*/}}
+{{- define "loki.thanosStorageConfig" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx.Values.loki.storage.object_store }}
+{{- if eq .type "s3" }}
+s3:
+  {{- with .s3 }}
+  bucket_name: {{ $bucketName }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .access_key_id }}
+  secret_access_key: {{ .secret_access_key }}
+  region: {{ .region }}
+  insecure: {{ .insecure }}
+  http:
+    {{ toYaml .http | nindent 4 }}
+  sse:
+    {{ toYaml .sse | nindent 4 }}
+  {{- end }}
+{{- else if eq .type "gcs" }}
+gcs:
+  {{- with .gcs }}
+  bucket_name: {{ $bucketName }}
+  service_account: {{ .service_account }}
+  {{- end }}
+{{- else if eq .type "azure" }}
+azure:
+  {{- with .azure }}
+  container_name: {{ $bucketName }}
+  account_name: {{ .account_name }}
+  account_key: {{ .account_key }}
+  {{- end }}
+{{- end }}
+storage_prefix: {{ .storage_prefix }}
+{{- end }}
+{{- end }}

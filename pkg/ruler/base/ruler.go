@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/dskit/tenant"
@@ -41,6 +42,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/ruler/base")
 
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
@@ -407,9 +410,9 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 	}
 
 	marshaledExpression, _ := json.Marshal(exprStruct)
-	escapedExpression := url.QueryEscape(string(marshaledExpression))
-	str := `/explore?left={"queries":[%s]}`
-	return fmt.Sprintf(str, escapedExpression)
+	params := url.Values{}
+	params.Set("left", fmt.Sprintf(`{"queries":[%s]}`, marshaledExpression))
+	return `/explore?` + params.Encode()
 }
 
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -783,7 +786,7 @@ func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.
 }
 
 // the delimiter is prefixed with ";" since that is what Prometheus uses for its group key
-const ruleTokenDelimiter = ";rule-shard-token"
+const ruleTokenDelimiter = ";rule-shard-token" //#nosec G101 -- False positive
 
 // AddRuleTokenToGroupName adds a rule shard token to a given group's name to make it unique.
 // Only relevant when using "by-rule" sharding strategy.
@@ -802,7 +805,7 @@ func RemoveRuleTokenFromGroupName(name string) string {
 func (r *Ruler) GetRules(ctx context.Context, req *RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id found in context")
+		return nil, fmt.Errorf("no user id found in context: %w", err)
 	}
 
 	if r.cfg.EnableSharding {

@@ -26,14 +26,14 @@ type scheduler interface {
 	nextIndex() int
 }
 
-// newScheduler uses scWeights to create a new scheduler for selecting subconns
+// newScheduler uses scWeights to create a new scheduler for selecting endpoints
 // in a picker.  It will return a round robin implementation if at least
-// len(scWeights)-1 are zero or there is only a single subconn, otherwise it
+// len(scWeights)-1 are zero or there is only a single endpoint, otherwise it
 // will return an Earliest Deadline First (EDF) scheduler implementation that
-// selects the subchannels according to their weights.
+// selects the endpoints according to their weights.
 func (p *picker) newScheduler(recordMetrics bool) scheduler {
-	scWeights := p.scWeights(recordMetrics)
-	n := len(scWeights)
+	epWeights := p.endpointWeights(recordMetrics)
+	n := len(epWeights)
 	if n == 0 {
 		return nil
 	}
@@ -46,7 +46,7 @@ func (p *picker) newScheduler(recordMetrics bool) scheduler {
 	sum := float64(0)
 	numZero := 0
 	max := float64(0)
-	for _, w := range scWeights {
+	for _, w := range epWeights {
 		sum += w
 		if w > max {
 			max = w
@@ -68,7 +68,7 @@ func (p *picker) newScheduler(recordMetrics bool) scheduler {
 
 	weights := make([]uint16, n)
 	allEqual := true
-	for i, w := range scWeights {
+	for i, w := range epWeights {
 		if w == 0 {
 			// Backends with weight = 0 use the mean.
 			weights[i] = mean

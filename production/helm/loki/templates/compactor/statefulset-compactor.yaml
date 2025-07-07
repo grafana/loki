@@ -39,19 +39,16 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.compactorSelectorLabels" . | nindent 8 }}
+        {{- include "loki.compactorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.compactor.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.compactor.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.compactor.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
@@ -82,7 +79,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=compactor
-            {{- with .Values.compactor.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.compactor.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -95,11 +92,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.compactor.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.compactor.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.compactor.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.compactor.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -120,7 +117,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.compactor.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.compactor.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.compactor.resources }}
@@ -167,13 +164,15 @@ spec:
         - name: data
           emptyDir: {}
         {{- end }}
-        {{- with .Values.compactor.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.compactor.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if .Values.compactor.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.compactor.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

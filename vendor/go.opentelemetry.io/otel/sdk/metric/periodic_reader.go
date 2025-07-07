@@ -193,7 +193,9 @@ func (r *PeriodicReader) temporality(kind InstrumentKind) metricdata.Temporality
 }
 
 // aggregation returns what Aggregation to use for kind.
-func (r *PeriodicReader) aggregation(kind InstrumentKind) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
+func (r *PeriodicReader) aggregation(
+	kind InstrumentKind,
+) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
 	return r.exporter.Aggregation(kind)
 }
 
@@ -251,18 +253,17 @@ func (r *PeriodicReader) collect(ctx context.Context, p interface{}, rm *metricd
 	if err != nil {
 		return err
 	}
-	var errs []error
 	for _, producer := range r.externalProducers.Load().([]Producer) {
-		externalMetrics, err := producer.Produce(ctx)
-		if err != nil {
-			errs = append(errs, err)
+		externalMetrics, e := producer.Produce(ctx)
+		if e != nil {
+			err = errors.Join(err, e)
 		}
 		rm.ScopeMetrics = append(rm.ScopeMetrics, externalMetrics...)
 	}
 
 	global.Debug("PeriodicReader collection", "Data", rm)
 
-	return unifyErrors(errs)
+	return err
 }
 
 // export exports metric data m using r's exporter.

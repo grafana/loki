@@ -52,7 +52,8 @@ var (
 		http2Enabled:      true,
 		// 5 minutes is typically above the maximum sane scrape interval. So we can
 		// use keepalive for all configurations.
-		idleConnTimeout: 5 * time.Minute,
+		idleConnTimeout:  5 * time.Minute,
+		newTLSConfigFunc: NewTLSConfigWithContext,
 	}
 )
 
@@ -224,7 +225,7 @@ func (u *URL) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements the json.Marshaler interface for URL.
 func (u URL) MarshalJSON() ([]byte, error) {
 	if u.URL != nil {
-		return json.Marshal(u.URL.String())
+		return json.Marshal(u.String())
 	}
 	return []byte("null"), nil
 }
@@ -250,7 +251,7 @@ func (o *OAuth2) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal((*plain)(o)); err != nil {
 		return err
 	}
-	return o.ProxyConfig.Validate()
+	return o.Validate()
 }
 
 // UnmarshalJSON implements the json.Marshaler interface for URL.
@@ -259,7 +260,7 @@ func (o *OAuth2) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, (*plain)(o)); err != nil {
 		return err
 	}
-	return o.ProxyConfig.Validate()
+	return o.Validate()
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -357,33 +358,33 @@ func nonZeroCount[T comparable](values ...T) int {
 func (c *HTTPClientConfig) Validate() error {
 	// Backwards compatibility with the bearer_token field.
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
-		return fmt.Errorf("at most one of bearer_token & bearer_token_file must be configured")
+		return errors.New("at most one of bearer_token & bearer_token_file must be configured")
 	}
 	if (c.BasicAuth != nil || c.OAuth2 != nil) && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
-		return fmt.Errorf("at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured")
+		return errors.New("at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured")
 	}
 	if c.BasicAuth != nil && nonZeroCount(string(c.BasicAuth.Username) != "", c.BasicAuth.UsernameFile != "", c.BasicAuth.UsernameRef != "") > 1 {
-		return fmt.Errorf("at most one of basic_auth username, username_file & username_ref must be configured")
+		return errors.New("at most one of basic_auth username, username_file & username_ref must be configured")
 	}
 	if c.BasicAuth != nil && nonZeroCount(string(c.BasicAuth.Password) != "", c.BasicAuth.PasswordFile != "", c.BasicAuth.PasswordRef != "") > 1 {
-		return fmt.Errorf("at most one of basic_auth password, password_file & password_ref must be configured")
+		return errors.New("at most one of basic_auth password, password_file & password_ref must be configured")
 	}
 	if c.Authorization != nil {
 		if len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0 {
-			return fmt.Errorf("authorization is not compatible with bearer_token & bearer_token_file")
+			return errors.New("authorization is not compatible with bearer_token & bearer_token_file")
 		}
 		if nonZeroCount(string(c.Authorization.Credentials) != "", c.Authorization.CredentialsFile != "", c.Authorization.CredentialsRef != "") > 1 {
-			return fmt.Errorf("at most one of authorization credentials & credentials_file must be configured")
+			return errors.New("at most one of authorization credentials & credentials_file must be configured")
 		}
 		c.Authorization.Type = strings.TrimSpace(c.Authorization.Type)
 		if len(c.Authorization.Type) == 0 {
 			c.Authorization.Type = "Bearer"
 		}
 		if strings.ToLower(c.Authorization.Type) == "basic" {
-			return fmt.Errorf(`authorization type cannot be set to "basic", use "basic_auth" instead`)
+			return errors.New(`authorization type cannot be set to "basic", use "basic_auth" instead`)
 		}
 		if c.BasicAuth != nil || c.OAuth2 != nil {
-			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
+			return errors.New("at most one of basic_auth, oauth2 & authorization must be configured")
 		}
 	} else {
 		if len(c.BearerToken) > 0 {
@@ -399,16 +400,16 @@ func (c *HTTPClientConfig) Validate() error {
 	}
 	if c.OAuth2 != nil {
 		if c.BasicAuth != nil {
-			return fmt.Errorf("at most one of basic_auth, oauth2 & authorization must be configured")
+			return errors.New("at most one of basic_auth, oauth2 & authorization must be configured")
 		}
 		if len(c.OAuth2.ClientID) == 0 {
-			return fmt.Errorf("oauth2 client_id must be configured")
+			return errors.New("oauth2 client_id must be configured")
 		}
 		if len(c.OAuth2.TokenURL) == 0 {
-			return fmt.Errorf("oauth2 token_url must be configured")
+			return errors.New("oauth2 token_url must be configured")
 		}
 		if nonZeroCount(len(c.OAuth2.ClientSecret) > 0, len(c.OAuth2.ClientSecretFile) > 0, len(c.OAuth2.ClientSecretRef) > 0) > 1 {
-			return fmt.Errorf("at most one of oauth2 client_secret, client_secret_file & client_secret_ref must be configured")
+			return errors.New("at most one of oauth2 client_secret, client_secret_file & client_secret_ref must be configured")
 		}
 	}
 	if err := c.ProxyConfig.Validate(); err != nil {
@@ -452,8 +453,12 @@ func (a *BasicAuth) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // by net.Dialer.
 type DialContextFunc func(context.Context, string, string) (net.Conn, error)
 
+// NewTLSConfigFunc returns tls.Config.
+type NewTLSConfigFunc func(context.Context, *TLSConfig, ...TLSConfigOption) (*tls.Config, error)
+
 type httpClientOptions struct {
 	dialContextFunc   DialContextFunc
+	newTLSConfigFunc  NewTLSConfigFunc
 	keepAlivesEnabled bool
 	http2Enabled      bool
 	idleConnTimeout   time.Duration
@@ -473,10 +478,20 @@ func (f httpClientOptionFunc) applyToHTTPClientOptions(options *httpClientOption
 	f(options)
 }
 
-// WithDialContextFunc allows you to override func gets used for the actual dialing. The default is `net.Dialer.DialContext`.
+// WithDialContextFunc allows you to override the func gets used for the dialing.
+// The default is `net.Dialer.DialContext`.
 func WithDialContextFunc(fn DialContextFunc) HTTPClientOption {
 	return httpClientOptionFunc(func(opts *httpClientOptions) {
 		opts.dialContextFunc = fn
+	})
+}
+
+// WithNewTLSConfigFunc allows you to override the func that creates the TLS config
+// from the prometheus http config.
+// The default is `NewTLSConfigWithContext`.
+func WithNewTLSConfigFunc(newTLSConfigFunc NewTLSConfigFunc) HTTPClientOption {
+	return httpClientOptionFunc(func(opts *httpClientOptions) {
+		opts.newTLSConfigFunc = newTLSConfigFunc
 	})
 }
 
@@ -589,8 +604,8 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 		// The only timeout we care about is the configured scrape timeout.
 		// It is applied on request. So we leave out any timings here.
 		var rt http.RoundTripper = &http.Transport{
-			Proxy:                 cfg.ProxyConfig.Proxy(),
-			ProxyConnectHeader:    cfg.ProxyConfig.GetProxyConnectHeader(),
+			Proxy:                 cfg.Proxy(),
+			ProxyConnectHeader:    cfg.GetProxyConnectHeader(),
 			MaxIdleConns:          20000,
 			MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
 			DisableKeepAlives:     !opts.keepAlivesEnabled,
@@ -670,7 +685,7 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 		return rt, nil
 	}
 
-	tlsConfig, err := NewTLSConfig(&cfg.TLSConfig, WithSecretManager(opts.secretManager))
+	tlsConfig, err := opts.newTLSConfigFunc(ctx, &cfg.TLSConfig, WithSecretManager(opts.secretManager))
 	if err != nil {
 		return nil, err
 	}
@@ -679,6 +694,7 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 	if err != nil {
 		return nil, err
 	}
+
 	if tlsSettings.immutable() {
 		// No need for a RoundTripper that reloads the files automatically.
 		return newRT(tlsConfig)
@@ -735,7 +751,7 @@ func (s *FileSecret) Fetch(ctx context.Context) (string, error) {
 }
 
 func (s *FileSecret) Description() string {
-	return fmt.Sprintf("file %s", s.file)
+	return "file " + s.file
 }
 
 func (s *FileSecret) Immutable() bool {
@@ -753,7 +769,7 @@ func (s *refSecret) Fetch(ctx context.Context) (string, error) {
 }
 
 func (s *refSecret) Description() string {
-	return fmt.Sprintf("ref %s", s.ref)
+	return "ref " + s.ref
 }
 
 func (s *refSecret) Immutable() bool {
@@ -898,8 +914,8 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, secret str
 	tlsTransport := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
 		return &http.Transport{
 			TLSClientConfig:       tlsConfig,
-			Proxy:                 rt.config.ProxyConfig.Proxy(),
-			ProxyConnectHeader:    rt.config.ProxyConfig.GetProxyConnectHeader(),
+			Proxy:                 rt.config.Proxy(),
+			ProxyConnectHeader:    rt.config.GetProxyConnectHeader(),
 			DisableKeepAlives:     !rt.opts.keepAlivesEnabled,
 			MaxIdleConns:          20,
 			MaxIdleConnsPerHost:   1, // see https://github.com/golang/go/issues/13801
@@ -1045,7 +1061,7 @@ func NewTLSConfigWithContext(ctx context.Context, cfg *TLSConfig, optFuncs ...TL
 
 	if cfg.MaxVersion != 0 && cfg.MinVersion != 0 {
 		if cfg.MaxVersion < cfg.MinVersion {
-			return nil, fmt.Errorf("tls_config.max_version must be greater than or equal to tls_config.min_version if both are specified")
+			return nil, errors.New("tls_config.max_version must be greater than or equal to tls_config.min_version if both are specified")
 		}
 	}
 
@@ -1144,19 +1160,19 @@ func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // used.
 func (c *TLSConfig) Validate() error {
 	if nonZeroCount(len(c.CA) > 0, len(c.CAFile) > 0, len(c.CARef) > 0) > 1 {
-		return fmt.Errorf("at most one of ca, ca_file & ca_ref must be configured")
+		return errors.New("at most one of ca, ca_file & ca_ref must be configured")
 	}
 	if nonZeroCount(len(c.Cert) > 0, len(c.CertFile) > 0, len(c.CertRef) > 0) > 1 {
-		return fmt.Errorf("at most one of cert, cert_file & cert_ref must be configured")
+		return errors.New("at most one of cert, cert_file & cert_ref must be configured")
 	}
 	if nonZeroCount(len(c.Key) > 0, len(c.KeyFile) > 0, len(c.KeyRef) > 0) > 1 {
-		return fmt.Errorf("at most one of key and key_file must be configured")
+		return errors.New("at most one of key and key_file must be configured")
 	}
 
 	if c.usingClientCert() && !c.usingClientKey() {
-		return fmt.Errorf("exactly one of key or key_file must be configured when a client certificate is configured")
+		return errors.New("exactly one of key or key_file must be configured when a client certificate is configured")
 	} else if c.usingClientKey() && !c.usingClientCert() {
-		return fmt.Errorf("exactly one of cert or cert_file must be configured when a client key is configured")
+		return errors.New("exactly one of cert or cert_file must be configured when a client key is configured")
 	}
 
 	return nil
@@ -1460,16 +1476,16 @@ type ProxyConfig struct {
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (c *ProxyConfig) Validate() error {
 	if len(c.ProxyConnectHeader) > 0 && (!c.ProxyFromEnvironment && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "")) {
-		return fmt.Errorf("if proxy_connect_header is configured, proxy_url or proxy_from_environment must also be configured")
+		return errors.New("if proxy_connect_header is configured, proxy_url or proxy_from_environment must also be configured")
 	}
 	if c.ProxyFromEnvironment && c.ProxyURL.URL != nil && c.ProxyURL.String() != "" {
-		return fmt.Errorf("if proxy_from_environment is configured, proxy_url must not be configured")
+		return errors.New("if proxy_from_environment is configured, proxy_url must not be configured")
 	}
 	if c.ProxyFromEnvironment && c.NoProxy != "" {
-		return fmt.Errorf("if proxy_from_environment is configured, no_proxy must not be configured")
+		return errors.New("if proxy_from_environment is configured, no_proxy must not be configured")
 	}
 	if c.ProxyURL.URL == nil && c.NoProxy != "" {
-		return fmt.Errorf("if no_proxy is configured, proxy_url must also be configured")
+		return errors.New("if no_proxy is configured, proxy_url must also be configured")
 	}
 	return nil
 }
@@ -1492,7 +1508,7 @@ func (c *ProxyConfig) Proxy() (fn func(*http.Request) (*url.URL, error)) {
 		}
 		return
 	}
-	if c.ProxyURL.URL != nil && c.ProxyURL.URL.String() != "" {
+	if c.ProxyURL.URL != nil && c.ProxyURL.String() != "" {
 		if c.NoProxy == "" {
 			c.proxyFunc = http.ProxyURL(c.ProxyURL.URL)
 			return

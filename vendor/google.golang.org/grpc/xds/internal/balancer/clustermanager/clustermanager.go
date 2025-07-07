@@ -55,7 +55,6 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 		Logger:                  b.logger,
 		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
 	})
-	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
 }
@@ -87,6 +86,7 @@ func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) er
 	// TODO: Get rid of handling hierarchy in addresses. This LB policy never
 	// gets addresses from the resolver.
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
 
 	// Remove sub-balancers that are not in the new list from the aggregator and
 	// balancergroup.
@@ -139,6 +139,7 @@ func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) er
 		if err := b.bg.UpdateClientConnState(childName, balancer.ClientConnState{
 			ResolverState: resolver.State{
 				Addresses:     addressesSplit[childName],
+				Endpoints:     endpointsSplit[childName],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			},
@@ -167,11 +168,14 @@ func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) er
 }
 
 func (b *bal) UpdateClientConnState(s balancer.ClientConnState) error {
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
+
 	newConfig, ok := s.BalancerConfig.(*lbConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
-	b.logger.Infof("Update with config %+v, resolver state %+v", pretty.ToJSON(s.BalancerConfig), s.ResolverState)
 
 	b.stateAggregator.pauseStateUpdates()
 	defer b.stateAggregator.resumeStateUpdates()

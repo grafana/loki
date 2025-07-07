@@ -41,7 +41,7 @@ spec:
           image: {{ include "loki-canary.image" $ }}
           imagePullPolicy: {{ $.Values.loki.image.pullPolicy }}
           args:
-            - -addr={{- include "loki.host" $ }}
+            - -addr={{- default (include "loki.host" $) .lokiurl }}
             - -labelname={{ .labelname }}
             - -labelvalue=$(POD_NAME)
             {{- if $.Values.enterprise.enabled }}
@@ -113,6 +113,10 @@ spec:
       {{- end }}
       {{- with .tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:

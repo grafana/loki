@@ -3,7 +3,7 @@
 set -eu
 set -o pipefail
 
-KAFKA_VERSION="${KAFKA_VERSION:-3.6.0}"
+KAFKA_VERSION="${KAFKA_VERSION:-3.6.2}"
 KAFKA_HOME="/opt/kafka-${KAFKA_VERSION}"
 
 if [ ! -d "${KAFKA_HOME}" ]; then

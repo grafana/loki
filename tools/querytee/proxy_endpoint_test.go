@@ -421,6 +421,6 @@ func Test_backendResponse_statusCode(t *testing.T) {
 
 type mockComparator struct{}
 
-func (c *mockComparator) Compare(_, _ []byte) (*ComparisonSummary, error) {
+func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) {
 	return &ComparisonSummary{missingMetrics: 12}, nil
 }

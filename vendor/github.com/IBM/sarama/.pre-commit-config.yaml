@@ -2,7 +2,7 @@ fail_fast: false
 default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v5.0.0
     hooks:
       - id: check-merge-conflict
       - id: check-yaml
@@ -32,10 +32,10 @@ repos:
         files: \.go$
         args: []
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.16.3
+    rev: v8.23.3
     hooks:
       - id: gitleaks
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.52.2
+    rev: v1.63.4
     hooks:
       - id: golangci-lint

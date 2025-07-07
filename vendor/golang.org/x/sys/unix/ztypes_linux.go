@@ -2594,8 +2594,8 @@ const (
 	SOF_TIMESTAMPING_BIND_PHC     = 0x8000
 	SOF_TIMESTAMPING_OPT_ID_TCP   = 0x10000
 
-	SOF_TIMESTAMPING_LAST = 0x10000
-	SOF_TIMESTAMPING_MASK = 0x1ffff
+	SOF_TIMESTAMPING_LAST = 0x20000
+	SOF_TIMESTAMPING_MASK = 0x3ffff
 
 	SCM_TSTAMP_SND   = 0x0
 	SCM_TSTAMP_SCHED = 0x1
@@ -3541,7 +3541,7 @@ type Nhmsg struct {
 type NexthopGrp struct {
 	Id     uint32
 	Weight uint8
-	Resvd1 uint8
+	High   uint8
 	Resvd2 uint16
 }
 
@@ -3802,7 +3802,7 @@ const (
 	ETHTOOL_MSG_PSE_GET                       = 0x24
 	ETHTOOL_MSG_PSE_SET                       = 0x25
 	ETHTOOL_MSG_RSS_GET                       = 0x26
-	ETHTOOL_MSG_USER_MAX                      = 0x2c
+	ETHTOOL_MSG_USER_MAX                      = 0x2d
 	ETHTOOL_MSG_KERNEL_NONE                   = 0x0
 	ETHTOOL_MSG_STRSET_GET_REPLY              = 0x1
 	ETHTOOL_MSG_LINKINFO_GET_REPLY            = 0x2
@@ -3842,7 +3842,7 @@ const (
 	ETHTOOL_MSG_MODULE_NTF                    = 0x24
 	ETHTOOL_MSG_PSE_GET_REPLY                 = 0x25
 	ETHTOOL_MSG_RSS_GET_REPLY                 = 0x26
-	ETHTOOL_MSG_KERNEL_MAX                    = 0x2c
+	ETHTOOL_MSG_KERNEL_MAX                    = 0x2e
 	ETHTOOL_FLAG_COMPACT_BITSETS              = 0x1
 	ETHTOOL_FLAG_OMIT_REPLY                   = 0x2
 	ETHTOOL_FLAG_STATS                        = 0x4
@@ -3850,7 +3850,7 @@ const (
 	ETHTOOL_A_HEADER_DEV_INDEX                = 0x1
 	ETHTOOL_A_HEADER_DEV_NAME                 = 0x2
 	ETHTOOL_A_HEADER_FLAGS                    = 0x3
-	ETHTOOL_A_HEADER_MAX                      = 0x3
+	ETHTOOL_A_HEADER_MAX                      = 0x4
 	ETHTOOL_A_BITSET_BIT_UNSPEC               = 0x0
 	ETHTOOL_A_BITSET_BIT_INDEX                = 0x1
 	ETHTOOL_A_BITSET_BIT_NAME                 = 0x2
@@ -4031,11 +4031,11 @@ const (
 	ETHTOOL_A_CABLE_RESULT_UNSPEC             = 0x0
 	ETHTOOL_A_CABLE_RESULT_PAIR               = 0x1
 	ETHTOOL_A_CABLE_RESULT_CODE               = 0x2
-	ETHTOOL_A_CABLE_RESULT_MAX                = 0x2
+	ETHTOOL_A_CABLE_RESULT_MAX                = 0x3
 	ETHTOOL_A_CABLE_FAULT_LENGTH_UNSPEC       = 0x0
 	ETHTOOL_A_CABLE_FAULT_LENGTH_PAIR         = 0x1
 	ETHTOOL_A_CABLE_FAULT_LENGTH_CM           = 0x2
-	ETHTOOL_A_CABLE_FAULT_LENGTH_MAX          = 0x2
+	ETHTOOL_A_CABLE_FAULT_LENGTH_MAX          = 0x3
 	ETHTOOL_A_CABLE_TEST_NTF_STATUS_UNSPEC    = 0x0
 	ETHTOOL_A_CABLE_TEST_NTF_STATUS_STARTED   = 0x1
 	ETHTOOL_A_CABLE_TEST_NTF_STATUS_COMPLETED = 0x2
@@ -4200,7 +4200,8 @@ type (
 	}
 	PtpSysOffsetExtended struct {
 		Samples uint32
-		Rsv     [3]uint32
+		Clockid int32
+		Rsv     [2]uint32
 		Ts      [25][3]PtpClockTime
 	}
 	PtpSysOffsetPrecise struct {
@@ -4399,6 +4400,7 @@ const (
 type LandlockRulesetAttr struct {
 	Access_fs  uint64
 	Access_net uint64
+	Scoped     uint64
 }
 
 type LandlockPathBeneathAttr struct {
@@ -4745,7 +4747,7 @@ const (
 	NL80211_ATTR_MAC_HINT                                   = 0xc8
 	NL80211_ATTR_MAC_MASK                                   = 0xd7
 	NL80211_ATTR_MAX_AP_ASSOC_STA                           = 0xca
-	NL80211_ATTR_MAX                                        = 0x14c
+	NL80211_ATTR_MAX                                        = 0x14d
 	NL80211_ATTR_MAX_CRIT_PROT_DURATION                     = 0xb4
 	NL80211_ATTR_MAX_CSA_COUNTERS                           = 0xce
 	NL80211_ATTR_MAX_MATCH_SETS                             = 0x85
@@ -5517,7 +5519,7 @@ const (
 	NL80211_MNTR_FLAG_CONTROL                               = 0x3
 	NL80211_MNTR_FLAG_COOK_FRAMES                           = 0x5
 	NL80211_MNTR_FLAG_FCSFAIL                               = 0x1
-	NL80211_MNTR_FLAG_MAX                                   = 0x6
+	NL80211_MNTR_FLAG_MAX                                   = 0x7
 	NL80211_MNTR_FLAG_OTHER_BSS                             = 0x4
 	NL80211_MNTR_FLAG_PLCPFAIL                              = 0x2
 	NL80211_MPATH_FLAG_ACTIVE                               = 0x1
@@ -6172,3 +6174,5 @@ type SockDiagReq struct {
 	Family   uint8
 	Protocol uint8
 }
+
+const RTM_NEWNVLAN = 0x70

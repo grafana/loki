@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.rulerFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.rulerLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -29,12 +30,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.rulerSelectorLabels" . | nindent 8 }}
+        {{- include "loki.rulerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.ruler.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.ruler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -62,13 +60,82 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
+      {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
+        - name: loki-sc-rules
+          {{- if .Values.sidecar.image.sha }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          {{- else }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          env:
+            - name: METHOD
+              value: {{ .Values.sidecar.rules.watchMethod }}
+            - name: LABEL
+              value: "{{ .Values.sidecar.rules.label }}"
+            {{- if .Values.sidecar.rules.labelValue }}
+            - name: LABEL_VALUE
+              value: {{ quote .Values.sidecar.rules.labelValue }}
+            {{- end }}
+            - name: FOLDER
+              value: "{{ .Values.sidecar.rules.folder }}"
+            - name: RESOURCE
+              value: {{ quote .Values.sidecar.rules.resource }}
+            {{- if .Values.sidecar.enableUniqueFilenames }}
+            - name: UNIQUE_FILENAMES
+              value: "{{ .Values.sidecar.enableUniqueFilenames }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.searchNamespace }}
+            - name: NAMESPACE
+              value: "{{ .Values.sidecar.rules.searchNamespace | join "," }}"
+            {{- end }}
+            {{- if .Values.sidecar.skipTlsVerify }}
+            - name: SKIP_TLS_VERIFY
+              value: "{{ .Values.sidecar.skipTlsVerify }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.script }}
+            - name: SCRIPT
+              value: "{{ .Values.sidecar.rules.script }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchServerTimeout }}
+            - name: WATCH_SERVER_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchServerTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchClientTimeout }}
+            - name: WATCH_CLIENT_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchClientTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.logLevel }}
+            - name: LOG_LEVEL
+              value: "{{ .Values.sidecar.rules.logLevel }}"
+            {{- end }}
+          {{- if .Values.sidecar.livenessProbe }}
+          livenessProbe:
+          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.readinessProbe }}
+          readinessProbe:
+          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.resources }}
+          resources:
+          {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.securityContext }}
+          securityContext:
+          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+        {{- end}}
         - name: ruler
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=ruler
-            {{- with .Values.ruler.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.ruler.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -81,11 +148,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.ruler.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.ruler.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.ruler.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.ruler.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -106,11 +173,15 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
+            {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            {{- end}}
             {{- range $dir, $_ := .Values.ruler.directories }}
             - name: {{ include "loki.rulerRulesDirName" $dir }}
               mountPath: /etc/loki/rules/{{ $dir }}
             {{- end }}
-            {{- with .Values.ruler.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.ruler.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -149,6 +220,15 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
+        {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
+        - name: sc-rules-volume
+        {{- if .Values.sidecar.rules.sizeLimit }}
+          emptyDir:
+            sizeLimit: {{ .Values.sidecar.rules.sizeLimit }}
+        {{- else }}
+          emptyDir: {}
+        {{- end -}}
+        {{- end -}}
         {{- range $dir, $_ := .Values.ruler.directories }}
         - name: {{ include "loki.rulerRulesDirName" $dir }}
           configMap:
@@ -156,7 +236,7 @@ spec:
         {{- end }}
         - name: tmp
           emptyDir: {}
-        {{- with .Values.ruler.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.ruler.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if not .Values.ruler.persistence.enabled }}
@@ -164,7 +244,9 @@ spec:
           emptyDir: {}
   {{- else }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         {{- with .Values.ruler.persistence.annotations }}
         annotations:

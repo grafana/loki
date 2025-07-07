@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -56,6 +57,21 @@ func (es NumberDataPointSlice) At(i int) NumberDataPoint {
 	return newNumberDataPoint((*es.orig)[i], es.state)
 }
 
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es NumberDataPointSlice) All() iter.Seq2[int, NumberDataPoint] {
+	return func(yield func(int, NumberDataPoint) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
 // 1. If the newCap <= cap then no change in capacity.
 // 2. If the newCap > cap then the slice capacity will be expanded to equal newCap.
@@ -93,6 +109,10 @@ func (es NumberDataPointSlice) AppendEmpty() NumberDataPoint {
 func (es NumberDataPointSlice) MoveAndAppendTo(dest NumberDataPointSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -125,22 +145,7 @@ func (es NumberDataPointSlice) RemoveIf(f func(NumberDataPoint) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newNumberDataPoint((*es.orig)[i], es.state).CopyTo(newNumberDataPoint((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.NumberDataPoint, srcLen)
-	wrappers := make([]*otlpmetrics.NumberDataPoint, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newNumberDataPoint((*es.orig)[i], es.state).CopyTo(newNumberDataPoint(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigNumberDataPointSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the NumberDataPoint elements within NumberDataPointSlice given the
@@ -149,4 +154,19 @@ func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 func (es NumberDataPointSlice) Sort(less func(a, b NumberDataPoint) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigNumberDataPointSlice(dest, src []*otlpmetrics.NumberDataPoint) []*otlpmetrics.NumberDataPoint {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.NumberDataPoint, len(src))
+		data := make([]otlpmetrics.NumberDataPoint, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigNumberDataPoint(dest[i], src[i])
+	}
+	return dest
 }

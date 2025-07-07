@@ -1,4 +1,4 @@
-{{- if .Values.enterprise.enabled }}
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,48 +23,33 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 8 }}
-        {{- with .Values.adminApi.labels }}
-        {{- toYaml . | nindent 8 }}
+        {{- include "enterprise-logs.adminApiLabels" . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.adminApi.labels }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
       annotations:
         {{- if .Values.useExternalConfig }}
         checksum/config: {{ .Values.externalConfigVersion }}
         {{- else }}
-        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
         {{- end}}
         {{- with .Values.adminApi.annotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.adminApi.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
       {{- if .Values.adminApi.priorityClassName }}
       priorityClassName: {{ .Values.adminApi.priorityClassName }}
       {{- end }}
       securityContext:
         {{- toYaml .Values.adminApi.podSecurityContext | nindent 8 }}
-      initContainers:
-        # Taken from
-        # https://github.com/minio/charts/blob/a5c84bcbad884728bff5c9c23541f936d57a13b3/minio/templates/post-install-create-bucket-job.yaml
-      {{- if .Values.minio.enabled }}
-        - name: minio-mc
-          image: "{{ .Values.minio.mcImage.repository }}:{{ .Values.minio.mcImage.tag }}"
-          imagePullPolicy: {{ .Values.minio.mcImage.pullPolicy }}
-          command: ["/bin/sh", "/config/initialize"]
-          env:
-            - name: MINIO_ENDPOINT
-              value: {{ .Release.Name }}-minio
-            - name: MINIO_PORT
-              value: {{ .Values.minio.service.port | quote }}
-          volumeMounts:
-            - name: minio-configuration
-              mountPath: /config
-          {{- if .Values.minio.tls.enabled }}
-            - name: cert-secret-volume-mc
-              mountPath: {{ .Values.minio.configPathmc }}certs
-          {{ end }}
-        {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -83,10 +68,10 @@ spec:
             {{- if .Values.minio.enabled }}
             - -admin.client.backend-type=s3
             - -admin.client.s3.endpoint={{ template "loki.minio" . }}
-            - -admin.client.s3.bucket-name=enterprise-logs-admin
-            - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
-            - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
-            - -admin.client.s3.insecure=true
+            - -admin.client.s3.bucket-name={{ .Values.loki.storage.bucketNames.admin }}
+            - -admin.client.s3.access-key-id={{ (index .Values.minio.users 0).accessKey }}
+            - -admin.client.s3.secret-access-key={{ (index .Values.minio.users 0).secretKey }}
+            - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
             {{- end }}
             {{- range $key, $value := .Values.adminApi.extraArgs }}
             - "-{{ $key }}={{ $value }}"
@@ -117,11 +102,11 @@ spec:
             {{- toYaml .Values.adminApi.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.adminApi.containerSecurityContext | nindent 12 }}
+          {{- with (concat .Values.global.extraEnv .Values.adminApi.extraEnv) | uniq }}
           env:
-            {{- if .Values.adminApi.env }}
-            {{ toYaml .Values.adminApi.env | nindent 12 }}
-            {{- end }}
-          {{- with .Values.adminApi.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.adminApi.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}

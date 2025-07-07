@@ -14,7 +14,7 @@ import (
 func TestDefaultOutput_Format(t *testing.T) {
 	t.Parallel()
 
-	timestamp, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
+	timestamp, _ := time.Parse(time.RFC3339Nano, "2006-01-02T15:04:05.123456789+07:00")
 	emptyLabels := loghttp.LabelSet{}
 	someLabels := loghttp.LabelSet(map[string]string{
 		"type": "test",
@@ -75,6 +75,22 @@ func TestDefaultOutput_Format(t *testing.T) {
 			0,
 			"Hello",
 			"2006-01-02T08:04:05Z Hello\n",
+		},
+		"TimestampFormat using RFC3339Nano": {
+			&LogOutputOptions{Timezone: time.UTC, TimestampFormat: time.RFC3339Nano},
+			timestamp,
+			emptyLabels,
+			0,
+			"Hello",
+			"2006-01-02T08:04:05.123456789Z {} Hello\n",
+		},
+		"TimestampFormat using StampMicro truncated": {
+			&LogOutputOptions{Timezone: time.UTC, TimestampFormat: time.StampMicro},
+			timestamp,
+			emptyLabels,
+			0,
+			"Hello",
+			"Jan  2 08:04:05.123456 {} Hello\n",
 		},
 	}
 

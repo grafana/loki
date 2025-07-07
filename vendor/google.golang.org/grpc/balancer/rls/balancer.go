@@ -140,7 +140,7 @@ func (rlsBB) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.
 		updateCh:           buffer.NewUnbounded(),
 	}
 	lb.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-experimental-lb %p] ", lb))
-	lb.dataCache = newDataCache(maxCacheSize, lb.logger, opts.MetricsRecorder, opts.Target.String())
+	lb.dataCache = newDataCache(maxCacheSize, lb.logger, cc.MetricsRecorder(), opts.Target.String())
 	lb.bg = balancergroup.New(balancergroup.Options{
 		CC:                      cc,
 		BuildOpts:               opts,
@@ -148,7 +148,6 @@ func (rlsBB) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.
 		Logger:                  lb.logger,
 		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
 	})
-	lb.bg.Start()
 	go lb.run()
 	return lb
 }
@@ -539,7 +538,7 @@ func (b *rlsBalancer) sendNewPickerLocked() {
 		bg:              b.bg,
 		rlsServerTarget: b.lbCfg.lookupService,
 		grpcTarget:      b.bopts.Target.String(),
-		metricsRecorder: b.bopts.MetricsRecorder,
+		metricsRecorder: b.cc.MetricsRecorder(),
 	}
 	picker.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-picker %p] ", picker))
 	state := balancer.State{

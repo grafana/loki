@@ -345,8 +345,8 @@ func (p *TextParser) startLabelName() stateFn {
 	}
 	// Special summary/histogram treatment. Don't add 'quantile' and 'le'
 	// labels to 'real' labels.
-	if !(p.currentMF.GetType() == dto.MetricType_SUMMARY && p.currentLabelPair.GetName() == model.QuantileLabel) &&
-		!(p.currentMF.GetType() == dto.MetricType_HISTOGRAM && p.currentLabelPair.GetName() == model.BucketLabel) {
+	if (p.currentMF.GetType() != dto.MetricType_SUMMARY || p.currentLabelPair.GetName() != model.QuantileLabel) &&
+		(p.currentMF.GetType() != dto.MetricType_HISTOGRAM || p.currentLabelPair.GetName() != model.BucketLabel) {
 		p.currentLabelPairs = append(p.currentLabelPairs, p.currentLabelPair)
 	}
 	// Check for duplicate label names.
@@ -895,7 +895,7 @@ func histogramMetricName(name string) string {
 
 func parseFloat(s string) (float64, error) {
 	if strings.ContainsAny(s, "pP_") {
-		return 0, fmt.Errorf("unsupported character in float")
+		return 0, errors.New("unsupported character in float")
 	}
 	return strconv.ParseFloat(s, 64)
 }

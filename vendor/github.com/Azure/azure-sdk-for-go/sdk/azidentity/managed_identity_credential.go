@@ -14,7 +14,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 )
 
 const credNameManagedIdentity = "ManagedIdentityCredential"
@@ -22,8 +21,9 @@ const credNameManagedIdentity = "ManagedIdentityCredential"
 type managedIdentityIDKind int
 
 const (
-	miClientID   managedIdentityIDKind = 0
-	miResourceID managedIdentityIDKind = 1
+	miClientID managedIdentityIDKind = iota
+	miObjectID
+	miResourceID
 )
 
 // ManagedIDKind identifies the ID of a managed identity as either a client or resource ID
@@ -32,7 +32,12 @@ type ManagedIDKind interface {
 	idKind() managedIdentityIDKind
 }
 
-// ClientID is the client ID of a user-assigned managed identity.
+// ClientID is the client ID of a user-assigned managed identity. [NewManagedIdentityCredential]
+// returns an error when a ClientID is specified on the following platforms:
+//
+//   - Azure Arc
+//   - Cloud Shell
+//   - Service Fabric
 type ClientID string
 
 func (ClientID) idKind() managedIdentityIDKind {
@@ -44,7 +49,31 @@ func (c ClientID) String() string {
 	return string(c)
 }
 
-// ResourceID is the resource ID of a user-assigned managed identity.
+// ObjectID is the object ID of a user-assigned managed identity. [NewManagedIdentityCredential]
+// returns an error when an ObjectID is specified on the following platforms:
+//
+//   - Azure Arc
+//   - Azure ML
+//   - Cloud Shell
+//   - Service Fabric
+type ObjectID string
+
+func (ObjectID) idKind() managedIdentityIDKind {
+	return miObjectID
+}
+
+// String returns the string value of the ID.
+func (o ObjectID) String() string {
+	return string(o)
+}
+
+// ResourceID is the resource ID of a user-assigned managed identity. [NewManagedIdentityCredential]
+// returns an error when a ResourceID is specified on the following platforms:
+//
+//   - Azure Arc
+//   - Azure ML
+//   - Cloud Shell
+//   - Service Fabric
 type ResourceID string
 
 func (ResourceID) idKind() managedIdentityIDKind {
@@ -60,9 +89,10 @@ func (r ResourceID) String() string {
 type ManagedIdentityCredentialOptions struct {
 	azcore.ClientOptions
 
-	// ID is the ID of a managed identity the credential should authenticate. Set this field to use a specific identity
-	// instead of the hosting environment's default. The value may be the identity's client ID or resource ID, but note that
-	// some platforms don't accept resource IDs.
+	// ID of a managed identity the credential should authenticate. Set this field to use a specific identity instead of
+	// the hosting environment's default. The value may be the identity's client, object, or resource ID.
+	// NewManagedIdentityCredential returns an error when the hosting environment doesn't support user-assigned managed
+	// identities, or the specified kind of ID.
 	ID ManagedIDKind
 
 	// dac indicates whether the credential is part of DefaultAzureCredential. When true, and the environment doesn't have
@@ -73,13 +103,13 @@ type ManagedIdentityCredentialOptions struct {
 	dac bool
 }
 
-// ManagedIdentityCredential authenticates an Azure managed identity in any hosting environment supporting managed identities.
+// ManagedIdentityCredential authenticates an [Azure managed identity] in any hosting environment supporting managed identities.
 // This credential authenticates a system-assigned identity by default. Use ManagedIdentityCredentialOptions.ID to specify a
-// user-assigned identity. See Microsoft Entra ID documentation for more information about managed identities:
-// https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
+// user-assigned identity.
+//
+// [Azure managed identity]: https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
 type ManagedIdentityCredential struct {
-	client *confidentialClient
-	mic    *managedIdentityClient
+	mic *managedIdentityClient
 }
 
 // NewManagedIdentityCredential creates a ManagedIdentityCredential. Pass nil to accept default options.
@@ -91,38 +121,22 @@ func NewManagedIdentityCredential(options *ManagedIdentityCredentialOptions) (*M
 	if err != nil {
 		return nil, err
 	}
-	cred := confidential.NewCredFromTokenProvider(mic.provideToken)
-
-	// It's okay to give MSAL an invalid client ID because MSAL will use it only as part of a cache key.
-	// ManagedIdentityClient handles all the details of authentication and won't receive this value from MSAL.
-	clientID := "SYSTEM-ASSIGNED-MANAGED-IDENTITY"
-	if options.ID != nil {
-		clientID = options.ID.String()
-	}
-	// similarly, it's okay to give MSAL an incorrect tenant because MSAL won't use the value
-	c, err := newConfidentialClient("common", clientID, credNameManagedIdentity, cred, confidentialClientOptions{
-		ClientOptions: options.ClientOptions,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &ManagedIdentityCredential{client: c, mic: mic}, nil
+	return &ManagedIdentityCredential{mic: mic}, nil
 }
 
 // GetToken requests an access token from the hosting environment. This method is called automatically by Azure SDK clients.
 func (c *ManagedIdentityCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
 	var err error
-	ctx, endSpan := runtime.StartSpan(ctx, credNameManagedIdentity+"."+traceOpGetToken, c.client.azClient.Tracer(), nil)
+	ctx, endSpan := runtime.StartSpan(ctx, credNameManagedIdentity+"."+traceOpGetToken, c.mic.azClient.Tracer(), nil)
 	defer func() { endSpan(err) }()
 
 	if len(opts.Scopes) != 1 {
 		err = fmt.Errorf("%s.GetToken() requires exactly one scope", credNameManagedIdentity)
 		return azcore.AccessToken{}, err
 	}
-	// managed identity endpoints require a Microsoft Entra ID v1 resource (i.e. token audience), not a v2 scope, so we remove "/.default" here
+	// managed identity endpoints require a v1 resource (i.e. token audience), not a v2 scope, so we remove "/.default" here
 	opts.Scopes = []string{strings.TrimSuffix(opts.Scopes[0], defaultSuffix)}
-	tk, err := c.client.GetToken(ctx, opts)
-	return tk, err
+	return c.mic.GetToken(ctx, opts)
 }
 
 var _ azcore.TokenCredential = (*ManagedIdentityCredential)(nil)

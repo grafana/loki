@@ -9,8 +9,8 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-    rollout-group: ingester
-    name: ingester-zone-a
+    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
@@ -38,8 +38,8 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
-      name: ingester-zone-a
-      rollout-group: ingester
+      name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+      rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
 {{- with .Values.ingester.updateStrategy }}
   updateStrategy:
      {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -58,14 +58,11 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
+        {{- include "loki.ingesterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        name: ingester-zone-a
-        rollout-group: ingester
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.ingester.podLabels }}
+        name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+        rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
+        {{- with merge (dict) .Values.loki.podLabels .Values.ingester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -106,7 +103,7 @@ spec:
             - -ingester.unregister-on-shutdown=false
             - -ingester.tokens-file-path=/var/loki/ring-tokens
             - -target=ingester
-            {{- with .Values.ingester.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.ingester.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -119,11 +116,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.ingester.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.ingester.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.ingester.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.ingester.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -142,7 +139,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.ingester.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.ingester.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.ingester.resources }}
@@ -164,11 +161,11 @@ spec:
                   - key: rollout-group
                     operator: In
                     values:
-                      - ingester
+                      - {{ include "loki.prefixRolloutGroup" . }}ingester
                   - key: name
                     operator: NotIn
                     values:
-                      - ingester-zone-a
+                      - {{ include "loki.prefixIngesterName" . }}ingester-zone-a
               topologyKey: kubernetes.io/hostname
         {{- with .Values.ingester.zoneAwareReplication.zoneA.extraAffinity }}
         {{- toYaml . | nindent 8 }}
@@ -196,7 +193,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.ingester.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.ingester.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if not .Values.ingester.persistence.enabled }}
@@ -214,7 +211,9 @@ spec:
   {{- else }}
   volumeClaimTemplates:
   {{- range .Values.ingester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

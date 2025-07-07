@@ -10,7 +10,7 @@ import (
 type CountMinSketch struct {
 	Depth, Width uint32
 	Counters     [][]float64
-	HyperLogLog  *hyperloglog.Sketch //hyperloglog.New16(),
+	HyperLogLog  *hyperloglog.Sketch // hyperloglog.New16(),
 }
 
 // NewCountMinSketch creates a new CMS for a given width and depth.
@@ -19,7 +19,7 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 		Depth:       d,
 		Width:       w,
 		Counters:    make2dslice(w, d),
-		HyperLogLog: hyperloglog.New16(),
+		HyperLogLog: hyperloglog.New16NoSparse(),
 	}, nil
 }
 
@@ -46,8 +46,8 @@ func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
 }
 
 // Add 'count' occurrences of the given input.
-func (s *CountMinSketch) Add(event string, count float64) {
-	s.HyperLogLog.Insert(unsafeGetBytes(event))
+func (s *CountMinSketch) Add(event []byte, count float64) {
+	s.HyperLogLog.Insert(event)
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
@@ -58,7 +58,7 @@ func (s *CountMinSketch) Add(event string, count float64) {
 	}
 }
 
-func (s *CountMinSketch) Increment(event string) {
+func (s *CountMinSketch) Increment(event []byte) {
 	s.Add(event, 1)
 }
 
@@ -69,48 +69,48 @@ func (s *CountMinSketch) Increment(event string) {
 // value that's less than Count(h) + count rather than all counters that h hashed to.
 // Returns the new estimate for the event as well as the both hashes which can be used
 // to identify the event for other things that need a hash.
-func (s *CountMinSketch) ConservativeAdd(event string, count float64) (float64, uint32, uint32) {
-	s.HyperLogLog.Insert(unsafeGetBytes(event))
+func (s *CountMinSketch) ConservativeAdd(event []byte, count float64) (float64, uint32, uint32) {
+	s.HyperLogLog.Insert(event)
 
-	min := float64(math.MaxUint64)
+	minVal := float64(math.MaxUint64)
 
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
 	var pos uint32
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
-		if s.Counters[i][pos] < min {
-			min = s.Counters[i][pos]
+		if s.Counters[i][pos] < minVal {
+			minVal = s.Counters[i][pos]
 		}
 	}
-	min += count
+	minVal += count
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
 		v := s.Counters[i][pos]
-		if v < min {
-			s.Counters[i][pos] = min
+		if v < minVal {
+			s.Counters[i][pos] = minVal
 		}
 	}
-	return min, h1, h2
+	return minVal, h1, h2
 }
 
-func (s *CountMinSketch) ConservativeIncrement(event string) (float64, uint32, uint32) {
+func (s *CountMinSketch) ConservativeIncrement(event []byte) (float64, uint32, uint32) {
 	return s.ConservativeAdd(event, float64(1))
 }
 
 // Count returns the approximate min count for the given input.
-func (s *CountMinSketch) Count(event string) float64 {
-	min := float64(math.MaxUint64)
+func (s *CountMinSketch) Count(event []byte) float64 {
+	minVal := float64(math.MaxUint64)
 	h1, h2 := hashn(event)
 
 	var pos uint32
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
-		if s.Counters[i][pos] < min {
-			min = s.Counters[i][pos]
+		if s.Counters[i][pos] < minVal {
+			minVal = s.Counters[i][pos]
 		}
 	}
-	return min
+	return minVal
 }
 
 // Merge the given sketch into this one.

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/efficientgo/core/errcapture"
+	"github.com/gofrs/flock"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
@@ -49,6 +50,8 @@ func NewBucket(rootDir string) (*Bucket, error) {
 	}
 	return &Bucket{rootDir: absDir}, nil
 }
+
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.FILESYSTEM }
 
 func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
 	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
@@ -265,6 +268,50 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 		return errors.Wrapf(err, "copy to %s", file)
 	}
 	return nil
+}
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	file := filepath.Join(b.rootDir, name)
+
+	// Acquire a file lock before modifiying as file-systems don't support conditional writes like cloud providers.
+	fileLock := flock.New(file + ".lock")
+	locked, err := fileLock.TryLock()
+	if err != nil {
+		return err
+	}
+	if !locked {
+		return errors.New("file is locked by another process")
+	}
+	defer fileLock.Unlock()
+
+	var missing bool
+	openedFile, err := os.Open(file)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		missing = true
+	}
+
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
+	if !missing {
+		reader = openedFile
+		defer openedFile.Close()
+	}
+
+	newContent, err := f(reader)
+	if err != nil {
+		return err
+	}
+
+	content, err := io.ReadAll(newContent)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(file, content, 0600)
 }
 
 func isDirEmpty(name string) (ok bool, err error) {

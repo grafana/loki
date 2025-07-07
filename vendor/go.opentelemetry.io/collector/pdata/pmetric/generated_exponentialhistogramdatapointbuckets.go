@@ -42,6 +42,10 @@ func NewExponentialHistogramDataPointBuckets() ExponentialHistogramDataPointBuck
 func (ms ExponentialHistogramDataPointBuckets) MoveTo(dest ExponentialHistogramDataPointBuckets) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.ExponentialHistogramDataPoint_Buckets{}
 }
@@ -65,6 +69,10 @@ func (ms ExponentialHistogramDataPointBuckets) BucketCounts() pcommon.UInt64Slic
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogramDataPointBuckets) CopyTo(dest ExponentialHistogramDataPointBuckets) {
 	dest.state.AssertMutable()
-	dest.SetOffset(ms.Offset())
-	ms.BucketCounts().CopyTo(dest.BucketCounts())
+	copyOrigExponentialHistogramDataPointBuckets(dest.orig, ms.orig)
+}
+
+func copyOrigExponentialHistogramDataPointBuckets(dest, src *otlpmetrics.ExponentialHistogramDataPoint_Buckets) {
+	dest.Offset = src.Offset
+	dest.BucketCounts = internal.CopyOrigUInt64Slice(dest.BucketCounts, src.BucketCounts)
 }

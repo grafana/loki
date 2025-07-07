@@ -168,6 +168,8 @@ func NewCallbackCDecl(fn interface{}) uintptr {
 //sys	CreateNamedPipe(name *uint16, flags uint32, pipeMode uint32, maxInstances uint32, outSize uint32, inSize uint32, defaultTimeout uint32, sa *SecurityAttributes) (handle Handle, err error)  [failretval==InvalidHandle] = CreateNamedPipeW
 //sys	ConnectNamedPipe(pipe Handle, overlapped *Overlapped) (err error)
 //sys	DisconnectNamedPipe(pipe Handle) (err error)
+//sys   GetNamedPipeClientProcessId(pipe Handle, clientProcessID *uint32) (err error)
+//sys   GetNamedPipeServerProcessId(pipe Handle, serverProcessID *uint32) (err error)
 //sys	GetNamedPipeInfo(pipe Handle, flags *uint32, outSize *uint32, inSize *uint32, maxInstances *uint32) (err error)
 //sys	GetNamedPipeHandleState(pipe Handle, state *uint32, curInstances *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32, userName *uint16, maxUserNameSize uint32) (err error) = GetNamedPipeHandleStateW
 //sys	SetNamedPipeHandleState(pipe Handle, state *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32) (err error) = SetNamedPipeHandleState
@@ -868,6 +870,7 @@ const socket_error = uintptr(^uint32(0))
 //sys	WSARecvFrom(s Handle, bufs *WSABuf, bufcnt uint32, recvd *uint32, flags *uint32,  from *RawSockaddrAny, fromlen *int32, overlapped *Overlapped, croutine *byte) (err error) [failretval==socket_error] = ws2_32.WSARecvFrom
 //sys	WSASendTo(s Handle, bufs *WSABuf, bufcnt uint32, sent *uint32, flags uint32, to *RawSockaddrAny, tolen int32,  overlapped *Overlapped, croutine *byte) (err error) [failretval==socket_error] = ws2_32.WSASendTo
 //sys	WSASocket(af int32, typ int32, protocol int32, protoInfo *WSAProtocolInfo, group uint32, flags uint32) (handle Handle, err error) [failretval==InvalidHandle] = ws2_32.WSASocketW
+//sys	WSADuplicateSocket(s Handle, processID uint32, info *WSAProtocolInfo) (err error) [failretval!=0] = ws2_32.WSADuplicateSocketW
 //sys	GetHostByName(name string) (h *Hostent, err error) [failretval==nil] = ws2_32.gethostbyname
 //sys	GetServByName(name string, proto string) (s *Servent, err error) [failretval==nil] = ws2_32.getservbyname
 //sys	Ntohs(netshort uint16) (u uint16) = ws2_32.ntohs
@@ -1696,8 +1699,9 @@ func NewNTUnicodeString(s string) (*NTUnicodeString, error) {
 
 // Slice returns a uint16 slice that aliases the data in the NTUnicodeString.
 func (s *NTUnicodeString) Slice() []uint16 {
-	slice := unsafe.Slice(s.Buffer, s.MaximumLength)
-	return slice[:s.Length]
+	// Note: this rounds the length down, if it happens
+	// to (incorrectly) be odd. Probably safer than rounding up.
+	return unsafe.Slice(s.Buffer, s.MaximumLength/2)[:s.Length/2]
 }
 
 func (s *NTUnicodeString) String() string {

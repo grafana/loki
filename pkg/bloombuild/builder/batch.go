@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/grafana/dskit/multierror"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"

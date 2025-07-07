@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -23,8 +22,9 @@ func TestPartitionCommitter(t *testing.T) {
 	numPartitions := int32(3)
 	topicName := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
+	kafkaCfg.ConsumerGroup = "test-group"
 
-	client, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
+	client, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Create a Kafka admin client
@@ -35,8 +35,13 @@ func TestPartitionCommitter(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	partitionID := int32(1)
-	consumerGroup := "test-consumer-group"
-	committer := newCommitter(kafkaCfg, admClient, partitionID, consumerGroup, logger, reg)
+	reader := newKafkaOffsetManager(
+		client,
+		kafkaCfg,
+		"fake-instance-id",
+		logger,
+	)
+	committer := newCommitter(reader, partitionID, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
 
 	// Test committing an offset
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -52,7 +57,7 @@ func TestPartitionCommitter(t *testing.T) {
 	assert.Equal(t, float64(testOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify committed offset
-	offsets, err := admClient.FetchOffsets(context.Background(), consumerGroup)
+	offsets, err := admClient.FetchOffsets(context.Background(), reader.ConsumerGroup())
 	require.NoError(t, err)
 	committedOffset, ok := offsets.Lookup(topicName, partitionID)
 	require.True(t, ok)
@@ -69,7 +74,7 @@ func TestPartitionCommitter(t *testing.T) {
 	assert.Equal(t, float64(newTestOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify updated committed offset
-	offsets, err = admClient.FetchOffsets(context.Background(), consumerGroup)
+	offsets, err = admClient.FetchOffsets(context.Background(), reader.ConsumerGroup())
 	require.NoError(t, err)
 	committedOffset, ok = offsets.Lookup(topicName, partitionID)
 	require.True(t, ok)

@@ -219,7 +219,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 	}...)
 
-	logValues = append(logValues, tagsToKeyValues(queryTags)...)
+	logValues = append(logValues, httpreq.TagsToKeyValues(queryTags)...)
 
 	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
 		logValues = append(logValues, "disable_pipeline_wrappers", "true")
@@ -561,37 +561,6 @@ func QueryType(expr syntax.Expr) (string, error) {
 	default:
 		return "", nil
 	}
-}
-
-// tagsToKeyValues converts QueryTags to form that is easy to log.
-// e.g: `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
-// so that we could log nicely!
-// If queryTags is not in canonical form then its completely ignored (e.g: `key1=value1,key2=value`)
-func tagsToKeyValues(queryTags string) []interface{} {
-	toks := strings.FieldsFunc(queryTags, func(r rune) bool {
-		return r == ','
-	})
-
-	vals := make([]string, 0)
-
-	for _, tok := range toks {
-		val := strings.FieldsFunc(tok, func(r rune) bool {
-			return r == '='
-		})
-
-		if len(val) != 2 {
-			continue
-		}
-		vals = append(vals, strings.ToLower(val[0]), val[1])
-	}
-
-	res := make([]interface{}, 0, len(vals))
-
-	for _, val := range vals {
-		res = append(res, val)
-	}
-
-	return res
 }
 
 func extractShard(shards []string) *astmapper.ShardAnnotation {

@@ -33,13 +33,13 @@ func (m *mockIndex) Reader() (io.ReadSeeker, error) {
 }
 
 func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []string {
-	require.NoError(t, os.MkdirAll(path, 0755))
+	require.NoError(t, os.MkdirAll(path, 0750))
 	var testIndexes []string
 	for ; start < end; start++ {
 		fileName := buildIndexFilename(userID, start)
 		indexPath := filepath.Join(path, fileName)
 
-		require.NoError(t, os.WriteFile(indexPath, []byte(fileName), 0755))
+		require.NoError(t, os.WriteFile(indexPath, []byte(fileName), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
 		testIndexes = append(testIndexes, indexPath)
 	}
 
