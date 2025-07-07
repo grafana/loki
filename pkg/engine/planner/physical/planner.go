@@ -166,6 +166,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
+
 		node := &SortMerge{
 			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
 			Order:  ctx.direction, // apply direction from previously visited Sort node
@@ -176,8 +177,8 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			scan := &DataObjScan{
 				Location:  objects[i],
 				StreamIDs: streams[i],
-				Sections:  []int{section}, // process only 1 section per DataObjScan
-				Direction: ctx.direction,  // apply direction from previously visited Sort node
+				Section:   section,
+				Direction: ctx.direction, // apply direction from previously visited Sort node
 			}
 			p.plan.addNode(scan)
 			if err := p.plan.addEdge(Edge{Parent: node, Child: scan}); err != nil {

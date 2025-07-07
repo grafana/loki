@@ -6,16 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"slices"
-	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -31,7 +27,7 @@ type dataobjScan struct {
 	opts dataobjScanOptions
 
 	initialized bool
-	readers     []*logs.RowReader
+	reader      *logs.RowReader
 	streams     map[int64]labels.Labels
 
 	state state
@@ -44,7 +40,7 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
-	Sections    []int                       // Logs sections to fetch.
+	Section     int                         // Logs section to fetch.
 	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
@@ -88,11 +84,11 @@ func (s *dataobjScan) init() error {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
-	s.readers = nil
+	s.reader = nil
 
 	for idx, section := range s.opts.Object.Sections().Filter(logs.CheckSection) {
 		// Filter out sections that are not part of this shard
-		if !slices.Contains(s.opts.Sections, idx) {
+		if s.opts.Section != idx {
 			continue
 		}
 
@@ -118,7 +114,12 @@ func (s *dataobjScan) init() error {
 		_ = lr.MatchStreams(slices.Values(s.opts.StreamIDs))
 		_ = lr.SetPredicates(s.opts.Predicates)
 
-		s.readers = append(s.readers, lr)
+		s.reader = lr
+		break
+	}
+
+	if s.reader == nil {
+		return fmt.Errorf("no logs section %d found", s.opts.Section)
 	}
 
 	s.initialized = true
@@ -198,44 +199,31 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	// we only need to keep up to Limit rows in memory).
 
 	var (
-		heapMut sync.Mutex
-		heap    = topk.Heap[logs.Record]{
+		heap = topk.Heap[logs.Record]{
 			Limit: 0, // unlimited
 			Less:  s.getLessFunc(s.opts.Direction),
 		}
 	)
 
-	g, ctx := errgroup.WithContext(s.ctx)
-	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
+	var gotData bool
 
-	var gotData atomic.Bool
+	for {
+		buf := make([]logs.Record, 1024) // do not re-use buffer
+		n, err := s.reader.Read(context.Background(), buf)
+		if n == 0 && errors.Is(err, io.EOF) {
+			break
+		} else if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
 
-	for _, reader := range s.readers {
-		g.Go(func() error {
+		gotData = true
 
-			buf := make([]logs.Record, s.opts.batchSize)
-			n, err := reader.Read(ctx, buf)
-			if n == 0 && errors.Is(err, io.EOF) {
-				return nil
-			} else if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-
-			gotData.Store(true)
-
-			heapMut.Lock()
-			for _, rec := range buf[:n] {
-				heap.Push(rec)
-			}
-			heapMut.Unlock()
-
-			return nil
-		})
+		for _, rec := range buf[:n] {
+			heap.Push(rec)
+		}
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	} else if !gotData.Load() {
+	if !gotData {
 		return nil, EOF
 	}
 
@@ -563,8 +551,8 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	for _, reader := range s.readers {
-		_ = reader.Close()
+	if s.reader != nil {
+		_ = s.reader.Close()
 	}
 }
 
