@@ -45,9 +45,10 @@ func (c *LogCluster) Samples() []*logproto.PatternSample {
 	return c.Chunks.samples()
 }
 
-func (c *LogCluster) Prune(olderThan time.Duration) {
-	c.Chunks.prune(olderThan)
+func (c *LogCluster) Prune(olderThan time.Duration) []*logproto.PatternSample {
+	prunedSamples := c.Chunks.prune(olderThan)
 	c.Size = c.Chunks.size()
+	return prunedSamples
 }
 
 func sumSize(samples []*logproto.PatternSample) int64 {
