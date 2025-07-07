@@ -226,7 +226,7 @@ func labelsString(ls labels.Labels) string {
 
 func retentionChunkFromChunk(s config.SchemaConfig, c chunk.Chunk) retention.Chunk {
 	return retention.Chunk{
-		ChunkID: []byte(s.ExternalKey(c.ChunkRef)),
+		ChunkID: s.ExternalKey(c.ChunkRef),
 		From:    c.From,
 		Through: c.Through,
 	}

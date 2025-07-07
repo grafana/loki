@@ -32,6 +32,7 @@ import (
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/gopathwalk"
 	"golang.org/x/tools/internal/stdlib"
+	"maps"
 )
 
 // importToGroup is a list of functions which map from an import path to
@@ -559,7 +560,7 @@ func fixImportsDefault(fset *token.FileSet, f *ast.File, filename string, env *P
 		return err
 	}
 	apply(fset, f, fixes)
-	return err
+	return nil
 }
 
 // getFixes gets the import fixes that need to be made to f in order to fix the imports.
@@ -585,7 +586,7 @@ func getFixesWithSource(ctx context.Context, fset *token.FileSet, f *ast.File, f
 	srcDir := filepath.Dir(abs)
 
 	if logf != nil {
-		logf("fixImports(filename=%q), srcDir=%q ...", filename, abs, srcDir)
+		logf("fixImports(filename=%q), srcDir=%q ...", filename, srcDir)
 	}
 
 	// First pass: looking only at f, and using the naive algorithm to
@@ -968,9 +969,7 @@ func (e *ProcessEnv) CopyConfig() *ProcessEnv {
 		resolver:    nil,
 		Env:         map[string]string{},
 	}
-	for k, v := range e.Env {
-		copy.Env[k] = v
-	}
+	maps.Copy(copy.Env, e.Env)
 	return copy
 }
 
@@ -1003,9 +1002,7 @@ func (e *ProcessEnv) init() error {
 	if err := json.Unmarshal(stdout.Bytes(), &goEnv); err != nil {
 		return err
 	}
-	for k, v := range goEnv {
-		e.Env[k] = v
-	}
+	maps.Copy(e.Env, goEnv)
 	e.initialized = true
 	return nil
 }
@@ -1030,7 +1027,7 @@ func (e *ProcessEnv) GetResolver() (Resolver, error) {
 		//
 		// For gopls, we can optionally explicitly choose a resolver type, since we
 		// already know the view type.
-		if len(e.Env["GOMOD"]) == 0 && len(e.Env["GOWORK"]) == 0 {
+		if e.Env["GOMOD"] == "" && (e.Env["GOWORK"] == "" || e.Env["GOWORK"] == "off") {
 			e.resolver = newGopathResolver(e)
 			e.logf("created gopath resolver")
 		} else if r, err := newModuleResolver(e, e.ModCache); err != nil {

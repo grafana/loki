@@ -24,18 +24,22 @@ func TestNewWriterClient(t *testing.T) {
 		{
 			name: "valid config",
 			config: kafka.Config{
-				Address:      addr,
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("password"),
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "wrong password",
 			config: kafka.Config{
-				Address:      addr,
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
 				SASLUsername: "user",
@@ -46,7 +50,10 @@ func TestNewWriterClient(t *testing.T) {
 		{
 			name: "wrong username",
 			config: kafka.Config{
-				Address:      addr,
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
 				SASLUsername: "wrong wrong wrong",

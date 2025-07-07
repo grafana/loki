@@ -16,27 +16,34 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
+const (
+	fetchMaxBytes          = 100_000_000 // 100MiB
+	fetchMaxPartitionBytes = 50_000_000  // 50MiB
+)
+
 // NewReaderClient returns the kgo.Client that should be used by the Reader.
 //
 // The returned Client utilizes the standard set of *kprom.Metrics, prefixed with
 // `MetricsPrefix`
 func NewReaderClient(component string, kafkaCfg kafka.Config, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*kgo.Client, error) {
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
-	const fetchMaxBytes = 100_000_000
 
-	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
-	opts = append(opts,
+	clientOpts := commonKafkaClientOptions(kafkaCfg, metrics, logger)
+	clientOpts = append(clientOpts,
+		kgo.ClientID(kafkaCfg.ReaderConfig.ClientID),
+		kgo.SeedBrokers(kafkaCfg.ReaderConfig.Address),
 		kgo.FetchMinBytes(1),
 		kgo.FetchMaxBytes(fetchMaxBytes),
 		kgo.FetchMaxWait(5*time.Second),
-		kgo.FetchMaxPartitionBytes(50_000_000),
-
+		kgo.FetchMaxPartitionBytes(fetchMaxPartitionBytes),
 		// BrokerMaxReadBytes sets the maximum response size that can be read from
 		// Kafka. This is a safety measure to avoid OOMing on invalid responses.
 		// franz-go recommendation is to set it 2x FetchMaxBytes.
 		kgo.BrokerMaxReadBytes(2*fetchMaxBytes),
 	)
-	client, err := kgo.NewClient(opts...)
+	clientOpts = append(clientOpts, opts...)
+
+	client, err := kgo.NewClient(clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}

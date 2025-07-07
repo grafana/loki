@@ -44,7 +44,7 @@ func (c *Client) putObjectMultipart(ctx context.Context, bucketName, objectName 
 		errResp := ToErrorResponse(err)
 		// Verify if multipart functionality is not available, if not
 		// fall back to single PutObject operation.
-		if errResp.Code == "AccessDenied" && strings.Contains(errResp.Message, "Access Denied") {
+		if errResp.Code == AccessDenied && strings.Contains(errResp.Message, "Access Denied") {
 			// Verify if size of reader is greater than '5GiB'.
 			if size > maxSinglePutObjectSize {
 				return UploadInfo{}, errEntityTooLarge(size, maxSinglePutObjectSize, bucketName, objectName)
@@ -392,13 +392,14 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 	// Instantiate all the complete multipart buffer.
 	completeMultipartUploadBuffer := bytes.NewReader(completeMultipartUploadBytes)
 	reqMetadata := requestMetadata{
-		bucketName:       bucketName,
-		objectName:       objectName,
-		queryValues:      urlValues,
-		contentBody:      completeMultipartUploadBuffer,
-		contentLength:    int64(len(completeMultipartUploadBytes)),
-		contentSHA256Hex: sum256Hex(completeMultipartUploadBytes),
-		customHeader:     headers,
+		bucketName:           bucketName,
+		objectName:           objectName,
+		queryValues:          urlValues,
+		contentBody:          completeMultipartUploadBuffer,
+		contentLength:        int64(len(completeMultipartUploadBytes)),
+		contentSHA256Hex:     sum256Hex(completeMultipartUploadBytes),
+		customHeader:         headers,
+		expect200OKWithError: true,
 	}
 
 	// Execute POST to complete multipart upload for an objectName.

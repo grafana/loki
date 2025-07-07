@@ -40,8 +40,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -723,6 +725,20 @@ func Test_TruncateLogLines(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
+
+	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 8
+		limits.MaxLineSizeTruncateIdentifier = "[...]"
+
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, int(limits.MaxLineSize))
+		require.Equal(t, "000[...]", topVal.Streams[0].Entries[0].Line)
+	})
 }
 
 func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
@@ -1279,7 +1295,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1321,7 +1337,7 @@ func TestParseStreamLabels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver)
+			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -2219,7 +2235,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 
@@ -2395,8 +2411,8 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		tenant                    string
 		streams                   logproto.PushRequest
 		expectedLimitsCalls       uint64
-		expectedLimitsRequest     *logproto.ExceedsLimitsRequest
-		limitsResponse            *logproto.ExceedsLimitsResponse
+		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
+		limitsResponse            *limitsproto.ExceedsLimitsResponse
 		limitsResponseErr         error
 		expectedErr               string
 	}{{
@@ -2423,17 +2439,15 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
-			Results: []*logproto.ExceedsLimitsResult{},
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{},
 		},
 	}, {
 		name:                "max stream limit is exceeded",
@@ -2449,52 +2463,20 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
-			}},
-		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+			Streams: []*limitsproto.StreamMetadata{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				TotalSize:  0x3,
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
-	}, {
-		name:                "rate limit is exceeded",
-		ingestLimitsEnabled: true,
-		tenant:              "test",
-		streams: logproto.PushRequest{
-			Streams: []logproto.Stream{{
-				Labels: "{foo=\"bar\"}",
-				Entries: []logproto.Entry{{
-					Timestamp: time.Now(),
-					Line:      "baz",
-				}},
-			}},
-		},
-		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
-			}},
-		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     limits_frontend.ReasonExceedsRateLimit,
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
@@ -2515,23 +2497,20 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}, {
-				StreamHash:             0x11561609feba8cf6,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+				StreamHash: 0x11561609feba8cf6,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
@@ -2549,19 +2528,17 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
-		limitsResponse: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     limits_frontend.ReasonExceedsMaxStreams,
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
@@ -2578,12 +2555,11 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			}},
 		},
 		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &logproto.ExceedsLimitsRequest{
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             0x90eb45def17f924,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x0,
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
 			}},
 		},
 		limitsResponseErr: errors.New("failed to check limits"),

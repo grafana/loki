@@ -123,23 +123,19 @@ func (id ID) MarshalText() (text []byte, err error) {
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 func (id *ID) UnmarshalText(text []byte) error {
 	idStr := string(text)
-	items := strings.SplitN(idStr, typeAndNameSeparator, 2)
-	var typeStr, nameStr string
-	if len(items) >= 1 {
-		typeStr = strings.TrimSpace(items[0])
-	}
+	typeStr, nameStr, hasName := strings.Cut(idStr, typeAndNameSeparator)
+	typeStr = strings.TrimSpace(typeStr)
 
-	if len(items) == 1 && typeStr == "" {
+	if typeStr == "" {
+		if hasName {
+			return fmt.Errorf("in %q id: the part before %s should not be empty", idStr, typeAndNameSeparator)
+		}
 		return errors.New("id must not be empty")
 	}
 
-	if typeStr == "" {
-		return fmt.Errorf("in %q id: the part before %s should not be empty", idStr, typeAndNameSeparator)
-	}
-
-	if len(items) > 1 {
+	if hasName {
 		// "name" part is present.
-		nameStr = strings.TrimSpace(items[1])
+		nameStr = strings.TrimSpace(nameStr)
 		if nameStr == "" {
 			return fmt.Errorf("in %q id: the part after %s should not be empty", idStr, typeAndNameSeparator)
 		}

@@ -630,7 +630,7 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
 		chunkEntries = append(chunkEntries, retention.Chunk{
-			ChunkID: []byte(schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls))),
+			ChunkID: schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
 			From:    chunkMeta.From(),
 			Through: chunkMeta.Through(),
 		})
@@ -858,7 +858,8 @@ func TestCompactedIndex(t *testing.T) {
 			}
 
 			for _, chk := range tc.addChunks {
-				_, err := compactedIndex.IndexChunk(chk)
+				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/limits"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -18,13 +20,13 @@ import (
 type mockIngestLimitsFrontendClient struct {
 	t               *testing.T
 	calls           atomic.Uint64
-	expectedRequest *logproto.ExceedsLimitsRequest
-	response        *logproto.ExceedsLimitsResponse
+	expectedRequest *proto.ExceedsLimitsRequest
+	response        *proto.ExceedsLimitsResponse
 	responseErr     error
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *mockIngestLimitsFrontendClient) exceedsLimits(_ context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	c.calls.Add(1)
 	if c.expectedRequest != nil {
 		require.Equal(c.t, c.expectedRequest, r)
@@ -43,11 +45,10 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		name            string
 		tenant          string
 		streams         []KeyedStream
-		expectedRequest *logproto.ExceedsLimitsRequest
-		response        *logproto.ExceedsLimitsResponse
+		expectedRequest *proto.ExceedsLimitsRequest
+		response        *proto.ExceedsLimitsResponse
 		responseErr     error
 		expectedStreams []KeyedStream
-		expectedReasons map[uint64][]string
 		expectedErr     string
 	}{{
 		// This test also asserts that streams are returned unmodified.
@@ -82,16 +83,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				}},
 			},
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
-				StreamHash:             1,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x6,
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 1,
+				TotalSize:  9,
 			}, {
-				StreamHash:             2,
-				EntriesSize:            0x3,
-				StructuredMetadataSize: 0x8,
+				StreamHash: 2,
+				TotalSize:  11,
 			}},
 		},
 		responseErr: errors.New("failed to check limits"),
@@ -103,21 +102,19 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        1000, // Should not be used.
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		response: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{},
-		expectedReasons: map[uint64][]string{1: {"test"}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -128,26 +125,24 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}, {
 				StreamHash: 2,
 			}},
 		},
-		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		response: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: map[uint64][]string{1: {"test"}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
@@ -158,17 +153,16 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}, {
 				StreamHash: 2,
 			}},
 		},
-		response: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
-			Results: []*logproto.ExceedsLimitsResult{},
+		response: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{},
 		},
 		expectedStreams: []KeyedStream{{
 			HashKey:        1000, // Should not be used.
@@ -177,7 +171,6 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
-		expectedReasons: nil,
 	}}
 
 	for _, test := range tests {
@@ -191,44 +184,38 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			streams, reasons, err := l.enforceLimits(ctx, test.tenant, test.streams)
+			accepted, err := l.EnforceLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				// The streams should be returned unmodified.
-				require.Equal(t, test.streams, streams)
-				require.Nil(t, reasons)
+				require.Equal(t, test.streams, accepted)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedStreams, streams)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedStreams, accepted)
 			}
 		})
 	}
 }
 
-// This test asserts that when checking ingest limits the expected proto
-// message is sent, and that for a given response, the result contains the
-// expected streams each with their expected reasons.
 func TestIngestLimits_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name                  string
-		tenant                string
-		streams               []KeyedStream
-		expectedRequest       *logproto.ExceedsLimitsRequest
-		response              *logproto.ExceedsLimitsResponse
-		responseErr           error
-		expectedExceedsLimits bool
-		expectedReasons       map[uint64][]string
-		expectedErr           string
+		name            string
+		tenant          string
+		streams         []KeyedStream
+		expectedRequest *proto.ExceedsLimitsRequest
+		response        *proto.ExceedsLimitsResponse
+		responseErr     error
+		expectedResult  []*proto.ExceedsLimitsResult
+		expectedErr     string
 	}{{
 		name:   "error should be returned if limits cannot be checked",
 		tenant: "test",
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
@@ -240,38 +227,38 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &logproto.ExceedsLimitsResponse{
-			Tenant: "test",
-			Results: []*logproto.ExceedsLimitsResult{{
+		response: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     "test",
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedExceedsLimits: true,
-		expectedReasons:       map[uint64][]string{1: {"test"}},
+		expectedResult: []*proto.ExceedsLimitsResult{{
+			StreamHash: 1,
+			Reason:     uint32(limits.ReasonMaxStreams),
+		}},
 	}, {
 		name:   "does not exceed limits",
 		tenant: "test",
 		streams: []KeyedStream{{
 			HashKeyNoShard: 1,
 		}},
-		expectedRequest: &logproto.ExceedsLimitsRequest{
+		expectedRequest: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
-			Streams: []*logproto.StreamMetadata{{
+			Streams: []*proto.StreamMetadata{{
 				StreamHash: 1,
 			}},
 		},
-		response: &logproto.ExceedsLimitsResponse{
-			Tenant:  "test",
-			Results: []*logproto.ExceedsLimitsResult{},
+		response: &proto.ExceedsLimitsResponse{
+			Results: []*proto.ExceedsLimitsResult{},
 		},
-		expectedReasons: nil,
+		expectedResult: []*proto.ExceedsLimitsResult{},
 	}}
 
 	for _, test := range tests {
@@ -285,15 +272,13 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			exceedsLimits, reasons, err := l.exceedsLimits(ctx, test.tenant, test.streams)
+			res, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				require.False(t, exceedsLimits)
-				require.Nil(t, reasons)
+				require.Nil(t, res)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedExceedsLimits, exceedsLimits)
-				require.Equal(t, test.expectedReasons, reasons)
+				require.Equal(t, test.expectedResult, res)
 			}
 		})
 	}

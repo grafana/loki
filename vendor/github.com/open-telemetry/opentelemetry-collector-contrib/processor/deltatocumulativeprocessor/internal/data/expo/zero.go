@@ -37,8 +37,8 @@ func WidenZero(dp DataPoint, width float64) {
 	widen(dp.Positive())
 	widen(dp.Negative())
 
-	_, max := scale.Bounds(zero)
-	dp.SetZeroThreshold(max)
+	_, maxVal := scale.Bounds(zero)
+	dp.SetZeroThreshold(maxVal)
 }
 
 // Slice drops data outside the range from <= i < to from the bucket counts. It behaves the same as Go's [a:b]

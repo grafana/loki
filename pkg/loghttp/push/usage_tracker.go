@@ -10,8 +10,8 @@ import (
 type UsageTracker interface {
 
 	// ReceivedBytesAdd records ingested bytes by tenant, retention period and labels.
-	ReceivedBytesAdd(ctx context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64)
+	ReceivedBytesAdd(ctx context.Context, tenant string, retentionPeriod time.Duration, labels labels.Labels, value float64, format string)
 
 	// DiscardedBytesAdd records discarded bytes by tenant and labels.
-	DiscardedBytesAdd(ctx context.Context, tenant, reason string, labels labels.Labels, value float64)
+	DiscardedBytesAdd(ctx context.Context, tenant, reason string, labels labels.Labels, value float64, format string)
 }

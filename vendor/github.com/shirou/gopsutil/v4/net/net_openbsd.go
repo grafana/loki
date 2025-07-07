@@ -217,7 +217,7 @@ func parseNetstatLine(line string) (ConnectionStat, error) {
 	return n, nil
 }
 
-func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, raddr Addr, err error) {
+func parseNetstatAddr(local, remote string, family uint32) (laddr, raddr Addr, err error) {
 	parse := func(l string) (Addr, error) {
 		matches := portMatch.FindStringSubmatch(l)
 		if matches == nil {
@@ -260,11 +260,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	switch strings.ToLower(kind) {
 	default:
 		fallthrough
-	case "":
-		fallthrough
-	case "all":
-		fallthrough
-	case "inet":
+	case "", "all", "inet":
 		// nothing to add
 	case "inet4":
 		args = append(args, "-finet")
@@ -296,7 +292,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	}
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
-		if !(strings.HasPrefix(line, "tcp") || strings.HasPrefix(line, "udp")) {
+		if !strings.HasPrefix(line, "tcp") && !strings.HasPrefix(line, "udp") {
 			continue
 		}
 		n, err := parseNetstatLine(line)

@@ -3083,7 +3083,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.4.2"
+    "tag": "3.5.1"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3092,16 +3092,18 @@ null
     "additionalTenants": [],
     "affinity": {},
     "annotations": {},
+    "apiUrl": "{{ include \"loki.address\" . }}",
     "enabled": true,
     "env": [],
     "extraVolumeMounts": [],
+    "extraVolumes": [],
     "hookType": "post-install",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
-      "registry": "docker.io",
-      "repository": "grafana/enterprise-logs-provisioner",
-      "tag": null
+      "registry": "us-docker.pkg.dev",
+      "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+      "tag": "latest"
     },
     "labels": {},
     "nodeSelector": {},
@@ -3116,6 +3118,7 @@ null
     "tolerations": []
   },
   "tokengen": {
+    "adminTokenSecret": null,
     "affinity": {},
     "annotations": {},
     "enabled": true,
@@ -3257,7 +3260,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.4.2"
+"3.5.1"
 </pre>
 </td>
 		</tr>
@@ -3275,22 +3278,24 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target</td>
+			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
   "affinity": {},
   "annotations": {},
+  "apiUrl": "{{ include \"loki.address\" . }}",
   "enabled": true,
   "env": [],
   "extraVolumeMounts": [],
+  "extraVolumes": [],
   "hookType": "post-install",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
-    "registry": "docker.io",
-    "repository": "grafana/enterprise-logs-provisioner",
-    "tag": null
+    "registry": "us-docker.pkg.dev",
+    "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+    "tag": "latest"
   },
   "labels": {},
   "nodeSelector": {},
@@ -3335,6 +3340,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.apiUrl</td>
+			<td>string</td>
+			<td>url of the admin api to use for the provisioner</td>
+			<td><pre lang="json">
+"{{ include \"loki.address\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.enabled</td>
 			<td>bool</td>
 			<td>Whether the job should be part of the deployment</td>
@@ -3362,6 +3376,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.hookType</td>
 			<td>string</td>
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
@@ -3378,9 +3401,9 @@ true
 {
   "digest": null,
   "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "grafana/enterprise-logs-provisioner",
-  "tag": null
+  "registry": "us-docker.pkg.dev",
+  "repository": "grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner",
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -3408,7 +3431,7 @@ null
 			<td>string</td>
 			<td>The Docker registry</td>
 			<td><pre lang="json">
-"docker.io"
+"us-docker.pkg.dev"
 </pre>
 </td>
 		</tr>
@@ -3417,7 +3440,7 @@ null
 			<td>string</td>
 			<td>Docker image repository</td>
 			<td><pre lang="json">
-"grafana/enterprise-logs-provisioner"
+"grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner"
 </pre>
 </td>
 		</tr>
@@ -3426,7 +3449,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"latest"
 </pre>
 </td>
 		</tr>
@@ -3495,6 +3518,7 @@ null
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "adminTokenSecret": null,
   "affinity": {},
   "annotations": {},
   "enabled": true,
@@ -3515,6 +3539,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.adminTokenSecret</td>
+			<td>string</td>
+			<td>Name of the secret to store the admin token.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -4214,7 +4247,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.27-alpine"
+"1.28-alpine"
 </pre>
 </td>
 		</tr>
@@ -6169,7 +6202,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.0"
+"3.5.1"
 </pre>
 </td>
 		</tr>
@@ -6562,6 +6595,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.affinity</td>
+			<td>object</td>
+			<td>Affinity for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the `loki-canary` Daemonset</td>
@@ -6699,6 +6741,15 @@ null
 			<td>The name of the label to look for at loki when doing the checks.</td>
 			<td><pre lang="json">
 "pod"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.lokiurl</td>
+			<td>string</td>
+			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -6874,6 +6925,23 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached pods (probe port defaults to container port)</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 3
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
@@ -6931,7 +6999,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.2"
+"v0.15.3"
 </pre>
 </td>
 		</tr>
@@ -8118,6 +8186,7 @@ null
   },
   "initContainers": [],
   "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -8291,6 +8360,15 @@ null
 			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -9687,6 +9765,7 @@ false
   },
   "legacyReadTarget": false,
   "lifecycle": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -9889,6 +9968,15 @@ false
 			<td>read.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the read container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for read pods. If empty, applies no livenessProbe</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -10928,7 +11016,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.3"
+"1.30.6"
 </pre>
 </td>
 		</tr>

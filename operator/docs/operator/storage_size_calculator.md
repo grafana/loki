@@ -11,7 +11,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
 ## Requirements
 
 * Create a running OpenShift cluster.
-* A container registry that you and your OpenShift cluster can reach. We recommend [quay.io](https://quay.io/signin/).
+* A container registry that you and your OpenShift cluster can reach. We recommend [Quay.io](https://quay.io/).
 
 ## Installation
 
@@ -29,7 +29,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
   make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](https://quay.io) account where you can push container images.
+  where `$YOUR_QUAY_ORG` is your personal [Quay.io](https://quay.io) account where you can push container images.
 
   You should see `log-file-metric-exporter-xxx` and `storage-size-calculator-xxx` pods running.
 
@@ -91,7 +91,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
   make deploy-size-calculator REGISTRY_ORG_OPENSHIFT=$YOUR_QUAY_ORG
   ```
 
-  where `$YOUR_QUAY_ORG` is your personal [quay.io](https://quay.io) account where you pushed your container image.
+  where `$YOUR_QUAY_ORG` is your personal [Quay.io](https://quay.io) account where you pushed your container image.
 
 * If everything works fine then create a pull request.
 
@@ -99,7 +99,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
 
 ### Permission denied on deploying prometheus secret
 
-If you get `permission denied` error while running `make deploy-size-calculator` then make [this](https://github.com/grafana/loki/blob/main/operator/hack/deploy-prometheus-secret.sh) file executable by running:
+If you get `permission denied` error while running `make deploy-size-calculator` then make [this file](https://github.com/grafana/loki/blob/main/operator/hack/deploy-prometheus-secret.sh) executable by running:
 
 ```console
 chmod +x hack/deploy-prometheus-secret.sh

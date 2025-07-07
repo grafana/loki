@@ -27,9 +27,9 @@ func (c *LogCluster) String() string {
 	return strings.Join(c.Tokens, " ")
 }
 
-func (c *LogCluster) append(ts model.Time) {
+func (c *LogCluster) append(ts model.Time) *logproto.PatternSample {
 	c.Size++
-	c.Chunks.Add(ts)
+	return c.Chunks.Add(ts)
 }
 
 func (c *LogCluster) merge(samples []*logproto.PatternSample) {
@@ -37,8 +37,8 @@ func (c *LogCluster) merge(samples []*logproto.PatternSample) {
 	c.Chunks.merge(samples)
 }
 
-func (c *LogCluster) Iterator(from, through, step model.Time) iter.Iterator {
-	return c.Chunks.Iterator(c.String(), from, through, step)
+func (c *LogCluster) Iterator(lvl string, from, through, step model.Time) iter.Iterator {
+	return c.Chunks.Iterator(c.String(), lvl, from, through, step)
 }
 
 func (c *LogCluster) Samples() []*logproto.PatternSample {

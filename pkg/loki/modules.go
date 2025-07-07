@@ -16,9 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -27,7 +24,6 @@ import (
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
-	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
@@ -38,8 +34,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-
 	"github.com/thanos-io/objstore"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
@@ -65,6 +62,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -445,8 +443,9 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
 
-	ingestLimits, err := limits.NewIngestLimits(
+	ingestLimits, err := limits.New(
 		t.Cfg.IngestLimits,
+		t.Overrides,
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -455,7 +454,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	}
 	t.ingestLimits = ingestLimits
 
-	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
+	limitsproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
 
 	// Register HTTP handler for metadata
 	t.Server.HTTP.Path("/ingest-limits/usage/{tenant}").Methods("GET").Handler(ingestLimits)
@@ -505,7 +504,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
-		t.Overrides,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -513,7 +511,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		return nil, err
 	}
 	t.ingestLimitsFrontend = ingestLimitsFrontend
-	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+	limitsproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
 
 	// Register HTTP handler to check if a tenant exceeds limits
 	// Returns a JSON response for the frontend to display which
@@ -546,9 +544,10 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier"), metastore.NewObjectMetastore(store)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -564,6 +563,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
+
+	// Use Pattern ingester RetainFor value to determine when to query pattern ingesters
+	t.Cfg.Querier.QueryPatternIngestersWithin = t.Cfg.Pattern.RetainFor
+
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
@@ -614,16 +617,15 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	var ms metastore.Metastore
+	var store objstore.Bucket
 	if t.Cfg.Querier.Engine.EnableV2Engine {
-		store, err := t.createDataObjBucket("dataobj-querier")
+		store, err = t.createDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
-		ms = metastore.NewObjectMetastore(store)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, ms, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1622,11 +1624,14 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	)
 	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
 
+	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
+	// This should be fixed in the future.
 	var err error
-	t.Cfg.MemberlistKV.AdvertiseAddr, err = GetInstanceAddr(
+	t.Cfg.MemberlistKV.AdvertiseAddr, err = ring.GetInstanceAddr(
 		t.Cfg.MemberlistKV.AdvertiseAddr,
-		t.Cfg.Common.InstanceInterfaceNames,
+		t.Cfg.Common.Ring.InstanceInterfaceNames,
 		util_log.Logger,
+		t.Cfg.Common.Ring.EnableIPv6,
 	)
 	if err != nil {
 		return nil, err
@@ -2369,12 +2374,4 @@ func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
 	}
 
 	return false
-}
-
-func GetInstanceAddr(addr string, netInterfaces []string, logger log.Logger) (string, error) {
-	if addr != "" {
-		return addr, nil
-	}
-
-	return netutil.GetFirstAddressOf(netInterfaces, logger, false)
 }

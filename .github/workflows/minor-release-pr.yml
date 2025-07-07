@@ -6,6 +6,7 @@ env:
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
+  GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
@@ -39,7 +40,9 @@ jobs:
     - "promtail"
     - "querytee"
     permissions:
+      contents: "write"
       id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
@@ -70,8 +73,8 @@ jobs:
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
         repo_secrets: |
-          APP_ID=loki-gh-app:app-id
-          PRIVATE_KEY=loki-gh-app:private-key
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
@@ -107,12 +110,12 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "$OUTPUTS_VERSION" \
+          --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "$OUTPUTS_BRANCH" \
-          --token "$OUTPUTS_TOKEN" \
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
@@ -135,10 +138,15 @@ jobs:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
@@ -189,6 +197,10 @@ jobs:
   fluent-bit:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -208,10 +220,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -253,6 +270,10 @@ jobs:
   fluentd:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -272,10 +293,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -317,6 +343,10 @@ jobs:
   logcli:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -336,10 +366,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -387,6 +422,10 @@ jobs:
   logstash:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -406,10 +445,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -451,6 +495,10 @@ jobs:
   loki:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -470,10 +518,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -521,6 +574,10 @@ jobs:
   loki-canary:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -540,10 +597,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -591,6 +653,10 @@ jobs:
   loki-canary-boringcrypto:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -610,10 +676,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -661,6 +732,8 @@ jobs:
   loki-docker-driver:
     needs:
     - "version"
+    permissions:
+      id-token: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -680,10 +753,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
@@ -747,6 +825,10 @@ jobs:
   promtail:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -766,10 +848,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -817,6 +904,10 @@ jobs:
   querytee:
     needs:
     - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
@@ -836,10 +927,15 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -918,8 +1014,8 @@ jobs:
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
         repo_secrets: |
-          APP_ID=loki-gh-app:app-id
-          PRIVATE_KEY=loki-gh-app:private-key
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"

@@ -15,13 +15,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -238,7 +239,8 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
-				s, err := i.createStream(ctx, reqStream, record)
+				// need format in push request.
+				s, err := i.createStream(ctx, reqStream, record, req.Format)
 				// Lock before adding to maps
 				if err == nil {
 					s.chunkMtx.Lock()
@@ -255,7 +257,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker)
+		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
 		s.chunkMtx.Unlock()
 	}
 
@@ -278,7 +280,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
+func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -320,7 +322,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	if err != nil {
-		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours, policy)
+		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours, policy, format)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -350,7 +352,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
-func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy string) (*stream, error) {
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
 	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
 
@@ -366,11 +368,11 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 		)
 	}
 
-	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(len(pushReqStream.Entries)))
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(len(pushReqStream.Entries)))
 	bytes := util.EntriesTotalSize(pushReqStream.Entries)
-	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(bytes))
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
-		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
+		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes), format)
 	}
 	return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
 }
@@ -431,9 +433,9 @@ func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, er
 // getOrCreateStream returns the stream or creates it.
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
-func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
+func (i *instance) getOrCreateStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
-		return i.createStream(ctx, pushReqStream, record)
+		return i.createStream(ctx, pushReqStream, record, format)
 	}, nil)
 
 	return s, err
@@ -814,18 +816,17 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(
-			"function", "instance.GetStats",
-			"from", from,
-			"through", through,
-			"matchers", syntax.MatchersString(matchers),
-			"streams", res.Streams,
-			"chunks", res.Chunks,
-			"bytes", res.Bytes,
-			"entries", res.Entries,
-		)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(
+		attribute.String("function", "instance.GetStats"),
+		attribute.String("from", from.String()),
+		attribute.String("through", through.String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int64("streams", int64(res.Streams)),
+		attribute.Int64("chunks", int64(res.Chunks)),
+		attribute.Int64("bytes", int64(res.Bytes)),
+		attribute.Int64("entries", int64(res.Entries)),
+	)
 
 	return res, nil
 }
@@ -1133,7 +1134,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
@@ -1162,9 +1163,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		stats.Reset()
 		metadata.Reset()
 
-		if sp != nil {
-			sp.LogKV("event", "sent batch", "size", size)
-		}
+		sp.AddEvent("sent batch", trace.WithAttributes(attribute.Int("size", int(size))))
 	}
 
 	return nil

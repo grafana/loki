@@ -109,6 +109,10 @@ func (es MetricSlice) AppendEmpty() Metric {
 func (es MetricSlice) MoveAndAppendTo(dest MetricSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -141,22 +145,7 @@ func (es MetricSlice) RemoveIf(f func(Metric) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es MetricSlice) CopyTo(dest MetricSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newMetric((*es.orig)[i], es.state).CopyTo(newMetric((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.Metric, srcLen)
-	wrappers := make([]*otlpmetrics.Metric, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newMetric((*es.orig)[i], es.state).CopyTo(newMetric(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigMetricSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the Metric elements within MetricSlice given the
@@ -165,4 +154,19 @@ func (es MetricSlice) CopyTo(dest MetricSlice) {
 func (es MetricSlice) Sort(less func(a, b Metric) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigMetricSlice(dest, src []*otlpmetrics.Metric) []*otlpmetrics.Metric {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.Metric, len(src))
+		data := make([]otlpmetrics.Metric, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigMetric(dest[i], src[i])
+	}
+	return dest
 }

@@ -147,23 +147,28 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 		for _, extractor := range ex {
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
-				if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
-					var s *logproto.Series
-					var found bool
-					s, found = resBySeries[lbs.String()]
-					if !found {
-						s = &logproto.Series{
-							Labels:     lbs.String(),
-							StreamHash: exs.BaseLabels().Hash(),
-						}
-						resBySeries[lbs.String()] = s
-					}
 
-					s.Samples = append(s.Samples, logproto.Sample{
-						Timestamp: e.Timestamp.UnixNano(),
-						Value:     f,
-						Hash:      xxhash.Sum64([]byte(e.Line)),
-					})
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
+					for _, sample := range samples {
+						lbs := sample.Labels
+						f := sample.Value
+						var s *logproto.Series
+						var found bool
+						s, found = resBySeries[lbs.String()]
+						if !found {
+							s = &logproto.Series{
+								Labels:     lbs.String(),
+								StreamHash: exs.BaseLabels().Hash(),
+							}
+							resBySeries[lbs.String()] = s
+						}
+
+						s.Samples = append(s.Samples, logproto.Sample{
+							Timestamp: e.Timestamp.UnixNano(),
+							Value:     f,
+							Hash:      xxhash.Sum64([]byte(e.Line)),
+						})
+					}
 				}
 			}
 		}
@@ -266,15 +271,15 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		ls := []labels.Label{{Name: "index", Value: fmt.Sprintf("%d", i)}}
 
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := append(ls, labels.Label{
+			shard := labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			}).Hash() % uint64(nShards)
+			})...).Hash() % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -293,8 +298,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			})
 		}
 
-		stream.Labels = ls.String()
-		stream.Hash = ls.Hash()
+		r := labels.New(ls...)
+		stream.Labels = r.String()
+		stream.Hash = r.Hash()
 		streams = append(streams, stream)
 	}
 	return streams

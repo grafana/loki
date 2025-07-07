@@ -1,10 +1,11 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
+	"math"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,8 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))
 			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) (err error) {
 				if series.Labels().Get("fizz") == "buzz" {
-					chunkIndexed, err := compactedIndex.IndexChunk(c4)
+					approxKB := math.Round(float64(c4.Data.UncompressedSize()) / float64(1<<10))
+					chunkIndexed, err := compactedIndex.IndexChunk(c4.ChunkRef, c4.Metric, uint32(approxKB), uint32(c4.Data.Entries()))
 					require.NoError(t, err)
 					require.True(t, chunkIndexed)
 				}
@@ -111,11 +113,11 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			require.NoError(t, err)
 
 			sort.Slice(expectedChunkEntries, func(i, j int) bool {
-				return bytes.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
+				return strings.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
 			})
 
 			sort.Slice(chunkEntriesFound, func(i, j int) bool {
-				return bytes.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
+				return strings.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
 			})
 
 			require.Equal(t, expectedChunkEntries, chunkEntriesFound)

@@ -17,8 +17,6 @@ const (
 // String returns the string representation of the UnaryOp.
 func (t UnaryOp) String() string {
 	switch t {
-	case UnaryOpInvalid:
-		return typeInvalid
 	case UnaryOpNot:
 		return "NOT"
 	case UnaryOpAbs:
@@ -65,8 +63,6 @@ const (
 // String returns a human-readable representation of the binary operation kind.
 func (t BinaryOp) String() string {
 	switch t {
-	case BinaryOpInvalid:
-		return typeInvalid
 	case BinaryOpEq:
 		return "EQ"
 	case BinaryOpNeq:
@@ -105,6 +101,10 @@ func (t BinaryOp) String() string {
 		return "MATCH_RE"
 	case BinaryOpNotMatchRe:
 		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
+	case BinaryOpMatchPattern:
+		return "MATCH_PAT"
+	case BinaryOpNotMatchPattern:
+		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
 	}

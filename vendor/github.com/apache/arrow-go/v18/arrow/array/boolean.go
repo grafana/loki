@@ -44,7 +44,7 @@ func NewBoolean(length int, data *memory.Buffer, nullBitmap *memory.Buffer, null
 
 func NewBooleanData(data arrow.ArrayData) *Boolean {
 	a := &Boolean{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -122,5 +122,6 @@ func arrayEqualBoolean(left, right *Boolean) bool {
 }
 
 var (
-	_ arrow.Array = (*Boolean)(nil)
+	_ arrow.Array            = (*Boolean)(nil)
+	_ arrow.TypedArray[bool] = (*Boolean)(nil)
 )
