@@ -40,8 +40,7 @@ func BenchmarkDrain_TrainExtractsPatterns(b *testing.B) {
 				line := scanner.Text()
 				lines = append(lines, line)
 			}
-			mockWriter := &mockEntryWriter{}
-			drain := New("", DefaultConfig(), &fakeLimits{}, DetectLogFormat(lines[0]), mockWriter, nil)
+			drain := New("", DefaultConfig(), &fakeLimits{}, DetectLogFormat(lines[0]), nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
