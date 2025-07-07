@@ -319,15 +319,11 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 			panic("checkPredicate: column not found")
 		}
 
-		found := false
-		for _, v := range p.Values {
-			if CompareValues(row.Values[columnIndex], v) == 0 {
-				found = true
-				break
-			}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type {
+			return false
 		}
-
-		return found
+		return p.Values.Contains(value)
 
 	case GreaterThanPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -796,7 +792,7 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 			include = CompareValues(minValue, p.Value) < 0
 		case InPredicate:
 			// Check if any value falls within the page's range
-			for _, v := range p.Values {
+			for v := range p.Values.Iter() {
 				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
 					include = true
 					break
