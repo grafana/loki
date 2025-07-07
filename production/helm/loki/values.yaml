@@ -2892,6 +2892,8 @@ patternIngester:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
           topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
   # -- Labels for pattern ingester service
   serviceLabels: {}
   # -- Annotations for pattern ingester service
@@ -3206,6 +3208,14 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- Readiness probe for memcached pods (probe port defaults to container port)
+  readinessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
   # -- The SecurityContext for memcached containers
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -3217,7 +3227,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.2
+    tag: v0.15.3
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3541,7 +3551,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.3
+    tag: 1.30.6
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

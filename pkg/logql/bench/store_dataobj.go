@@ -69,7 +69,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
 	meta := metastore.NewUpdater(bucket, tenantID, logger)
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	return &DataObjStore{
 		dir:      storeDir,
@@ -103,7 +103,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger)), nil
 }
 
 func (s *DataObjStore) flush() error {

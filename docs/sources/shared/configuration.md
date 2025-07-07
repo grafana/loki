@@ -662,10 +662,6 @@ pattern_ingester:
 
   # Configures how detected patterns are pushed back to Loki for persistence.
   pattern_persistence:
-    # Whether pattern persistence is enabled.
-    # CLI flag: -pattern-ingester.pattern-persistence.enabled
-    [enabled: <boolean> | default = false]
-
     # The address of the Loki instance to push patterns to.
     # CLI flag: -pattern-ingester.pattern-persistence.loki-address
     [loki_address: <string> | default = ""]
@@ -940,7 +936,7 @@ kafka_config:
   reader_config:
     # The Kafka backend address.
     # CLI flag: -kafka.reader.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.reader.client-id
@@ -949,7 +945,7 @@ kafka_config:
   writer_config:
     # The Kafka backend address.
     # CLI flag: -kafka.writer.address
-    [address: <string> | default = ""]
+    [address: <string> | default = "localhost:9092"]
 
     # The Kafka client ID.
     # CLI flag: -kafka.writer.client-id
@@ -1414,10 +1410,6 @@ ingest_limits_frontend:
     # ID to register in the ring.
     # CLI flag: -ingest-limits-frontend.lifecycler.ID
     [id: <string> | default = "<hostname>"]
-
-  # The period to recheck per tenant ingestion rate limit configuration.
-  # CLI flag: -ingest-limits-frontend.recheck-period
-  [recheck_period: <duration> | default = 10s]
 
   # The number of partitions to use for the ring.
   # CLI flag: -ingest-limits-frontend.num-partitions
@@ -2939,6 +2931,10 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
+
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
 # CLI flag: -frontend.encoding
@@ -3724,6 +3720,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
 
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
@@ -4346,13 +4346,16 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
-# Enable metric and pattern aggregation. When enabled, pushed streams will be
-# sampled for bytes, line count, and patterns. These metrics will be written
-# back into Loki as a special __aggregated_metric__ stream.
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and line counts. These metrics will be written back into Loki as a
+# special __aggregated_metric__ stream.
 # CLI flag: -limits.aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
 
-[pattern_persistence_enabled: <boolean>]
+# Enable persistence of patterns detected at ingest. When enabled, patterns for
+# pushed streams will be written back into Loki as a special __pattern__ stream.
+# CLI flag: -limits.pattern-persistence-enabled
+[pattern_persistence_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -5558,6 +5561,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# If true, the max streams by connection gauge will be collected.
+# CLI flag: -server.grpc-collect-max-streams-by-conn
+[grpc_collect_max_streams_by_conn: <boolean> | default = true]
+
 # Enables PROXY protocol.
 # CLI flag: -server.proxy-protocol-enabled
 [proxy_protocol_enabled: <boolean> | default = false]
@@ -5770,6 +5777,16 @@ grpc_tls_config:
 # server.log-request-headers is true.
 # CLI flag: -server.log-request-headers-exclude-list
 [log_request_exclude_headers_list: <string> | default = ""]
+
+# Optionally add request headers to tracing spans.
+# CLI flag: -server.trace-request-headers
+[trace_request_headers: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from tracing spans. Only used if
+# server.trace-request-headers is true. The following headers are always
+# excluded: Authorization, Cookie, X-Csrf-Token.
+# CLI flag: -server.trace-request-headers-exclude-list
+[trace_request_exclude_headers_list: <string> | default = ""]
 
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix

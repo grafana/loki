@@ -60,6 +60,7 @@ func NewSortingWriter[T any](output io.Writer, sortRowCount int64, options ...Wr
 			Schema:               config.Schema,
 			Compression:          config.Compression,
 			Sorting:              config.Sorting,
+			Encodings:            config.Encodings,
 		}),
 		output:  NewGenericWriter[T](output, config),
 		maxRows: sortRowCount,
@@ -221,4 +222,10 @@ func (w *SortingWriter[T]) sortAndWriteBufferedRows() error {
 
 	w.numRows += n
 	return nil
+}
+
+// File returns a FileView of the written parquet file.
+// Only available after Close is called.
+func (w *SortingWriter[T]) File() FileView {
+	return w.output.File()
 }

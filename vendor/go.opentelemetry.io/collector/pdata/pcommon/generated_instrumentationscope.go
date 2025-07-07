@@ -38,6 +38,10 @@ func NewInstrumentationScope() InstrumentationScope {
 func (ms InstrumentationScope) MoveTo(dest InstrumentationScope) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = otlpcommon.InstrumentationScope{}
 }
@@ -91,8 +95,5 @@ func (ms InstrumentationScope) SetDroppedAttributesCount(v uint32) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms InstrumentationScope) CopyTo(dest InstrumentationScope) {
 	dest.getState().AssertMutable()
-	dest.SetName(ms.Name())
-	dest.SetVersion(ms.Version())
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetDroppedAttributesCount(ms.DroppedAttributesCount())
+	internal.CopyOrigInstrumentationScope(dest.getOrig(), ms.getOrig())
 }

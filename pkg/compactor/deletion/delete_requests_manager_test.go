@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -936,8 +937,9 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			mgr, err := NewDeleteRequestsManager(t.TempDir(), mockDeleteRequestsStore, time.Hour, tc.batchSize, &fakeLimits{defaultLimit: limit{
 				retentionPeriod: 7 * 24 * time.Hour,
 				deletionMode:    tc.deletionMode.String(),
-			}}, nil)
+			}}, false, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, mgr.Init(nil))
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
 
@@ -1007,8 +1009,9 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 		require.NoError(t, err)
+		require.NoError(t, mgr.Init(nil))
 		mgr.MarkPhaseStarted()
 		require.NotNil(t, mgr.currentBatch)
 
@@ -1193,8 +1196,18 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 				{RequestID: "2", Query: lblFooBar.String(), UserID: string(user2), StartTime: 0, EndTime: 100, Status: StatusReceived},
 			}}
 
-			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, mgr.Init(nil))
+
+			wg := sync.WaitGroup{}
+			mgrCtx, mgrCtxCancel := context.WithCancel(context.Background())
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				mgr.Start(mgrCtx)
+			}()
+
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
 
@@ -1208,9 +1221,12 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			// see if stopping the manager properly retains the progress and loads back when initialized
 			storedSeriesProgress := mgr.processedSeries
-			mgr.Stop()
-			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+			mgrCtxCancel()
+			wg.Wait()
+
+			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
+			require.NoError(t, mgr.Init(nil))
 			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
@@ -1233,8 +1249,9 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 100, EndTime: 200, Status: StatusReceived},
 	}}
 
-	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
+	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, mgr.Init(nil))
 	mgr.MarkPhaseStarted()
 	require.NotNil(t, mgr.currentBatch)
 

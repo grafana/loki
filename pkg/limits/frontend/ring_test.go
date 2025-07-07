@@ -93,14 +93,14 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -145,7 +145,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -153,7 +153,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -203,7 +203,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			nil, {{
 				Results: []*proto.ExceedsLimitsResult{{
 					StreamHash: 0x1,
-					Reason:     uint32(limits.ReasonExceedsMaxStreams),
+					Reason:     uint32(limits.ReasonMaxStreams),
 				}},
 			}},
 		},
@@ -211,7 +211,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
@@ -261,29 +261,29 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {nil}},
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}, {
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}, {
 		// When one instance returns an error, the streams for that instance
-		// are permitted.
+		// are failed.
 		name: "two streams, two instances, one instance returns error",
 		request: &proto.ExceedsLimitsRequest{
 			Tenant: "test",
@@ -327,7 +327,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}, nil},
 		exceedsLimitsResponseErrs: [][]error{{nil}, {
@@ -336,7 +336,12 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x2,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		}, {
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonFailed),
 			}},
 		}},
 	}, {
@@ -386,7 +391,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		exceedsLimitsResponses: [][]*proto.ExceedsLimitsResponse{{nil}, {{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}}},
 		exceedsLimitsResponseErrs: [][]error{{
@@ -397,7 +402,7 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 		expected: []*proto.ExceedsLimitsResponse{{
 			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		}},
 	}}
@@ -405,9 +410,9 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up the mock clients, one for each set of mock RPC responses.
-			mockClients := make([]*mockIngestLimitsClient, len(test.instances))
+			mockClients := make([]*mockLimitsProtoClient, len(test.instances))
 			for i := 0; i < len(test.instances); i++ {
-				mockClients[i] = &mockIngestLimitsClient{
+				mockClients[i] = &mockLimitsProtoClient{
 					t:                                 t,
 					getAssignedPartitionsResponses:    test.getAssignedPartitionsResponses[i],
 					getAssignedPartitionsResponseErrs: test.getAssignedPartitionsResponseErrs[i],
@@ -419,13 +424,13 @@ func TestRingGatherer_ExceedsLimits(t *testing.T) {
 			}
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger(), prometheus.NewRegistry())
+			r := newRingLimitsClient(readRing, clientPool, test.numPartitions, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			actual, err := g.ExceedsLimits(ctx, test.request)
+			actual, err := r.ExceedsLimits(ctx, test.request)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
 				require.Nil(t, actual)
@@ -572,10 +577,10 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up the mock clients, one for each pair of mock RPC responses.
-			mockClients := make([]*mockIngestLimitsClient, len(test.instances))
+			mockClients := make([]*mockLimitsProtoClient, len(test.instances))
 			for i := range test.instances {
 				// These test cases assume one request/response per instance.
-				mockClients[i] = &mockIngestLimitsClient{
+				mockClients[i] = &mockLimitsProtoClient{
 					t:                                 t,
 					getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{test.getAssignedPartitionsResponses[i]},
 					getAssignedPartitionsResponseErrs: []error{test.getAssignedPartitionsResponseErrs[i]},
@@ -585,13 +590,13 @@ func TestRingStreamUsageGatherer_GetZoneAwarePartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
+			r := newRingLimitsClient(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			result, err := g.getZoneAwarePartitionConsumers(ctx, test.instances)
+			result, err := r.getZoneAwarePartitionConsumers(ctx, test.instances)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})
@@ -709,10 +714,10 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Set up the mock clients, one for each pair of mock RPC responses.
-			mockClients := make([]*mockIngestLimitsClient, len(test.instances))
+			mockClients := make([]*mockLimitsProtoClient, len(test.instances))
 			for i := range test.instances {
 				// These test cases assume one request/response per instance.
-				mockClients[i] = &mockIngestLimitsClient{
+				mockClients[i] = &mockLimitsProtoClient{
 					t:                                 t,
 					getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{test.getAssignedPartitionsResponses[i]},
 					getAssignedPartitionsResponseErrs: []error{test.getAssignedPartitionsResponseErrs[i]},
@@ -722,13 +727,13 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers(t *testing.T) {
 			// Set up the mocked ring and client pool for the tests.
 			readRing, clientPool := newMockRingWithClientPool(t, "test", mockClients, test.instances)
 			cache := newNopCache[string, *proto.GetAssignedPartitionsResponse]()
-			g := newRingGatherer(readRing, clientPool, 1, cache, log.NewNopLogger(), prometheus.NewRegistry())
+			r := newRingLimitsClient(readRing, clientPool, 1, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 			// Set a maximum upper bound on the test execution time.
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
-			result, err := g.getPartitionConsumers(ctx, test.instances)
+			result, err := r.getPartitionConsumers(ctx, test.instances)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})
@@ -742,7 +747,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 			0: time.Now().UnixNano(),
 		},
 	}
-	client0 := mockIngestLimitsClient{
+	client0 := mockLimitsProtoClient{
 		t: t,
 		// Expect the same request twice. The first time on the first
 		// cache miss, and the second time on the second cache miss after
@@ -756,14 +761,14 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 			1: time.Now().UnixNano(),
 		},
 	}
-	client1 := mockIngestLimitsClient{
+	client1 := mockLimitsProtoClient{
 		t: t,
 		// Expect the same request twice too for the same reasons.
 		getAssignedPartitionsResponses:    []*proto.GetAssignedPartitionsResponse{&req1, &req1},
 		getAssignedPartitionsResponseErrs: []error{nil, nil},
 	}
 	t.Cleanup(client1.Finished)
-	mockClients := []*mockIngestLimitsClient{&client0, &client1}
+	mockClients := []*mockLimitsProtoClient{&client0, &client1}
 	instances := []ring.InstanceDesc{{Addr: "instance-0"}, {Addr: "instance-1"}}
 
 	// Set up the mocked ring and client pool for the tests.
@@ -772,7 +777,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	// Set the cache TTL large enough that entries cannot expire (flake)
 	// during slow test runs.
 	cache := newTTLCache[string, *proto.GetAssignedPartitionsResponse](time.Minute)
-	g := newRingGatherer(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
+	r := newRingLimitsClient(readRing, clientPool, 2, cache, log.NewNopLogger(), prometheus.NewRegistry())
 
 	// Set a maximum upper bound on the test execution time.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -786,14 +791,14 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	}
 
 	// The first call should be a cache miss.
-	actual, err := g.getPartitionConsumers(ctx, instances)
+	actual, err := r.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 	require.Equal(t, 1, client0.numAssignedPartitionsRequests)
 	require.Equal(t, 1, client1.numAssignedPartitionsRequests)
 
 	// The second call should be a cache hit.
-	actual, err = g.getPartitionConsumers(ctx, instances)
+	actual, err = r.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 	require.Equal(t, 1, client0.numAssignedPartitionsRequests)
@@ -803,7 +808,7 @@ func TestRingStreamUsageGatherer_GetPartitionConsumers_Caching(t *testing.T) {
 	cache.Reset()
 
 	// The third call should be a cache miss.
-	actual, err = g.getPartitionConsumers(ctx, instances)
+	actual, err = r.getPartitionConsumers(ctx, instances)
 	require.NoError(t, err)
 	require.Equal(t, expected, actual)
 	require.Equal(t, 2, client0.numAssignedPartitionsRequests)

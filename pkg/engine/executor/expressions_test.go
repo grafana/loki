@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -102,7 +101,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 func TestEvaluateColumnExpression(t *testing.T) {
 	e := expressionEvaluator{}
 
-	t.Run("invalid", func(t *testing.T) {
+	t.Run("unknown column", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "does_not_exist",
@@ -112,8 +111,12 @@ func TestEvaluateColumnExpression(t *testing.T) {
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		_, err := e.eval(colExpr, rec)
-		require.ErrorContains(t, err, errors.ErrKey.Error())
+		colVec, err := e.eval(colExpr, rec)
+		require.NoError(t, err)
+
+		_, ok := colVec.(*Scalar)
+		require.True(t, ok, "expected column vector to be a *Scalar, got %T", colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 	})
 
 	t.Run("string(message)", func(t *testing.T) {
@@ -260,4 +263,119 @@ func batch(n int, now time.Time) arrow.Record {
 	record := array.NewRecord(schema, columns, int64(n))
 
 	return record
+}
+
+func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
+	// Test precedence between generated, metadata, and label columns
+	fields := []arrow.Field{
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.String)},
+	}
+
+	// CSV data where:
+	// Row 0: All columns have values - should pick generated (highest precedence)
+	// Row 1: Generated is null, others have values - should pick metadata
+	// Row 2: Generated and metadata are null - should pick label
+	// Row 3: All are null - should return null
+	data := `label_0,metadata_0,generated_0
+label_1,metadata_1,null
+label_2,null,null
+null,null,null`
+
+	record, err := CSVToArrow(fields, data)
+	require.NoError(t, err)
+	defer record.Release()
+
+	e := expressionEvaluator{}
+
+	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "test",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		require.Equal(t, types.ColumnTypeAmbiguous, colVec.ColumnType())
+
+		// Test per-row precedence resolution
+		require.Equal(t, "generated_0", colVec.Value(0)) // Generated has highest precedence
+		require.Equal(t, "metadata_1", colVec.Value(1))  // Generated is null, metadata has next precedence
+		require.Equal(t, "label_2", colVec.Value(2))     // Generated and metadata are null, label has next precedence
+		require.Equal(t, nil, colVec.Value(3))           // All are null
+	})
+
+	t.Run("ToArray method should return correct Arrow array", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "test",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
+
+		arr := colVec.ToArray()
+		require.IsType(t, &array.String{}, arr)
+		stringArr := arr.(*array.String)
+
+		require.Equal(t, 4, stringArr.Len())
+		require.Equal(t, "generated_0", stringArr.Value(0))
+		require.Equal(t, "metadata_1", stringArr.Value(1))
+		require.Equal(t, "label_2", stringArr.Value(2))
+		require.True(t, stringArr.IsNull(3)) // Row 3 should be null
+	})
+
+	t.Run("look-up matching single column should return Array", func(t *testing.T) {
+		// Create a record with only one column type
+		fields := []arrow.Field{
+			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
+		}
+		data := `label_0
+label_1
+label_2
+`
+
+		singleRecord, err := CSVToArrow(fields, data)
+		require.NoError(t, err)
+		defer singleRecord.Release()
+
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "single",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, singleRecord)
+		require.NoError(t, err)
+		require.IsType(t, &Array{}, colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		require.Equal(t, types.ColumnTypeLabel, colVec.ColumnType())
+
+		// Test single column behavior
+		require.Equal(t, "label_0", colVec.Value(0))
+		require.Equal(t, "label_1", colVec.Value(1))
+		require.Equal(t, "label_2", colVec.Value(2))
+	})
+
+	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "nonexistent",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &Scalar{}, colVec)
+	})
 }

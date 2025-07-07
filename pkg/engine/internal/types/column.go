@@ -17,17 +17,31 @@ const (
 	ColumnTypeMetadata  // ColumnTypeMetadata represents a column from a log metadata.
 	ColumnTypeParsed    // ColumnTypeParsed represents a parsed column from a parser stage.
 	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a builtin, label, metadata, or parsed.
+	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
+)
+
+// Column type precedence for ambiguous column resolution (highest to lowest):
+// Generated > Parsed > Metadata > Label > Builtin
+const (
+	PrecedenceGenerated = iota // 0 - highest precedence
+
+	PrecedenceParsed   // 1
+	PrecedenceMetadata // 2
+	PrecedenceLabel    // 3
+	PrecedenceBuiltin  // 4 - lowest precedence
 )
 
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
 	ColumnNameBuiltinMessage   = "message"
-	MetadataKeyColumnType      = "column_type"
-	MetadataKeyColumnDataType  = "column_datatype"
+	ColumnNameGeneratedValue   = "value"
+
+	MetadataKeyColumnType     = "column_type"
+	MetadataKeyColumnDataType = "column_datatype"
 )
 
-var ctNames = [6]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous"}
+var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
 
 // String returns a human-readable representation of the column type.
 func (ct ColumnType) String() string {
@@ -47,8 +61,26 @@ func ColumnTypeFromString(ct string) ColumnType {
 		return ColumnTypeParsed
 	case ctNames[5]:
 		return ColumnTypeAmbiguous
+	case ctNames[6]:
+		return ColumnTypeGenerated
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
+}
+
+// ColumnTypePrecedence returns the precedence of the given [ColumnType].
+func ColumnTypePrecedence(ct ColumnType) int {
+	switch ct {
+	case ColumnTypeGenerated:
+		return PrecedenceGenerated
+	case ColumnTypeParsed:
+		return PrecedenceParsed
+	case ColumnTypeMetadata:
+		return PrecedenceMetadata
+	case ColumnTypeLabel:
+		return PrecedenceLabel
+	default:
+		return PrecedenceBuiltin // Default to lowest precedence
 	}
 }
 

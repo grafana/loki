@@ -43,7 +43,7 @@ type Reader struct {
 	r      *csv.Reader
 	schema *arrow.Schema
 
-	refs int64
+	refs atomic.Int64
 	bld  *array.RecordBuilder
 	cur  arrow.Record
 	err  error
@@ -75,10 +75,10 @@ type Reader struct {
 func NewInferringReader(r io.Reader, opts ...Option) *Reader {
 	rr := &Reader{
 		r:                csv.NewReader(r),
-		refs:             1,
 		chunk:            1,
 		stringsCanBeNull: false,
 	}
+	rr.refs.Add(1)
 	rr.r.ReuseRecord = true
 	for _, opt := range opts {
 		opt(rr)
@@ -111,10 +111,10 @@ func NewReader(r io.Reader, schema *arrow.Schema, opts ...Option) *Reader {
 	rr := &Reader{
 		r:                csv.NewReader(r),
 		schema:           schema,
-		refs:             1,
 		chunk:            1,
 		stringsCanBeNull: false,
 	}
+	rr.refs.Add(1)
 	rr.r.ReuseRecord = true
 	for _, opt := range opts {
 		opt(rr)
@@ -288,9 +288,7 @@ func (r *Reader) nextall() bool {
 		r.done = true
 	}()
 
-	var (
-		recs [][]string
-	)
+	var recs [][]string
 
 	recs, r.err = r.r.ReadAll()
 	if r.err != nil {
@@ -926,16 +924,16 @@ func (r *Reader) parseExtension(field array.Builder, str string) {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (r *Reader) Retain() {
-	atomic.AddInt64(&r.refs, 1)
+	r.refs.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (r *Reader) Release() {
-	debug.Assert(atomic.LoadInt64(&r.refs) > 0, "too many releases")
+	debug.Assert(r.refs.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&r.refs, -1) == 0 {
+	if r.refs.Add(-1) == 0 {
 		if r.cur != nil {
 			r.cur.Release()
 		}
@@ -1025,6 +1023,4 @@ func tryParse(val string, dt arrow.DataType) error {
 	panic("shouldn't end up here")
 }
 
-var (
-	_ array.RecordReader = (*Reader)(nil)
-)
+var _ array.RecordReader = (*Reader)(nil)

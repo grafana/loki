@@ -22,8 +22,8 @@ const (
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 type ChunksGroup struct {
-	Requests []DeleteRequest `json:"requests"`
-	Chunks   []string        `json:"chunks"`
+	Requests []DeleteRequest     `json:"requests"`
+	Chunks   map[string][]string `json:"chunks"` // mapping of series labels to a list of ChunkIDs
 }
 
 // segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
@@ -53,8 +53,8 @@ type manifest struct {
 // deletionManifestBuilder helps with building the manifest for listing out which chunks to process for a batch of delete requests.
 // It is not meant to be used concurrently.
 type deletionManifestBuilder struct {
-	deleteStoreClient  client.ObjectClient
-	deleteRequestBatch deleteRequestBatch
+	deletionStoreClient client.ObjectClient
+	deleteRequestBatch  *deleteRequestBatch
 
 	currentSegment            map[uint64]ChunksGroup
 	currentSegmentChunksCount int
@@ -67,7 +67,7 @@ type deletionManifestBuilder struct {
 	overallChunksCount int
 }
 
-func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteRequestBatch deleteRequestBatch) (*deletionManifestBuilder, error) {
+func newDeletionManifestBuilder(deletionStoreClient client.ObjectClient, deleteRequestBatch *deleteRequestBatch) (*deletionManifestBuilder, error) {
 	requestCount := 0
 	for _, userRequests := range deleteRequestBatch.deleteRequestsToProcess {
 		requestCount += len(userRequests.requests)
@@ -80,10 +80,10 @@ func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteReq
 	}
 
 	builder := &deletionManifestBuilder{
-		deleteStoreClient:  deleteStoreClient,
-		deleteRequestBatch: deleteRequestBatch,
-		currentSegment:     make(map[uint64]ChunksGroup),
-		creationTime:       time.Now(),
+		deletionStoreClient: deletionStoreClient,
+		deleteRequestBatch:  deleteRequestBatch,
+		currentSegment:      make(map[uint64]ChunksGroup),
+		creationTime:        time.Now(),
 	}
 
 	return builder, nil
@@ -94,6 +94,8 @@ func newDeletionManifestBuilder(deleteStoreClient client.ObjectClient, deleteReq
 // It also ensures that the current segment does not exceed the maximum number of chunks.
 func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName string, series retention.Series) error {
 	userIDStr := unsafeGetString(series.UserID())
+	currentLabels := series.Labels().String()
+
 	if userIDStr != d.currentUserID || tableName != d.currentTableName {
 		if err := d.flushCurrentBatch(ctx); err != nil {
 			return err
@@ -118,7 +120,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 			d.currentSegmentChunksCount = 0
 			for chunksGroupIdentifier := range d.currentSegment {
 				group := d.currentSegment[chunksGroupIdentifier]
-				group.Chunks = group.Chunks[:0]
+				group.Chunks = map[string][]string{}
 				d.currentSegment[chunksGroupIdentifier] = group
 			}
 		}
@@ -149,17 +151,19 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 						Query:     deleteRequest.Query,
 						StartTime: deleteRequest.StartTime,
 						EndTime:   deleteRequest.EndTime,
+						UserID:    deleteRequest.UserID,
 					})
 				}
 			}
 
 			d.currentSegment[chunksGroupIdentifier] = ChunksGroup{
 				Requests: deleteRequests,
+				Chunks:   make(map[string][]string),
 			}
 		}
 
 		group := d.currentSegment[chunksGroupIdentifier]
-		group.Chunks = append(group.Chunks, chk.ChunkID)
+		group.Chunks[currentLabels] = append(group.Chunks[currentLabels], chk.ChunkID)
 		d.currentSegment[chunksGroupIdentifier] = group
 	}
 
@@ -193,7 +197,7 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
+	return d.deletionStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
@@ -229,9 +233,13 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
-	return d.deleteStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount)), strings.NewReader(unsafeGetString(batchJSON)))
+	return d.deletionStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 	return path.Join(fmt.Sprint(d.creationTime.UnixNano()), filename)
+}
+
+func (d *deletionManifestBuilder) path() string {
+	return fmt.Sprint(d.creationTime.UnixNano())
 }

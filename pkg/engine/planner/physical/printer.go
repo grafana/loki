@@ -31,6 +31,7 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
 			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
+			tree.NewProperty("section_ids", true, toAnySlice(node.Sections)...),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
@@ -61,11 +62,8 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("operation", false, node.Operation),
 			tree.NewProperty("start", false, node.Start),
 			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("step", false, node.Step),
 			tree.NewProperty("range", false, node.Range),
-		}
-
-		if node.Step != nil {
-			properties = append(properties, tree.NewProperty("step", false, node.Step))
 		}
 
 		if len(node.PartitionBy) > 0 {

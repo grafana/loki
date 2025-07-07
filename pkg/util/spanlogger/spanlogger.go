@@ -9,11 +9,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	// TenantIDsTagName is the tenant IDs tag name.
-	TenantIDsTagName = spanlogger.TenantIDsTagName
-)
-
 type resolverProxy struct{}
 
 func (r *resolverProxy) TenantID(ctx context.Context) (string, error) {

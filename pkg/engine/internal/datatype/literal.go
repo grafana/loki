@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 type NullLiteral struct {
@@ -126,7 +128,7 @@ type TimestampLiteral struct {
 
 // String implements Literal.
 func (t *TimestampLiteral) String() string {
-	return time.Unix(0, t.v).UTC().Format(time.RFC3339Nano)
+	return util.FormatTimeRFC3339Nano(time.Unix(0, t.v))
 }
 
 // Type implements Literal.
