@@ -1,4 +1,4 @@
-package indexing
+package index
 
 import (
 	"bytes"
@@ -15,10 +15,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -76,27 +77,29 @@ func TestIndexBuilder(t *testing.T) {
 
 	indexPrefix := "test-prefix"
 	tenant := "test-tenant"
-	p := NewIndexBuilder(
-		ctx,
-		log.NewNopLogger(),
-		client,
-		indexobj.BuilderConfig{
-			TargetPageSize:    128 * 1024,
-			TargetObjectSize:  4 * 1024 * 1024,
-			TargetSectionSize: 2 * 1024 * 1024,
+	p, err := NewIndexBuilder(
+		Config{
+			BuilderConfig: indexobj.BuilderConfig{
+				TargetPageSize:    128 * 1024,
+				TargetObjectSize:  4 * 1024 * 1024,
+				TargetSectionSize: 2 * 1024 * 1024,
 
-			BufferSize: 4 * 1024 * 1024,
-
-			SectionStripeMergeLimit: 2,
+				BufferSize:              4 * 1024 * 1024,
+				SectionStripeMergeLimit: 2,
+			},
+			EventsPerIndex:     3,
+			IndexStoragePrefix: indexPrefix,
+			EnabledTenantIDs:   []string{tenant},
 		},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
 		bucket,
-		"loki.metastore-events",
 		prometheus.NewRegistry(),
-		3,
-		indexPrefix,
-		[]string{tenant},
 	)
-	p.Start()
+	require.NoError(t, err)
+	p.client = client
+	require.NoError(t, p.StartAsync(ctx))
 
 	buildLogObject(t, "loki", "test-path-0", bucket)
 	buildLogObject(t, "testing", "test-path-1", bucket)

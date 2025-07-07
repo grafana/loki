@@ -62,10 +62,10 @@ type BuilderConfig struct {
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	_ = cfg.TargetPageSize.Set("2MB")
-	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
-	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
+	_ = cfg.TargetPageSize.Set("128KB")
+	_ = cfg.TargetObjectSize.Set("64MB")
+	_ = cfg.BufferSize.Set("2MB")
+	_ = cfg.TargetSectionSize.Set("16MB")
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
@@ -168,6 +168,8 @@ func (b *Builder) GetEstimatedSize() int {
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
 func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
+	b.metrics.appendsTotal.Inc()
+
 	newEntrySize := labelsEstimate(stream.Labels) + 2
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
@@ -187,6 +189,7 @@ func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 	// encoder and start a new section.
 	if b.pointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
 		if err := b.builder.Append(b.pointers); err != nil {
+			b.metrics.appendFailures.Inc()
 			return 0, err
 		}
 	}
@@ -214,6 +217,7 @@ func labelsEstimate(ls labels.Labels) int {
 	return keysSize + valuesSize/2
 }
 
+// RecordStreamRef records a reference to a stream from another object, as the stream IDs will be different between objects.
 func (b *Builder) RecordStreamRef(path string, streamIDInObject int64, streamID int64) {
 	b.pointers.RecordStreamRef(path, streamIDInObject, streamID)
 }
@@ -317,6 +321,7 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 		return FlushStats{}, ErrBuilderEmpty
 	}
 
+	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 

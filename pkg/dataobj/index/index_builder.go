@@ -1,4 +1,4 @@
-package indexing
+package index
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"slices"
@@ -15,6 +16,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -23,32 +27,54 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/indexing/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
+
+type Config struct {
+	indexobj.BuilderConfig `yaml:",inline"`
+	EventsPerIndex         int                    `yaml:"events_per_index" experimental:"true"`
+	IndexStoragePrefix     string                 `yaml:"index_storage_prefix" experimental:"true"`
+	EnabledTenantIDs       flagext.StringSliceCSV `yaml:"enabled_tenant_ids" experimental:"true"`
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("dataobj-index-builder.", f)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
+	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
+	f.StringVar(&cfg.IndexStoragePrefix, prefix+"storage-prefix", "index/v0/", "Experimental: A prefix to use for storing indexes in object storage. Used to separate the metastore & index files during initial testing.")
+	f.Var(&cfg.EnabledTenantIDs, prefix+"enabled-tenant-ids", "Experimental: A list of tenant IDs to enable index building for. If empty, all tenants will be enabled.")
+}
 
 type downloadedObject struct {
 	event       metastore.ObjectWrittenEvent
 	objectBytes *[]byte
+	err         error
 }
 
+const indexEventTopic = "loki.metastore-events"
+const indexConsumerGroup = "metastore-event-reader"
+
 type IndexBuilder struct {
+	services.Service
+
+	cfg Config
+
 	// Kafka client and topic/partition info
 	client *kgo.Client
 	topic  string
 
 	// Processing pipeline
-	records           chan *kgo.Record
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
 	builder           *indexobj.Builder
-
-	// Config params
-	eventsPerIndex     int
-	indexStoragePrefix string
-	enabledTenantIDs   []string
 
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
@@ -61,101 +87,94 @@ type IndexBuilder struct {
 	metrics *indexBuilderMetrics
 
 	// Control and coordination
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	reg    prometheus.Registerer
-	logger log.Logger
-	mtx    sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	logger     log.Logger
+	builderMtx sync.Mutex
 }
 
 func NewIndexBuilder(
-	ctx context.Context,
+	cfg Config,
+	kafkaCfg kafka.Config,
 	logger log.Logger,
-	client *kgo.Client,
-	builderCfg indexobj.BuilderConfig,
+	instanceID string,
 	bucket objstore.Bucket,
-	topic string,
 	reg prometheus.Registerer,
-	eventsPerIndex int,
-	indexStoragePrefix string,
-	enabledTenantIDs []string,
-) *IndexBuilder {
-	ctx, cancel := context.WithCancel(ctx)
+) (*IndexBuilder, error) {
+	kafkaCfg.AutoCreateTopicEnabled = true
+	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
+	eventConsumerClient, err := client.NewReaderClient(
+		"index_builder",
+		kafkaCfg,
+		logger,
+		reg,
+		kgo.ConsumeTopics(indexEventTopic),
+		kgo.InstanceID(instanceID),
+		kgo.SessionTimeout(3*time.Minute),
+		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.RebalanceTimeout(5*time.Minute),
+		kgo.DisableAutoCommit(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
+	}
+
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     topic,
-		"component": "index_processor",
+		"topic":     indexEventTopic,
+		"component": "index_builder",
 	}, reg)
 
 	metrics := newIndexBuilderMetrics()
+	if err := metrics.register(reg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
 
-	builder, err := indexobj.NewBuilder(builderCfg)
+	builder, err := indexobj.NewBuilder(cfg.BuilderConfig)
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to create builder", "err", err)
+		return nil, fmt.Errorf("failed to create builder: %w", err)
 	}
 
 	if err := builder.RegisterMetrics(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register metrics for builder", "err", err)
+		return nil, fmt.Errorf("failed to register metrics for builder: %w", err)
 	}
 
-	flushBuffer := bytes.NewBuffer(make([]byte, int(float64(builderCfg.TargetObjectSize)*1.2)))
+	// Allocate a single buffer
+	flushBuffer := bytes.NewBuffer(make([]byte, int(float64(cfg.BuilderConfig.TargetObjectSize)*1.2)))
 
 	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
 	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
-	downloadQueue := make(chan metastore.ObjectWrittenEvent, 32)
+	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
 	downloadedObjects := make(chan downloadedObject, 1)
 
-	return &IndexBuilder{
-		client:             client,
-		logger:             log.With(logger, "topic", topic),
-		topic:              topic,
-		records:            make(chan *kgo.Record, 100),
-		ctx:                ctx,
-		cancel:             cancel,
-		reg:                reg,
-		builderCfg:         builderCfg,
-		builder:            builder,
-		bucket:             bucket,
-		flushBuffer:        flushBuffer,
-		mtx:                sync.Mutex{},
-		downloadedObjects:  downloadedObjects,
-		downloadQueue:      downloadQueue,
-		metrics:            metrics,
-		eventsPerIndex:     eventsPerIndex,
-		indexStoragePrefix: indexStoragePrefix,
-		enabledTenantIDs:   enabledTenantIDs,
+	s := &IndexBuilder{
+		cfg:               cfg,
+		client:            eventConsumerClient,
+		logger:            logger,
+		builder:           builder,
+		bucket:            bucket,
+		flushBuffer:       flushBuffer,
+		builderMtx:        sync.Mutex{},
+		downloadedObjects: downloadedObjects,
+		downloadQueue:     downloadQueue,
+		metrics:           metrics,
 
 		bufferedEvents: make(map[string][]metastore.ObjectWrittenEvent),
 	}
+
+	s.Service = services.NewBasicService(nil, s.run, s.stopping)
+
+	return s, nil
 }
 
-func (p *IndexBuilder) Start() {
-	if err := p.metrics.register(p.reg); err != nil {
-		level.Error(p.logger).Log("msg", "failed to register metrics for index builder", "err", err)
-	}
+func (p *IndexBuilder) run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	p.ctx = ctx
+	p.cancel = cancel
 
 	p.wg.Add(1)
 	go func() {
-		defer p.wg.Done()
-
-		level.Info(p.logger).Log("msg", "started index processor")
-		for {
-			select {
-			case <-p.ctx.Done():
-				level.Info(p.logger).Log("msg", "stopping index processor")
-				return
-			case record, ok := <-p.records:
-				if !ok {
-					// Channel was closed
-					return
-				}
-				p.processRecord(record)
-			}
-		}
-	}()
-
-	p.wg.Add(1)
-	go func() {
+		// Download worker
 		defer p.wg.Done()
 		for event := range p.downloadQueue {
 			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
@@ -163,14 +182,20 @@ func (p *IndexBuilder) Start() {
 
 			objectReader, err := p.bucket.Get(p.ctx, event.ObjectPath)
 			if err != nil {
-				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
+				p.downloadedObjects <- downloadedObject{
+					event: event,
+					err:   fmt.Errorf("failed to fetch object from storage: %w", err),
+				}
 				continue
 			}
 
 			object, err := io.ReadAll(objectReader)
 			_ = objectReader.Close()
 			if err != nil {
-				level.Error(objLogger).Log("msg", "failed to read object", "err", err)
+				p.downloadedObjects <- downloadedObject{
+					event: event,
+					err:   fmt.Errorf("failed to read object: %w", err),
+				}
 				continue
 			}
 			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart), "size_mb", float64(len(object))/1024/1024, "avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
@@ -180,32 +205,36 @@ func (p *IndexBuilder) Start() {
 			}
 		}
 	}()
+
+	level.Info(p.logger).Log("msg", "started index builder service")
+	for {
+		fetches := p.client.PollRecords(ctx, -1)
+		if fetches.IsClientClosed() || ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errs := fetches.Errors(); len(errs) > 0 {
+			level.Error(p.logger).Log("msg", "error fetching records", "err", errs)
+			continue
+		}
+		if fetches.Empty() {
+			continue
+		}
+		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
+			// TODO(benclive): Verify if we need to return re-poll ASAP or if sequential processing is good enough.
+			for _, record := range ftp.Records {
+				p.processRecord(record)
+			}
+		})
+	}
 }
 
-func (p *IndexBuilder) Stop() {
+func (p *IndexBuilder) stopping(failureCase error) error {
 	close(p.downloadQueue)
 	p.cancel()
 	p.wg.Wait()
 	close(p.downloadedObjects)
-	if p.builder != nil {
-		p.builder.UnregisterMetrics(p.reg)
-	}
-	p.metrics.unregister(p.reg)
-}
-
-// Drops records from the channel if the processor is stopped.
-// Returns false if the processor is stopped, true otherwise.
-func (p *IndexBuilder) Append(records []*kgo.Record) bool {
-	for _, record := range records {
-		select {
-		// must check per-record in order to not block on a full channel
-		// after receiver has been stopped.
-		case <-p.ctx.Done():
-			return false
-		case p.records <- record:
-		}
-	}
-	return true
+	p.client.Close()
+	return nil
 }
 
 func (p *IndexBuilder) processRecord(record *kgo.Record) {
@@ -217,8 +246,8 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 	p.bufferedEvents[event.Tenant] = append(p.bufferedEvents[event.Tenant], *event)
 	level.Info(p.logger).Log("msg", "buffered new event for tenant", "count", len(p.bufferedEvents[event.Tenant]), "tenant", event.Tenant)
 
-	if len(p.bufferedEvents[event.Tenant]) >= p.eventsPerIndex {
-		if !slices.Contains(p.enabledTenantIDs, event.Tenant) {
+	if len(p.bufferedEvents[event.Tenant]) >= p.cfg.EventsPerIndex {
+		if !slices.Contains(p.cfg.EnabledTenantIDs, event.Tenant) {
 			// TODO(benclive): Remove this check once builders handle multi-tenancy when building indexes.
 			level.Info(p.logger).Log("msg", "skipping index build for disabled tenant", "tenant", event.Tenant)
 			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
@@ -226,12 +255,15 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 		}
 		err := p.buildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
 		if err != nil {
+			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
+			// TODO(benclive): Improve error handling for failed index builds.
 			level.Error(p.logger).Log("msg", "failed to build index", "err", err)
+			return
 			panic(err)
 		}
 
 		if err := p.commitRecords(record); err != nil {
-			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+			level.Warn(p.logger).Log("msg", "failed to commit records", "err", err)
 			return
 		}
 		p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
@@ -239,7 +271,7 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 }
 
 func (p *IndexBuilder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.indexStoragePrefix)
+	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.cfg.IndexStoragePrefix)
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
 	start := time.Now()
 
@@ -251,90 +283,84 @@ func (p *IndexBuilder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 	p.metrics.observeProcessingDelay(writeTime)
 
-	p.metrics.incAppendsTotal()
-
 	// Trigger the downloads
 	for _, event := range events {
 		p.downloadQueue <- event
 	}
 
 	// Process the results as they are downloaded
-	eventsProcessed := 0
-	for obj := range p.downloadedObjects {
+	processingErrors := multierror.New()
+	for i := 0; i < len(events); i++ {
+		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Info(objLogger).Log("msg", "indexing object", "object_path", obj.event.ObjectPath)
+		level.Info(objLogger).Log("msg", "processing object")
+
+		if obj.err != nil {
+			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
+			continue
+		}
+
 		reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
 		if err != nil {
-			level.Error(objLogger).Log("msg", "failed to read object", "err", err)
-			return err
+			processingErrors.Add(fmt.Errorf("failed to read object: %w", err))
+			continue
 		}
 
-		// Streams Section: process this first to ensure all streams have been added to the builder and are given new IDs.
-		for i, section := range reader.Sections() {
-			if !streams.CheckSection(section) {
+		// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
+		for i, section := range reader.Sections().Filter(streams.CheckSection) {
+			level.Debug(objLogger).Log("msg", "processing streams section", "index", i)
+			if err := p.processStreamsSection(section, obj.event.ObjectPath); err != nil {
+				processingErrors.Add(fmt.Errorf("failed to process stream section: %w", err))
 				continue
 			}
-			level.Info(objLogger).Log("msg", "processing streams section", "index", i)
-			if err := p.processStreamsSection(objLogger, section, obj.event.ObjectPath); err != nil {
-				level.Error(objLogger).Log("msg", "failed to handle stream section", "err", err)
-				return err
-			}
 		}
 
-		g, ctx := errgroup.WithContext(p.ctx)
 		// Logs Section: these can be processed in parallel once we have the stream IDs.
-		for i, section := range reader.Sections() {
-			if !logs.CheckSection(section) {
-				continue
-			}
+		g, ctx := errgroup.WithContext(p.ctx)
+		for i, section := range reader.Sections().Filter(logs.CheckSection) {
 			g.Go(func() error {
-				level.Info(objLogger).Log("msg", "processing logs section", "index", i)
+				sectionLogger := log.With(objLogger, "section", i)
+				level.Debug(sectionLogger).Log("msg", "processing logs section")
 				// 1. A bloom filter for each column in the logs section.
 				// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-				if err := p.processLogsSection(ctx, objLogger, obj.event.ObjectPath, section, int64(i)); err != nil {
-					level.Error(objLogger).Log("msg", "failed to handle logs section", "err", err)
-					return err
+				if err := p.processLogsSection(ctx, sectionLogger, obj.event.ObjectPath, section, int64(i)); err != nil {
+					return fmt.Errorf("failed to process logs section path=%s section=%d: %w", obj.event.ObjectPath, i, err)
 				}
 				return nil
 			})
 		}
 		if err := g.Wait(); err != nil {
-			level.Error(objLogger).Log("msg", "failed to process logs sections", "err", err)
-			return err
+			processingErrors.Add(fmt.Errorf("failed to process logs sections: %w", err))
+			continue
 		}
-		eventsProcessed++
-		if eventsProcessed == len(events) {
-			level.Info(objLogger).Log("msg", "all events processed", "events", len(events), "duration", time.Since(start))
-			break
-		}
+	}
+
+	if processingErrors.Err() != nil {
+		return processingErrors.Err()
 	}
 
 	p.flushBuffer.Reset()
 	stats, err := p.builder.Flush(p.flushBuffer)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-		return err
+		return fmt.Errorf("failed to flush builder: %w", err)
 	}
 
 	size := p.flushBuffer.Len()
 
 	key := p.getKey(events[0].Tenant, p.flushBuffer)
 	if err := indexStorageBucket.Upload(p.ctx, key, p.flushBuffer); err != nil {
-		level.Error(p.logger).Log("msg", "failed to upload index", "err", err)
-		return err
+		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
 	metastoreUpdater := metastore.NewUpdater(indexStorageBucket, events[0].Tenant, p.logger)
 	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
-		level.Error(p.logger).Log("msg", "failed to get min/max timestamps", "min", stats.MinTimestamp, "max", stats.MaxTimestamp)
 		return errors.New("failed to get min/max timestamps")
 	}
 	if err := metastoreUpdater.Update(p.ctx, key, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
-		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-		return err
+		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
-	level.Info(p.logger).Log("msg", "index built", "tenant", events[0].Tenant, "events", len(events), "size", size, "duration", time.Since(start))
+	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", size, "duration", time.Since(start))
 	return nil
 }
 
@@ -346,11 +372,10 @@ func (p *IndexBuilder) getKey(tenantID string, object *bytes.Buffer) string {
 	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:])
 }
 
-func (p *IndexBuilder) processStreamsSection(objLogger log.Logger, section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
+func (p *IndexBuilder) processStreamsSection(section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
 	streamSection, err := streams.Open(p.ctx, section)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to open stream", "err", err)
-		return err
+		return fmt.Errorf("failed to open stream section: %w", err)
 	}
 
 	streamBuf := make([]streams.Stream, 2048)
@@ -358,8 +383,7 @@ func (p *IndexBuilder) processStreamsSection(objLogger log.Logger, section *data
 	for {
 		n, err := rowReader.Read(p.ctx, streamBuf)
 		if err != nil && err != io.EOF {
-			level.Error(objLogger).Log("msg", "failed to read stream", "err", err)
-			return err
+			return fmt.Errorf("failed to read stream section: %w", err)
 		}
 		if n == 0 && err == io.EOF {
 			break
@@ -367,20 +391,16 @@ func (p *IndexBuilder) processStreamsSection(objLogger log.Logger, section *data
 		for _, stream := range streamBuf[:n] {
 			newStreamID, err := p.builder.AppendStream(stream)
 			if err != nil {
-				level.Error(objLogger).Log("msg", "failed to append stream", "err", err)
-				return err
+				return fmt.Errorf("failed to append to stream: %w", err)
 			}
-			p.mtx.Lock()
 			p.builder.RecordStreamRef(objectPath, stream.ID, newStreamID)
-			p.mtx.Unlock()
 		}
 	}
 	return nil
 }
 
 // processLogsSection reads information from the logs section in order to build index information in a new object.
-func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
-	sectionLogger := log.With(objLogger, "section", sectionIdx)
+func (p *IndexBuilder) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
 	logsBuf := make([]logs.Record, 1024)
 	type logInfo struct {
 		objectPath string
@@ -393,21 +413,19 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Log
 
 	logsSection, err := logs.Open(ctx, section)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to open logs", "err", err)
-		return err
+		return fmt.Errorf("failed to open logs section: %w", err)
 	}
 
 	// Fetch the column statistics in order to init the bloom filters for each column
 	stats, err := logs.ReadStats(ctx, logsSection)
 	if err != nil {
-		level.Error(objLogger).Log("msg", "failed to read logs stats", "err", err)
-		return err
+		return fmt.Errorf("failed to read log section stats: %w", err)
 	}
 
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
-		if column.Type != logs.ColumnTypeMetadata.String() {
+		if !logs.IsMetadataColumn(column.Type) {
 			continue
 		}
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
@@ -420,8 +438,7 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Log
 	for {
 		n, err := rowReader.Read(p.ctx, logsBuf)
 		if err != nil && err != io.EOF {
-			level.Error(objLogger).Log("msg", "failed to read logs", "err", err)
-			return err
+			return fmt.Errorf("failed to read logs section: %w", err)
 		}
 		if n == 0 && err == io.EOF {
 			break
@@ -442,30 +459,28 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, objLogger log.Log
 		}
 
 		// Lock the mutex once per read for perf reasons.
-		p.mtx.Lock()
+		p.builderMtx.Lock()
 		for _, log := range logsInfo[:n] {
 			err = p.builder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, log.timestamp, log.length)
 			if err != nil {
-				level.Error(objLogger).Log("msg", "failed to observe stream", "err", err)
-				return err
+				p.builderMtx.Unlock()
+				return fmt.Errorf("failed to observe log line: %w", err)
 			}
 		}
-		p.mtx.Unlock()
+		p.builderMtx.Unlock()
 	}
 
 	// Write the indexes (bloom filters) to the new index object.
 	for columnName, bloom := range columnBloomBuilders {
 		bloomBytes, err := bloom.MarshalBinary()
 		if err != nil {
-			level.Error(objLogger).Log("msg", "failed to marshal bloom filter", "err", err)
-			return err
+			return fmt.Errorf("failed to marshal bloom filter: %w", err)
 		}
-		p.mtx.Lock()
+		p.builderMtx.Lock()
 		err = p.builder.AppendColumnIndex(objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
-		p.mtx.Unlock()
+		p.builderMtx.Unlock()
 		if err != nil {
-			level.Error(objLogger).Log("msg", "failed to append column index", "err", err)
-			return err
+			return fmt.Errorf("failed to append column index: %w", err)
 		}
 	}
 

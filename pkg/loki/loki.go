@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -427,6 +428,7 @@ type Loki struct {
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
+	dataObjIndexBuilder       *dataobjindex.IndexBuilder
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -768,6 +770,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
+	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -814,6 +817,7 @@ func (t *Loki) setupModuleManager() error {
 		BlockScheduler:           {Server, UI},
 		DataObjExplorer:          {Server, UI},
 		DataObjConsumer:          {PartitionRing, Server, UI},
+		DataObjIndexBuilder:      {Server, UI},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
