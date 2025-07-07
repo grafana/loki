@@ -353,6 +353,46 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 const localhost = "localhost"
 
+func TestUIServiceInitialization(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("UI is not initialized when disabled", func(t *testing.T) {
+		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+			cfg.UI.Enabled = false
+		})
+		c, err := New(cfg)
+		require.NoError(t, err)
+
+		services, err := c.ModuleManager.InitModuleServices(All)
+		defer func() {
+			for _, service := range services {
+				service.StopAsync()
+			}
+		}()
+
+		require.NoError(t, err)
+		assert.Nil(t, c.UI, "UI service should be nil when UI is disabled")
+	})
+
+	t.Run("UI is initialized when enabled", func(t *testing.T) {
+		cfg := minimalWorkingConfig(t, dir, All, func(cfg *Config) {
+			cfg.UI.Enabled = true
+		})
+		c, err := New(cfg)
+		require.NoError(t, err)
+
+		services, err := c.ModuleManager.InitModuleServices(All)
+		defer func() {
+			for _, service := range services {
+				service.StopAsync()
+			}
+		}()
+
+		require.NoError(t, err)
+		assert.NotNil(t, c.UI, "UI service should be initialized when UI is enabled")
+	})
+}
+
 func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...func(*Config)) Config {
 	prepareGlobalMetricsRegistry(t)
 
@@ -406,6 +446,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	}
 
 	cfg.Common.InstanceAddr = localhost
+	cfg.MemberlistKV.AdvertiseAddr = localhost
 	cfg.Ingester.LifecyclerConfig.Addr = localhost
 	cfg.Distributor.DistributorRing.InstanceAddr = localhost
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode

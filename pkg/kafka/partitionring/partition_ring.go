@@ -54,7 +54,7 @@ func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring
 
 // ExtractIngesterPartitionID returns the partition ID owner the the given ingester.
 func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
-	if strings.Contains(ingesterID, "local") {
+	if strings.Contains(ingesterID, "local") || strings.HasSuffix(ingesterID, ".lan") {
 		return 0, nil
 	}
 
@@ -62,8 +62,9 @@ func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
 	if len(match) == 0 {
 		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
 	}
+
 	// Parse the ingester sequence number.
-	ingesterSeq, err := strconv.Atoi(match[1])
+	ingesterSeq, err := strconv.ParseInt(match[1], 10, 32)
 	if err != nil {
 		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
 	}

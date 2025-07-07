@@ -92,7 +92,7 @@ type options struct {
 // WithProjectID sets Google Cloud Platform project as projectID.
 // Without using this option, it automatically detects the project ID
 // from the default credential detection process.
-// Please find the detailed order of the default credentail detection proecess on the doc:
+// Please find the detailed order of the default credential detection process on the doc:
 // https://godoc.org/golang.org/x/oauth2/google#FindDefaultCredentials
 func WithProjectID(id string) func(o *options) {
 	return func(o *options) {

@@ -1,13 +1,13 @@
 ---
-title: Query fairness within tenants
+title: Ensure query fairness within tenants using actors
 menuTitle: Query fairness
 description: Describes methods for guaranteeing query fairness across multiple actors within a single tenant using the scheduler.
 weight:
 ---
 
-# Query fairness within tenants
+# Ensure query fairness within tenants using actors
 
-Loki uses [shuffle sharding]({{< relref "../shuffle-sharding/_index.md" >}})
+Loki uses [shuffle sharding](../shuffle-sharding/)
 to minimize impact across tenants in case of querier failures or misbehaving
 neighboring tenants.
 
@@ -19,8 +19,8 @@ different users, because they all share the same resources for a tenant.
 In that case, as an operator, you would also want to ensure some sort of query
 fairness across these actors within the tenants. An actor could be a Grafana user,
 a CLI user, or an application accessing the API. To achieve that, Loki
-introduces hierarchical scheduler queues in version 2.9 based on
-[LID 0003: Query fairness across users within tenants]({{< relref "../../community/lids/0003-QueryFairnessInScheduler.md" >}})
+introduced hierarchical scheduler queues in version 2.9 based on
+[LID 0003: Query fairness across users within tenants](../../community/lids/0003-queryfairnessinscheduler/)
 and they are enabled by default.
 
 ## What are hierarchical queues and how do they work
@@ -34,7 +34,7 @@ Tenant queues are the first level of the queue hierarchy. When a tenant
 executes a query without any further controls, all of its sub-queries are
 enqueued to the first level queue.
 
-The second level of the queue hierarchy is that the tenant can have sub-queues. 
+The second level of the queue hierarchy is that the tenant can have sub-queues.
 
 Similar to how shuffle sharding assigns queries at the tenant level, each time
 the Loki Scheduler makes a round-robin pick at the second level of the query
@@ -100,7 +100,7 @@ or its respective YAML configuration block:
 
 ```yaml
 query_scheduler:
-  max_queue_hierarchy_levels: 2  # defaults to 3
+  max_queue_hierarchy_levels: 2 # defaults to 3
 ```
 
 It is advised to keep the levels at a reasonable level (ideally 1 to 3 levels),

@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"dario.cat/mergo"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	promConfig "github.com/prometheus/common/config"
@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/sigv4"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
@@ -56,7 +57,7 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 		return nullRegistry{}
 	}
 
-	manager := createInstanceManager(logger, reg)
+	manager := createInstanceManager(logger, reg, overrides)
 
 	return &walRegistry{
 		logger:    logger,
@@ -74,10 +75,11 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 	}
 }
 
-func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instance.BasicManager {
+func createInstanceManager(logger log.Logger, reg prometheus.Registerer, overrides RulesLimits) *instance.BasicManager {
 	tenantManager := &tenantWALManager{
-		reg:    reg,
-		logger: log.With(logger, "manager", "tenant-wal"),
+		reg:       reg,
+		logger:    log.With(logger, "manager", "tenant-wal"),
+		overrides: overrides,
 	}
 
 	return instance.NewBasicManager(instance.BasicManagerConfig{
@@ -312,7 +314,12 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		}
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
-			clt.SigV4Config = v
+			clt.SigV4Config = &sigv4.SigV4Config{}
+			clt.SigV4Config.Region = v.Region
+			clt.SigV4Config.AccessKey = v.AccessKey
+			clt.SigV4Config.SecretKey = v.SecretKey
+			clt.SigV4Config.Profile = v.Profile
+			clt.SigV4Config.RoleARN = v.RoleARN
 		}
 
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
@@ -388,8 +395,12 @@ func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, 
 func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
-func (n notReadyAppender) Commit() error   { return errNotReady }
-func (n notReadyAppender) Rollback() error { return errNotReady }
+func (n notReadyAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
+func (n notReadyAppender) SetOptions(_ *storage.AppendOptions) {}
+func (n notReadyAppender) Commit() error                       { return errNotReady }
+func (n notReadyAppender) Rollback() error                     { return errNotReady }
 
 type discardingAppender struct{}
 
@@ -408,16 +419,21 @@ func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels
 func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
-func (n discardingAppender) Commit() error   { return nil }
-func (n discardingAppender) Rollback() error { return nil }
+func (n discardingAppender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) SetOptions(_ *storage.AppendOptions) {}
+func (n discardingAppender) Commit() error                       { return nil }
+func (n discardingAppender) Rollback() error                     { return nil }
 
 type readyChecker interface {
 	isReady(tenant string) bool
 }
 
 type tenantWALManager struct {
-	logger log.Logger
-	reg    prometheus.Registerer
+	logger    log.Logger
+	reg       prometheus.Registerer
+	overrides RulesLimits
 }
 
 func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -425,8 +441,14 @@ func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 		"tenant": c.Tenant,
 	}, t.reg)
 
-	// create metrics here and pass down
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
+	// Get the per-tenant setting for WAL replay from overrides
+	enableReplay := true // Default to true for backward compatibility
+	if t.overrides != nil {
+		enableReplay = t.overrides.RulerEnableWALReplay(c.Tenant)
+	}
+
+	// create the instance with our custom walFactory
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger, enableReplay)
 }
 
 type storageRegistryMetrics struct {

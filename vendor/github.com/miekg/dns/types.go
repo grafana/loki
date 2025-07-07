@@ -96,10 +96,12 @@ const (
 	TypeLP         uint16 = 107
 	TypeEUI48      uint16 = 108
 	TypeEUI64      uint16 = 109
+	TypeNXNAME     uint16 = 128
 	TypeURI        uint16 = 256
 	TypeCAA        uint16 = 257
 	TypeAVC        uint16 = 258
 	TypeAMTRELAY   uint16 = 260
+	TypeRESINFO    uint16 = 261
 
 	TypeTKEY uint16 = 249
 	TypeTSIG uint16 = 250
@@ -266,11 +268,20 @@ func (q *Question) String() (s string) {
 	return s
 }
 
-// ANY is a wild card record. See RFC 1035, Section 3.2.3. ANY
-// is named "*" there.
+// ANY is a wild card record. See RFC 1035, Section 3.2.3. ANY is named "*" there.
+// The ANY records can be (ab)used to create resource records without any rdata, that
+// can be used in dynamic update requests. Basic use pattern:
+//
+//	a := &ANY{RR_Header{
+//		Name:   "example.org.",
+//		Rrtype: TypeA,
+//		Class:  ClassINET,
+//	}}
+//
+// Results in an A record without rdata.
 type ANY struct {
 	Hdr RR_Header
-	// Does not have any rdata
+	// Does not have any rdata.
 }
 
 func (rr *ANY) String() string { return rr.Hdr.String() }
@@ -292,6 +303,19 @@ func (rr *NULL) String() string {
 
 func (*NULL) parse(c *zlexer, origin string) *ParseError {
 	return &ParseError{err: "NULL records do not have a presentation format"}
+}
+
+// NXNAME is a meta record. See https://www.iana.org/go/draft-ietf-dnsop-compact-denial-of-existence-04
+// Reference: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+type NXNAME struct {
+	Hdr RR_Header
+	// Does not have any rdata
+}
+
+func (rr *NXNAME) String() string { return rr.Hdr.String() }
+
+func (*NXNAME) parse(c *zlexer, origin string) *ParseError {
+	return &ParseError{err: "NXNAME records do not have a presentation format"}
 }
 
 // CNAME RR. See RFC 1034.
@@ -1493,6 +1517,15 @@ func (rr *ZONEMD) String() string {
 		" " + strconv.Itoa(int(rr.Hash)) +
 		" " + rr.Digest
 }
+
+// RESINFO RR. See RFC 9606.
+
+type RESINFO struct {
+	Hdr RR_Header
+	Txt []string `dns:"txt"`
+}
+
+func (rr *RESINFO) String() string { return rr.Hdr.String() + sprintTxt(rr.Txt) }
 
 // APL RR. See RFC 3123.
 type APL struct {

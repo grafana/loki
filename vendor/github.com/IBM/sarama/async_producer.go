@@ -13,6 +13,20 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
+// ErrProducerRetryBufferOverflow is returned when the bridging retry buffer is full and OOM prevention needs to be applied.
+var ErrProducerRetryBufferOverflow = errors.New("retry buffer full: message discarded to prevent buffer overflow")
+
+const (
+	// minFunctionalRetryBufferLength defines the minimum number of messages the retry buffer must support.
+	// If Producer.Retry.MaxBufferLength is set to a non-zero value below this limit, it will be adjusted to this value.
+	// This ensures the retry buffer remains functional under typical workloads.
+	minFunctionalRetryBufferLength = 4 * 1024
+	// minFunctionalRetryBufferBytes defines the minimum total byte size the retry buffer must support.
+	// If Producer.Retry.MaxBufferBytes is set to a non-zero value below this limit, it will be adjusted to this value.
+	// A 32 MB lower limit ensures sufficient capacity for retrying larger messages without exhausting resources.
+	minFunctionalRetryBufferBytes = 32 * 1024 * 1024
+)
+
 // AsyncProducer publishes Kafka messages using a non-blocking API. It routes messages
 // to the correct broker for the provided topic-partition, refreshing metadata as appropriate,
 // and parses responses for errors. You must read from the Errors() channel or the
@@ -1207,6 +1221,22 @@ func (bp *brokerProducer) handleError(sent *produceSet, err error) {
 // effectively a "bridge" between the flushers and the dispatcher in order to avoid deadlock
 // based on https://godoc.org/github.com/eapache/channels#InfiniteChannel
 func (p *asyncProducer) retryHandler() {
+	maxBufferLength := p.conf.Producer.Retry.MaxBufferLength
+	if 0 < maxBufferLength && maxBufferLength < minFunctionalRetryBufferLength {
+		maxBufferLength = minFunctionalRetryBufferLength
+	}
+
+	maxBufferBytes := p.conf.Producer.Retry.MaxBufferBytes
+	if 0 < maxBufferBytes && maxBufferBytes < minFunctionalRetryBufferBytes {
+		maxBufferBytes = minFunctionalRetryBufferBytes
+	}
+
+	version := 1
+	if p.conf.Version.IsAtLeast(V0_11_0_0) {
+		version = 2
+	}
+
+	var currentByteSize int64
 	var msg *ProducerMessage
 	buf := queue.New()
 
@@ -1217,7 +1247,8 @@ func (p *asyncProducer) retryHandler() {
 			select {
 			case msg = <-p.retries:
 			case p.input <- buf.Peek().(*ProducerMessage):
-				buf.Remove()
+				msgToRemove := buf.Remove().(*ProducerMessage)
+				currentByteSize -= int64(msgToRemove.ByteSize(version))
 				continue
 			}
 		}
@@ -1227,6 +1258,24 @@ func (p *asyncProducer) retryHandler() {
 		}
 
 		buf.Add(msg)
+		currentByteSize += int64(msg.ByteSize(version))
+
+		if (maxBufferLength <= 0 || buf.Length() < maxBufferLength) && (maxBufferBytes <= 0 || currentByteSize < maxBufferBytes) {
+			continue
+		}
+
+		msgToHandle := buf.Peek().(*ProducerMessage)
+		if msgToHandle.flags == 0 {
+			select {
+			case p.input <- msgToHandle:
+				buf.Remove()
+				currentByteSize -= int64(msgToHandle.ByteSize(version))
+			default:
+				buf.Remove()
+				currentByteSize -= int64(msgToHandle.ByteSize(version))
+				p.returnError(msgToHandle, ErrProducerRetryBufferOverflow)
+			}
+		}
 	}
 }
 

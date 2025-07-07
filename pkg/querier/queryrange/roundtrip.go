@@ -239,7 +239,6 @@ func NewMiddleware(
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
 		limits,
-		schema,
 		limitedTripperware,
 		logFilterTripperware,
 	)
@@ -258,6 +257,37 @@ func NewMiddleware(
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Pattern middleware is just a metric middleware with sharding disabled.
+	// At some point hopefully we can implement sharding for pattern queries and remove this.
+	patternConfig := Config{
+		Config: base.Config{
+			AlignQueriesWithStep: cfg.AlignQueriesWithStep,
+			ResultsCacheConfig:   cfg.ResultsCacheConfig,
+			CacheResults:         cfg.CacheResults,
+			MaxRetries:           cfg.MaxRetries,
+			ShardedQueries:       false,
+			ShardAggregations:    []string{},
+		},
+		Transformer:                  cfg.Transformer,
+		CacheIndexStatsResults:       cfg.CacheIndexStatsResults,
+		StatsCacheConfig:             cfg.StatsCacheConfig,
+		CacheVolumeResults:           cfg.CacheVolumeResults,
+		VolumeCacheConfig:            cfg.VolumeCacheConfig,
+		CacheInstantMetricResults:    cfg.CacheInstantMetricResults,
+		InstantMetricCacheConfig:     cfg.InstantMetricCacheConfig,
+		InstantMetricQuerySplitAlign: cfg.InstantMetricQuerySplitAlign,
+		CacheSeriesResults:           cfg.CacheSeriesResults,
+		SeriesCacheConfig:            cfg.SeriesCacheConfig,
+		CacheLabelResults:            cfg.CacheLabelResults,
+		LabelsCacheConfig:            cfg.LabelsCacheConfig,
+	}
+	patternTripperware, err := NewMetricTripperware(patternConfig, engineOpts, log, limits, schema, codec, iqo, resultsCache,
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -270,9 +300,25 @@ func NewMiddleware(
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
 			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
+			patternRT        = patternTripperware.Wrap(next)
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
+		return newRoundTripper(
+			log,
+			next,
+			limitedRT,
+			logFilterRT,
+			metricRT,
+			seriesRT,
+			labelsRT,
+			instantRT,
+			statsRT,
+			seriesVolumeRT,
+			detectedFieldsRT,
+			detectedLabelsRT,
+			patternRT,
+			limits,
+		)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
@@ -326,13 +372,17 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, pattern base.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler, limits Limits) roundTripper {
+func newRoundTripper(
+	logger log.Logger,
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, pattern base.Handler,
+	limits Limits,
+) roundTripper {
 	return roundTripper{
 		logger:         logger,
 		limited:        limited,
@@ -346,8 +396,20 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		seriesVolume:   seriesVolume,
 		detectedFields: detectedFields,
 		detectedLabels: detectedLabels,
+		pattern:        pattern,
 		next:           next,
 	}
+}
+
+// Helper function to create and log query execution details
+func logQueryExecution(ctx context.Context, logger log.Logger, values ...interface{}) {
+	logValues := append([]interface{}{"msg", "executing query"}, values...)
+
+	// Extract and append tags from context
+	tags := httpreq.ExtractQueryTagsFromContext(ctx)
+	tagValues := httpreq.TagsToKeyValues(tags)
+	logValues = append(logValues, tagValues...)
+	level.Info(logger).Log(logValues...)
 }
 
 func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, error) {
@@ -356,8 +418,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	switch op := req.(type) {
 	case *LokiRequest:
 		queryHash := util.HashedQuery(op.Query)
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "range",
 			"query", op.Query,
 			"start", op.StartTs.Format(time.RFC3339Nano),
@@ -374,6 +435,31 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		}
 
 		switch e := op.Plan.AST.(type) {
+		case syntax.VariantsExpr:
+			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+
+			matchers := e.Matchers()
+
+			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+
+			for _, v := range e.Variants() {
+				groups, err := v.MatcherGroups()
+				if err != nil {
+					level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+				}
+
+				for _, g := range groups {
+					if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
+						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+					}
+				}
+			}
+
+			return r.metric.Do(ctx, req)
 		case syntax.SampleExpr:
 			// The error will be handled later.
 			groups, err := e.MatcherGroups()
@@ -402,22 +488,31 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)
-
 		default:
 			return r.next.Do(ctx, req)
 		}
 	case *LokiSeriesRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(op.Match), "length", op.EndTs.Sub(op.StartTs))
-
+		logQueryExecution(ctx, logger,
+			"type", "series",
+			"match", logql.PrintMatches(op.Match),
+			"length", op.EndTs.Sub(op.StartTs),
+		)
 		return r.series.Do(ctx, req)
 	case *LabelRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.LabelRequest.End.Sub(*op.LabelRequest.Start), "query", op.Query)
-
+		logQueryExecution(ctx, logger,
+			"type", "labels",
+			"label", op.Name,
+			"length", op.LabelRequest.End.Sub(*op.LabelRequest.Start),
+			"query", op.Query,
+		)
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:
 		queryHash := util.HashedQuery(op.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
-
+		logQueryExecution(ctx, logger,
+			"type", "instant",
+			"query", op.Query,
+			"query_hash", queryHash,
+		)
 		switch op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.Do(ctx, req)
@@ -425,12 +520,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.next.Do(ctx, req)
 		}
 	case *logproto.IndexStatsRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", op.Matchers, "length", op.Through.Sub(op.From))
-
+		logQueryExecution(ctx, logger,
+			"type", "stats",
+			"query", op.Matchers,
+			"length", op.Through.Sub(op.From),
+		)
 		return r.indexStats.Do(ctx, req)
 	case *logproto.VolumeRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "volume_range",
 			"query", op.Matchers,
 			"length", op.Through.Sub(op.From),
@@ -438,11 +535,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"limit", op.Limit,
 			"aggregate_by", op.AggregateBy,
 		)
-
 		return r.seriesVolume.Do(ctx, req)
 	case *DetectedFieldsRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "detected_fields",
 			"end", op.End,
 			"field_limit", op.Limit,
@@ -452,11 +547,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 			"step", op.Step,
 		)
-
 		return r.detectedFields.Do(ctx, req)
 	case *DetectedLabelsRequest:
-		level.Info(logger).Log(
-			"msg", "executing query",
+		logQueryExecution(ctx, logger,
 			"type", "detected_label",
 			"end", op.End,
 			"length", op.End.Sub(op.Start),
@@ -464,6 +557,23 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 		)
 		return r.detectedLabels.Do(ctx, req)
+	case *logproto.QueryPatternsRequest:
+		expr, err := syntax.ParseExpr(req.GetQuery())
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
+
+		groups, err := syntax.MatcherGroups(expr)
+		if err != nil {
+			level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+		}
+
+		for _, g := range groups {
+			if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+		}
+		return r.pattern.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -506,32 +616,34 @@ func getOperation(path string) string {
 	switch {
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
+	case strings.HasSuffix(path, "/query"):
+		return InstantQueryOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
 	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
-	case strings.HasSuffix(path, "/v1/query"):
-		return InstantQueryOp
-	case path == "/loki/api/v1/index/stats":
+	case strings.HasSuffix(path, "/index/stats"):
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/volume":
+	case strings.HasSuffix(path, "/index/volume"):
 		return VolumeOp
-	case path == "/loki/api/v1/index/volume_range":
+	case strings.HasSuffix(path, "/index/volume_range"):
 		return VolumeRangeOp
-	case path == "/loki/api/v1/index/shards":
+	case strings.HasSuffix(path, "/index/shards"):
 		return IndexShardsOp
-	case path == "/loki/api/v1/detected_fields":
+	case strings.HasSuffix(path, "/detected_fields"):
 		return DetectedFieldsOp
+	case strings.HasSuffix(path, "/patterns"):
+		return PatternsQueryOp
+	case strings.HasSuffix(path, "/detected_labels"):
+		return DetectedLabelsOp
 	case strings.HasSuffix(path, "/values"):
-		if strings.HasPrefix(path, "/loki/api/v1/label") || strings.HasPrefix(path, "/prom/label") {
+		if strings.Contains(path, "/label") {
 			return LabelNamesOp
 		}
-
-		return DetectedFieldsOp
-	case path == "/loki/api/v1/patterns":
-		return PatternsQueryOp
-	case path == "/loki/api/v1/detected_labels":
-		return DetectedLabelsOp
+		if strings.Contains(path, "/detected_field") {
+			return DetectedFieldsOp
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -1220,7 +1332,6 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	limits Limits,
-	_ config.SchemaConfig,
 	limitedTripperware base.Middleware,
 	logTripperware base.Middleware,
 ) (base.Middleware, error) {

@@ -87,69 +87,6 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	store.AssertExpectations(t)
 }
 
-func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
-	request := logproto.TailRequest{
-		Query:    `{type="test"}`,
-		DelayFor: 0,
-		Limit:    10,
-		Start:    time.Now(),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{type="test"}`),
-		},
-	}
-
-	store := newStoreMock()
-	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
-
-	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
-
-	tailClient := newTailClientMock()
-	tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
-
-	ingesterClient := newQuerierClientMock()
-	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-	ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
-	ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{}, nil)
-
-	limitsCfg := defaultLimitsTestConfig()
-	limitsCfg.QueryTimeout = model.Duration(queryTimeout)
-	limits, err := validation.NewOverrides(limitsCfg, nil)
-	require.NoError(t, err)
-
-	q, err := newQuerier(
-		mockQuerierConfig(),
-		mockIngesterClientConfig(),
-		newIngesterClientMockFactory(ingesterClient),
-		mockReadRingWithOneActiveIngester(),
-		&mockDeleteGettter{},
-		store, limits)
-	require.NoError(t, err)
-
-	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request, false)
-	require.NoError(t, err)
-
-	calls := ingesterClient.GetMockedCallsByMethod("Query")
-	assert.Equal(t, 1, len(calls))
-	deadline, ok := calls[0].Arguments.Get(0).(context.Context).Deadline()
-	assert.True(t, ok)
-	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
-
-	calls = ingesterClient.GetMockedCallsByMethod("Tail")
-	assert.Equal(t, 1, len(calls))
-	_, ok = calls[0].Arguments.Get(0).(context.Context).Deadline()
-	assert.False(t, ok)
-
-	calls = store.GetMockedCallsByMethod("SelectLogs")
-	assert.Equal(t, 1, len(calls))
-	deadline, ok = calls[0].Arguments.Get(0).(context.Context).Deadline()
-	assert.True(t, ok)
-	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
-
-	store.AssertExpectations(t)
-}
-
 func mockQuerierConfig() Config {
 	return Config{
 		TailMaxDuration: 1 * time.Minute,
@@ -483,108 +420,23 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 	}
 }
 
-func TestQuerier_concurrentTailLimits(t *testing.T) {
-	request := logproto.TailRequest{
-		Query:    "{type=\"test\"}",
-		DelayFor: 0,
-		Limit:    10,
-		Start:    time.Now(),
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr("{type=\"test\"}"),
-		},
-	}
-
-	t.Parallel()
-
-	tests := map[string]struct {
-		ringIngesters []ring.InstanceDesc
-		expectedError error
-		tailersCount  uint32
-	}{
-		"empty ring": {
-			ringIngesters: []ring.InstanceDesc{},
-			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
-		},
-		"ring containing one pending ingester": {
-			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.PENDING)},
-			expectedError: httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found"),
-		},
-		"ring containing one active ingester and 0 active tailers": {
-			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
-		},
-		"ring containing one active ingester and 1 active tailer": {
-			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
-			tailersCount:  1,
-		},
-		"ring containing one pending and active ingester with 1 active tailer": {
-			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.PENDING), mockInstanceDesc("2.2.2.2", ring.ACTIVE)},
-			tailersCount:  1,
-		},
-		"ring containing one active ingester and max active tailers": {
-			ringIngesters: []ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE)},
-			expectedError: httpgrpc.Errorf(http.StatusBadRequest,
-				"max concurrent tail requests limit exceeded, count > limit (%d > %d)", 6, 5),
-			tailersCount: 5,
-		},
-	}
-
-	for testName, testData := range tests {
-		t.Run(testName, func(t *testing.T) {
-			// For this test's purpose, whenever a new ingester client needs to
-			// be created, the factory will always return the same mock instance
-			store := newStoreMock()
-			store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
-
-			queryClient := newQueryClientMock()
-			queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 2)}), nil)
-
-			tailClient := newTailClientMock()
-			tailClient.On("Recv").Return(mockTailResponse(mockStream(1, 2)), nil)
-
-			ingesterClient := newQuerierClientMock()
-			ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
-			ingesterClient.On("Tail", mock.Anything, &request, mock.Anything).Return(tailClient, nil)
-			ingesterClient.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.TailersCountResponse{Count: testData.tailersCount}, nil)
-
-			defaultLimits := defaultLimitsTestConfig()
-			defaultLimits.MaxConcurrentTailRequests = 5
-
-			limits, err := validation.NewOverrides(defaultLimits, nil)
-			require.NoError(t, err)
-
-			q, err := newQuerier(
-				mockQuerierConfig(),
-				mockIngesterClientConfig(),
-				newIngesterClientMockFactory(ingesterClient),
-				newReadRingMock(testData.ringIngesters, 0),
-				&mockDeleteGettter{},
-				store, limits)
-			require.NoError(t, err)
-
-			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request, false)
-			assert.Equal(t, testData.expectedError, err)
-		})
-	}
-}
-
 func TestQuerier_buildQueryIntervals(t *testing.T) {
 	// For simplicity it is always assumed that ingesterQueryStoreMaxLookback and queryIngestersWithin both would be set upto 11 hours so
 	// overlappingQuery has range of last 11 hours while nonOverlappingQuery has range older than last 11 hours.
 	// We would test the cases below with both the queries.
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
 
 	type response struct {
-		ingesterQueryInterval *interval
-		storeQueryInterval    *interval
+		ingesterQueryInterval *QueryInterval
+		storeQueryInterval    *QueryInterval
 	}
 
 	compareResponse := func(t *testing.T, expectedResponse, actualResponse response) {
@@ -625,11 +477,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			name:                          "ingesterQueryStoreMaxLookback set to 1h",
 			ingesterQueryStoreMaxLookback: time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -653,11 +505,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: time.Hour,
 			queryIngestersWithin:          2 * time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 1h and store until last 1h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-time.Hour),
 				},
@@ -671,11 +523,11 @@ func TestQuerier_buildQueryIntervals(t *testing.T) {
 			ingesterQueryStoreMaxLookback: 2 * time.Hour,
 			queryIngestersWithin:          time.Hour,
 			overlappingQueryExpectedResponse: response{ // query ingesters for last 2h and store until last 2h.
-				ingesterQueryInterval: &interval{
+				ingesterQueryInterval: &QueryInterval{
 					start: time.Now().Add(-2 * time.Hour),
 					end:   overlappingQuery.end,
 				},
-				storeQueryInterval: &interval{
+				storeQueryInterval: &QueryInterval{
 					start: overlappingQuery.start,
 					end:   time.Now().Add(-2 * time.Hour),
 				},
@@ -772,18 +624,18 @@ func TestQuerier_calculateIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod())
+			assert.Equal(t, tc.expected, querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin))
 		})
 	}
 }
 
 func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
-	overlappingQuery := interval{
+	overlappingQuery := QueryInterval{
 		start: time.Now().Add(-6 * time.Hour),
 		end:   time.Now(),
 	}
 
-	nonOverlappingQuery := interval{
+	nonOverlappingQuery := QueryInterval{
 		start: time.Now().Add(-24 * time.Hour),
 		end:   time.Now().Add(-12 * time.Hour),
 	}
@@ -844,7 +696,7 @@ func TestQuerier_isWithinIngesterMaxLookbackPeriod(t *testing.T) {
 				QueryIngestersWithin:          tc.queryIngestersWithin,
 			}}
 
-			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod()
+			lookbackPeriod := querier.calculateIngesterMaxLookbackPeriod(querier.cfg.QueryIngestersWithin)
 			assert.Equal(t, tc.overlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, overlappingQuery.end))
 			assert.Equal(t, tc.nonOverlappingWithinRange, querier.isWithinIngesterMaxLookbackPeriod(lookbackPeriod, nonOverlappingQuery.end))
 		})
@@ -1181,50 +1033,6 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	return ingesterClient, store, querier, nil
 }
 
-type fakeTimeLimits struct {
-	maxQueryLookback time.Duration
-	maxQueryLength   time.Duration
-}
-
-func (f fakeTimeLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
-	return f.maxQueryLookback
-}
-
-func (f fakeTimeLimits) MaxQueryLength(_ context.Context, _ string) time.Duration {
-	return f.maxQueryLength
-}
-
-func Test_validateQueryTimeRangeLimits(t *testing.T) {
-	now := time.Now()
-	nowFunc = func() time.Time { return now }
-	tests := []struct {
-		name        string
-		limits      TimeRangeLimits
-		from        time.Time
-		through     time.Time
-		wantFrom    time.Time
-		wantThrough time.Time
-		wantErr     bool
-	}{
-		{"no change", fakeTimeLimits{1000 * time.Hour, 1000 * time.Hour}, now, now.Add(24 * time.Hour), now, now.Add(24 * time.Hour), false},
-		{"clamped to 24h", fakeTimeLimits{24 * time.Hour, 1000 * time.Hour}, now.Add(-48 * time.Hour), now, now.Add(-24 * time.Hour), now, false},
-		{"end before start", fakeTimeLimits{}, now, now.Add(-48 * time.Hour), time.Time{}, time.Time{}, true},
-		{"query too long", fakeTimeLimits{maxQueryLength: 24 * time.Hour}, now.Add(-48 * time.Hour), now, time.Time{}, time.Time{}, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			from, through, err := validateQueryTimeRangeLimits(context.Background(), "foo", tt.limits, tt.from, tt.through)
-			if tt.wantErr {
-				require.NotNil(t, err)
-			} else {
-				require.Nil(t, err)
-			}
-			require.Equal(t, tt.wantFrom, from, "wanted (%s) got (%s)", tt.wantFrom, from)
-			require.Equal(t, tt.wantThrough, through)
-		})
-	}
-}
-
 func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	store := newStoreMock()
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(1, 2), nil)
@@ -1365,17 +1173,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, nil, log.NewNopLogger())
-}
-
-type mockDeleteGettter struct {
-	user    string
-	results []deletion.DeleteRequest
-}
-
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
-	d.user = userID
-	return d.results, nil
+	return New(cfg, store, iq, limits, dg, log.NewNopLogger())
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
@@ -1614,6 +1412,46 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		detectedLabels := resp.DetectedLabels
 		assert.Len(t, detectedLabels, 0)
+	})
+
+	t.Run("allows boolean values, even if numeric", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"boolean-ints":            {Values: []string{"0", "1"}},
+			"boolean-bools":           {Values: []string{"true", "false"}},
+			"boolean-bools-uppercase": {Values: []string{"TRUE", "FALSE"}},
+			"single-id":               {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef"}},
+			"non-boolean-ints":        {Values: []string{"6", "7"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+
+		foundLabels := make([]string, 0, len(detectedLabels))
+		for _, d := range detectedLabels {
+			foundLabels = append(foundLabels, d.Label)
+		}
+
+		assert.ElementsMatch(t, []string{"boolean-ints", "boolean-bools", "boolean-bools-uppercase"}, foundLabels)
 	})
 
 	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {

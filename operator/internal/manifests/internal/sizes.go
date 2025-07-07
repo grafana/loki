@@ -21,6 +21,20 @@ type ComponentResources struct {
 	Gateway       corev1.ResourceRequirements
 }
 
+func (c ComponentResources) DeepCopy() ComponentResources {
+	return ComponentResources{
+		IndexGateway:  *c.IndexGateway.DeepCopy(),
+		Ingester:      *c.Ingester.DeepCopy(),
+		Compactor:     *c.Compactor.DeepCopy(),
+		Ruler:         *c.Ruler.DeepCopy(),
+		WALStorage:    *c.WALStorage.DeepCopy(),
+		Querier:       *c.Querier.DeepCopy(),
+		Distributor:   *c.Distributor.DeepCopy(),
+		QueryFrontend: *c.QueryFrontend.DeepCopy(),
+		Gateway:       *c.Gateway.DeepCopy(),
+	}
+}
+
 // ResourceRequirements sets CPU, Memory, and PVC requirements for a component
 type ResourceRequirements struct {
 	Limits          corev1.ResourceList
@@ -29,8 +43,17 @@ type ResourceRequirements struct {
 	PDBMinAvailable int
 }
 
-// ResourceRequirementsTable defines the default resource requests and limits for each size
-var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
+func (r *ResourceRequirements) DeepCopy() *ResourceRequirements {
+	return &ResourceRequirements{
+		Limits:          r.Limits.DeepCopy(),
+		Requests:        r.Requests.DeepCopy(),
+		PVCSize:         r.PVCSize.DeepCopy(),
+		PDBMinAvailable: r.PDBMinAvailable,
+	}
+}
+
+// resourceRequirementsTable defines the default resource requests and limits for each size
+var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 	lokiv1.SizeOneXDemo: {
 		Ruler: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
@@ -68,7 +91,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
-			PDBMinAvailable: 1,
+			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -280,6 +303,23 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 			PVCSize: resource.MustParse("150Gi"),
 		},
 	},
+}
+
+// ResourceRequirementsForSize returns the resource configuration for a specific LokiStack size.
+func ResourceRequirementsForSize(size lokiv1.LokiStackSizeType, useRequestsAsLimits bool) ComponentResources {
+	resources := resourceRequirementsTable[size].DeepCopy()
+	if useRequestsAsLimits {
+		resources.IndexGateway.Limits = resources.IndexGateway.Requests.DeepCopy()
+		resources.Ingester.Limits = resources.Ingester.Requests.DeepCopy()
+		resources.Compactor.Limits = resources.Compactor.Requests.DeepCopy()
+		resources.Ruler.Limits = resources.Ruler.Requests.DeepCopy()
+		resources.WALStorage.Limits = resources.WALStorage.Requests.DeepCopy()
+		resources.Querier.Limits = resources.Querier.Requests.DeepCopy()
+		resources.Distributor.Limits = resources.Distributor.Requests.DeepCopy()
+		resources.QueryFrontend.Limits = resources.QueryFrontend.Requests.DeepCopy()
+		resources.Gateway.Limits = resources.Gateway.Requests.DeepCopy()
+	}
+	return resources
 }
 
 // StackSizeTable defines the default configurations for each size

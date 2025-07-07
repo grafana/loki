@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package monitoring
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 	"time"
@@ -235,6 +236,8 @@ type groupGRPCClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogHeaders []string
+
+	logger *slog.Logger
 }
 
 // NewGroupClient creates a new group service client based on gRPC.
@@ -272,6 +275,7 @@ func NewGroupClient(ctx context.Context, opts ...option.ClientOption) (*GroupCli
 		connPool:    connPool,
 		groupClient: monitoringpb.NewGroupServiceClient(connPool),
 		CallOptions: &client.CallOptions,
+		logger:      internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -325,7 +329,7 @@ func (c *groupGRPCClient) ListGroups(ctx context.Context, req *monitoringpb.List
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.groupClient.ListGroups(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.groupClient.ListGroups, req, settings.GRPC, c.logger, "ListGroups")
 			return err
 		}, opts...)
 		if err != nil {
@@ -360,7 +364,7 @@ func (c *groupGRPCClient) GetGroup(ctx context.Context, req *monitoringpb.GetGro
 	var resp *monitoringpb.Group
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.groupClient.GetGroup(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.groupClient.GetGroup, req, settings.GRPC, c.logger, "GetGroup")
 		return err
 	}, opts...)
 	if err != nil {
@@ -378,7 +382,7 @@ func (c *groupGRPCClient) CreateGroup(ctx context.Context, req *monitoringpb.Cre
 	var resp *monitoringpb.Group
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.groupClient.CreateGroup(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.groupClient.CreateGroup, req, settings.GRPC, c.logger, "CreateGroup")
 		return err
 	}, opts...)
 	if err != nil {
@@ -396,7 +400,7 @@ func (c *groupGRPCClient) UpdateGroup(ctx context.Context, req *monitoringpb.Upd
 	var resp *monitoringpb.Group
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.groupClient.UpdateGroup(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.groupClient.UpdateGroup, req, settings.GRPC, c.logger, "UpdateGroup")
 		return err
 	}, opts...)
 	if err != nil {
@@ -413,7 +417,7 @@ func (c *groupGRPCClient) DeleteGroup(ctx context.Context, req *monitoringpb.Del
 	opts = append((*c.CallOptions).DeleteGroup[0:len((*c.CallOptions).DeleteGroup):len((*c.CallOptions).DeleteGroup)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.groupClient.DeleteGroup(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.groupClient.DeleteGroup, req, settings.GRPC, c.logger, "DeleteGroup")
 		return err
 	}, opts...)
 	return err
@@ -439,7 +443,7 @@ func (c *groupGRPCClient) ListGroupMembers(ctx context.Context, req *monitoringp
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.groupClient.ListGroupMembers(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.groupClient.ListGroupMembers, req, settings.GRPC, c.logger, "ListGroupMembers")
 			return err
 		}, opts...)
 		if err != nil {

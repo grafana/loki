@@ -37,5 +37,5 @@ type StreamingProcessor interface {
 	// before returning from Stop().
 	// When stop returns, you should no longer be writing metrics to the
 	// accumulator.
-	Stop() error
+	Stop()
 }

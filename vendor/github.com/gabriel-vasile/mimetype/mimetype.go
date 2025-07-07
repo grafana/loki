@@ -7,14 +7,15 @@ package mimetype
 
 import (
 	"io"
-	"io/ioutil"
 	"mime"
 	"os"
 	"sync/atomic"
 )
 
+var defaultLimit uint32 = 3072
+
 // readLimit is the maximum number of bytes from the input used when detecting.
-var readLimit uint32 = 3072
+var readLimit uint32 = defaultLimit
 
 // Detect returns the MIME type found from the provided byte slice.
 //
@@ -48,7 +49,7 @@ func DetectReader(r io.Reader) (*MIME, error) {
 	// Using atomic because readLimit can be written at the same time in other goroutine.
 	l := atomic.LoadUint32(&readLimit)
 	if l == 0 {
-		in, err = ioutil.ReadAll(r)
+		in, err = io.ReadAll(r)
 		if err != nil {
 			return errMIME, err
 		}
@@ -103,6 +104,7 @@ func EqualsAny(s string, mimes ...string) bool {
 // SetLimit sets the maximum number of bytes read from input when detecting the MIME type.
 // Increasing the limit provides better detection for file formats which store
 // their magical numbers towards the end of the file: docx, pptx, xlsx, etc.
+// During detection data is read in a single block of size limit, i.e. it is not buffered.
 // A limit of 0 means the whole input file will be used.
 func SetLimit(limit uint32) {
 	// Using atomic because readLimit can be read at the same time in other goroutine.

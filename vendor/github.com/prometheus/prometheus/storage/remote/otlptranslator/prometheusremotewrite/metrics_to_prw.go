@@ -17,32 +17,39 @@
 package prometheusremotewrite
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
 
+	"github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/multierr"
 
 	"github.com/prometheus/prometheus/prompb"
-	prometheustranslator "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 type Settings struct {
-	Namespace                 string
-	ExternalLabels            map[string]string
-	DisableTargetInfo         bool
-	ExportCreatedMetric       bool
-	AddMetricSuffixes         bool
-	SendMetadata              bool
-	PromoteResourceAttributes []string
+	Namespace                         string
+	ExternalLabels                    map[string]string
+	DisableTargetInfo                 bool
+	ExportCreatedMetric               bool
+	AddMetricSuffixes                 bool
+	AllowUTF8                         bool
+	PromoteResourceAttributes         []string
+	KeepIdentifyingResourceAttributes bool
+	ConvertHistogramsToNHCB           bool
+	AllowDeltaTemporality             bool
 }
 
 // PrometheusConverter converts from OTel write format to Prometheus remote write format.
 type PrometheusConverter struct {
 	unique    map[uint64]*prompb.TimeSeries
 	conflicts map[uint64][]*prompb.TimeSeries
+	everyN    everyNTimes
+	metadata  []prompb.MetricMetadata
 }
 
 func NewPrometheusConverter() *PrometheusConverter {
@@ -53,8 +60,19 @@ func NewPrometheusConverter() *PrometheusConverter {
 }
 
 // FromMetrics converts pmetric.Metrics to Prometheus remote write format.
-func (c *PrometheusConverter) FromMetrics(md pmetric.Metrics, settings Settings) (errs error) {
+func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metrics, settings Settings) (annots annotations.Annotations, errs error) {
+	c.everyN = everyNTimes{n: 128}
 	resourceMetricsSlice := md.ResourceMetrics()
+
+	numMetrics := 0
+	for i := 0; i < resourceMetricsSlice.Len(); i++ {
+		scopeMetricsSlice := resourceMetricsSlice.At(i).ScopeMetrics()
+		for j := 0; j < scopeMetricsSlice.Len(); j++ {
+			numMetrics += scopeMetricsSlice.At(j).Metrics().Len()
+		}
+	}
+	c.metadata = make([]prompb.MetricMetadata, 0, numMetrics)
+
 	for i := 0; i < resourceMetricsSlice.Len(); i++ {
 		resourceMetrics := resourceMetricsSlice.At(i)
 		resource := resourceMetrics.Resource()
@@ -67,15 +85,41 @@ func (c *PrometheusConverter) FromMetrics(md pmetric.Metrics, settings Settings)
 
 			// TODO: decide if instrumentation library information should be exported as labels
 			for k := 0; k < metricSlice.Len(); k++ {
+				if err := c.everyN.checkContext(ctx); err != nil {
+					errs = multierr.Append(errs, err)
+					return
+				}
+
 				metric := metricSlice.At(k)
 				mostRecentTimestamp = max(mostRecentTimestamp, mostRecentTimestampInMetric(metric))
+				temporality, hasTemporality, err := aggregationTemporality(metric)
+				if err != nil {
+					errs = multierr.Append(errs, err)
+					continue
+				}
 
-				if !isValidAggregationTemporality(metric) {
+				if hasTemporality &&
+					// Cumulative temporality is always valid.
+					// Delta temporality is also valid if AllowDeltaTemporality is true.
+					// All other temporality values are invalid.
+					!(temporality == pmetric.AggregationTemporalityCumulative ||
+						(settings.AllowDeltaTemporality && temporality == pmetric.AggregationTemporalityDelta)) {
 					errs = multierr.Append(errs, fmt.Errorf("invalid temporality and type combination for metric %q", metric.Name()))
 					continue
 				}
 
-				promName := prometheustranslator.BuildCompliantName(metric, settings.Namespace, settings.AddMetricSuffixes)
+				var promName string
+				if settings.AllowUTF8 {
+					promName = otlptranslator.BuildMetricName(metric, settings.Namespace, settings.AddMetricSuffixes)
+				} else {
+					promName = otlptranslator.BuildCompliantMetricName(metric, settings.Namespace, settings.AddMetricSuffixes)
+				}
+				c.metadata = append(c.metadata, prompb.MetricMetadata{
+					Type:             otelMetricTypeToPromMetricType(metric),
+					MetricFamilyName: promName,
+					Help:             metric.Description(),
+					Unit:             metric.Unit(),
+				})
 
 				// handle individual metrics based on type
 				//exhaustive:enforce
@@ -86,40 +130,80 @@ func (c *PrometheusConverter) FromMetrics(md pmetric.Metrics, settings Settings)
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					c.addGaugeNumberDataPoints(dataPoints, resource, settings, promName)
+					if err := c.addGaugeNumberDataPoints(ctx, dataPoints, resource, settings, promName); err != nil {
+						errs = multierr.Append(errs, err)
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							return
+						}
+					}
 				case pmetric.MetricTypeSum:
 					dataPoints := metric.Sum().DataPoints()
 					if dataPoints.Len() == 0 {
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					c.addSumNumberDataPoints(dataPoints, resource, metric, settings, promName)
+					if err := c.addSumNumberDataPoints(ctx, dataPoints, resource, metric, settings, promName); err != nil {
+						errs = multierr.Append(errs, err)
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							return
+						}
+					}
 				case pmetric.MetricTypeHistogram:
 					dataPoints := metric.Histogram().DataPoints()
 					if dataPoints.Len() == 0 {
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					c.addHistogramDataPoints(dataPoints, resource, settings, promName)
+					if settings.ConvertHistogramsToNHCB {
+						ws, err := c.addCustomBucketsHistogramDataPoints(ctx, dataPoints, resource, settings, promName, temporality)
+						annots.Merge(ws)
+						if err != nil {
+							errs = multierr.Append(errs, err)
+							if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+								return
+							}
+						}
+					} else {
+						if err := c.addHistogramDataPoints(ctx, dataPoints, resource, settings, promName); err != nil {
+							errs = multierr.Append(errs, err)
+							if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+								return
+							}
+						}
+					}
 				case pmetric.MetricTypeExponentialHistogram:
 					dataPoints := metric.ExponentialHistogram().DataPoints()
 					if dataPoints.Len() == 0 {
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					errs = multierr.Append(errs, c.addExponentialHistogramDataPoints(
+					ws, err := c.addExponentialHistogramDataPoints(
+						ctx,
 						dataPoints,
 						resource,
 						settings,
 						promName,
-					))
+						temporality,
+					)
+					annots.Merge(ws)
+					if err != nil {
+						errs = multierr.Append(errs, err)
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							return
+						}
+					}
 				case pmetric.MetricTypeSummary:
 					dataPoints := metric.Summary().DataPoints()
 					if dataPoints.Len() == 0 {
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					c.addSummaryDataPoints(dataPoints, resource, settings, promName)
+					if err := c.addSummaryDataPoints(ctx, dataPoints, resource, settings, promName); err != nil {
+						errs = multierr.Append(errs, err)
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							return
+						}
+					}
 				default:
 					errs = multierr.Append(errs, errors.New("unsupported metric type"))
 				}
@@ -128,7 +212,7 @@ func (c *PrometheusConverter) FromMetrics(md pmetric.Metrics, settings Settings)
 		addResourceTargetInfo(resource, settings, mostRecentTimestamp, c)
 	}
 
-	return
+	return annots, errs
 }
 
 func isSameMetric(ts *prompb.TimeSeries, lbls []prompb.Label) bool {
@@ -145,25 +229,33 @@ func isSameMetric(ts *prompb.TimeSeries, lbls []prompb.Label) bool {
 
 // addExemplars adds exemplars for the dataPoint. For each exemplar, if it can find a bucket bound corresponding to its value,
 // the exemplar is added to the bucket bound's time series, provided that the time series' has samples.
-func (c *PrometheusConverter) addExemplars(dataPoint pmetric.HistogramDataPoint, bucketBounds []bucketBoundsData) {
+func (c *PrometheusConverter) addExemplars(ctx context.Context, dataPoint pmetric.HistogramDataPoint, bucketBounds []bucketBoundsData) error {
 	if len(bucketBounds) == 0 {
-		return
+		return nil
 	}
 
-	exemplars := getPromExemplars(dataPoint)
+	exemplars, err := getPromExemplars(ctx, &c.everyN, dataPoint)
+	if err != nil {
+		return err
+	}
 	if len(exemplars) == 0 {
-		return
+		return nil
 	}
 
 	sort.Sort(byBucketBoundsData(bucketBounds))
 	for _, exemplar := range exemplars {
 		for _, bound := range bucketBounds {
+			if err := c.everyN.checkContext(ctx); err != nil {
+				return err
+			}
 			if len(bound.ts.Samples) > 0 && exemplar.Value <= bound.bound {
 				bound.ts.Exemplars = append(bound.ts.Exemplars, exemplar)
 				break
 			}
 		}
 	}
+
+	return nil
 }
 
 // addSample finds a TimeSeries that corresponds to lbls, and adds sample to it.

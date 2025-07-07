@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -23,7 +22,7 @@ const (
 var parserPool = sync.Pool{
 	New: func() interface{} {
 		p := &parser{
-			p:      &exprParserImpl{},
+			p:      &syntaxParserImpl{},
 			Reader: strings.NewReader(""),
 			lexer:  &lexer{},
 		}
@@ -41,16 +40,16 @@ const maxInputSize = 131072
 
 func init() {
 	// Improve the error messages coming out of yacc.
-	exprErrorVerbose = true
+	syntaxErrorVerbose = true
 	// uncomment when you need to understand yacc rule tree.
 	// exprDebug = 3
 	for str, tok := range tokens {
-		exprToknames[tok-exprPrivate+1] = str
+		syntaxToknames[tok-syntaxPrivate+1] = str
 	}
 }
 
 type parser struct {
-	p *exprParserImpl
+	p *syntaxParserImpl
 	*lexer
 	expr Expr
 	*strings.Reader
@@ -119,9 +118,27 @@ func validateExpr(expr Expr) error {
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
+	case VariantsExpr:
+		return validateVariantsExpr(e)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
+}
+
+func validateVariantsExpr(e VariantsExpr) error {
+	err := validateLogSelectorExpression(e.LogRange().Left)
+	if err != nil {
+		return err
+	}
+
+	for _, variant := range e.Variants() {
+		err = validateSampleExpr(variant)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
@@ -254,11 +271,8 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 func ParseLabels(lbs string) (labels.Labels, error) {
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
-	// Sort labels to ensure functionally equivalent
-	// inputs map to the same output
-	sort.Sort(ls)
 
 	// Use the label builder to trim empty label values.
 	// Empty label values are equivalent to absent labels

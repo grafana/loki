@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: gdev-testdata
+    isDefault: true
+    type: testdata
+  - name: gdev-loki
+    type: loki
+    uid: gdev-loki
+    access: proxy
+    url: http://host.docker.internal:3100

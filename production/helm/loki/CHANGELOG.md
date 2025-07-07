@@ -13,6 +13,84 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
+- [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
+- [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+
+## 6.30.1
+
+- [BUGFIX] Add livenessProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191#issuecomment-2769843275)
+
+## 6.29.1
+
+- [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
+- [FEATURE] Added affinity property to the loki-canary deamonset
+- [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
+- [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+
+## 6.29.0
+
+- [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
+- [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
+- [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
+
+## 6.28.0
+
+- [CHANGE] Add extraContainers parameter for the backend pod
+- [CHANGE] Add `tpl()` support for backend, read, write, and admin-api components
+
+## 6.27.0
+
+- [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
+- [CHANGE] Changed version of Memcached image to 1.6.36
+- [CHANGE] Changed version of Grafana Loki to 3.4.2
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.4.0
+
+## 6.26.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.4.0
+
+## 6.25.1
+
+- [BUGFIX] Disable service monitor for nginx service.
+
+## 6.25.0
+
+- [BUGFIX] Removed minio-mc init container from admin-api.
+- [BUGFIX] Fixed admin-api and gateway deployment container args.
+- [FEATURE] Added support for Overrides Exporter
+
+## 6.24.1
+
+- [ENHANCEMENT] Fix Inconsistency between sidecar.securityContext and loki.containerSecurityContext
+
+## 6.24.0
+
+- [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
+- [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
+- [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
+- [ENHANCEMENT] Bump Loki version to 3.3.2
+
+## 6.23.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.1
+- [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
+- [BUGFIX] Add default wal dir to ruler config ([#14920](https://github.com/grafana/loki/pull/14920))
+- [FIX] Fix statefulset templates to not show diffs in ArgoCD
+
+## 6.22.0
+
+## 6.21.0
+
+## 6.20.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.0
+
+## 6.19.0-weekly.227
+
+- [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
+
 ## 6.19.0
 
 ## 6.18.0
@@ -89,7 +167,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
-  
+
 ## 6.7.2
 
 - [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
@@ -137,7 +215,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
-
 
 ## 6.4.2
 

@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -41,11 +42,8 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.indexGatewaySelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.indexGateway.podLabels }}
+        {{- include "loki.indexGatewayLabels" . | nindent 8 }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.indexGateway.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- if .Values.indexGateway.joinMemberlist }}
@@ -76,7 +74,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=index-gateway
-            {{- with .Values.indexGateway.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.indexGateway.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -91,11 +89,11 @@ spec:
               containerPort: 7946
               protocol: TCP
             {{- end }}
-          {{- with .Values.indexGateway.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.indexGateway.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.indexGateway.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.indexGateway.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -116,7 +114,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.indexGateway.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.indexGateway.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -130,6 +128,10 @@ spec:
       {{- end }}
       {{- with .Values.indexGateway.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.indexGateway.topologySpreadConstraints }}
+      topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.indexGateway.tolerations }}
@@ -151,7 +153,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.indexGateway.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.indexGateway.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if not .Values.indexGateway.persistence.enabled }}
@@ -168,7 +170,9 @@ spec:
         {{- end }}
   {{- else }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         {{- with .Values.indexGateway.persistence.annotations }}
         annotations:

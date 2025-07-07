@@ -9,6 +9,6 @@ Operating System Support
 ========================
 This package is tested using GitHub Actions on Linux, macOS, and Windows. It should also work on other Unix-like platforms, but hasn't been tested with them. I'm interested to hear about the results.
 
-I haven't been able to add more features without adding significant complexity, so mmap-go doesn't support `mprotect`, `mincore`, and maybe a few other things. If you're running on a Unix-like platform and need some of these features, I suggest Gustavo Niemeyer's [gommap](http://labix.org/gommap).
+This package compiles for Plan 9 and WebAssembly, but its functions always return errors.
 
-This package compiles on Plan 9, but its functions always return errors.
+Related functions such as `mprotect` and `mincore` aren't included. I haven't found a way to implement them on Windows without introducing significant complexity. If you're running on a Unix-like platform and really need these features, it should still be possible to implement them on top of this package via `syscall`.

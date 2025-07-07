@@ -280,9 +280,15 @@ func WithDelay(bkt Bucket, delay time.Duration) Bucket {
 	return &delayingBucket{bkt: bkt, delay: delay}
 }
 
+func (d *delayingBucket) Provider() ObjProvider { return d.bkt.Provider() }
+
 func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	time.Sleep(d.delay)
 	return d.bkt.Get(ctx, name)
+}
+
+func (b *delayingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: delayingBucket.GetAndReplace")
 }
 
 func (d *delayingBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {

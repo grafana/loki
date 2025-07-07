@@ -1,11 +1,27 @@
 package magic
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/csv"
 	"errors"
 	"io"
+	"sync"
 )
+
+// A bufio.Reader pool to alleviate problems with memory allocations.
+var readerPool = sync.Pool{
+	New: func() any {
+		// Initiate with empty source reader.
+		return bufio.NewReader(nil)
+	},
+}
+
+func newReader(r io.Reader) *bufio.Reader {
+	br := readerPool.Get().(*bufio.Reader)
+	br.Reset(r)
+	return br
+}
 
 // Csv matches a comma-separated values file.
 func Csv(raw []byte, limit uint32) bool {
@@ -18,7 +34,11 @@ func Tsv(raw []byte, limit uint32) bool {
 }
 
 func sv(in []byte, comma rune, limit uint32) bool {
-	r := csv.NewReader(dropLastLine(in, limit))
+	in = dropLastLine(in, limit)
+
+	br := newReader(bytes.NewReader(in))
+	defer readerPool.Put(br)
+	r := csv.NewReader(br)
 	r.Comma = comma
 	r.ReuseRecord = true
 	r.LazyQuotes = true
@@ -44,20 +64,14 @@ func sv(in []byte, comma rune, limit uint32) bool {
 // mimetype limits itself to ReadLimit bytes when performing a detection.
 // This means, for file formats like CSV for NDJSON, the last line of the input
 // can be an incomplete line.
-func dropLastLine(b []byte, cutAt uint32) io.Reader {
-	if cutAt == 0 {
-		return bytes.NewReader(b)
+func dropLastLine(b []byte, readLimit uint32) []byte {
+	if readLimit == 0 || uint32(len(b)) < readLimit {
+		return b
 	}
-	if uint32(len(b)) >= cutAt {
-		for i := cutAt - 1; i > 0; i-- {
-			if b[i] == '\n' {
-				return bytes.NewReader(b[:i])
-			}
+	for i := len(b) - 1; i > 0; i-- {
+		if b[i] == '\n' {
+			return b[:i]
 		}
-
-		// No newline was found between the 0 index and cutAt.
-		return bytes.NewReader(b[:cutAt])
 	}
-
-	return bytes.NewReader(b)
+	return b
 }

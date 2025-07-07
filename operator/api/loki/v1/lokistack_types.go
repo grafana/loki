@@ -308,18 +308,30 @@ type OpenshiftTenantSpec struct {
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
 type OpenshiftOTLPConfig struct {
-	// DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
-	// metadata.
+	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 	//
-	// Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-	// meta information to not be available as stream labels or structured metadata, potentially making queries more
-	// expensive and less performant.
+	// Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+	// to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
 	//
-	// Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-	// added to the configuration, even if this field is set to true.
+	// The recommended attributes are:
 	//
-	// This option is supposed to be combined with a custom label configuration customizing the labels for the specific
-	// usecase.
+	//  - k8s.container.name
+	//  - k8s.cronjob.name
+	//  - k8s.daemonset.name
+	//  - k8s.deployment.name
+	//  - k8s.job.name
+	//  - k8s.node.name
+	//  - k8s.pod.name
+	//  - k8s.statefulset.name
+	//  - kubernetes.container_name
+	//  - kubernetes.host
+	//  - kubernetes.pod_name
+	//  - service.name
+	//
+	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+	// should continue to exist.
+	//
+	// See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -363,6 +375,17 @@ type LokiComponentSpec struct {
 // LokiTemplateSpec defines the template of all requirements to configure
 // scheduling of all Loki components to be deployed.
 type LokiTemplateSpec struct {
+	// When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+	// requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+	// spikes, whether on the ingestion or query side.
+	//
+	// Note: This is currently a tech-preview feature.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Use resource requests as limits"
+	UseRequestsAsLimits bool `json:"useRequestsAsLimits,omitempty"`
+
 	// Compactor defines the compaction component spec.
 	//
 	// +optional
@@ -641,7 +664,7 @@ type ObjectStorageSpec struct {
 
 // QueryLimitSpec defines the limits applies at the query path.
 type QueryLimitSpec struct {
-	// MaxEntriesLimitsPerQuery defines the maximum number of log entries
+	// MaxEntriesLimitPerQuery defines the maximum number of log entries
 	// that will be returned for a query.
 	//
 	// +optional
@@ -827,8 +850,13 @@ type IngestionLimitSpec struct {
 	PerStreamRateLimitBurst int32 `json:"perStreamRateLimitBurst,omitempty"`
 }
 
-// OTLPSpec defines which resource, scope and log attributes should be used as stream labels or
-// stored as structured metadata.
+// OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.
+//
+// Attributes need to be listed by their "OpenTelemetry name" and not the representation used by Loki. Please consult
+// the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+// are emitted.
+//
+// Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.
 type OTLPSpec struct {
 	// StreamLabels configures which resource attributes are converted to Loki stream labels.
 	//
@@ -837,12 +865,12 @@ type OTLPSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Stream Labels"
 	StreamLabels *OTLPStreamLabelSpec `json:"streamLabels,omitempty"`
 
-	// StructuredMetadata configures which attributes are saved in structured metadata.
+	// Drop configures which attributes are dropped from the log entry.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Structured Metadata"
-	StructuredMetadata *OTLPMetadataSpec `json:"structuredMetadata,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Dropped Attributes"
+	Drop *OTLPMetadataSpec `json:"drop,omitempty"`
 }
 
 type OTLPStreamLabelSpec struct {

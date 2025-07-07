@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -72,6 +73,12 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errNotReady
 		}
 
+		// Extract rule details
+		ruleName := detail.Name
+		ruleType := detail.Kind
+
+		// Add rule details to context
+		ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
 		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
@@ -158,7 +165,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 			Context:                  user.InjectOrgID(ctx, userID),
 			ExternalURL:              cfg.ExternalURL.URL,
 			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
-			Logger:                   logger,
+			Logger:                   util_log.SlogFromGoKit(logger),
 			Registerer:               reg,
 			OutageTolerance:          cfg.OutageTolerance,
 			ForGracePeriod:           cfg.ForGracePeriod,
@@ -229,7 +236,7 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 		set[g.Name] = struct{}{}
 
 		for _, r := range g.Rules {
-			if err := validateRuleNode(&r, g.Name); err != nil {
+			if err := validateRule(&r, g.Name); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -238,38 +245,38 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 	return errs
 }
 
-func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
-	if r.Record.Value != "" && r.Alert.Value != "" {
+func validateRule(r *rulefmt.Rule, groupName string) error {
+	if r.Record != "" && r.Alert != "" {
 		return errors.Errorf("only one of 'record' and 'alert' must be set")
 	}
 
-	if r.Record.Value == "" && r.Alert.Value == "" {
+	if r.Record == "" && r.Alert == "" {
 		return errors.Errorf("one of 'record' or 'alert' must be set")
 	}
 
-	if r.Expr.Value == "" {
+	if r.Expr == "" {
 		return errors.Errorf("field 'expr' must be set in rule")
-	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
-		if r.Record.Value != "" {
-			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)
+	} else if _, err := syntax.ParseExpr(r.Expr); err != nil {
+		if r.Record != "" {
+			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record, groupName)
 		}
-		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName)
+		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert, groupName)
 	}
 
-	if r.Record.Value != "" {
+	if r.Record != "" {
 		if len(r.Annotations) > 0 {
 			return errors.Errorf("invalid field 'annotations' in recording rule")
 		}
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
-			return errors.Errorf("invalid recording rule name: %s", r.Record.Value)
+		if !model.IsValidLegacyMetricName(r.Record) {
+			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+		if !model.LabelName(k).IsValidLegacy() || k == model.MetricNameLabel {
 			return errors.Errorf("invalid label name: %s", k)
 		}
 
@@ -279,7 +286,7 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValid() {
+		if !model.LabelName(k).IsValidLegacy() {
 			return errors.Errorf("invalid annotation name: %s", k)
 		}
 	}
@@ -293,8 +300,8 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 
 // testTemplateParsing checks if the templates used in labels and annotations
 // of the alerting rules are parsed correctly.
-func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
-	if rl.Alert.Value == "" {
+func testTemplateParsing(rl *rulefmt.Rule) (errs []error) {
+	if rl.Alert == "" {
 		// Not an alerting rule.
 		return errs
 	}
@@ -310,7 +317,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 		tmpl := template.NewTemplateExpander(
 			context.TODO(),
 			strings.Join(append(defs, text), ""),
-			"__alert_"+rl.Alert.Value,
+			"__alert_"+rl.Alert,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
 			nil,
@@ -356,4 +363,26 @@ type noopRuleDependencyController struct{}
 // AnalyseRules is a noop for Loki since there is no dependency relation between rules.
 func (*noopRuleDependencyController) AnalyseRules([]rules.Rule) {
 	// Do nothing
+}
+
+// Define context keys to avoid collisions
+type contextKey string
+
+const (
+	ruleNameKey contextKey = "rule_name"
+	ruleTypeKey contextKey = "rule_type"
+)
+
+// AddRuleDetailsToContext adds rule details to the context
+func AddRuleDetailsToContext(ctx context.Context, ruleName string, ruleType string) context.Context {
+	ctx = context.WithValue(ctx, ruleNameKey, ruleName)
+	ctx = context.WithValue(ctx, ruleTypeKey, ruleType)
+	return ctx
+}
+
+// GetRuleDetailsFromContext retrieves rule details from the context
+func GetRuleDetailsFromContext(ctx context.Context) (string, string) {
+	ruleName, _ := ctx.Value(ruleNameKey).(string)
+	ruleType, _ := ctx.Value(ruleTypeKey).(string)
+	return ruleName, ruleType
 }

@@ -142,7 +142,7 @@ outer:
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -216,7 +216,7 @@ func (m *Miniredis) cmdZcard(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -272,7 +272,7 @@ func (m *Miniredis) cmdZcount(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -316,7 +316,7 @@ func (m *Miniredis) cmdZincrby(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(msgWrongType)
 			return
 		}
@@ -433,9 +433,6 @@ func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, a
 
 		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 			db := m.db(ctx.selectedDB)
-			if opts.Store {
-				db.del(opts.Destination, true)
-			}
 
 			// We collect everything and remove all keys which turned out not to be
 			// present in every set.
@@ -448,12 +445,12 @@ func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, a
 
 				var set map[string]float64
 				switch db.t(key) {
-				case "set":
+				case keyTypeSet:
 					set = map[string]float64{}
 					for elem := range db.setKeys[key] {
 						set[elem] = 1.0
 					}
-				case "zset":
+				case keyTypeSortedSet:
 					set = db.sortedSet(key)
 				default:
 					c.WriteError(msgWrongType)
@@ -493,6 +490,7 @@ func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, a
 
 			if opts.Store {
 				// ZINTERSTORE mode
+				db.del(opts.Destination, true)
 				db.ssetSet(opts.Destination, sset)
 				c.WriteInt(len(sset))
 				return
@@ -552,7 +550,7 @@ func (m *Miniredis) cmdZlexcount(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.Key) != "zset" {
+		if db.t(opts.Key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -827,6 +825,12 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 			db := m.db(ctx.selectedDB)
 
+			withScore := false
+			if len(args) > 0 && strings.ToUpper(args[len(args)-1]) == "WITHSCORE" {
+				withScore = true
+				args = args[:len(args)-1]
+			}
+
 			if len(args) > 2 {
 				setDirty(c)
 				c.WriteError(msgSyntaxError)
@@ -834,11 +838,15 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 			}
 
 			if !db.exists(key) {
-				c.WriteNull()
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
 				return
 			}
 
-			if db.t(key) != "zset" {
+			if db.t(key) != keyTypeSortedSet {
 				c.WriteError(ErrWrongType.Error())
 				return
 			}
@@ -849,10 +857,21 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 			}
 			rank, ok := db.ssetRank(key, member, direction)
 			if !ok {
-				c.WriteNull()
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
 				return
 			}
-			c.WriteInt(rank)
+
+			if withScore {
+				c.WriteLen(2)
+				c.WriteInt(rank)
+				c.WriteFloat(db.ssetScore(key, member))
+			} else {
+				c.WriteInt(rank)
+			}
 		})
 	}
 }
@@ -881,7 +900,7 @@ func (m *Miniredis) cmdZrem(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -935,7 +954,7 @@ func (m *Miniredis) cmdZremrangebylex(c *server.Peer, cmd string, args []string)
 			return
 		}
 
-		if db.t(opts.Key) != "zset" {
+		if db.t(opts.Key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -988,7 +1007,7 @@ func (m *Miniredis) cmdZremrangebyrank(c *server.Peer, cmd string, args []string
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1048,7 +1067,7 @@ func (m *Miniredis) cmdZremrangebyscore(c *server.Peer, cmd string, args []strin
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1087,7 +1106,7 @@ func (m *Miniredis) cmdZscore(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1128,7 +1147,7 @@ func (m *Miniredis) cmdZMscore(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1447,12 +1466,12 @@ func executeZUnion(db *RedisDB, opts zunionOptions) (sortedSet, error) {
 
 		var set map[string]float64
 		switch db.t(key) {
-		case "set":
+		case keyTypeSet:
 			set = map[string]float64{}
 			for elem := range db.setKeys[key] {
 				set[elem] = 1.0
 			}
-		case "zset":
+		case keyTypeSortedSet:
 			set = db.sortedSet(key)
 		default:
 			return nil, errors.New(msgWrongType)
@@ -1555,7 +1574,7 @@ func (m *Miniredis) cmdZscan(c *server.Peer, cmd string, args []string) {
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
-		if db.exists(opts.key) && db.t(opts.key) != "zset" {
+		if db.exists(opts.key) && db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1633,7 +1652,7 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 				return
 			}
 
-			if db.t(key) != "zset" {
+			if db.t(key) != keyTypeSortedSet {
 				c.WriteError(ErrWrongType.Error())
 				return
 			}
@@ -1715,7 +1734,7 @@ func (m *Miniredis) cmdZrandmember(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -1782,7 +1801,7 @@ func runRange(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRange) {
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}
@@ -1845,7 +1864,7 @@ func runRangeByScore(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRange
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}
@@ -1932,7 +1951,7 @@ func runRangeByLex(m *Miniredis, c *server.Peer, cctx *connCtx, opts optsRangeBy
 		return
 	}
 
-	if db.t(opts.Key) != "zset" {
+	if db.t(opts.Key) != keyTypeSortedSet {
 		c.WriteError(ErrWrongType.Error())
 		return
 	}

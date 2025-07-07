@@ -72,8 +72,8 @@ func newQuerierMetrics(registerer prometheus.Registerer, namespace, subsystem st
 }
 
 type QuerierConfig struct {
-	// MinTableOffset is derived from the compactor's MinTableOffset
-	MinTableOffset int
+	BuildInterval    time.Duration
+	BuildTableOffset int
 }
 
 // BloomQuerier is a store-level abstraction on top of Client
@@ -108,7 +108,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		return chunkRefs, false, nil
 	}
 
-	logger, ctx := spanlogger.NewWithLogger(ctx, bq.logger, "bloomquerier.FilterChunkRefs")
+	logger, ctx := spanlogger.NewOTel(ctx, bq.logger, tracer, "bloomquerier.FilterChunkRefs")
 	defer logger.Finish()
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
@@ -119,30 +119,28 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterSeries := len(grouped)
 
 	// Do not attempt to filter chunks for which there are no blooms
-	if bq.cfg.MinTableOffset > 0 {
-		minAge := truncateDay(model.Now()).Add(-1 * config.ObjectStorageIndexRequiredPeriod * time.Duration(bq.cfg.MinTableOffset-1))
-		if through.After(minAge) {
-			level.Debug(logger).Log(
-				"msg", "skip too recent chunks",
-				"tenant", tenant,
-				"from", from.Time(),
-				"through", through.Time(),
-				"responses", 0,
-				"preFilterChunks", preFilterChunks,
-				"postFilterChunks", preFilterChunks,
-				"filteredChunks", 0,
-				"preFilterSeries", preFilterSeries,
-				"postFilterSeries", preFilterSeries,
-				"filteredSeries", 0,
-			)
+	minAge := model.Now().Add(-1 * (config.ObjectStorageIndexRequiredPeriod*time.Duration(bq.cfg.BuildTableOffset) + 2*bq.cfg.BuildInterval))
+	if through.After(minAge) {
+		level.Info(logger).Log(
+			"msg", "skip too recent chunks",
+			"tenant", tenant,
+			"from", from.Time(),
+			"through", through.Time(),
+			"responses", 0,
+			"preFilterChunks", preFilterChunks,
+			"postFilterChunks", preFilterChunks,
+			"filteredChunks", 0,
+			"preFilterSeries", preFilterSeries,
+			"postFilterSeries", preFilterSeries,
+			"filteredSeries", 0,
+		)
 
-			bq.metrics.chunksTotal.Add(float64(preFilterChunks))
-			bq.metrics.chunksFiltered.Add(0)
-			bq.metrics.seriesTotal.Add(float64(preFilterSeries))
-			bq.metrics.seriesFiltered.Add(0)
+		bq.metrics.chunksTotal.Add(float64(preFilterChunks))
+		bq.metrics.chunksFiltered.Add(0)
+		bq.metrics.seriesTotal.Add(float64(preFilterSeries))
+		bq.metrics.seriesFiltered.Add(0)
 
-			return chunkRefs, false, nil
-		}
+		return chunkRefs, false, nil
 	}
 
 	var skippedGrps [][]*logproto.GroupedChunkRefs

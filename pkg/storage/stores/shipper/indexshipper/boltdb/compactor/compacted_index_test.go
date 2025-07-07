@@ -1,10 +1,11 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
+	"math"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,18 +48,24 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 
 			// remove c1, c2 chunk and index c4 with same labels as c2
 			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))
-			err = compactedIndex.ForEachChunk(context.Background(), func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-				if entry.Labels.Get("fizz") == "buzz" {
-					chunkIndexed, err := compactedIndex.IndexChunk(c4)
+			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) (err error) {
+				if series.Labels().Get("fizz") == "buzz" {
+					approxKB := math.Round(float64(c4.Data.UncompressedSize()) / float64(1<<10))
+					chunkIndexed, err := compactedIndex.IndexChunk(c4.ChunkRef, c4.Metric, uint32(approxKB), uint32(c4.Data.Entries()))
 					require.NoError(t, err)
 					require.True(t, chunkIndexed)
 				}
-				return entry.Labels.Get("foo") == "bar", nil
+				if series.Labels().Get("foo") == "bar" {
+					for _, chk := range series.Chunks() {
+						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+					}
+				}
+				return nil
 			})
 			require.NoError(t, err)
 
 			// remove series for c1 since all its chunks are deleted
-			err = compactedIndex.CleanupSeries(entryFromChunk(testSchema, c1).UserID, c1.Metric)
+			err = compactedIndex.CleanupSeries([]byte(c1.UserID), c1.Metric)
 			require.NoError(t, err)
 
 			indexFile, err := compactedIndex.ToIndexFile()
@@ -74,7 +81,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
-					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
+					c1SeriesID := labelsSeriesID(c1.Metric)
 					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
 					if !ok {
 						return nil
@@ -92,25 +99,25 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			expectedChunkEntries := []retention.ChunkEntry{
-				entryFromChunk(testSchema, c3),
-				entryFromChunk(testSchema, c4),
+			expectedChunkEntries := []retention.Chunk{
+				retentionChunkFromChunk(testSchema, c3),
+				retentionChunkFromChunk(testSchema, c4),
 			}
-			chunkEntriesFound := []retention.ChunkEntry{}
+			var chunkEntriesFound []retention.Chunk
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
-				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-					chunkEntriesFound = append(chunkEntriesFound, entry)
-					return false, nil
+				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
+					chunkEntriesFound = append(chunkEntriesFound, series.Chunks()...)
+					return nil
 				})
 			})
 			require.NoError(t, err)
 
 			sort.Slice(expectedChunkEntries, func(i, j int) bool {
-				return bytes.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
+				return strings.Compare(expectedChunkEntries[i].ChunkID, expectedChunkEntries[j].ChunkID) < 0
 			})
 
 			sort.Slice(chunkEntriesFound, func(i, j int) bool {
-				return bytes.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
+				return strings.Compare(chunkEntriesFound[i].ChunkID, chunkEntriesFound[j].ChunkID) < 0
 			})
 
 			require.Equal(t, expectedChunkEntries, chunkEntriesFound)

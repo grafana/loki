@@ -125,7 +125,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:urls=/api/v2/alerts,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=policy/v1,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;update;delete
@@ -244,7 +244,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.Client.List(ctx, lokiStacks); err != nil {
+		if err := r.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")
 			return nil
 		}
@@ -280,7 +280,7 @@ func statusDifferent(e event.UpdateEvent) bool {
 func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.Client.List(ctx, lokiStacks); err != nil {
+		if err := r.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")
 			return nil
 		}
@@ -312,7 +312,7 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.Client.List(ctx, lokiStacks); err != nil {
+		if err := r.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")
 			return nil
 		}
@@ -339,7 +339,7 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.Client.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
+		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
 			r.Log.Error(err, "Error listing LokiStack resources for storage CA update")
 			return nil
 		}

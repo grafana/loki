@@ -60,7 +60,7 @@ func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
 	if c == nil {
 		return errors.New(ErrEmptyEvtLogMsgStageConfig)
 	}
-	if c.Source != nil && !model.LabelName(*c.Source).IsValid() {
+	if c.Source != nil && !model.LabelName(*c.Source).IsValidLegacy() {
 		return fmt.Errorf(ErrInvalidLabelName, *c.Source)
 	}
 	return nil
@@ -108,7 +108,7 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 			continue
 		}
 		mkey := parts[0]
-		if !model.LabelName(mkey).IsValid() {
+		if !model.LabelName(mkey).IsValidLegacy() {
 			if m.cfg.DropInvalidLabels {
 				if Debug {
 					level.Debug(m.logger).Log("msg", "invalid label parsed from message", "key", mkey)

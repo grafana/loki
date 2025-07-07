@@ -19,6 +19,7 @@ var (
 )
 
 //go:nosplit
+//go:norace
 func x_cgo_notify_runtime_init_done() {
 	pthread_mutex_lock(&runtime_init_mu)
 	runtime_init_done = 1
@@ -28,6 +29,8 @@ func x_cgo_notify_runtime_init_done() {
 
 // Store the g into a thread-specific value associated with the pthread key pthread_g.
 // And pthread_key_destructor will dropm when the thread is exiting.
+//
+//go:norace
 func x_cgo_bindm(g unsafe.Pointer) {
 	// We assume this will always succeed, otherwise, there might be extra M leaking,
 	// when a C thread exits after a cgo call.
@@ -50,9 +53,11 @@ func _cgo_try_pthread_create(thread *pthread_t, attr *pthread_attr_t, pfn unsafe
 	var err int
 
 	for tries = 0; tries < 20; tries++ {
-		err = int(pthread_create(thread, attr, pfn, unsafe.Pointer(arg)))
+		// inlined this call because it ran out of stack when inlining was disabled
+		err = int(call5(pthread_createABI0, uintptr(unsafe.Pointer(thread)), uintptr(unsafe.Pointer(attr)), uintptr(pfn), uintptr(unsafe.Pointer(arg)), 0))
 		if err == 0 {
-			pthread_detach(*thread)
+			// inlined this call because it ran out of stack when inlining was disabled
+			call5(pthread_detachABI0, uintptr(*thread), 0, 0, 0, 0)
 			return 0
 		}
 		if err != int(syscall.EAGAIN) {
@@ -60,7 +65,8 @@ func _cgo_try_pthread_create(thread *pthread_t, attr *pthread_attr_t, pfn unsafe
 		}
 		ts.Sec = 0
 		ts.Nsec = (tries + 1) * 1000 * 1000 // Milliseconds.
-		nanosleep(&ts, nil)
+		// inlined this call because it ran out of stack when inlining was disabled
+		call5(nanosleepABI0, uintptr(unsafe.Pointer(&ts)), 0, 0, 0, 0)
 	}
 	return int(syscall.EAGAIN)
 }

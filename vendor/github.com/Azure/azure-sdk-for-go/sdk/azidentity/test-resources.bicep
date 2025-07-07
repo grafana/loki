@@ -136,6 +136,14 @@ resource azfunc 'Microsoft.Web/sites@2021-03-01' = if (deployResources) {
           value: deployResources ? usermgdid.id : null
         }
         {
+          name: 'AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID'
+          value: deployResources ? usermgdid.properties.clientId : null
+        }
+        {
+          name: 'AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID'
+          value: deployResources ? usermgdid.properties.principalId : null
+        }
+        {
           name: 'AzureWebJobsStorage'
           value: 'DefaultEndpointsProtocol=https;AccountName=${deployResources ? sa.name : ''};EndpointSuffix=${deployResources ? environment().suffixes.storage : ''};AccountKey=${deployResources ? sa.listKeys().keys[0].value : ''}'
         }
@@ -217,3 +225,4 @@ output AZIDENTITY_STORAGE_NAME_USER_ASSIGNED string = deployResources ? saUserAs
 output AZIDENTITY_USER_ASSIGNED_IDENTITY string = deployResources ? usermgdid.id : ''
 output AZIDENTITY_USER_ASSIGNED_IDENTITY_CLIENT_ID string = deployResources ? usermgdid.properties.clientId : ''
 output AZIDENTITY_USER_ASSIGNED_IDENTITY_NAME string = deployResources ? usermgdid.name : ''
+output AZIDENTITY_USER_ASSIGNED_IDENTITY_OBJECT_ID string = deployResources ? usermgdid.properties.principalId : ''

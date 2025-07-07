@@ -620,7 +620,7 @@ func (cl *Client) PauseFetchPartitions(topicPartitions map[string][]int32) map[s
 
 // ResumeFetchTopics resumes fetching the input topics if they were previously
 // paused. Resuming topics that are not currently paused is a per-topic no-op.
-// See the documentation on PauseTfetchTopics for more details.
+// See the documentation on PauseFetchTopics for more details.
 func (cl *Client) ResumeFetchTopics(topics ...string) {
 	defer cl.allSinksAndSources(func(sns sinkAndSource) {
 		sns.source.maybeConsume()
@@ -1184,6 +1184,44 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 			})
 		}
 	}
+}
+
+// filterMetadataAllTopics, called BEFORE doOnMetadataUpdate, evaluates
+// all topics received against the user provided regex.
+func (c *consumer) filterMetadataAllTopics(topics []string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var rns reNews
+	defer rns.log(&c.cl.cfg)
+
+	var reSeen map[string]bool
+	if c.d != nil {
+		reSeen = c.d.reSeen
+	} else {
+		reSeen = c.g.reSeen
+	}
+
+	keep := topics[:0]
+	for _, topic := range topics {
+		want, seen := reSeen[topic]
+		if !seen {
+			for rawRe, re := range c.cl.cfg.topics {
+				if want = re.MatchString(topic); want {
+					rns.add(rawRe, topic)
+					break
+				}
+			}
+			if !want {
+				rns.skip(topic)
+			}
+			reSeen[topic] = want
+		}
+		if want {
+			keep = append(keep, topic)
+		}
+	}
+	return keep
 }
 
 func (c *consumer) doOnMetadataUpdate() {
@@ -1917,6 +1955,10 @@ func (s *consumerSession) mapLoadsToBrokers(loads listOrEpochLoads) map[*broker]
 						// If we are fetching from a follower, we can list
 						// offsets against the follower itself. The replica
 						// being non-negative signals that.
+						//
+						// Note this is not actually true (i.e. KIP-392 lies),
+						// but we keep this logic in case we can revert
+						// to using non-leaders someday.
 						brokerID = offset.replica
 					}
 					if tryBroker := findBroker(brokers, brokerID); tryBroker != nil {

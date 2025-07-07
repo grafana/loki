@@ -9,9 +9,10 @@ type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
 	patternsDiscardedTotal *prometheus.CounterVec
 	patternsDetectedTotal  *prometheus.CounterVec
+	linesSkipped           *prometheus.CounterVec
 	tokensPerLine          *prometheus.HistogramVec
 	statePerLine           *prometheus.HistogramVec
-	samples                *prometheus.CounterVec
+	metricSamples          *prometheus.CounterVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -34,6 +35,12 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "patterns_detected_total",
 			Help:      "The total number of patterns detected from incoming log lines.",
 		}, []string{"tenant", "format"}),
+		linesSkipped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "patterns_dropped_total",
+			Help:      "The total number of log lines skipped for pattern recognition.",
+		}, []string{"tenant", "reason"}),
 		tokensPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
@@ -48,11 +55,11 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Help:      "The number of items of additional state returned alongside tokens for pattern recognition.",
 			Buckets:   []float64{20, 40, 80, 120, 160, 320, 640, 1280},
 		}, []string{"tenant", "format"}),
-		samples: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		metricSamples: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "metric_samples",
-			Help:      "The total number of samples created to write back to Loki.",
+			Help:      "The total number of metric samples created to write back to Loki.",
 		}, []string{"service_name"}),
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -24,6 +25,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/client/gcp")
 
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
 
@@ -37,6 +40,7 @@ type GCSObjectClient struct {
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
 	BucketName       string         `yaml:"bucket_name"`
+	Endpoint         string         `yaml:"endpoint"`
 	ServiceAccount   flagext.Secret `yaml:"service_account"`
 	ChunkBufferSize  int            `yaml:"chunk_buffer_size"`
 	RequestTimeout   time.Duration  `yaml:"request_timeout"`
@@ -57,6 +61,7 @@ func (cfg *GCSConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucketname", "", "Name of GCS bucket. Please refer to https://cloud.google.com/docs/authentication/production for more information about how to configure authentication.")
+	f.StringVar(&cfg.Endpoint, prefix+"gcs.endpoint", "", "Custom GCS endpoint URL.")
 	f.Var(&cfg.ServiceAccount, prefix+"gcs.service-account", "Service account key content in JSON format, refer to https://cloud.google.com/iam/docs/creating-managing-service-account-keys for creation.")
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The size of the buffer that GCS client for each PUT request. 0 to disable buffering.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
@@ -107,6 +112,10 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 	opts = append(opts, option.WithHTTPClient(httpClient))
 	if !cfg.EnableOpenCensus {
 		opts = append(opts, option.WithTelemetryDisabled())
+	}
+
+	if cfg.Endpoint != "" {
+		opts = append(opts, option.WithEndpoint(cfg.Endpoint))
 	}
 
 	client, err := clientFactory(ctx, opts...)
@@ -357,7 +366,7 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	}
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {

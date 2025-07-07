@@ -360,14 +360,11 @@ const (
 	resultExpired = "expired"
 
 	// custom pubsub specific attributes
-	gcpProjectIDAttribute    = "gcp.project_id"
-	pubsubPrefix             = "messaging.gcp_pubsub."
-	orderingAttribute        = pubsubPrefix + "message.ordering_key"
-	deliveryAttemptAttribute = pubsubPrefix + "message.delivery_attempt"
-	eosAttribute             = pubsubPrefix + "exactly_once_delivery"
-	ackIDAttribute           = pubsubPrefix + "message.ack_id"
-	resultAttribute          = pubsubPrefix + "result"
-	receiptModackAttribute   = pubsubPrefix + "is_receipt_modack"
+	gcpProjectIDAttribute  = "gcp.project_id"
+	pubsubPrefix           = "messaging.gcp_pubsub."
+	eosAttribute           = pubsubPrefix + "exactly_once_delivery"
+	resultAttribute        = pubsubPrefix + "result"
+	receiptModackAttribute = pubsubPrefix + "is_receipt_modack"
 )
 
 func startSpan(ctx context.Context, spanType, resourceID string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
@@ -383,7 +380,7 @@ func getPublishSpanAttributes(project, dst string, msg *Message, attrs ...attrib
 		trace.WithAttributes(
 			semconv.MessagingMessageID(msg.ID),
 			semconv.MessagingMessageBodySize(len(msg.Data)),
-			attribute.String(orderingAttribute, msg.OrderingKey),
+			semconv.MessagingGCPPubsubMessageOrderingKey(msg.OrderingKey),
 		),
 		trace.WithAttributes(attrs...),
 		trace.WithSpanKind(trace.SpanKindProducer),
@@ -397,13 +394,13 @@ func getSubscriberOpts(project, dst string, msg *Message, attrs ...attribute.Key
 		trace.WithAttributes(
 			semconv.MessagingMessageID(msg.ID),
 			semconv.MessagingMessageBodySize(len(msg.Data)),
-			attribute.String(orderingAttribute, msg.OrderingKey),
+			semconv.MessagingGCPPubsubMessageOrderingKey(msg.OrderingKey),
 		),
 		trace.WithAttributes(attrs...),
 		trace.WithSpanKind(trace.SpanKindConsumer),
 	}
 	if msg.DeliveryAttempt != nil {
-		opts = append(opts, trace.WithAttributes(attribute.Int(deliveryAttemptAttribute, *msg.DeliveryAttempt)))
+		opts = append(opts, trace.WithAttributes(semconv.MessagingGCPPubsubMessageDeliveryAttempt(*msg.DeliveryAttempt)))
 	}
 	opts = append(opts, getCommonOptions(project, dst)...)
 	return opts

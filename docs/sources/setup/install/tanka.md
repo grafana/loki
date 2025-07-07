@@ -16,7 +16,7 @@ The Tanka installation runs the Loki cluster in microservices mode.
 
 ## Prerequisites
 
-Install the latest version of Tanka (version v0.17.1 or a more recent version) for the `tk env`
+Install the latest version of Tanka (version v0.31.0 or a more recent version) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 
@@ -35,7 +35,7 @@ Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's
 
 ## Deploying
 
-Download and install the Loki and Promtail module using `jb` (version v0.4.0 or a more recent version):
+Download and install the Loki and Promtail module using `jb` (version v0.6.0 or a more recent version):
 
 ```bash
 jb init  # not required if you already ran `tk init`

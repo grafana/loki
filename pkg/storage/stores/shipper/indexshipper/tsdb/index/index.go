@@ -62,6 +62,10 @@ const (
 	fingerprintInterval = 1 << 10
 
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
+
+	// reserved; used in multitenant indices to signal the tenant. Eventually compacted away when
+	// single tenant indices are created.
+	TenantLabel = "__loki_tenant__"
 )
 
 type indexWriterStage uint8
@@ -1613,16 +1617,8 @@ func (r *Reader) SymbolTableSize() uint64 {
 	return uint64(r.symbols.Size())
 }
 
-// SortedLabelValues returns value tuples that exist for the given label name.
-func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	values, err := r.LabelValues(name, matchers...)
-	if err == nil && r.version == FormatV1 {
-		sort.Strings(values)
-	}
-	return values, err
-}
-
 // LabelValues returns value tuples that exist for the given label name.
+// The returned values should be copied if they need to be used beyond the current tsdb read operation, including sending back as response.
 // TODO(replay): Support filtering by matchers
 func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
@@ -1666,7 +1662,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		} else {
 			d.Skip(skip)
 		}
-		s := string(d.UvarintBytes()) // Label value.
+		s := yoloString(d.UvarintBytes()) // Label value.
 		values = append(values, s)
 		if s == lastVal {
 			break
@@ -2516,7 +2512,7 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
+	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated
 }
 
 func overlap(from, through, chkFrom, chkThrough int64) bool {

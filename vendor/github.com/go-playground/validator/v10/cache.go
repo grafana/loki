@@ -21,6 +21,7 @@ const (
 	typeKeys
 	typeEndKeys
 	typeOmitNil
+	typeOmitZero
 )
 
 const (
@@ -249,6 +250,10 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 			}
 			return
 
+		case omitzero:
+			current.typeof = typeOmitZero
+			continue
+
 		case omitempty:
 			current.typeof = typeOmitEmpty
 			continue
@@ -294,7 +299,7 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 
 				if wrapper, ok := v.validations[current.tag]; ok {
 					current.fn = wrapper.fn
-					current.runValidationWhenNil = wrapper.runValidatinOnNil
+					current.runValidationWhenNil = wrapper.runValidationOnNil
 				} else {
 					panic(strings.TrimSpace(fmt.Sprintf(undefinedValidation, current.tag, fieldName)))
 				}
@@ -304,7 +309,7 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 				}
 
 				if len(vals) > 1 {
-					current.param = strings.Replace(strings.Replace(vals[1], utf8HexComma, ",", -1), utf8Pipe, "|", -1)
+					current.param = strings.ReplaceAll(strings.ReplaceAll(vals[1], utf8HexComma, ","), utf8Pipe, "|")
 				}
 			}
 			current.isBlockEnd = true

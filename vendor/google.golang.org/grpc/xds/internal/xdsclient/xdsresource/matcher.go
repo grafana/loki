@@ -19,7 +19,7 @@ package xdsresource
 
 import (
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 	"strings"
 
 	"google.golang.org/grpc/internal/grpcutil"
@@ -29,7 +29,10 @@ import (
 )
 
 // RouteToMatcher converts a route to a Matcher to match incoming RPC's against.
-func RouteToMatcher(r *Route) (*CompositeMatcher, error) {
+//
+// Only expected to be called on a Route that passed validation checks by the
+// xDS client.
+func RouteToMatcher(r *Route) *CompositeMatcher {
 	var pm pathMatcher
 	switch {
 	case r.Regex != nil:
@@ -39,7 +42,7 @@ func RouteToMatcher(r *Route) (*CompositeMatcher, error) {
 	case r.Prefix != nil:
 		pm = newPathPrefixMatcher(*r.Prefix, r.CaseInsensitive)
 	default:
-		return nil, fmt.Errorf("illegal route: missing path_matcher")
+		panic("illegal route: missing path_matcher")
 	}
 
 	headerMatchers := make([]matcher.HeaderMatcher, 0, len(r.Headers))
@@ -62,7 +65,7 @@ func RouteToMatcher(r *Route) (*CompositeMatcher, error) {
 		case h.StringMatch != nil:
 			matcherT = matcher.NewHeaderStringMatcher(h.Name, *h.StringMatch, invert)
 		default:
-			return nil, fmt.Errorf("illegal route: missing header_match_specifier")
+			panic("illegal route: missing header_match_specifier")
 		}
 		headerMatchers = append(headerMatchers, matcherT)
 	}
@@ -71,7 +74,7 @@ func RouteToMatcher(r *Route) (*CompositeMatcher, error) {
 	if r.Fraction != nil {
 		fractionMatcher = newFractionMatcher(*r.Fraction)
 	}
-	return newCompositeMatcher(pm, headerMatchers, fractionMatcher), nil
+	return newCompositeMatcher(pm, headerMatchers, fractionMatcher)
 }
 
 // CompositeMatcher is a matcher that holds onto many matchers and aggregates
@@ -142,11 +145,11 @@ func newFractionMatcher(fraction uint32) *fractionMatcher {
 	return &fractionMatcher{fraction: int64(fraction)}
 }
 
-// RandInt63n overwrites rand for control in tests.
-var RandInt63n = rand.Int63n
+// RandInt64n overwrites rand for control in tests.
+var RandInt64n = rand.Int64N
 
 func (fm *fractionMatcher) match() bool {
-	t := RandInt63n(1000000)
+	t := RandInt64n(1000000)
 	return t <= fm.fraction
 }
 

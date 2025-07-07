@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/queue"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -605,6 +607,36 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 	}
 }
 
+func TestMinMaxTables(t *testing.T) {
+	logger := log.NewNopLogger()
+	//logger := log.NewLogfmtLogger(os.Stdout)
+
+	cfg := Config{
+		PlanningInterval: 1 * time.Hour,
+		Queue: queue.Config{
+			MaxQueuedTasksPerTenant: 10000,
+		},
+		// From today till day before tomorrow
+		MinTableOffset: 0,
+		MaxTableOffset: 2,
+	}
+	planner := createPlanner(t, cfg, &fakeLimits{}, logger)
+
+	tables := planner.tables(time.Now())
+	require.Equal(t, 3, tables.TotalDays())
+
+	dayTables, err := iter.Collect(tables)
+	require.NoError(t, err)
+
+	todayTable := config.NewDayTable(config.NewDayTime(model.Now()), "index_")
+	yesterdayTable := config.NewDayTable(config.NewDayTime(model.Now().Add(-24*time.Hour)), "index_")
+	dayBeforeYesterdayTable := config.NewDayTable(config.NewDayTime(model.Now().Add(-48*time.Hour)), "index_")
+
+	require.Equal(t, dayBeforeYesterdayTable.Addr(), dayTables[0].Addr())
+	require.Equal(t, yesterdayTable.Addr(), dayTables[1].Addr())
+	require.Equal(t, todayTable.Addr(), dayTables[2].Addr())
+}
+
 type fakeBuilder struct {
 	mx          sync.Mutex // Protects tasks and currTaskIdx.
 	id          string
@@ -681,7 +713,10 @@ func (f *fakeBuilder) Send(req *protos.PlannerToBuilder) error {
 }
 
 func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
-	if len(f.tasks) == 0 {
+	f.mx.Lock()
+	tasksLen := len(f.tasks)
+	f.mx.Unlock()
+	if tasksLen == 0 {
 		// First call to Recv answers with builderID
 		return &protos.BuilderToPlanner{
 			BuilderID: f.id,
@@ -725,7 +760,7 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	for i := 0; i < n; i++ {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), plannertest.TsdbID(1), nil),
+			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(model.Fingerprint(i), model.Fingerprint(i+10)), plannertest.TsdbID(1), nil).ToProtoTask(),
 			resultsCh,
 		)
 		tasks = append(tasks, task)

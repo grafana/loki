@@ -74,21 +74,22 @@ type BackoffConfig struct {
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig       config.TLSConfig
-	Username        string
-	Password        string
-	Address         string
-	OrgID           string
-	Tripperware     Tripperware
-	BearerToken     string
-	BearerTokenFile string
-	Retries         int
-	QueryTags       string
-	NoCache         bool
-	AuthHeader      string
-	ProxyURL        string
-	BackoffConfig   BackoffConfig
-	Compression     bool
+	TLSConfig        config.TLSConfig
+	Username         string
+	Password         string
+	Address          string
+	OrgID            string
+	Tripperware      Tripperware
+	BearerToken      string
+	BearerTokenFile  string
+	Retries          int
+	QueryTags        string
+	NoCache          bool
+	AuthHeader       string
+	ProxyURL         string
+	BackoffConfig    BackoffConfig
+	Compression      bool
+	EnvironmentProxy bool
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -306,6 +307,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.EnvironmentProxy {
+		clientConfig.ProxyFromEnvironment = true
+	}
+
 	if c.ProxyURL != "" {
 		prox, err := url.Parse(c.ProxyURL)
 		if err != nil {
@@ -315,6 +320,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
+	client.Timeout = 0
 	if err != nil {
 		return err
 	}

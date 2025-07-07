@@ -34,6 +34,8 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
+func (b *InMemBucket) Provider() ObjProvider { return MEMORY }
+
 // Objects returns a copy of the internally stored objects.
 // NOTE: For assert purposes.
 func (b *InMemBucket) Objects() map[string][]byte {
@@ -189,6 +191,28 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 			return length, nil
 		},
 	}, nil
+}
+
+func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	reader, err := b.Get(ctx, name)
+	if err != nil && !errors.Is(err, errNotFound) {
+		return err
+	}
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	new, err := f(reader)
+	if err != nil {
+		return err
+	}
+
+	newObj, err := io.ReadAll(new)
+	if err != nil {
+		return err
+	}
+
+	b.objects[name] = newObj
+	return nil
 }
 
 // Exists checks if the given directory exists in memory.

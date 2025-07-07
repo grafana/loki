@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
@@ -59,17 +58,42 @@ func (m *mockConsumer) Flush(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func readersFromKafkaCfg(
+	t *testing.T,
+	kafkaCfg kafka.Config,
+	consumerFactory ConsumerFactory,
+	partition int32,
+) (Reader, *ReaderService) {
+	partitionReader, err := NewReaderService(
+		kafkaCfg,
+		partition,
+		"test-consumer-group",
+		consumerFactory,
+		log.NewNopLogger(),
+		nil,
+	)
+	require.NoError(t, err)
+
+	// Get the underlying reader from the service
+	return partitionReader.reader, partitionReader
+}
+
 func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test")
 	consumer := newMockConsumer()
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
-	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	_, partitionReader := readersFromKafkaCfg(
+		t,
+		kafkaCfg,
+		consumerFactory,
+		0,
+	)
+
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -112,7 +136,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 	var consumerStarting *mockConsumer
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		// Return two consumers to ensure we are processing requests during service `start()` and not during `run()`.
 		if consumerStarting == nil {
 			consumerStarting = newMockConsumer()
@@ -121,9 +145,14 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		return newMockConsumer(), nil
 	}
 
-	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	_, partitionReader := readersFromKafkaCfg(
+		t,
+		kafkaCfg,
+		consumerFactory,
+		0,
+	)
+
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -139,7 +168,6 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 	producer.ProduceSync(context.Background(), records...)
 
 	// Enable the catch up logic so starting the reader will read any existing records.
-	kafkaCfg.TargetConsumerLagAtStartup = time.Second * 1
 	kafkaCfg.MaxConsumerLagAtStartup = time.Second * 2
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -170,23 +198,23 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 	consumer := newMockConsumer()
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
 	partitionID := int32(0)
-	partitionReader, err := NewReader(kafkaCfg, partitionID, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	partitionReader, readerSvc := readersFromKafkaCfg(
+		t,
+		kafkaCfg,
+		consumerFactory,
+		partitionID,
+	)
+
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
-	partitionReader.client, err = client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger(),
-		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
-			kafkaCfg.Topic: {partitionID: kgo.NewOffset().AtStart()},
-		}),
-	)
-	require.NoError(t, err)
+	partitionReader.SetOffsetForConsumption(int64(KafkaStartOffset))
 
 	stream := logproto.Stream{
 		Labels:  labels.FromStrings("foo", "bar").String(),
@@ -217,7 +245,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		return targetLag - 1
 	}
 
-	_, err = partitionReader.processNextFetchesUntilLagHonored(ctx, targetLag, log.NewNopLogger(), recordsChan, timeSince)
+	_, err = readerSvc.fetchUntilLagSatisfied(ctx, targetLag, log.NewNopLogger(), recordsChan, timeSince)
 	assert.NoError(t, err)
 
 	// Wait to process all the records
@@ -239,12 +267,12 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	consumer := newMockConsumer()
 
 	kaf.CurrentNode()
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -260,7 +288,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 
 	// Set our offset part way through the records we just produced
 	offset := int64(1)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-tenant", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -270,8 +298,12 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	require.NoError(t, resp.Error())
 
 	// Start reading
-	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
+	_, partitionReader := readersFromKafkaCfg(
+		t,
+		kafkaCfg,
+		consumerFactory,
+		0,
+	)
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
 	require.NoError(t, err)
 
@@ -297,12 +329,12 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	consumer := newMockConsumer()
 
 	kaf.CurrentNode()
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -318,7 +350,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 
 	// Set our offset to the last record produced
 	offset := int64(4)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -328,8 +360,12 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	require.NoError(t, resp.Error())
 
 	// Start reading
-	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
-	require.NoError(t, err)
+	_, partitionReader := readersFromKafkaCfg(
+		t,
+		kafkaCfg,
+		consumerFactory,
+		0,
+	)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = services.StartAndAwaitRunning(ctx, partitionReader)

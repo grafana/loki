@@ -24,7 +24,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:9.5.21
+    image: grafana/grafana:12.0.2
     ports:
       - "3000:3000"
     environment:
@@ -38,7 +38,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v2.55.1
+    image: prom/prometheus:v3.4.2
     ports:
       - 9090
     volumes:
@@ -180,7 +180,7 @@ services:
 
   # alertmanager to enable receiving alerts
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.28.1
     restart: unless-stopped
     ports:
       - "9093:9093"

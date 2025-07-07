@@ -8,11 +8,12 @@ package shared
 
 import (
 	"errors"
+	"net/http"
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"net/http"
-	"strings"
 )
 
 type storageAuthorizer struct {
@@ -20,13 +21,14 @@ type storageAuthorizer struct {
 	tenantID string
 }
 
-func NewStorageChallengePolicy(cred azcore.TokenCredential, audience string) policy.Policy {
+func NewStorageChallengePolicy(cred azcore.TokenCredential, audience string, allowHTTP bool) policy.Policy {
 	s := storageAuthorizer{scopes: []string{audience}}
 	return runtime.NewBearerTokenPolicy(cred, []string{audience}, &policy.BearerTokenOptions{
 		AuthorizationHandler: policy.AuthorizationHandler{
 			OnRequest:   s.onRequest,
 			OnChallenge: s.onChallenge,
 		},
+		InsecureAllowCredentialWithHTTP: allowHTTP,
 	})
 }
 

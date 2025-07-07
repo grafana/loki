@@ -6,7 +6,7 @@
   # HUGO_VERSION = "..." is set by bingo which allows reproducible local environment.
   NODE_VERSION = "22.10.0"
   NPM_VERSION = "10.9.0"
-  GO_VERSION = "1.22.8"
+  GO_VERSION = "1.23.6"
 
 [context.production]
   command = "(env && make web) || (sleep 30; false)"

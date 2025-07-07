@@ -36,19 +36,19 @@ func newListenerWatcher(resourceName string, parent *xdsResolver) *listenerWatch
 	return lw
 }
 
-func (l *listenerWatcher) OnUpdate(update *xdsresource.ListenerResourceData, onDone xdsresource.OnDoneFunc) {
+func (l *listenerWatcher) ResourceChanged(update *xdsresource.ListenerResourceData, onDone func()) {
 	handleUpdate := func(context.Context) { l.parent.onListenerResourceUpdate(update.Resource); onDone() }
 	l.parent.serializer.ScheduleOr(handleUpdate, onDone)
 }
 
-func (l *listenerWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+func (l *listenerWatcher) ResourceError(err error, onDone func()) {
 	handleError := func(context.Context) { l.parent.onListenerResourceError(err); onDone() }
 	l.parent.serializer.ScheduleOr(handleError, onDone)
 }
 
-func (l *listenerWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
-	handleNotFound := func(context.Context) { l.parent.onListenerResourceNotFound(); onDone() }
-	l.parent.serializer.ScheduleOr(handleNotFound, onDone)
+func (l *listenerWatcher) AmbientError(err error, onDone func()) {
+	handleError := func(context.Context) { l.parent.onListenerResourceAmbientError(err); onDone() }
+	l.parent.serializer.ScheduleOr(handleError, onDone)
 }
 
 func (l *listenerWatcher) stop() {
@@ -68,7 +68,7 @@ func newRouteConfigWatcher(resourceName string, parent *xdsResolver) *routeConfi
 	return rw
 }
 
-func (r *routeConfigWatcher) OnUpdate(u *xdsresource.RouteConfigResourceData, onDone xdsresource.OnDoneFunc) {
+func (r *routeConfigWatcher) ResourceChanged(u *xdsresource.RouteConfigResourceData, onDone func()) {
 	handleUpdate := func(context.Context) {
 		r.parent.onRouteConfigResourceUpdate(r.resourceName, u.Resource)
 		onDone()
@@ -76,14 +76,14 @@ func (r *routeConfigWatcher) OnUpdate(u *xdsresource.RouteConfigResourceData, on
 	r.parent.serializer.ScheduleOr(handleUpdate, onDone)
 }
 
-func (r *routeConfigWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+func (r *routeConfigWatcher) ResourceError(err error, onDone func()) {
 	handleError := func(context.Context) { r.parent.onRouteConfigResourceError(r.resourceName, err); onDone() }
 	r.parent.serializer.ScheduleOr(handleError, onDone)
 }
 
-func (r *routeConfigWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
-	handleNotFound := func(context.Context) { r.parent.onRouteConfigResourceNotFound(r.resourceName); onDone() }
-	r.parent.serializer.ScheduleOr(handleNotFound, onDone)
+func (r *routeConfigWatcher) AmbientError(err error, onDone func()) {
+	handleError := func(context.Context) { r.parent.onRouteConfigResourceAmbientError(r.resourceName, err); onDone() }
+	r.parent.serializer.ScheduleOr(handleError, onDone)
 }
 
 func (r *routeConfigWatcher) stop() {

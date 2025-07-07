@@ -167,13 +167,13 @@ func (b *BlockDirectory) resolveSize() error {
 // The passed function `close` is called when the the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(
 	alloc mempool.Allocator,
-	close func() error,
+	closeFunc func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
-		close:        close,
+		close:        closeFunc,
 	}
 }

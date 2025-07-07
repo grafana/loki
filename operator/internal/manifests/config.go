@@ -367,11 +367,13 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 	return c
 }
 
-var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
-	lokiv1.SizeOneXDemo:       10,
-	lokiv1.SizeOneXExtraSmall: 10,
-	lokiv1.SizeOneXSmall:      150,
-	lokiv1.SizeOneXMedium:     150,
+func deleteWorkerCount(size lokiv1.LokiStackSizeType) uint {
+	switch size {
+	case lokiv1.SizeOneXSmall, lokiv1.SizeOneXMedium:
+		return 150
+	default:
+		return 10
+	}
 }
 
 func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
@@ -394,7 +396,7 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 
 	return config.RetentionOptions{
 		Enabled:           true,
-		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
+		DeleteWorkerCount: deleteWorkerCount(ls.Size),
 	}
 }
 

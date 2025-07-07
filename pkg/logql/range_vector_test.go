@@ -67,7 +67,6 @@ func newPoint(t time.Time, v float64) promql.FPoint {
 }
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
-
 	// no overlap test case.
 	buildStreamingIt := func() (RangeVectorIterator, error) {
 		tt := struct {
@@ -183,7 +182,6 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 			}
 		}
 	})
-
 }
 
 func Benchmark_RangeVectorIterator(b *testing.B) {
@@ -214,7 +212,6 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 			i++
 		}
 	}
-
 }
 
 func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
@@ -445,6 +442,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 			time.Unix(110, 0), time.Unix(120, 0),
 		},
 		{
+			// TODO: use this test case
 			(5 * time.Second).Nanoseconds(), // no overlap
 			(30 * time.Second).Nanoseconds(),
 			(10 * time.Second).Nanoseconds(),
@@ -543,7 +541,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newRangeVectorIterator(sampleIter(tt.negative),
-				&syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
+				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 

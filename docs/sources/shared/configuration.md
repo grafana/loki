@@ -44,7 +44,7 @@ value is set to the specified default.
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
 To do this, pass `-config.expand-env=true` and use:
 
-```
+```bash
 ${VAR}
 ```
 
@@ -56,7 +56,7 @@ References to undefined variables are replaced by empty strings unless you speci
 
 To specify a default value, use:
 
-```
+```bash
 ${VAR:-default_value}
 ```
 
@@ -77,6 +77,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
+
+<!-- vale Grafana.Spelling = NO -->
 
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
@@ -107,6 +109,50 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Enable the experimental Loki UI.
+  # CLI flag: -ui.enabled
+  [enabled: <boolean> | default = false]
+
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "<hostname>"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 3m]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  # Enable debug logging for the UI.
+  # CLI flag: -ui.debug
+  [debug: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -128,6 +174,25 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The ruler block configures the Loki ruler.
 [ruler: <ruler>]
 
+ruler_storage:
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is: ruler-storage
+  [<thanos_object_store_config>]
+
+  # Backend storage to use. Supported backends are: local, s3, gcs, azure,
+  # swift, filesystem, alibabacloud, bos
+  # CLI flag: -ruler-storage.backend
+  [backend: <string> | default = "filesystem"]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler-storage.local.directory
+    [directory: <string> | default = ""]
+
 # The ingester_client block configures how the distributor will connect to
 # ingesters. Only appropriate when running all components, the distributor, or
 # the querier.
@@ -136,6 +201,106 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
 [ingester: <ingester>]
+
+block_builder:
+  # How many flushes can happen concurrently
+  # CLI flag: -blockbuilder.concurrent-flushes
+  [concurrent_flushes: <int> | default = 1]
+
+  # How many workers to process writes, defaults to number of available cpus
+  # CLI flag: -blockbuilder.concurrent-writers
+  [concurrent_writers: <int> | default = 1]
+
+  # The targeted _uncompressed_ size in bytes of a chunk block When this
+  # threshold is exceeded the head block will be cut and compressed inside the
+  # chunk.
+  # CLI flag: -blockbuilder.chunks-block-size
+  [chunk_block_size: <int> | default = 256KB]
+
+  # A target _compressed_ size in bytes for chunks. This is a desired size not
+  # an exact size, chunks may be slightly bigger or significantly smaller if
+  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
+  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
+  # with a variable number of blocks to meet the target size.
+  # CLI flag: -blockbuilder.chunk-target-size
+  [chunk_target_size: <int> | default = 1536KB]
+
+  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
+  # lz4-256k, lz4-1M, lz4, flate, zstd)
+  # CLI flag: -blockbuilder.chunk-encoding
+  [chunk_encoding: <string> | default = "snappy"]
+
+  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
+  # for longer than this, the current chunk will be flushed to the store and a
+  # new chunk created.
+  # CLI flag: -blockbuilder.max-chunk-age
+  [max_chunk_age: <duration> | default = 2h]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -blockbuilder.backoff..backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -blockbuilder.backoff..backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -blockbuilder.backoff..backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # The number of workers to run in parallel to process jobs.
+  # CLI flag: -blockbuilder.worker-parallelism
+  [worker_parallelism: <int> | default = 1]
+
+  # The interval at which to sync job status with the scheduler.
+  # CLI flag: -blockbuilder.sync-interval
+  [sync_interval: <duration> | default = 30s]
+
+  # The interval at which to poll for new jobs.
+  # CLI flag: -blockbuilder.poll-interval
+  [poll_interval: <duration> | default = 30s]
+
+  # Address of the scheduler in the format described here:
+  # https://github.com/grpc/grpc/blob/master/doc/naming.md
+  # CLI flag: -blockbuilder.scheduler-address
+  [scheduler_address: <string> | default = ""]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # blockbuilder.scheduler-grpc-client.
+  [scheduler_grpc_client_config: <grpc_client>]
+
+block_scheduler:
+  # How often the scheduler should plan jobs.
+  # CLI flag: -block-scheduler.interval
+  [interval: <duration> | default = 15m]
+
+  # Lookback period used by the scheduler to plan jobs when the consumer group
+  # has no commits. 0 consumes from the start of the partition.
+  # CLI flag: -block-scheduler.lookback-period
+  [lookback_period: <duration> | default = 0s]
+
+  # Strategy used by the planner to plan jobs. One of record-count
+  # CLI flag: -block-scheduler.strategy
+  [strategy: <string> | default = "record-count"]
+
+  # Target record count used by the planner to plan jobs. Only used when
+  # strategy is record-count
+  # CLI flag: -block-scheduler.target-record-count
+  [target_record_count: <int> | default = 1000]
+
+  job_queue:
+    # Interval to check for expired job leases
+    # CLI flag: -jobqueue.lease-expiry-check-interval
+    [lease_expiry_check_interval: <duration> | default = 1m]
+
+    # Duration after which a job lease is considered expired if the scheduler
+    # receives no updates from builders about the job. Expired jobs are
+    # re-enqueued
+    # CLI flag: -jobqueue.lease-duration
+    [lease_duration: <duration> | default = 10m]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -329,9 +494,9 @@ pattern_ingester:
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
-    # How often to downsample metrics from raw push observations.
+    # How often to sample metrics and patterns from raw push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
-    [downsample_period: <duration> | default = 10s]
+    [sample_period: <duration> | default = 10s]
 
     # The address of the Loki instance to push aggregated metrics to.
     # CLI flag: -pattern-ingester.metric-aggregation.loki-address
@@ -474,26 +639,194 @@ pattern_ingester:
     # The basic auth configuration for pushing metrics to Loki.
     basic_auth:
       # Basic auth username for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.username
       [username: <string> | default = ""]
 
       # Basic auth password for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.password
       [password: <string> | default = ""]
 
     # The backoff configuration for pushing metrics to Loki.
     backoff_config:
       # Minimum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-min-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-min-period
       [min_period: <duration> | default = 100ms]
 
       # Maximum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-max-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-max-period
       [max_period: <duration> | default = 10s]
 
       # Number of times to backoff and retry before failing.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-retries
       [max_retries: <int> | default = 10]
+
+  # Configures how detected patterns are pushed back to Loki for persistence.
+  pattern_persistence:
+    # The address of the Loki instance to push patterns to.
+    # CLI flag: -pattern-ingester.pattern-persistence.loki-address
+    [loki_address: <string> | default = ""]
+
+    # The timeout for writing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.timeout
+    [timeout: <duration> | default = 10s]
+
+    # How long to wait between pattern pushes to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.push-period
+    [push_period: <duration> | default = 1m]
+
+    # The HTTP client configuration for pushing patterns to Loki.
+    http_client_config:
+      basic_auth:
+        [username: <string> | default = ""]
+
+        [username_file: <string> | default = ""]
+
+        [username_ref: <string> | default = ""]
+
+        [password: <string> | default = ""]
+
+        [password_file: <string> | default = ""]
+
+        [password_ref: <string> | default = ""]
+
+      authorization:
+        [type: <string> | default = ""]
+
+        [credentials: <string> | default = ""]
+
+        [credentials_file: <string> | default = ""]
+
+        [credentials_ref: <string> | default = ""]
+
+      oauth2:
+        [client_id: <string> | default = ""]
+
+        [client_secret: <string> | default = ""]
+
+        [client_secret_file: <string> | default = ""]
+
+        [client_secret_ref: <string> | default = ""]
+
+        [scopes: <list of strings>]
+
+        [token_url: <string> | default = ""]
+
+        [endpoint_params: <map of string to string>]
+
+        tls_config:
+          [ca: <string> | default = ""]
+
+          [cert: <string> | default = ""]
+
+          [key: <string> | default = ""]
+
+          [ca_file: <string> | default = ""]
+
+          [cert_file: <string> | default = ""]
+
+          [key_file: <string> | default = ""]
+
+          [ca_ref: <string> | default = ""]
+
+          [cert_ref: <string> | default = ""]
+
+          [key_ref: <string> | default = ""]
+
+          [server_name: <string> | default = ""]
+
+          [insecure_skip_verify: <boolean>]
+
+          [min_version: <int>]
+
+          [max_version: <int>]
+
+        proxy_url:
+          [url: <url>]
+
+        [no_proxy: <string> | default = ""]
+
+        [proxy_from_environment: <boolean>]
+
+        [proxy_connect_header: <map of string to list of strings>]
+
+      [bearer_token: <string> | default = ""]
+
+      [bearer_token_file: <string> | default = ""]
+
+      tls_config:
+        [ca: <string> | default = ""]
+
+        [cert: <string> | default = ""]
+
+        [key: <string> | default = ""]
+
+        [ca_file: <string> | default = ""]
+
+        [cert_file: <string> | default = ""]
+
+        [key_file: <string> | default = ""]
+
+        [ca_ref: <string> | default = ""]
+
+        [cert_ref: <string> | default = ""]
+
+        [key_ref: <string> | default = ""]
+
+        [server_name: <string> | default = ""]
+
+        [insecure_skip_verify: <boolean>]
+
+        [min_version: <int>]
+
+        [max_version: <int>]
+
+      [follow_redirects: <boolean>]
+
+      [enable_http2: <boolean>]
+
+      proxy_url:
+        [url: <url>]
+
+      [no_proxy: <string> | default = ""]
+
+      [proxy_from_environment: <boolean>]
+
+      [proxy_connect_header: <map of string to list of strings>]
+
+      http_headers:
+        [: <map of string to Header>]
+
+    # Whether to use TLS for pushing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.tls
+    [use_tls: <boolean> | default = false]
+
+    # The basic auth configuration for pushing patterns to Loki.
+    basic_auth:
+      # Basic auth username for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.username
+      [username: <string> | default = ""]
+
+      # Basic auth password for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.password
+      [password: <string> | default = ""]
+
+    # The backoff configuration for pushing patterns to Loki.
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-retries
+      [max_retries: <int> | default = 10]
+
+    # The maximum number of patterns to accumulate before pushing.
+    # CLI flag: -pattern-ingester.pattern-persistence.batch-size
+    [batch_size: <int> | default = 1000]
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
@@ -526,6 +859,10 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-allowed-line-length
   [max_allowed_line_length: <int> | default = 3000]
 
+  # How long to retain patterns in the pattern ingester after they are pushed.
+  # CLI flag: -pattern-ingester.retain-for
+  [retain_for: <duration> | default = 3h]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -557,138 +894,10 @@ pattern_ingester:
 [compactor: <compactor>]
 
 compactor_grpc_client:
-  # gRPC client max receive message size (bytes).
-  # CLI flag: -compactor.grpc-client.grpc-max-recv-msg-size
-  [max_recv_msg_size: <int> | default = 104857600]
-
-  # gRPC client max send message size (bytes).
-  # CLI flag: -compactor.grpc-client.grpc-max-send-msg-size
-  [max_send_msg_size: <int> | default = 104857600]
-
-  # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
-  # CLI flag: -compactor.grpc-client.grpc-compression
-  [grpc_compression: <string> | default = ""]
-
-  # Rate limit for gRPC client; 0 means disabled.
-  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit
-  [rate_limit: <float> | default = 0]
-
-  # Rate limit burst for gRPC client.
-  # CLI flag: -compactor.grpc-client.grpc-client-rate-limit-burst
-  [rate_limit_burst: <int> | default = 0]
-
-  # Enable backoff and retry when we hit rate limits.
-  # CLI flag: -compactor.grpc-client.backoff-on-ratelimits
-  [backoff_on_ratelimits: <boolean> | default = false]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -compactor.grpc-client.backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -compactor.grpc-client.backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -compactor.grpc-client.backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # Initial stream window size. Values less than the default are not supported
-  # and are ignored. Setting this to a value other than the default disables the
-  # BDP estimator.
-  # CLI flag: -compactor.grpc-client.initial-stream-window-size
-  [initial_stream_window_size: <int> | default = 63KiB1023B]
-
-  # Initial connection window size. Values less than the default are not
-  # supported and are ignored. Setting this to a value other than the default
-  # disables the BDP estimator.
-  # CLI flag: -compactor.grpc-client.initial-connection-window-size
-  [initial_connection_window_size: <int> | default = 63KiB1023B]
-
-  # Enable TLS in the gRPC client. This flag needs to be enabled when any other
-  # TLS flag is set. If set to false, insecure connection to gRPC server will be
-  # used.
-  # CLI flag: -compactor.grpc-client.tls-enabled
-  [tls_enabled: <boolean> | default = false]
-
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -compactor.grpc-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -compactor.grpc-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -compactor.grpc-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -compactor.grpc-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -compactor.grpc-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -compactor.grpc-client.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -compactor.grpc-client.tls-min-version
-  [tls_min_version: <string> | default = ""]
-
-  # The maximum amount of time to establish a connection. A value of 0 means
-  # default gRPC client connect timeout and backoff.
-  # CLI flag: -compactor.grpc-client.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-
-  # Initial backoff delay after first connection failure. Only relevant if
-  # ConnectTimeout > 0.
-  # CLI flag: -compactor.grpc-client.connect-backoff-base-delay
-  [connect_backoff_base_delay: <duration> | default = 1s]
-
-  # Maximum backoff delay when establishing a connection. Only relevant if
-  # ConnectTimeout > 0.
-  # CLI flag: -compactor.grpc-client.connect-backoff-max-delay
-  [connect_backoff_max_delay: <duration> | default = 5s]
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is: compactor.grpc-client
+  [<grpc_client>]
 
 # The limits_config block configures global and per-tenant limits in Loki. The
 # values here can be overridden in the `overrides` section of the runtime_config
@@ -711,17 +920,9 @@ compactor_grpc_client:
 [memberlist: <memberlist>]
 
 kafka_config:
-  # The Kafka backend address.
-  # CLI flag: -kafka.address
-  [address: <string> | default = "localhost:9092"]
-
   # The Kafka topic name.
   # CLI flag: -kafka.topic
   [topic: <string> | default = ""]
-
-  # The Kafka client ID.
-  # CLI flag: -kafka.client-id
-  [client_id: <string> | default = ""]
 
   # The maximum time allowed to open a connection to a Kafka broker.
   # CLI flag: -kafka.dial-timeout
@@ -731,6 +932,24 @@ kafka_config:
   # to the Kafka backend.
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
+
+  reader_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.reader.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.reader.client-id
+    [client_id: <string> | default = ""]
+
+  writer_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.writer.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.writer.client-id
+    [client_id: <string> | default = ""]
 
   # The SASL username for authentication to Kafka using the PLAIN mechanism.
   # Both username and password must be set.
@@ -743,10 +962,8 @@ kafka_config:
   [sasl_password: <string> | default = ""]
 
   # The consumer group used by the consumer to track the last consumed offset.
-  # The consumer group must be different for each ingester. If the configured
-  # consumer group contains the '<partition>' placeholder, it is replaced with
-  # the actual partition ID owned by the ingester. When empty (recommended),
-  # Mimir uses the ingester instance ID to guarantee uniqueness.
+  # The consumer group must be different for each ingester zone.When empty, Loki
+  # uses the ingester instance ID.
   # CLI flag: -kafka.consumer-group
   [consumer_group: <string> | default = ""]
 
@@ -788,19 +1005,441 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
-  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
-  # -kafka.target-consumer-lag-at-startup and -kafka.max-consumer-lag-at-startup
-  # to 0 to disable waiting for maximum consumer lag being honored at startup.
-  # CLI flag: -kafka.target-consumer-lag-at-startup
-  [target_consumer_lag_at_startup: <duration> | default = 2s]
-
   # The guaranteed maximum lag before a consumer is considered to have caught up
   # reading from a partition at startup, becomes ACTIVE in the hash ring and
-  # passes the readiness check. Set both -kafka.target-consumer-lag-at-startup
-  # and -kafka.max-consumer-lag-at-startup to 0 to disable waiting for maximum
-  # consumer lag being honored at startup.
+  # passes the readiness check. Set -kafka.max-consumer-lag-at-startup to 0 to
+  # disable waiting for maximum consumer lag being honored at startup.
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
+
+  # The maximum number of workers to use for processing records from Kafka.
+  # CLI flag: -kafka.max-consumer-workers
+  [max_consumer_workers: <int> | default = 1]
+
+  # Enable collection of the following kafka latency histograms: read-wait,
+  # read-timing, write-wait, write-timing
+  # CLI flag: -kafka.enable-kafka-histograms
+  [enable_kafka_histograms: <boolean> | default = false]
+
+dataobj:
+  consumer:
+    builderconfig:
+      # The size of the target page to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-page-size
+      [target_page_size: <int> | default = 2MiB]
+
+      # The size of the target object to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-object-size
+      [target_object_size: <int> | default = 1GiB]
+
+      # Configures a maximum size for sections, for sections that support it.
+      # CLI flag: -dataobj-consumer.target-section-size
+      [target_section_size: <int> | default = 128MiB]
+
+      # The size of the buffer to use for sorting logs.
+      # CLI flag: -dataobj-consumer.buffer-size
+      [buffer_size: <int> | default = 16MiB]
+
+      # The maximum number of stripes to merge into a section at once. Must be
+      # greater than 1.
+      # CLI flag: -dataobj-consumer.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+    uploader:
+      # The size of the SHA prefix to use for generating object storage keys for
+      # data objects.
+      # CLI flag: -dataobj-consumer.sha-prefix-size
+      [shaprefixsize: <int> | default = 2]
+
+    # The maximum amount of time to wait in seconds before flushing an object
+    # that is no longer receiving new writes
+    # CLI flag: -dataobj-consumer.idle-flush-timeout
+    [idle_flush_timeout: <duration> | default = 1h]
+
+  querier:
+    # Enable the dataobj querier.
+    # CLI flag: -dataobj-querier-enabled
+    [enabled: <boolean> | default = false]
+
+    # The date of the first day of when the dataobj querier should start
+    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
+    # CLI flag: -dataobj-querier-from
+    [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
+
+  # The prefix to use for the storage bucket.
+  # CLI flag: -dataobj-storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
+
+ingest_limits:
+  # Enable the ingest limits service.
+  # CLI flag: -ingest-limits.enabled
+  [enabled: <boolean> | default = false]
+
+  # The duration for which which streams are considered active. Streams that
+  # have not been updated within this window are considered inactive and not
+  # counted towards limits.
+  # CLI flag: -ingest-limits.active-window
+  [active_window: <duration> | default = 2h]
+
+  # The time window for rate calculation. This should match the window used in
+  # Prometheus rate() queries for consistency.
+  # CLI flag: -ingest-limits.rate-window
+  [rate_window: <duration> | default = 5m]
+
+  # The size of the buckets used to calculate stream rates. Smaller buckets
+  # provide more precise rates but require more memory.
+  # CLI flag: -ingest-limits.bucket-size
+  [bucket_size: <duration> | default = 1m]
+
+  # The interval at which old streams are evicted.
+  # CLI flag: -ingest-limits.eviction-interval
+  [eviction_interval: <duration> | default = 10m]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
+
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -ingest-limits.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -ingest-limits.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is: ingest-limits
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is: ingest-limits
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -ingest-limits.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -ingest-limits.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -ingest-limits.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -ingest-limits.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -ingest-limits.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -ingest-limits.distributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -ingest-limits.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -ingest-limits.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -ingest-limits.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -ingest-limits.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -ingest-limits.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -ingest-limits.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -ingest-limits.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -ingest-limits.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ingest-limits.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -ingest-limits.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -ingest-limits.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ingest-limits.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -ingest-limits.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -ingest-limits.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -ingest-limits.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ingest-limits.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -ingest-limits.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -ingest-limits.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # The consumer group for the Kafka topic used to read stream metadata records.
+  # CLI flag: -ingest-limits.consumer-group
+  [consumer_group: <string> | default = "ingest-limits"]
+
+  # The topic for the Kafka topic used to read and write stream metadata
+  # records.
+  # CLI flag: -ingest-limits.topic
+  [topic: <string> | default = ""]
+
+ingest_limits_frontend:
+  client_config:
+    # Configures client gRPC connections to limits service.
+    # The CLI flags prefix for this block configuration is:
+    # ingest-limits-frontend.limits-client
+    [grpc_client_config: <grpc_client>]
+
+    # Configures client gRPC connections pool to limits service.
+    pool_config:
+      # How frequently to clean up clients for ingest-limits that have gone
+      # away.
+      # CLI flag: -ingest-limits-frontend.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingest-limits client during periodic cleanup.
+      # CLI flag: -ingest-limits-frontend.health-check-ingest-limits
+      [health_check_ingest_limits: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -ingest-limits-frontend.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
+
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -ingest-limits-frontend.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -ingest-limits-frontend.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # ingest-limits-frontend
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # ingest-limits-frontend
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -ingest-limits-frontend.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -ingest-limits-frontend.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -ingest-limits-frontend.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -ingest-limits-frontend.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -ingest-limits-frontend.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -ingest-limits-frontend.distributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -ingest-limits-frontend.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -ingest-limits-frontend.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -ingest-limits-frontend.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -ingest-limits-frontend.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -ingest-limits-frontend.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -ingest-limits-frontend.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -ingest-limits-frontend.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -ingest-limits-frontend.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ingest-limits-frontend.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -ingest-limits-frontend.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -ingest-limits-frontend.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ingest-limits-frontend.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -ingest-limits-frontend.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -ingest-limits-frontend.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -ingest-limits-frontend.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ingest-limits-frontend.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -ingest-limits-frontend.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -ingest-limits-frontend.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # The number of partitions to use for the ring.
+  # CLI flag: -ingest-limits-frontend.num-partitions
+  [num_partitions: <int> | default = 64]
+
+  # The TTL for the assigned partitions cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
+  [assigned_partitions_cache_ttl: <duration> | default = 1m]
+
+ingest_limits_frontend_client:
+  # Configures client gRPC connections to limits service.
+  # The CLI flags prefix for this block configuration is:
+  # ingest-limits-frontend-client
+  [grpc_client_config: <grpc_client>]
+
+  # Configures client gRPC connections pool to limits service.
+  pool_config:
+    # How frequently to clean up clients for ingest-limits-frontend that have
+    # gone away.
+    # CLI flag: -ingest-limits-frontend-client.client-cleanup-period
+    [client_cleanup_period: <duration> | default = 15s]
+
+    # Run a health check on each ingest-limits-frontend client during periodic
+    # cleanup.
+    # CLI flag: -ingest-limits-frontend-client.health-check-ingest-limits
+    [health_check_ingest_limits: <boolean> | default = true]
+
+    # Timeout for the health check.
+    # CLI flag: -ingest-limits-frontend-client.remote-timeout
+    [remote_timeout: <duration> | default = 1s]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -883,6 +1522,14 @@ Configuration for `analytics`.
 # URL to which reports are sent
 # CLI flag: -reporting.usage-stats-url
 [usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
+
+# URL to the proxy server
+# CLI flag: -reporting.proxy-url
+[proxy_url: <string> | default = ""]
+
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: reporting.tls-config
+[tls_config: <tls_config>]
 ```
 
 ### attributes_config
@@ -987,110 +1634,9 @@ dynamodb:
   # CLI flag: -dynamodb.kms-key-id
   [kms_key_id: <string> | default = ""]
 
-# S3 endpoint URL with escaped Key and Secret encoded. If only region is
-# specified as a host, proper endpoint will be deduced. Use
-# inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -s3.url
-[s3: <url>]
-
-# Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -s3.force-path-style
-[s3forcepathstyle: <boolean> | default = false]
-
-# Comma separated list of bucket names to evenly distribute chunks over.
-# Overrides any buckets specified in s3.url flag
-# CLI flag: -s3.buckets
-[bucketnames: <string> | default = ""]
-
-# S3 Endpoint to connect to.
-# CLI flag: -s3.endpoint
-[endpoint: <string> | default = ""]
-
-# AWS region to use.
-# CLI flag: -s3.region
-[region: <string> | default = ""]
-
-# AWS Access Key ID
-# CLI flag: -s3.access-key-id
-[access_key_id: <string> | default = ""]
-
-# AWS Secret Access Key
-# CLI flag: -s3.secret-access-key
-[secret_access_key: <string> | default = ""]
-
-# AWS Session Token
-# CLI flag: -s3.session-token
-[session_token: <string> | default = ""]
-
-# Disable https on s3 connection.
-# CLI flag: -s3.insecure
-[insecure: <boolean> | default = false]
-
-http_config:
-  # Timeout specifies a time limit for requests made by s3 Client.
-  # CLI flag: -s3.http.timeout
-  [timeout: <duration> | default = 0s]
-
-  # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -s3.http.idle-conn-timeout
-  [idle_conn_timeout: <duration> | default = 1m30s]
-
-  # If non-zero, specifies the amount of time to wait for a server's response
-  # headers after fully writing the request.
-  # CLI flag: -s3.http.response-header-timeout
-  [response_header_timeout: <duration> | default = 0s]
-
-  # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -s3.http.insecure-skip-verify
-  [insecure_skip_verify: <boolean> | default = false]
-
-  # Path to the trusted CA file that signed the SSL certificate of the S3
-  # endpoint.
-  # CLI flag: -s3.http.ca-file
-  [ca_file: <string> | default = ""]
-
-# The signature version to use for authenticating against S3. Supported values
-# are: v4.
-# CLI flag: -s3.signature-version
-[signature_version: <string> | default = "v4"]
-
-# The S3 storage class which objects will use. Supported values are: GLACIER,
-# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
-# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
-# CLI flag: -s3.storage-class
-[storage_class: <string> | default = "STANDARD"]
-
-sse:
-  # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -s3.sse.type
-  [type: <string> | default = ""]
-
-  # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -s3.sse.kms-key-id
-  [kms_key_id: <string> | default = ""]
-
-  # KMS Encryption Context used for object encryption. It expects JSON formatted
-  # string.
-  # CLI flag: -s3.sse.kms-encryption-context
-  [kms_encryption_context: <string> | default = ""]
-
-# Configures back off when S3 get Object.
-backoff_config:
-  # Minimum backoff time when s3 get Object
-  # CLI flag: -s3.min-backoff
-  [min_period: <duration> | default = 100ms]
-
-  # Maximum backoff time when s3 get Object
-  # CLI flag: -s3.max-backoff
-  [max_period: <duration> | default = 3s]
-
-  # Maximum number of times to retry for s3 GetObject or ObjectExists
-  # CLI flag: -s3.max-retries
-  [max_retries: <int> | default = 5]
-
-# Disable forcing S3 dualstack endpoint usage.
-# CLI flag: -s3.disable-dualstack
-[disable_dualstack: <boolean> | default = false]
+# The s3_storage_config block configures the connection to Amazon S3 object
+# storage backend.
+[<s3_storage_config>]
 ```
 
 ### azure_storage_config
@@ -1209,19 +1755,20 @@ planner:
   # CLI flag: -bloom-build.planner.interval
   [planning_interval: <duration> | default = 8h]
 
-  # Newest day-table offset (from today, inclusive) to build blooms for.
-  # Increase to lower cost by not re-writing data to object storage too
-  # frequently since recent data changes more often at the cost of not having
-  # blooms available as quickly.
+  # Newest day-table offset (from today, inclusive) to build blooms for. 0 start
+  # building from today, 1 from yesterday and so on. Increase to lower cost by
+  # not re-writing data to object storage too frequently since recent data
+  # changes more often at the cost of not having blooms available as quickly.
   # CLI flag: -bloom-build.planner.min-table-offset
-  [min_table_offset: <int> | default = 1]
+  [min_table_offset: <int> | default = 0]
 
-  # Oldest day-table offset (from today, inclusive) to compact. This can be used
-  # to lower cost by not trying to compact older data which doesn't change. This
+  # Oldest day-table offset (from today, inclusive) to build blooms for. 1 till
+  # yesterday, 2 till day before yesterday and so on. This can be used to lower
+  # cost by not trying to build blooms for older data which doesn't change. This
   # can be optimized by aligning it with the maximum
   # `reject_old_samples_max_age` setting of any tenant.
   # CLI flag: -bloom-build.planner.max-table-offset
-  [max_table_offset: <int> | default = 2]
+  [max_table_offset: <int> | default = 1]
 
   retention:
     # Enable bloom retention.
@@ -1232,6 +1779,18 @@ planner:
     # Maximum number of tasks to queue per tenant.
     # CLI flag: -bloom-build.planner.queue.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    # Whether to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.store-tasks-on-disk
+    [store_tasks_on_disk: <boolean> | default = false]
+
+    # Directory to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.tasks-disk-directory
+    [tasks_disk_directory: <string> | default = "/tmp/bloom-planner-queue"]
+
+    # Whether to clean the tasks directory on startup.
+    # CLI flag: -bloom-build.planner.queue.clean-tasks-directory
+    [clean_tasks_directory: <boolean> | default = false]
 
 builder:
   # The grpc_client block configures the gRPC client used to communicate between
@@ -1279,22 +1838,6 @@ client:
   # The CLI flags prefix for this block configuration is:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
-
-  results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -bloom-gateway-client.cache.compression
-    [compression: <string> | default = ""]
-
-  # Flag to control whether to cache bloom gateway client requests/responses.
-  # CLI flag: -bloom-gateway-client.cache_results
-  [cache_results: <boolean> | default = false]
 
   # Comma separated addresses list in DNS Service Discovery format:
   # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
@@ -1351,7 +1894,6 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-gateway-client.cache`
 - `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -1452,67 +1994,10 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -<prefix>.memcached.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -<prefix>.memcached.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -<prefix>.memcached.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -<prefix>.memcached.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -<prefix>.memcached.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -<prefix>.memcached.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -<prefix>.memcached.tls-min-version
-  [tls_min_version: <string> | default = ""]
+  # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # store.index-cache-write.memcached
+  [<tls_config>]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A
@@ -1614,6 +2099,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
+# Chunks fetched from queriers before this duration will not be written to the
+# cache. A value of 0 will write all chunks to the cache
+# CLI flag: -store.skip-query-writeback-older-than
+[skip_query_writeback_cache_older_than: <duration> | default = 0s]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
@@ -1636,7 +2126,7 @@ Common configuration to be shared between multiple modules. If a more specific c
 storage:
   # The s3_storage_config block configures the connection to Amazon S3 object
   # storage backend.
-  # The CLI flags prefix for this block configuration is: common
+  # The CLI flags prefix for this block configuration is: common.storage
   [s3: <s3_storage_config>]
 
   # The gcs_storage_config block configures the connection to Google Cloud
@@ -1740,6 +2230,15 @@ storage:
       # 'limited').
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
+
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is:
+  # common.storage.object-store
+  [object_store: <thanos_object_store_config>]
 
 [persist_tokens: <boolean>]
 
@@ -1855,7 +2354,7 @@ The `compactor` block configures the compactor component, which compacts index s
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
-[working_directory: <string> | default = ""]
+[working_directory: <string> | default = "/var/loki/compactor"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
@@ -1904,6 +2403,16 @@ retention_backoff_config:
 # Path prefix for storing delete requests.
 # CLI flag: -compactor.delete-request-store.key-prefix
 [delete_request_store_key_prefix: <string> | default = "index/"]
+
+# Type of DB to use for storing delete requests. Supported types: boltdb, sqlite
+# CLI flag: -compactor.delete-request-store.db-type
+[delete_request_store_db_type: <string> | default = "boltdb"]
+
+# Type of DB to use as backup for storing delete requests. Backup DB should
+# ideally be used while migrating from one DB type to another. Supported
+# type(s): boltdb
+# CLI flag: -compactor.delete-request-store.backup-db-type
+[backup_delete_request_store_db_type: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
@@ -2038,6 +2547,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingest-limits`
+- `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
@@ -2219,6 +2730,10 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
+# The maximum size of a received message.
+# CLI flag: -distributor.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 104857600]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -2251,7 +2766,7 @@ write_failures_logging:
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
-  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
+  [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
@@ -2260,6 +2775,41 @@ otlp_config:
 # Enable writes to Ingesters during Push requests. Defaults to true.
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
+
+# Enable checking limits against the ingest-limits service. Defaults to false.
+# CLI flag: -distributor.ingest-limits-enabled
+[ingest_limits_enabled: <boolean> | default = false]
+
+# Enable dry-run mode where limits are checked the ingest-limits service, but
+# not enforced. Defaults to false.
+# CLI flag: -distributor.ingest-limits-dry-run-enabled
+[ingest_limits_dry_run_enabled: <boolean> | default = false]
+
+tenant_topic:
+  # Enable the tenant topic tee, which writes logs to Kafka topics based on
+  # tenant IDs instead of using multitenant topics/partitions.
+  # CLI flag: -distributor.tenant-topic-tee.enabled
+  [enabled: <boolean> | default = false]
+
+  # Prefix to prepend to tenant IDs to form the final Kafka topic name
+  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
+  [topic_prefix: <string> | default = "loki.tenant"]
+
+  # Maximum number of bytes that can be buffered before producing to Kafka
+  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 100MiB]
+
+  # Maximum size of a single Kafka record in bytes
+  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
+
+  # Topic strategy to use. Valid values are 'simple' or 'automatic'
+  # CLI flag: -distributor.tenant-topic-tee.strategy
+  [strategy: <string> | default = "simple"]
+
+  # Target throughput per partition in bytes for the automatic strategy
+  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -2270,6 +2820,8 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingest-limits`
+- `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
@@ -2294,66 +2846,9 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.etcd.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.etcd.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.etcd.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.etcd.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.etcd.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.etcd.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: ruler.ring.etcd
+[<tls_config>]
 
 # Etcd username.
 # CLI flag: -<prefix>.etcd.username
@@ -2436,6 +2931,10 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
+
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
 # CLI flag: -frontend.encoding
@@ -2454,7 +2953,11 @@ The `frontend` block configures the Loki query-frontend.
 [tail_proxy_url: <string> | default = ""]
 
 # The TLS configuration.
+# The CLI flags prefix for this block configuration is: frontend.tail-tls-config
 [tail_tls_config: <tls_config>]
+
+# Support 'application/vnd.apache.parquet' content type in HTTP responses.
+[support_parquet_encoding: <boolean>]
 ```
 
 ### frontend_worker
@@ -2522,6 +3025,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
+
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
@@ -2555,10 +3062,14 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `blockbuilder.scheduler-grpc-client.`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
+- `compactor.grpc-client`
 - `frontend.grpc-client-config`
+- `ingest-limits-frontend-client`
+- `ingest-limits-frontend.limits-client`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
@@ -2627,66 +3138,10 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is:
+# tsdb.shipper.index-gateway-client.grpc
+[<tls_config>]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
@@ -2702,6 +3157,11 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -<prefix>.cluster-validation.label
+  [label: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -3260,6 +3720,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
 
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
@@ -3271,6 +3735,23 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# Simulated latency to add to push requests. Used for testing. Set to 0s to
+# disable.
+# CLI flag: -limits.simulated-push-latency
+[simulated_push_latency: <duration> | default = 0s]
+
+# Enable experimental support for running multiple query variants over the same
+# underlying data. For example, running both a rate() and count_over_time()
+# query over the same range selector.
+# CLI flag: -limits.enable-multi-variant-queries
+[enable_multi_variant_queries: <boolean> | default = false]
+
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
+discover_generic_fields:
+  [fields: <map of string to list of strings>]
 
 # If no service_name label exists, Loki maps a single label from the configured
 # list to service_name. If none of the configured labels exist in the stream,
@@ -3289,7 +3770,13 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
+
+# Maximum depth to search for log level fields in JSON logs. A value of 0 or
+# less means unlimited depth. Default is 2 which searches the first 2 levels of
+# the JSON object.
+# CLI flag: -validation.log-level-from-json-max-depth
+[log_level_from_json_max_depth: <int> | default = 2]
 
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
@@ -3533,6 +4020,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
 
+# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
+# startup at the cost of not recovering in-memory WAL metrics on restart.
+# CLI flag: -ruler.enable-wal-replay
+[ruler_enable_wal_replay: <boolean> | default = true]
+
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
 
@@ -3626,7 +4118,7 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 0s]
 
-# Per-stream retention to apply, if the retention is enable on the compactor
+# Per-stream retention to apply, if the retention is enabled on the compactor
 # side.
 # Example:
 #  retention_stream:
@@ -3637,7 +4129,7 @@ ruler_remote_write_sigv4_config:
 #  priority: 1
 #  period: 744h
 # Selector is a Prometheus labels matchers that will apply the 'period'
-# retention only if the stream is matching. In case multiple stream are
+# retention only if the stream is matching. In case multiple streams are
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
@@ -3698,19 +4190,10 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Experimental. The shard size defines how many bloom gateways should be used by
-# a tenant for querying.
-# CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 0]
-
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
-
-# Experimental. Interval for computing the cache key in the Bloom Gateway.
-# CLI flag: -bloom-gateway.cache-key-interval
-[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
@@ -3752,6 +4235,10 @@ shard_streams:
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
+# Experimental. Prefetch blocks on bloom gateways as soon as they are built.
+# CLI flag: -bloom-build.prefetch-blocks
+[bloom_prefetch_blocks: <boolean> | default = false]
+
 # Experimental. The maximum bloom block size. A value of 0 sets an unlimited
 # size. Default is 200MB. The actual block size might exceed this limit since
 # blooms will be added to blocks until the block exceeds the maximum block size.
@@ -3792,9 +4279,20 @@ otlp_config:
   # drop them altogether
   [scope_attributes: <list of attributes_configs>]
 
-  # Configuration for log attributes to store them as Structured Metadata or
-  # drop them altogether
+  # Configuration for log attributes to store them as index labels or Structured
+  # Metadata or drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+  # When true, the severity_text field from log records will be stored as an
+  # index label. It is recommended not to use this option unless absolutely
+  # necessary
+  [severity_text_as_label: <boolean> | default = false]
+
+# Block ingestion for policy until the configured date. The policy '*' is the
+# global policy, which is applied to all streams not matching a policy and can
+# be overridden by other policies. The time should be in RFC3339 format. The
+# policy is based on the policy_stream_mapping configuration.
+[block_ingestion_policy_until: <map of string to Time>]
 
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
@@ -3807,6 +4305,38 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
+# List of labels that must be present in the stream. If any of the labels are
+# missing, the stream will be discarded. This flag configures it globally for
+# all tenants. Experimental.
+# CLI flag: -validation.enforced-labels
+[enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. The policy '*' is the global policy, which
+# is applied to all streams and can be extended by other policies. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+#   '*':
+#     - label5
+[policy_enforced_labels: <map of string to list of strings>]
+
+# Map of policies to stream selectors with a priority. Experimental.  Example:
+#  policy_stream_mapping: 
+#   finance: 
+#     - selector: '{namespace="prod", container="billing"}' 
+#       priority: 2 
+#   ops: 
+#     - selector: '{namespace="prod", container="ops"}' 
+#       priority: 1 
+#   staging: 
+#     - selector: '{namespace="staging"}' 
+#       priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
+
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
 # disables shuffle sharding and tenant is sharded across all partitions.
@@ -3817,11 +4347,15 @@ otlp_config:
 [shard_aggregations: <list of strings>]
 
 # Enable metric aggregation. When enabled, pushed streams will be sampled for
-# bytes and count, and these metric will be written back into Loki as a special
-# __aggregated_metric__ stream, which can be queried for faster histogram
-# queries.
-# CLI flag: -limits.metric-aggregation-enabled
+# bytes and line counts. These metrics will be written back into Loki as a
+# special __aggregated_metric__ stream.
+# CLI flag: -limits.aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
+
+# Enable persistence of patterns detected at ingest. When enabled, patterns for
+# pushed streams will be written back into Loki as a special __pattern__ stream.
+# CLI flag: -limits.pattern-persistence-enabled
+[pattern_persistence_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -3898,6 +4432,11 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.compression-enabled
 [compression_enabled: <boolean> | default = true]
 
+# How frequently to notify watchers when a key changes. Can reduce CPU activity
+# in large memberlist deployments. 0 to notify without delay.
+# CLI flag: -memberlist.notify-interval
+[notify_interval: <duration> | default = 0s]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -3939,7 +4478,15 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.max-join-retries
 [max_join_retries: <int> | default = 10]
 
-# If this node fails to join memberlist cluster, abort.
+# Abort if this node fails the fast memberlist cluster joining procedure at
+# startup. When enabled, it's guaranteed that other services, depending on
+# memberlist, have an updated view over the cluster state when they're started.
+# CLI flag: -memberlist.abort-if-fast-join-fails
+[abort_if_cluster_fast_join_fails: <boolean> | default = false]
+
+# Abort if this node fails to join memberlist cluster at startup. When enabled,
+# it's not guaranteed that other services are started only after the cluster
+# state has been successfully updated; use 'abort-if-fast-join-fails' instead.
 # CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = false]
 
@@ -3955,6 +4502,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
+
+# How long to keep obsolete entries in the KV store.
+# CLI flag: -memberlist.obsolete-entries-timeout
+[obsolete_entries_timeout: <duration> | default = 30s]
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
@@ -3973,6 +4524,10 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
 
+# Size of the buffered channel for the WatchPrefix function.
+# CLI flag: -memberlist.watch-prefix-buffer-size
+[watch_prefix_buffer_size: <int> | default = 128]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -3990,70 +4545,22 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 
+# Maximum number of concurrent writes to other nodes.
+# CLI flag: -memberlist.max-concurrent-writes
+[max_concurrent_writes: <int> | default = 3]
+
+# Timeout for acquiring one of the concurrent write slots. After this time, the
+# message will be dropped.
+# CLI flag: -memberlist.acquire-writer-timeout
+[acquire_writer_timeout: <duration> | default = 250ms]
+
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate, which will be used for authenticating with the
-# server. Also requires the key path to be configured.
-# CLI flag: -memberlist.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -memberlist.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates to validate server certificate against. If not
-# set, the host's root CA certificates are used.
-# CLI flag: -memberlist.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -memberlist.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -memberlist.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Override the default cipher suite list (separated by commas). Allowed values:
-# 
-# Secure Ciphers:
-# - TLS_AES_128_GCM_SHA256
-# - TLS_AES_256_GCM_SHA384
-# - TLS_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-# 
-# Insecure Ciphers:
-# - TLS_RSA_WITH_RC4_128_SHA
-# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA
-# - TLS_RSA_WITH_AES_256_CBC_SHA
-# - TLS_RSA_WITH_AES_128_CBC_SHA256
-# - TLS_RSA_WITH_AES_128_GCM_SHA256
-# - TLS_RSA_WITH_AES_256_GCM_SHA384
-# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -memberlist.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
-
-# Override the default minimum TLS version. Allowed values: VersionTLS10,
-# VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -memberlist.tls-min-version
-[tls_min_version: <string> | default = ""]
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: memberlist
+[<tls_config>]
 ```
 
 ### named_stores_config
@@ -4104,10 +4611,26 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request
 [log_push_request: <boolean> | default = false]
 
+# Log a commutative hash of the labels for all streams in a push request. In
+# some cases this can potentially be used as an identifier of the agent sending
+# the stream. Calculating hashes is epensive so only enable as needed.
+# CLI flag: -operation-config.log-hash-of-labels
+[log_hash_of_labels: <boolean> | default = false]
+
 # Log every stream in a push request (very verbose, recommend to enable via
 # runtime config only).
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
+
+# Only show streams that match a provided IP address, LogPushRequestStreams must
+# be enabled. Can be used multiple times to filter by multiple IPs.
+# CLI flag: -operation-config.filter-push-request-streams-ips
+[filter_push_request_streams_ips: <list of strings> | default = []]
+
+# Log service name discovery (very verbose, recommend to enable via runtime
+# config only).
+# CLI flag: -operation-config.log-service-name-discovery
+[log_service_name_discovery: <boolean> | default = false]
 
 # Log metrics for duplicate lines received.
 # CLI flag: -operation-config.log-duplicate-metrics
@@ -4224,6 +4747,14 @@ engine:
   # sketch can track.
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
+
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -querier.engine.enable-v2-engine
+  [enable_v2_engine: <boolean> | default = false]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -querier.engine.batch-size
+  [batch_size: <int> | default = 100]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4560,7 +5091,7 @@ storage:
   [gcs: <gcs_storage_config>]
 
   # Configures backend rule storage for S3.
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [s3: <s3_storage_config>]
 
   # Configures backend rule storage for Baidu Object Storage (BOS).
@@ -4617,67 +5148,10 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -ruler.alertmanager-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -ruler.alertmanager-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates to validate server certificate against. If not
-  # set, the host's root CA certificates are used.
-  # CLI flag: -ruler.alertmanager-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -ruler.alertmanager-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Override the default cipher suite list (separated by commas). Allowed
-  # values:
-  # 
-  # Secure Ciphers:
-  # - TLS_AES_128_GCM_SHA256
-  # - TLS_AES_256_GCM_SHA384
-  # - TLS_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-  # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  # 
-  # Insecure Ciphers:
-  # - TLS_RSA_WITH_RC4_128_SHA
-  # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA
-  # - TLS_RSA_WITH_AES_256_CBC_SHA
-  # - TLS_RSA_WITH_AES_128_CBC_SHA256
-  # - TLS_RSA_WITH_AES_128_GCM_SHA256
-  # - TLS_RSA_WITH_AES_256_GCM_SHA384
-  # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-  # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-  # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-  # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-  # CLI flag: -ruler.alertmanager-client.tls-cipher-suites
-  [tls_cipher_suites: <string> | default = ""]
-
-  # Override the default minimum TLS version. Allowed values: VersionTLS10,
-  # VersionTLS11, VersionTLS12, VersionTLS13
-  # CLI flag: -ruler.alertmanager-client.tls-min-version
-  [tls_min_version: <string> | default = ""]
+  # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # ruler.alertmanager-client
+  [<tls_config>]
 
   # HTTP Basic authentication username. It overrides the username set in the URL
   # (if any).
@@ -4854,6 +5328,9 @@ remote_write:
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
+  # Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of
+  # RemoteWriteConfig is not permitted. If specified, it will be dropped during
+  # config parsing.
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
@@ -4866,7 +5343,8 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
-  # Add X-Scope-OrgID header in remote write requests.
+  # Add an X-Scope-OrgID header in remote write requests with the tenant ID of a
+  # Loki tenant that the recording rules are part of.
   # CLI flag: -ruler.remote-write.add-org-id-header
   [add_org_id_header: <boolean> | default = true]
 
@@ -4895,67 +5373,10 @@ evaluation:
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
-    # Path to the client certificate, which will be used for authenticating with
-    # the server. Also requires the key path to be configured.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
-    [tls_cert_path: <string> | default = ""]
-
-    # Path to the key for the client certificate. Also requires the client
-    # certificate to be configured.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
-    [tls_key_path: <string> | default = ""]
-
-    # Path to the CA certificates to validate server certificate against. If not
-    # set, the host's root CA certificates are used.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
-    [tls_ca_path: <string> | default = ""]
-
-    # Override the expected name on the server certificate.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-server-name
-    [tls_server_name: <string> | default = ""]
-
-    # Skip validating server certificate.
-    # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
-    [tls_insecure_skip_verify: <boolean> | default = false]
-
-    # Override the default cipher suite list (separated by commas). Allowed
-    # values:
-    # 
-    # Secure Ciphers:
-    # - TLS_AES_128_GCM_SHA256
-    # - TLS_AES_256_GCM_SHA384
-    # - TLS_CHACHA20_POLY1305_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-    # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-    # 
-    # Insecure Ciphers:
-    # - TLS_RSA_WITH_RC4_128_SHA
-    # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA
-    # - TLS_RSA_WITH_AES_256_CBC_SHA
-    # - TLS_RSA_WITH_AES_128_CBC_SHA256
-    # - TLS_RSA_WITH_AES_128_GCM_SHA256
-    # - TLS_RSA_WITH_AES_256_GCM_SHA384
-    # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-    # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-    # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-    # CLI flag: -ruler.evaluation.query-frontend.tls-cipher-suites
-    [tls_cipher_suites: <string> | default = ""]
-
-    # Override the default minimum TLS version. Allowed values: VersionTLS10,
-    # VersionTLS11, VersionTLS12, VersionTLS13
-    # CLI flag: -ruler.evaluation.query-frontend.tls-min-version
-    [tls_min_version: <string> | default = ""]
+    # The TLS configuration.
+    # The CLI flags prefix for this block configuration is:
+    # ruler.evaluation.query-frontend
+    [<tls_config>]
 ```
 
 ### runtime_config
@@ -4977,8 +5398,8 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 
 The `s3_storage_config` block configures the connection to Amazon S3 object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage`
+- `ruler.storage`
 
 &nbsp;
 
@@ -4986,106 +5407,112 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
-# CLI flag: -<prefix>.storage.s3.url
+# CLI flag: -<prefix>.s3.url
 [s3: <url>]
 
 # Set this to `true` to force the request to use path-style addressing.
-# CLI flag: -<prefix>.storage.s3.force-path-style
+# CLI flag: -<prefix>.s3.force-path-style
 [s3forcepathstyle: <boolean> | default = false]
 
 # Comma separated list of bucket names to evenly distribute chunks over.
 # Overrides any buckets specified in s3.url flag
-# CLI flag: -<prefix>.storage.s3.buckets
+# CLI flag: -<prefix>.s3.buckets
 [bucketnames: <string> | default = ""]
 
 # S3 Endpoint to connect to.
-# CLI flag: -<prefix>.storage.s3.endpoint
+# CLI flag: -<prefix>.s3.endpoint
 [endpoint: <string> | default = ""]
 
 # AWS region to use.
-# CLI flag: -<prefix>.storage.s3.region
+# CLI flag: -<prefix>.s3.region
 [region: <string> | default = ""]
 
 # AWS Access Key ID
-# CLI flag: -<prefix>.storage.s3.access-key-id
+# CLI flag: -<prefix>.s3.access-key-id
 [access_key_id: <string> | default = ""]
 
 # AWS Secret Access Key
-# CLI flag: -<prefix>.storage.s3.secret-access-key
+# CLI flag: -<prefix>.s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
 # AWS Session Token
-# CLI flag: -<prefix>.storage.s3.session-token
+# CLI flag: -<prefix>.s3.session-token
 [session_token: <string> | default = ""]
 
 # Disable https on s3 connection.
-# CLI flag: -<prefix>.storage.s3.insecure
+# CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
+
+# Delimiter used to replace the default delimiter ':' in chunk IDs when storing
+# chunks. This is mainly intended when you run a MinIO instance on a Windows
+# machine. You should not change this value inflight.
+# CLI flag: -<prefix>.s3.chunk-delimiter
+[chunk_delimiter: <string> | default = ""]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
-  # CLI flag: -<prefix>.storage.s3.http.timeout
+  # CLI flag: -<prefix>.s3.http.timeout
   [timeout: <duration> | default = 0s]
 
   # The maximum amount of time an idle connection will be held open.
-  # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
+  # CLI flag: -<prefix>.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
 
   # If non-zero, specifies the amount of time to wait for a server's response
   # headers after fully writing the request.
-  # CLI flag: -<prefix>.storage.s3.http.response-header-timeout
+  # CLI flag: -<prefix>.s3.http.response-header-timeout
   [response_header_timeout: <duration> | default = 0s]
 
   # Set to true to skip verifying the certificate chain and hostname.
-  # CLI flag: -<prefix>.storage.s3.http.insecure-skip-verify
+  # CLI flag: -<prefix>.s3.http.insecure-skip-verify
   [insecure_skip_verify: <boolean> | default = false]
 
   # Path to the trusted CA file that signed the SSL certificate of the S3
   # endpoint.
-  # CLI flag: -<prefix>.storage.s3.http.ca-file
+  # CLI flag: -<prefix>.s3.http.ca-file
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
 # are: v4.
-# CLI flag: -<prefix>.storage.s3.signature-version
+# CLI flag: -<prefix>.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
 # The S3 storage class which objects will use. Supported values are: GLACIER,
 # DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
 # REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
-# CLI flag: -<prefix>.storage.s3.storage-class
+# CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -<prefix>.storage.s3.sse.type
+  # CLI flag: -<prefix>.s3.sse.type
   [type: <string> | default = ""]
 
   # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -<prefix>.storage.s3.sse.kms-key-id
+  # CLI flag: -<prefix>.s3.sse.kms-key-id
   [kms_key_id: <string> | default = ""]
 
   # KMS Encryption Context used for object encryption. It expects JSON formatted
   # string.
-  # CLI flag: -<prefix>.storage.s3.sse.kms-encryption-context
+  # CLI flag: -<prefix>.s3.sse.kms-encryption-context
   [kms_encryption_context: <string> | default = ""]
 
 # Configures back off when S3 get Object.
 backoff_config:
   # Minimum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.min-backoff
+  # CLI flag: -<prefix>.s3.min-backoff
   [min_period: <duration> | default = 100ms]
 
   # Maximum backoff time when s3 get Object
-  # CLI flag: -<prefix>.storage.s3.max-backoff
+  # CLI flag: -<prefix>.s3.max-backoff
   [max_period: <duration> | default = 3s]
 
   # Maximum number of times to retry for s3 GetObject or ObjectExists
-  # CLI flag: -<prefix>.storage.s3.max-retries
+  # CLI flag: -<prefix>.s3.max-retries
   [max_retries: <int> | default = 5]
 
 # Disable forcing S3 dualstack endpoint usage.
-# CLI flag: -<prefix>.storage.s3.disable-dualstack
+# CLI flag: -<prefix>.s3.disable-dualstack
 [disable_dualstack: <boolean> | default = false]
 ```
 
@@ -5133,6 +5560,10 @@ Configures the `server` of the launched module(s).
 # Maximum number of simultaneous grpc connections, <=0 to disable
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
+
+# If true, the max streams by connection gauge will be collected.
+# CLI flag: -server.grpc-collect-max-streams-by-conn
+[grpc_collect_max_streams_by_conn: <boolean> | default = true]
 
 # Enables PROXY protocol.
 # CLI flag: -server.proxy-protocol-enabled
@@ -5347,9 +5778,53 @@ grpc_tls_config:
 # CLI flag: -server.log-request-headers-exclude-list
 [log_request_exclude_headers_list: <string> | default = ""]
 
+# Optionally add request headers to tracing spans.
+# CLI flag: -server.trace-request-headers
+[trace_request_headers: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from tracing spans. Only used if
+# server.trace-request-headers is true. The following headers are always
+# excluded: Authorization, Cookie, X-Csrf-Token.
+# CLI flag: -server.trace-request-headers-exclude-list
+[trace_request_exclude_headers_list: <string> | default = ""]
+
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
+
+cluster_validation:
+  # Optionally define the cluster validation label.
+  # CLI flag: -server.cluster-validation.label
+  [label: <string> | default = ""]
+
+  grpc:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.grpc.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.grpc.enabled
+    # CLI flag: -server.cluster-validation.grpc.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+  http:
+    # When enabled, cluster label validation is executed: configured cluster
+    # validation label is compared with the cluster validation label received
+    # through the requests.
+    # CLI flag: -server.cluster-validation.http.enabled
+    [enabled: <boolean> | default = false]
+
+    # When enabled, soft cluster label validation is executed. Can be enabled
+    # only together with server.cluster-validation.http.enabled
+    # CLI flag: -server.cluster-validation.http.soft-validation
+    [soft_validation: <boolean> | default = false]
+
+    # Comma-separated list of url paths that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-paths
+    [excluded_paths: <string> | default = ""]
 ```
 
 ### storage_config
@@ -5648,6 +6123,33 @@ congestion_control:
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
 
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
+
+object_store:
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  # The CLI flags prefix for this block configuration is: object-store
+  [<thanos_object_store_config>]
+
+  named_stores:
+    [azure: <map of string to NamedAzureStorageConfig>]
+
+    [filesystem: <map of string to NamedFilesystemStorageConfig>]
+
+    [gcs: <map of string to NamedGCSStorageConfig>]
+
+    [s3: <map of string to NamedS3StorageConfig>]
+
+    [swift: <map of string to NamedSwiftStorageConfig>]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
@@ -5908,6 +6410,12 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # is received on a request.
 # CLI flag: -<prefix>.swift.request-timeout
 [request_timeout: <duration> | default = 5s]
+
+http:
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.swift.http.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### table_manager
@@ -6245,32 +6753,510 @@ chunk_tables_provisioning:
   [inactive_read_scale_lastn: <int> | default = 4]
 ```
 
+### thanos_object_store_config
+
+The `thanos_object_store_config` block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
+Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage.object-store`
+- `object-store`
+- `ruler-storage`
+
+&nbsp;
+
+```yaml
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -<prefix>.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -<prefix>.s3.region
+  [region: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -<prefix>.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -<prefix>.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -<prefix>.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # S3 session token
+  # CLI flag: -<prefix>.s3.session-token
+  [session_token: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -<prefix>.s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # Use a specific version of the S3 list object API. Supported values are v1 or
+  # v2. Default is unset.
+  # CLI flag: -<prefix>.s3.list-objects-version
+  [list_objects_version: <string> | default = ""]
+
+  # Bucket lookup style type, used to access bucket in S3-compatible service.
+  # Default is auto. Supported values are: auto, path, virtual-hosted.
+  # CLI flag: -<prefix>.s3.bucket-lookup-type
+  [bucket_lookup_type: <int> | default = auto]
+
+  # When enabled, direct all AWS S3 requests to the dual-stack IPv4/IPv6
+  # endpoint for the configured region.
+  # CLI flag: -<prefix>.s3.dualstack-enabled
+  [dualstack_enabled: <boolean> | default = true]
+
+  # The S3 storage class to use, not set by default. Details can be found at
+  # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
+  # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE
+  # CLI flag: -<prefix>.s3.storage-class
+  [storage_class: <string> | default = ""]
+
+  # If enabled, it will use the default authentication methods of the AWS SDK
+  # for go based on known environment variables and known AWS config files.
+  # CLI flag: -<prefix>.s3.native-aws-auth-enabled
+  [native_aws_auth_enabled: <boolean> | default = false]
+
+  # The minimum file size in bytes used for multipart uploads. If 0, the value
+  # is optimally computed for each object.
+  # CLI flag: -<prefix>.s3.part-size
+  [part_size: <int> | default = 0]
+
+  # If enabled, a Content-MD5 header is sent with S3 Put Object requests.
+  # Consumes more resources to compute the MD5, but may improve compatibility
+  # with object storage services that do not support checksums.
+  # CLI flag: -<prefix>.s3.send-content-md5
+  [send_content_md5: <boolean> | default = false]
+
+  # Accessing S3 resources using temporary, secure credentials provided by AWS
+  # Security Token Service.
+  # CLI flag: -<prefix>.s3.sts-endpoint
+  [sts_endpoint: <string> | default = ""]
+
+  # The maximum number of retries for S3 requests that are retryable. Default is
+  # 10, set this to 1 to disable retries.
+  # CLI flag: -<prefix>.s3.max-retries
+  [max_retries: <int> | default = 10]
+
+  sse:
+    # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+    # CLI flag: -<prefix>.s3.sse.type
+    [type: <string> | default = ""]
+
+    # KMS Key ID used to encrypt objects in S3
+    # CLI flag: -<prefix>.s3.sse.kms-key-id
+    [kms_key_id: <string> | default = ""]
+
+    # KMS Encryption Context used for object encryption. It expects JSON
+    # formatted string.
+    # CLI flag: -<prefix>.s3.sse.kms-encryption-context
+    [kms_encryption_context: <string> | default = ""]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.s3.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.s3.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.s3.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.s3.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.s3.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.s3.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.s3.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+  trace:
+    # When enabled, low-level S3 HTTP operation information is logged at the
+    # debug level.
+    # CLI flag: -<prefix>.s3.trace.enabled
+    [enabled: <boolean> | default = false]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -<prefix>.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON either from a Google Developers Console client_credentials.json file,
+  # or a Google Developers service account key. Needs to be valid JSON, not a
+  # filesystem path. If empty, fallback to Google default logic:
+  # 1. A JSON file whose path is specified by the GOOGLE_APPLICATION_CREDENTIALS
+  # environment variable. For workload identity federation, refer to
+  # https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation
+  # on how to generate the JSON configuration file for on-prem/non-Google cloud
+  # platforms.
+  # 2. A JSON file in a location known to the gcloud command-line tool:
+  # $HOME/.config/gcloud/application_default_credentials.json.
+  # 3. On Google Compute Engine it fetches credentials from the metadata server.
+  # CLI flag: -<prefix>.gcs.service-account
+  [service_account: <string> | default = ""]
+
+  # The maximum size of the buffer that GCS client for a single PUT request. 0
+  # to disable buffering.
+  # CLI flag: -<prefix>.gcs.chunk-buffer-size
+  [chunk_buffer_size: <int> | default = 0]
+
+  # The maximum number of retries for idempotent operations. Overrides the
+  # default gcs storage client behavior if this value is greater than 0. Set
+  # this to 1 to disable retries.
+  # CLI flag: -<prefix>.gcs.max-retries
+  [max_retries: <int> | default = 10]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -<prefix>.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key. If unset, Azure managed identities will be used
+  # for authentication instead.
+  # CLI flag: -<prefix>.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # If `connection-string` is set, the value of `endpoint-suffix` will not be
+  # used. Use this method over `account-key` if you need to authenticate via a
+  # SAS token. Or if you use the Azurite emulator.
+  # CLI flag: -<prefix>.azure.connection-string
+  [connection_string: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -<prefix>.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN. If set to empty string, default
+  # endpoint suffix is used.
+  # CLI flag: -<prefix>.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -<prefix>.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # User assigned managed identity. If empty, then System assigned identity is
+  # used.
+  # CLI flag: -<prefix>.azure.user-assigned-id
+  [user_assigned_id: <string> | default = ""]
+
+  # Delimiter used to replace ':' in chunk IDs when storing chunks
+  # CLI flag: -<prefix>.azure.chunk-delimiter
+  [chunk_delimiter: <string> | default = "-"]
+
+swift:
+  # OpenStack Swift application credential id
+  # CLI flag: -<prefix>.swift.application-credential-id
+  [application_credential_id: <string> | default = ""]
+
+  # OpenStack Swift application credential name
+  # CLI flag: -<prefix>.swift.application-credential-name
+  [application_credential_name: <string> | default = ""]
+
+  # OpenStack Swift application credential secret
+  # CLI flag: -<prefix>.swift.application-credential-secret
+  [application_credential_secret: <string> | default = ""]
+
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -<prefix>.swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
+  # CLI flag: -<prefix>.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # OpenStack Swift username.
+  # CLI flag: -<prefix>.swift.username
+  [username: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -<prefix>.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -<prefix>.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # OpenStack Swift user ID.
+  # CLI flag: -<prefix>.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # OpenStack Swift API key.
+  # CLI flag: -<prefix>.swift.password
+  [password: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -<prefix>.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -<prefix>.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # OpenStack Swift project ID (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # OpenStack Swift project name (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
+  # differs the from user domain.
+  # CLI flag: -<prefix>.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
+  # it differs from the user domain.
+  # CLI flag: -<prefix>.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # OpenStack Swift Region to use (v2,v3 auth only).
+  # CLI flag: -<prefix>.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the OpenStack Swift container to put chunks in.
+  # CLI flag: -<prefix>.swift.container-name
+  [container_name: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -<prefix>.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -<prefix>.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -<prefix>.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.swift.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.swift.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.swift.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.swift.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.swift.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.swift.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.swift.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.swift.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.swift.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.swift.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.swift.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.swift.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+filesystem:
+  # Local filesystem storage directory.
+  # CLI flag: -<prefix>.filesystem.dir
+  [dir: <string> | default = ""]
+
+alibaba:
+  # Endpoint to connect to.
+  # CLI flag: -<prefix>.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # Name of OSS bucket.
+  # CLI flag: -<prefix>.oss.bucketname
+  [bucket: <string> | default = ""]
+
+  # alibabacloud Access Key ID
+  # CLI flag: -<prefix>.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # alibabacloud Secret Access Key
+  # CLI flag: -<prefix>.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
+bos:
+  # Name of BOS bucket.
+  # CLI flag: -<prefix>.bos.bucket
+  [bucket: <string> | default = ""]
+
+  # BOS endpoint to connect to.
+  # CLI flag: -<prefix>.bos.endpoint
+  [endpoint: <string> | default = ""]
+
+  # Baidu Cloud Engine (BCE) Access Key ID.
+  # CLI flag: -<prefix>.bos.access-key
+  [access_key: <string> | default = ""]
+
+  # Baidu Cloud Engine (BCE) Secret Access Key.
+  # CLI flag: -<prefix>.bos.secret-key
+  [secret_key: <string> | default = ""]
+
+# Prefix for all objects stored in the backend storage. For simplicity, it may
+# only contain digits, English alphabet letters and dashes.
+# CLI flag: -<prefix>.storage-prefix
+[storage_prefix: <string> | default = ""]
+```
+
 ### tls_config
 
-The TLS configuration.
+The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `bigtable`
+- `blockbuilder.scheduler-grpc-client`
+- `bloom-build.builder.grpc`
+- `bloom-gateway-client.grpc`
+- `bloom.metas-cache.memcached`
+- `boltdb.shipper.index-gateway-client.grpc`
+- `common.storage.ring.etcd`
+- `compactor.grpc-client`
+- `compactor.ring.etcd`
+- `distributor.ring.etcd`
+- `etcd`
+- `frontend.grpc-client-config`
+- `frontend.index-stats-results-cache.memcached`
+- `frontend.instant-metric-results-cache.memcached`
+- `frontend.label-results-cache.memcached`
+- `frontend.memcached`
+- `frontend.series-results-cache.memcached`
+- `frontend.tail-tls-config`
+- `frontend.volume-results-cache.memcached`
+- `index-gateway.ring.etcd`
+- `ingest-limits-frontend-client`
+- `ingest-limits-frontend.etcd`
+- `ingest-limits-frontend.limits-client`
+- `ingest-limits.etcd`
+- `ingester.client`
+- `ingester.partition-ring.etcd`
+- `memberlist`
+- `pattern-ingester.client`
+- `pattern-ingester.etcd`
+- `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
+- `query-scheduler.grpc-client-config`
+- `query-scheduler.ring.etcd`
+- `reporting.tls-config`
+- `ruler.alertmanager-client`
+- `ruler.client`
+- `ruler.evaluation.query-frontend`
+- `ruler.ring.etcd`
+- `store.chunks-cache-l2.memcached`
+- `store.chunks-cache.memcached`
+- `store.index-cache-read.memcached`
+- `store.index-cache-write.memcached`
+- `tsdb.shipper.index-gateway-client.grpc`
+
+&nbsp;
 
 ```yaml
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -frontend.tail-tls-config.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -frontend.tail-tls-config.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -frontend.tail-tls-config.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -frontend.tail-tls-config.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -6303,12 +7289,12 @@ The TLS configuration.
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -frontend.tail-tls-config.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -frontend.tail-tls-config.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 ```
 
@@ -6321,6 +7307,8 @@ Configuration for `tracing`.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
 ```
+
+<!-- vale Grafana.Spelling = YES -->
 
 ## Runtime Configuration file
 
@@ -6366,7 +7354,7 @@ on a cluster or per-tenant basis.
 - To disable out-of-order writes for all tenants,
 place in the `limits_config` section:
 
-    ```
+    ```yaml
     limits_config:
         unordered_writes: false
     ```
@@ -6374,7 +7362,7 @@ place in the `limits_config` section:
 - To disable out-of-order writes for specific tenants,
 configure a runtime configuration file:
 
-    ```
+    ```yaml
     runtime_config:
       file: overrides.yaml
     ```
@@ -6382,7 +7370,7 @@ configure a runtime configuration file:
     In the `overrides.yaml` file, add `unordered_writes` for each tenant
     permitted to have out-of-order writes:
 
-    ```
+    ```yaml
     overrides:
       "tenantA":
         unordered_writes: false
@@ -6394,7 +7382,7 @@ is configurable with `max_chunk_age`.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 
-```
+```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
 

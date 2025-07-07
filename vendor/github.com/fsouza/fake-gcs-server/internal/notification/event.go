@@ -67,7 +67,7 @@ type PubsubEventManager struct {
 	notifyOn EventNotificationOptions
 	// writer is where logs are written to.
 	writer io.Writer
-	// bucket, if not empty, only objects from this bucker will generate trigger events.
+	// bucket, if not empty, only objects from this bucket will generate trigger events.
 	bucket string
 	// objectPrefix, if not empty, only objects having this prefix will generate
 	// trigger events.

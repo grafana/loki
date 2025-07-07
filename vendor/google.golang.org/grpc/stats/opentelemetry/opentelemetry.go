@@ -16,68 +16,90 @@
 
 // Package opentelemetry implements opentelemetry instrumentation code for
 // gRPC-Go clients and servers.
+//
+// For details on configuring opentelemetry and various instruments that this
+// package creates, see
+// [gRPC OpenTelemetry Metrics](https://grpc.io/docs/guides/opentelemetry-metrics/).
 package opentelemetry
 
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	estats "google.golang.org/grpc/experimental/stats"
-	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal"
-	otelinternal "google.golang.org/grpc/stats/opentelemetry/internal"
 
 	otelattribute "go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	experimental "google.golang.org/grpc/experimental/opentelemetry"
+	estats "google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/grpclog"
+	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/stats"
+	otelinternal "google.golang.org/grpc/stats/opentelemetry/internal"
 )
 
 func init() {
 	otelinternal.SetPluginOption = func(o *Options, po otelinternal.PluginOption) {
 		o.MetricsOptions.pluginOption = po
+		// Log an error if one of the options is missing.
+		if (o.TraceOptions.TextMapPropagator == nil) != (o.TraceOptions.TracerProvider == nil) {
+			logger.Warning("Tracing will not be recorded because traceOptions are not set properly: one of TextMapPropagator or TracerProvider is missing")
+		}
 	}
 }
 
-var logger = grpclog.Component("otel-plugin")
-
-var canonicalString = internal.CanonicalString.(func(codes.Code) string)
-
-var joinDialOptions = internal.JoinDialOptions.(func(...grpc.DialOption) grpc.DialOption)
+var (
+	logger          = grpclog.Component("otel-plugin")
+	canonicalString = internal.CanonicalString.(func(codes.Code) string)
+	joinDialOptions = internal.JoinDialOptions.(func(...grpc.DialOption) grpc.DialOption)
+)
 
 // Options are the options for OpenTelemetry instrumentation.
 type Options struct {
 	// MetricsOptions are the metrics options for OpenTelemetry instrumentation.
 	MetricsOptions MetricsOptions
+	// TraceOptions are the tracing options for OpenTelemetry instrumentation.
+	TraceOptions experimental.TraceOptions
+}
+
+func (o *Options) isMetricsEnabled() bool {
+	return o.MetricsOptions.MeterProvider != nil
+}
+
+func (o *Options) isTracingEnabled() bool {
+	return o.TraceOptions.TracerProvider != nil
 }
 
 // MetricsOptions are the metrics options for OpenTelemetry instrumentation.
 type MetricsOptions struct {
 	// MeterProvider is the MeterProvider instance that will be used to create
 	// instruments. To enable metrics collection, set a meter provider. If
-	// unset, no metrics will be recorded. Any implementation knobs (i.e. views,
-	// bounds) set in the MeterProvider take precedence over the API calls from
-	// this interface. (i.e. it will create default views for unset views).
+	// unset, no metrics will be recorded.
 	MeterProvider otelmetric.MeterProvider
 
 	// Metrics are the metrics to instrument. Will create instrument and record telemetry
 	// for corresponding metric supported by the client and server
 	// instrumentation components if applicable. If not set, the default metrics
 	// will be recorded.
-	Metrics *estats.Metrics
+	Metrics *stats.MetricSet
 
-	// MethodAttributeFilter is to record the method name of RPCs handled by
-	// grpc.UnknownServiceHandler, but take care to limit the values allowed, as
-	// allowing too many will increase cardinality and could cause severe memory
-	// or performance problems. On Client Side, pass a
-	// grpc.StaticMethodCallOption as a call option into Invoke or NewStream.
-	// This only applies for server side metrics.
+	// MethodAttributeFilter is a function that determines whether to record the
+	// method name of RPCs as an attribute, or to bucket into "other". Take care
+	// to limit the values allowed, as allowing too many will increase
+	// cardinality and could cause severe memory or performance problems.
+	//
+	// This only applies for server-side metrics.  For clients, to record the
+	// method name in the attributes, pass grpc.StaticMethodCallOption to Invoke
+	// or NewStream. Note that when using protobuf generated clients, this
+	// CallOption is included automatically.
 	MethodAttributeFilter func(string) bool
 
-	// OptionalLabels are labels received from LB Policies that this component
-	// should add to metrics that record after receiving incoming metadata.
+	// OptionalLabels specifies a list of optional labels to enable on any
+	// metrics that support them.
 	OptionalLabels []string
 
 	// pluginOption is used to get labels to attach to certain metrics, if set.
@@ -96,10 +118,23 @@ type MetricsOptions struct {
 // MeterProvider. If the passed in Meter Provider does not have the view
 // configured for an individual metric turned on, the API call in this component
 // will create a default view for that metric.
+//
+// For the traces supported by this instrumentation code, provide an
+// implementation of a TextMapPropagator and OpenTelemetry TracerProvider.
 func DialOption(o Options) grpc.DialOption {
-	csh := &clientStatsHandler{options: o}
-	csh.initializeMetrics()
-	return joinDialOptions(grpc.WithChainUnaryInterceptor(csh.unaryInterceptor), grpc.WithChainStreamInterceptor(csh.streamInterceptor), grpc.WithStatsHandler(csh))
+	var metricsOpts, tracingOpts []grpc.DialOption
+
+	if o.isMetricsEnabled() {
+		metricsHandler := &clientMetricsHandler{options: o}
+		metricsHandler.initializeMetrics()
+		metricsOpts = append(metricsOpts, grpc.WithChainUnaryInterceptor(metricsHandler.unaryInterceptor), grpc.WithChainStreamInterceptor(metricsHandler.streamInterceptor), grpc.WithStatsHandler(metricsHandler))
+	}
+	if o.isTracingEnabled() {
+		tracingHandler := &clientTracingHandler{options: o}
+		tracingHandler.initializeTraces()
+		tracingOpts = append(tracingOpts, grpc.WithChainUnaryInterceptor(tracingHandler.unaryInterceptor), grpc.WithChainStreamInterceptor(tracingHandler.streamInterceptor), grpc.WithStatsHandler(tracingHandler))
+	}
+	return joinDialOptions(append(metricsOpts, tracingOpts...)...)
 }
 
 var joinServerOptions = internal.JoinServerOptions.(func(...grpc.ServerOption) grpc.ServerOption)
@@ -116,10 +151,23 @@ var joinServerOptions = internal.JoinServerOptions.(func(...grpc.ServerOption) g
 // MeterProvider. If the passed in Meter Provider does not have the view
 // configured for an individual metric turned on, the API call in this component
 // will create a default view for that metric.
+//
+// For the traces supported by this instrumentation code, provide an
+// implementation of a TextMapPropagator and OpenTelemetry TracerProvider.
 func ServerOption(o Options) grpc.ServerOption {
-	ssh := &serverStatsHandler{options: o}
-	ssh.initializeMetrics()
-	return joinServerOptions(grpc.ChainUnaryInterceptor(ssh.unaryInterceptor), grpc.ChainStreamInterceptor(ssh.streamInterceptor), grpc.StatsHandler(ssh))
+	var metricsOpts, tracingOpts []grpc.ServerOption
+
+	if o.isMetricsEnabled() {
+		metricsHandler := &serverMetricsHandler{options: o}
+		metricsHandler.initializeMetrics()
+		metricsOpts = append(metricsOpts, grpc.ChainUnaryInterceptor(metricsHandler.unaryInterceptor), grpc.ChainStreamInterceptor(metricsHandler.streamInterceptor), grpc.StatsHandler(metricsHandler))
+	}
+	if o.isTracingEnabled() {
+		tracingHandler := &serverTracingHandler{options: o}
+		tracingHandler.initializeTraces()
+		tracingOpts = append(tracingOpts, grpc.StatsHandler(tracingHandler))
+	}
+	return joinServerOptions(append(metricsOpts, tracingOpts...)...)
 }
 
 // callInfo is information pertaining to the lifespan of the RPC client side.
@@ -127,6 +175,10 @@ type callInfo struct {
 	target string
 
 	method string
+
+	// nameResolutionEventAdded is set when the resolver delay trace event
+	// is added. Prevents duplicate events, since it is reported per-attempt.
+	nameResolutionEventAdded atomic.Bool
 }
 
 type callInfoKey struct{}
@@ -181,6 +233,15 @@ type attemptInfo struct {
 
 	pluginOptionLabels map[string]string // pluginOptionLabels to attach to metrics emitted
 	xdsLabels          map[string]string
+
+	// traceSpan is data used for recording traces.
+	traceSpan trace.Span
+	// message counters for sent and received messages (used for
+	// generating message IDs), and the number of previous RPC attempts for the
+	// associated call.
+	countSentMsg        uint32
+	countRecvMsg        uint32
+	previousRPCAttempts uint32
 }
 
 type clientMetrics struct {
@@ -207,7 +268,7 @@ type serverMetrics struct {
 	callDuration otelmetric.Float64Histogram
 }
 
-func createInt64Counter(setOfMetrics map[estats.Metric]bool, metricName estats.Metric, meter otelmetric.Meter, options ...otelmetric.Int64CounterOption) otelmetric.Int64Counter {
+func createInt64Counter(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64CounterOption) otelmetric.Int64Counter {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Int64Counter{}
 	}
@@ -219,7 +280,7 @@ func createInt64Counter(setOfMetrics map[estats.Metric]bool, metricName estats.M
 	return ret
 }
 
-func createFloat64Counter(setOfMetrics map[estats.Metric]bool, metricName estats.Metric, meter otelmetric.Meter, options ...otelmetric.Float64CounterOption) otelmetric.Float64Counter {
+func createFloat64Counter(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Float64CounterOption) otelmetric.Float64Counter {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Float64Counter{}
 	}
@@ -231,7 +292,7 @@ func createFloat64Counter(setOfMetrics map[estats.Metric]bool, metricName estats
 	return ret
 }
 
-func createInt64Histogram(setOfMetrics map[estats.Metric]bool, metricName estats.Metric, meter otelmetric.Meter, options ...otelmetric.Int64HistogramOption) otelmetric.Int64Histogram {
+func createInt64Histogram(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64HistogramOption) otelmetric.Int64Histogram {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Int64Histogram{}
 	}
@@ -243,7 +304,7 @@ func createInt64Histogram(setOfMetrics map[estats.Metric]bool, metricName estats
 	return ret
 }
 
-func createFloat64Histogram(setOfMetrics map[estats.Metric]bool, metricName estats.Metric, meter otelmetric.Meter, options ...otelmetric.Float64HistogramOption) otelmetric.Float64Histogram {
+func createFloat64Histogram(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Float64HistogramOption) otelmetric.Float64Histogram {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Float64Histogram{}
 	}
@@ -255,7 +316,7 @@ func createFloat64Histogram(setOfMetrics map[estats.Metric]bool, metricName esta
 	return ret
 }
 
-func createInt64Gauge(setOfMetrics map[estats.Metric]bool, metricName estats.Metric, meter otelmetric.Meter, options ...otelmetric.Int64GaugeOption) otelmetric.Int64Gauge {
+func createInt64Gauge(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64GaugeOption) otelmetric.Int64Gauge {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Int64Gauge{}
 	}
@@ -298,7 +359,7 @@ type registryMetrics struct {
 	optionalLabels []string
 }
 
-func (rm *registryMetrics) registerMetrics(metrics *estats.Metrics, meter otelmetric.Meter) {
+func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelmetric.Meter) {
 	rm.intCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64Counter)
 	rm.floatCounts = make(map[*estats.MetricDescriptor]otelmetric.Float64Counter)
 	rm.intHistos = make(map[*estats.MetricDescriptor]otelmetric.Int64Histogram)
@@ -379,12 +440,12 @@ var (
 	// DefaultSizeBounds are the default bounds for metrics which record size.
 	DefaultSizeBounds = []float64{0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824, 4294967296}
 	// defaultPerCallMetrics are the default metrics provided by this module.
-	defaultPerCallMetrics = estats.NewMetrics(ClientAttemptStarted, ClientAttemptDuration, ClientAttemptSentCompressedTotalMessageSize, ClientAttemptRcvdCompressedTotalMessageSize, ClientCallDuration, ServerCallStarted, ServerCallSentCompressedTotalMessageSize, ServerCallRcvdCompressedTotalMessageSize, ServerCallDuration)
+	defaultPerCallMetrics = stats.NewMetricSet(ClientAttemptStartedMetricName, ClientAttemptDurationMetricName, ClientAttemptSentCompressedTotalMessageSizeMetricName, ClientAttemptRcvdCompressedTotalMessageSizeMetricName, ClientCallDurationMetricName, ServerCallStartedMetricName, ServerCallSentCompressedTotalMessageSizeMetricName, ServerCallRcvdCompressedTotalMessageSizeMetricName, ServerCallDurationMetricName)
 )
 
 // DefaultMetrics returns a set of default OpenTelemetry metrics.
 //
 // This should only be invoked after init time.
-func DefaultMetrics() *estats.Metrics {
+func DefaultMetrics() *stats.MetricSet {
 	return defaultPerCallMetrics.Join(estats.DefaultMetrics)
 }

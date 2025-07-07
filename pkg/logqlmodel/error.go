@@ -16,10 +16,15 @@ var (
 	ErrIntervalLimit                    = errors.New("[interval] value exceeds limit")
 	ErrBlocked                          = errors.New("query blocked by policy")
 	ErrParseMatchers                    = errors.New("only label matchers are supported")
-	ErrUnsupportedSyntaxForInstantQuery = errors.New("log queries are not supported as an instant query type, please change your query to a range query type")
-	ErrorLabel                          = "__error__"
-	PreserveErrorLabel                  = "__preserve_error__"
-	ErrorDetailsLabel                   = "__error_details__"
+	ErrUnsupportedSyntaxForInstantQuery = errors.New(
+		"log queries are not supported as an instant query type, please change your query to a range query type",
+	)
+	ErrVariantsDisabled = errors.New(
+		"multi variant queries are disabled for this instance",
+	)
+	ErrorLabel         = "__error__"
+	PreserveErrorLabel = "__preserve_error__"
+	ErrorDetailsLabel  = "__error_details__"
 )
 
 // ParseError is what is returned when we failed to parse.
@@ -88,7 +93,7 @@ type LimitError struct {
 
 func NewSeriesLimitError(limit int) *LimitError {
 	return &LimitError{
-		error: fmt.Errorf("maximum of series (%d) reached for a single query", limit),
+		error: fmt.Errorf("maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()", limit),
 	}
 }
 

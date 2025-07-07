@@ -66,10 +66,8 @@
                   {
                      "expr": "sum(loki_ingester_memory_chunks{namespace=\"$namespace\", job=~\".+-ingester-http\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "series",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Series",
@@ -115,10 +113,8 @@
                   {
                      "expr": "sum(loki_ingester_memory_chunks{namespace=\"$namespace\", job=~\".+-ingester-http\"}) / sum(loki_ingester_memory_streams{namespace=\"$namespace\", job=~\".+-ingester-http\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "chunks",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Chunks per series",
@@ -177,26 +173,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_utilization_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_ingester_chunk_utilization_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_ingester_chunk_utilization_sum{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) * 1 / sum(rate(loki_ingester_chunk_utilization_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Utilization",
@@ -261,26 +251,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_age_seconds_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_ingester_chunk_age_seconds_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_ingester_chunk_age_seconds_sum{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) * 1e3 / sum(rate(loki_ingester_chunk_age_seconds_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Age",
@@ -357,26 +341,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_entries_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_ingester_chunk_entries_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le)) * 1",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_ingester_chunk_entries_sum{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) * 1 / sum(rate(loki_ingester_chunk_entries_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Log Entries Per Chunk",
@@ -440,10 +418,8 @@
                   {
                      "expr": "sum(rate(loki_chunk_store_index_entries_per_chunk_sum{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) / sum(rate(loki_chunk_store_index_entries_per_chunk_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Index Entries",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Index Entries Per Chunk",
@@ -501,10 +477,8 @@
                   {
                      "expr": "loki_ingester_flush_queue_length{namespace=\"$namespace\", job=~\".+-ingester-http\"} or cortex_ingester_flush_queue_length{namespace=\"$namespace\", job=~\".+-ingester-http\"}",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{pod}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Queue Length",
@@ -517,6 +491,8 @@
                   "3xx": "#6ED0E0",
                   "4xx": "#EF843C",
                   "5xx": "#E24D42",
+                  "OK": "#7EB26D",
+                  "cancel": "#A9A9A9",
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
@@ -697,12 +673,10 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_ingester_chunk_age_seconds_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_ingester_chunk_age_seconds_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{status}}",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   }
                ],
                "title": "Flush Rate",
@@ -760,10 +734,8 @@
                   {
                      "expr": "sum(rate(loki_ingester_chunks_flushed_total{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{pod}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Chunks Flushed/Second",
@@ -810,10 +782,8 @@
                   {
                      "expr": "sum by (reason) (rate(loki_ingester_chunks_flushed_total{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{reason}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Chunk Flush Reason",
@@ -889,26 +859,20 @@
                   {
                      "expr": "histogram_quantile(0.5, sum(rate(loki_ingester_chunk_bounds_hours_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "p50",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_ingester_chunk_bounds_hours_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) by (le))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "p99",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   },
                   {
                      "expr": "sum(rate(loki_ingester_chunk_bounds_hours_sum{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval])) / sum(rate(loki_ingester_chunk_bounds_hours_count{namespace=\"$namespace\", job=~\".+-ingester-http\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "avg",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Chunk Duration hours (end-start)",
@@ -939,7 +903,7 @@
                "value": "default"
             },
             "hide": 0,
-            "label": "Data Source",
+            "label": "Data source",
             "name": "datasource",
             "options": [ ],
             "query": "prometheus",
