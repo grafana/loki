@@ -595,7 +595,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			}
 
 			// Create builder
-			builder, err := newDeletionManifestBuilder(objectClient, *batch)
+			builder, err := newDeletionManifestBuilder(objectClient, batch)
 			require.NoError(t, err)
 
 			// Process series
@@ -611,7 +611,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest.SegmentsCount, builder.segmentsCount)
 			require.Equal(t, tc.expectedManifest.ChunksCount, builder.overallChunksCount)
 
-			reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
+			reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
 			require.NoError(t, err)
 
 			manifestJSON, err := io.ReadAll(reader)
@@ -627,7 +627,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest, manifest)
 
 			for i := 0; i < tc.expectedManifest.SegmentsCount; i++ {
-				reader, _, err := builder.deleteStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
+				reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
 				require.NoError(t, err)
 
 				segmentJSON, err := io.ReadAll(reader)
@@ -672,7 +672,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	})
 
 	// Create builder
-	builder, err := newDeletionManifestBuilder(objectClient, *batch)
+	builder, err := newDeletionManifestBuilder(objectClient, batch)
 	require.NoError(t, err)
 
 	err = builder.AddSeries(ctx, table1, &mockSeries{

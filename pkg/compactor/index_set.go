@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -186,7 +187,7 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 }
 
 // applyUpdates applies the given updates to the compacted index.
-func (is *indexSet) applyUpdates(labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+func (is *indexSet) applyUpdates(labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
 	if is.compactedIndex == nil {
 		return fmt.Errorf("compacted index should be initialized before applying updates")
 	}
