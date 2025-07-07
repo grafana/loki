@@ -360,9 +360,9 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			predicate: InPredicate{
 				Column: cols[1], // timestamp column
 				Values: NewInt64ValueSet([]Value{
-					Int64Value(150),
-					Int64Value(600),
-				}), // 2 values in range. ~200 matching rows
+					Int64Value(150), // Outside all pages
+					Int64Value(600), // Outside all pages
+				}),
 			},
 			want: nil, // No pages should be included
 		},

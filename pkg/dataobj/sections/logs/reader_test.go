@@ -33,17 +33,20 @@ func TestReader(t *testing.T) {
 	})
 
 	var (
-		traceID = sec.Columns()[2]
-		message = sec.Columns()[3]
+		streamID = sec.Columns()[0]
+		traceID  = sec.Columns()[2]
+		message  = sec.Columns()[3]
 	)
 
+	require.Equal(t, "", streamID.Name)
+	require.Equal(t, logs.ColumnTypeStreamID, streamID.Type)
 	require.Equal(t, "trace_id", traceID.Name)
 	require.Equal(t, logs.ColumnTypeMetadata, traceID.Type)
 	require.Equal(t, "", message.Name)
 	require.Equal(t, logs.ColumnTypeMessage, message.Type)
 
 	r := logs.NewReader(logs.ReaderOptions{
-		Columns:   []*logs.Column{traceID, message},
+		Columns:   []*logs.Column{streamID, traceID, message},
 		Allocator: alloc,
 		Predicates: []logs.Predicate{
 			logs.FuncPredicate{
@@ -57,12 +60,19 @@ func TestReader(t *testing.T) {
 					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
 				},
 			},
+			logs.InPredicate{
+				Column: streamID,
+				Values: []scalar.Scalar{
+					scalar.NewInt64Scalar(1),
+					scalar.NewInt64Scalar(2),
+				},
+			},
 		},
 	})
 
 	expect := arrowtest.Rows{
-		{"trace_id.metadata.binary": []byte("abcdef"), "message.binary": []byte("goodbye, world!")},
-		{"trace_id.metadata.binary": []byte("123456"), "message.binary": []byte("foo bar")},
+		{"stream_id.int64": int64(1), "trace_id.metadata.binary": []byte("abcdef"), "message.binary": []byte("goodbye, world!")},
+		{"stream_id.int64": int64(2), "trace_id.metadata.binary": []byte("123456"), "message.binary": []byte("foo bar")},
 	}
 
 	actualTable, err := readTable(context.Background(), r)

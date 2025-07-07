@@ -320,7 +320,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 
 		value := row.Values[columnIndex]
-		if value.Type() != p.Column.ColumnInfo().Type {
+		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type {
 			return false
 		}
 		return p.Values.Contains(value)
