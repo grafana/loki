@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	luajson "github.com/alicebob/gopher-json"
 	lua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 
+	luajson "github.com/alicebob/miniredis/v2/gopher-json"
 	"github.com/alicebob/miniredis/v2/server"
 )
 
@@ -101,16 +101,20 @@ func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []stri
 	l.Push(lua.LString("redis"))
 	l.Call(1, 0)
 
+	// lua can call redis.setresp(...), but it's tmp state.
+	oldresp := c.Resp3
 	if err := doScript(l, script); err != nil {
 		c.WriteError(err.Error())
 		return false
 	}
 
 	luaToRedis(l, c, l.Get(1))
+	c.Resp3 = oldresp
+	c.SwitchResp3 = nil
 	return true
 }
 
-// doScript pre-compiiles the given script into a Lua prototype,
+// doScript pre-compiles the given script into a Lua prototype,
 // then executes the pre-compiled function against the given lua state.
 //
 // This is thread-safe.
@@ -259,7 +263,6 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 			c.WriteError(msgScriptFlush)
 			return
 		}
-
 	default:
 		setDirty(c)
 		c.WriteError(fmt.Sprintf(msgFScriptUsageSimple, strings.ToUpper(opts.subcmd)))
@@ -276,7 +279,6 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 			sha := sha1Hex(opts.script)
 			m.scripts[sha] = opts.script
 			c.WriteBulk(sha)
-
 		case "exists":
 			c.WriteLen(len(args))
 			for _, arg := range args {
@@ -286,11 +288,9 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 					c.WriteInt(0)
 				}
 			}
-
 		case "flush":
 			m.scripts = map[string]string{}
 			c.WriteOK()
-
 		}
 	})
 }

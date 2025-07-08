@@ -98,7 +98,7 @@ func (c *Client) JSONCall(ctx context.Context, endpoint string, headers http.Hea
 
 	if resp != nil {
 		if err := unmarshal(data, resp); err != nil {
-			return fmt.Errorf("json decode error: %w\njson message bytes were: %s", err, string(data))
+			return errors.InvalidJsonErr{Err: fmt.Errorf("json decode error: %w\njson message bytes were: %s", err, string(data))}
 		}
 	}
 	return nil
@@ -221,7 +221,7 @@ func (c *Client) URLFormCall(ctx context.Context, endpoint string, qv url.Values
 	}
 	if resp != nil {
 		if err := unmarshal(data, resp); err != nil {
-			return fmt.Errorf("json decode error: %w\nraw message was: %s", err, string(data))
+			return errors.InvalidJsonErr{Err: fmt.Errorf("json decode error: %w\nraw message was: %s", err, string(data))}
 		}
 	}
 	return nil

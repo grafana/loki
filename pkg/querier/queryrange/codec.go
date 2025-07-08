@@ -18,11 +18,13 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -30,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -88,16 +91,16 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 	return &clone
 }
 
-func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("query", r.GetQuery()),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
-		otlog.Int64("step (ms)", r.GetStep()),
-		otlog.Int64("interval (ms)", r.GetInterval()),
-		otlog.Int64("limit", int64(r.GetLimit())),
-		otlog.String("direction", r.GetDirection().String()),
-		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+func (r *LokiRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", r.GetQuery()),
+		attribute.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
+		attribute.Int64("step (ms)", r.GetStep()),
+		attribute.Int64("interval (ms)", r.GetInterval()),
+		attribute.Int64("limit", int64(r.GetLimit())),
+		attribute.String("direction", r.GetDirection().String()),
+		attribute.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
 
@@ -136,13 +139,13 @@ func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest
 	return &clone
 }
 
-func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("query", r.GetQuery()),
-		otlog.String("ts", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.Int64("limit", int64(r.GetLimit())),
-		otlog.String("direction", r.GetDirection().String()),
-		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+func (r *LokiInstantRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", r.GetQuery()),
+		attribute.String("ts", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.Int64("limit", int64(r.GetLimit())),
+		attribute.String("direction", r.GetDirection().String()),
+		attribute.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
 
@@ -179,12 +182,12 @@ func (r *LokiSeriesRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("matchers", strings.Join(r.GetMatch(), ",")),
-		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
-		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+func (r *LokiSeriesRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("matchers", strings.Join(r.GetMatch(), ",")),
+		attribute.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
+		attribute.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
 
@@ -251,10 +254,10 @@ func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
 	return &clone
 }
 
-func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
+func (r *LabelRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 
@@ -311,10 +314,10 @@ func (r *DetectedLabelsRequest) WithQuery(query string) queryrangebase.Request {
 	return &clone
 }
 
-func (r *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
+func (r *DetectedLabelsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 
@@ -331,10 +334,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	disableCacheReq := false
-	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
-		disableCacheReq = true
-	}
+	disableCacheReq := strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal
 
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
@@ -732,13 +732,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	header.Set(user.OrgIDHeaderName, orgID)
 
 	// Propagate trace context in request.
-	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
-	if tracer != nil && span != nil {
-		carrier := opentracing.HTTPHeadersCarrier(header)
-		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
-			return nil, err
-		}
-	}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(header))
 
 	switch request := r.(type) {
 	case *LokiRequest:
@@ -1293,8 +1287,9 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 }
 
 func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "codec.EncodeResponse")
+	defer sp.End()
+
 	var buf bytes.Buffer
 
 	err := encodeResponseJSONTo(version, res, &buf, encodeFlags)
@@ -1302,7 +1297,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 		return nil, err
 	}
 
-	sp.LogFields(otlog.Int("bytes", buf.Len()))
+	sp.SetAttributes(attribute.Int("bytes", buf.Len()))
 
 	resp := http.Response{
 		Header: http.Header{
@@ -1390,8 +1385,8 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 }
 
 func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "codec.EncodeResponse")
+	defer sp.End()
 
 	p, err := QueryResponseWrap(res)
 	if err != nil {
@@ -1600,6 +1595,19 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			},
 			Headers: headers,
 		}, nil
+	case *QueryPatternsResponse:
+		resp0 := responses[0].(*QueryPatternsResponse)
+
+		logprotoResps := make([]*logproto.QueryPatternsResponse, 0, len(responses))
+		for _, r := range responses {
+			logprotoResps = append(logprotoResps, r.(*QueryPatternsResponse).Response)
+		}
+
+		mergedPatterns := pattern.MergePatternResponses(logprotoResps)
+		return &QueryPatternsResponse{
+			Response: &logproto.QueryPatternsResponse{Series: mergedPatterns.Series},
+			Headers:  resp0.Headers,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
@@ -1802,8 +1810,31 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsDetectedLabelsWrapper{
 			DetectedLabelsRequest: r,
 		}, nil
+	case *logproto.QueryPatternsRequest:
+		// We turn a QueryPatternsRequest into a LokiRequest when querying the store
+		// for persisted patterns, which we store as a specially crafted log line in the actual chunks.
+		// We need to leverage the logic of the query engine to properly extract them correctly.
+		query, err := r.GetSampleQuery()
+		if err != nil {
+			return nil, err
+		}
+
+		expr, err := syntax.ParseExpr(query)
+		if err != nil {
+			return nil, err
+		}
+
+		return &paramsRangeWrapper{
+			LokiRequest: &LokiRequest{
+				Query:   expr.String(),
+				Step:    r.GetStep(),
+				StartTs: r.GetStart(),
+				EndTs:   r.GetEnd(),
+				Plan:    &plan.QueryPlan{AST: expr},
+			},
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, *QueryPatternsRequest got (%T)", r)
 	}
 }
 
@@ -2369,15 +2400,15 @@ func (r *DetectedFieldsRequest) WithQuery(query string) queryrangebase.Request {
 	return &clone
 }
 
-func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
-		otlog.String("query", r.GetQuery()),
-		otlog.Int64("step (ms)", r.GetStep()),
-		otlog.Int64("line_limit", int64(r.GetLineLimit())),
-		otlog.Int64("limit", int64(r.GetLimit())),
-		otlog.String("step", fmt.Sprintf("%d", r.GetStep())),
+func (r *DetectedFieldsRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
+		attribute.String("query", r.GetQuery()),
+		attribute.Int64("step (ms)", r.GetStep()),
+		attribute.Int64("line_limit", int64(r.GetLineLimit())),
+		attribute.Int64("limit", int64(r.GetLimit())),
+		attribute.String("step", fmt.Sprintf("%d", r.GetStep())),
 	)
 }
 

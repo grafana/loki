@@ -18,15 +18,19 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/googleapis/gax-go/v2/internallog/grpclog"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const serviceName = "storage.googleapis.com"
+
+var protoVersion = fmt.Sprintf("1.%d", protoimpl.MaxVersion)
 
 // For more information on implementing a client constructor hook, see
 // https://github.com/googleapis/google-cloud-go/wiki/Customizing-constructors.

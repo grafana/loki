@@ -68,7 +68,7 @@ func (r *BloomRecorder) Merge(other *BloomRecorder) {
 }
 
 func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
-	logger = spanlogger.FromContextWithFallback(r.ctx, logger)
+	logger = spanlogger.FromContext(r.ctx, logger)
 
 	var (
 		seriesFound     = r.seriesFound.Load()

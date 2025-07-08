@@ -161,7 +161,9 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
 // This uses the gRPC-specific bi-directional read API, which is in private
-// preview; please contact your account manager if interested.
+// preview; please contact your account manager if interested. The option
+// [experimental.WithGRPCBidiReads] or [experimental.WithZonalBucketAPIs]
+// must be selected in order to use this API.
 func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
@@ -393,6 +395,7 @@ type multiRangeDownloader interface {
 	wait()
 	close() error
 	getHandle() []byte
+	error() error
 }
 
 // Add adds a new range to MultiRangeDownloader.
@@ -442,4 +445,11 @@ func (mrd *MultiRangeDownloader) Wait() {
 // follow up read if the same object is read through a different stream.
 func (mrd *MultiRangeDownloader) GetHandle() []byte {
 	return mrd.reader.getHandle()
+}
+
+// Error returns an error if the MultiRangeDownloader is in a permanent failure
+// state. It returns a nil error if the MultiRangeDownloader is open and can be
+// used.
+func (mrd *MultiRangeDownloader) Error() error {
+	return mrd.reader.error()
 }

@@ -27,6 +27,11 @@ func NewResource(orig *otlpresource.Resource, state *State) Resource {
 	return Resource{orig: orig, state: state}
 }
 
+func CopyOrigResource(dest, src *otlpresource.Resource) {
+	dest.Attributes = CopyOrigMap(dest.Attributes, src.Attributes)
+	dest.DroppedAttributesCount = src.DroppedAttributesCount
+}
+
 func GenerateTestResource() Resource {
 	orig := otlpresource.Resource{}
 	state := StateMutable

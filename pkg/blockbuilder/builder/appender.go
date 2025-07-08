@@ -279,7 +279,7 @@ func (m *streamsMap) getLabelsFromFingerprint(fp model.Fingerprint) labels.Label
 	if s, ok := m.byFp[fp]; ok {
 		return s.ls
 	}
-	return nil
+	return labels.EmptyLabels()
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {

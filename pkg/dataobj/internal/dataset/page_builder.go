@@ -140,6 +140,28 @@ func (b *pageBuilder) AppendNull() bool {
 	return true
 }
 
+// AppendNulls appends n NULL values to the Builder. AppendNulls returns true if
+// the NULLs were appended, or false if the Builder is full.
+func (b *pageBuilder) AppendNulls(n uint64) bool {
+	// This is tricky to estimate without knowing the encoder state.
+	//
+	// For N nulls:
+	// - RLE: 2-9 bytes total (1-8 byte header + 1 byte value)
+	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
+	//
+	// Using 4 bytes as a conservative average estimate.
+	if sz := b.EstimatedSize(); sz > 0 && sz+4 > b.opts.PageSizeHint {
+		return false
+	}
+
+	if err := b.presenceEnc.EncodeN(Uint64Value(0), n); err != nil {
+		panic(fmt.Sprintf("Builder.AppendNulls: encoding presence bitmap entries: %v", err))
+	}
+
+	b.rows += int(n)
+	return true
+}
+
 func (b *pageBuilder) accumulateStatistics(value Value) {
 	// As a small optimization, we only update min/max values if we're intending
 	// on populating them in statistics. This avoids unnecessary comparisons for very
@@ -153,10 +175,10 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
-	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
 		b.minValue = value
 	}
-	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
 		b.maxValue = value
 	}
 }
@@ -171,10 +193,6 @@ func valueSize(v Value) int {
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.VALUE_TYPE_STRING:
-		// Assuming that strings are PLAIN encoded using their length and bytes.
-		str := v.String()
-		return binary.Size(len(str)) + len(str)
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
 		arr := v.ByteArray()
 		return binary.Size(len(arr)) + len(arr)

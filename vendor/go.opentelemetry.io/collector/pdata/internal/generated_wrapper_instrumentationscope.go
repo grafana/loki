@@ -27,6 +27,13 @@ func NewInstrumentationScope(orig *otlpcommon.InstrumentationScope, state *State
 	return InstrumentationScope{orig: orig, state: state}
 }
 
+func CopyOrigInstrumentationScope(dest, src *otlpcommon.InstrumentationScope) {
+	dest.Name = src.Name
+	dest.Version = src.Version
+	dest.Attributes = CopyOrigMap(dest.Attributes, src.Attributes)
+	dest.DroppedAttributesCount = src.DroppedAttributesCount
+}
+
 func GenerateTestInstrumentationScope() InstrumentationScope {
 	orig := otlpcommon.InstrumentationScope{}
 	state := StateMutable

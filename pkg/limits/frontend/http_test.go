@@ -7,87 +7,91 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/grafana/dskit/limiter"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 func TestFrontend_ServeHTTP(t *testing.T) {
 	tests := []struct {
-		name                          string
-		limits                        Limits
-		expectedGetStreamUsageRequest *GetStreamUsageRequest
-		getStreamUsageResponses       []GetStreamUsageResponse
-		request                       httpExceedsLimitsRequest
-		expected                      httpExceedsLimitsResponse
+		name                         string
+		expectedExceedsLimitsRequest *proto.ExceedsLimitsRequest
+		exceedsLimitsResponses       []*proto.ExceedsLimitsResponse
+		request                      httpExceedsLimitsRequest
+		expected                     httpExceedsLimitsResponse
 	}{{
 		name: "within limits",
-		limits: &mockLimits{
-			maxGlobalStreams: 1,
-			ingestionRate:    100,
+		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
-		expectedGetStreamUsageRequest: &GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-		},
-		getStreamUsageResponses: []GetStreamUsageResponse{{
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 1,
-				Rate:          10,
-			},
-		}},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{}},
 		request: httpExceedsLimitsRequest{
-			TenantID:     "test",
-			StreamHashes: []uint64{0x1},
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
-		// expected should be default value (no rejected streams).
+		// expected should be default value.
 	}, {
 		name: "exceeds limits",
-		limits: &mockLimits{
-			maxGlobalStreams: 1,
-			ingestionRate:    100,
+		expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
-		expectedGetStreamUsageRequest: &GetStreamUsageRequest{
-			Tenant:       "test",
-			StreamHashes: []uint64{0x1},
-		},
-		getStreamUsageResponses: []GetStreamUsageResponse{{
-			Response: &logproto.GetStreamUsageResponse{
-				Tenant:        "test",
-				ActiveStreams: 2,
-				Rate:          200,
-			},
+		exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{{
+			Results: []*proto.ExceedsLimitsResult{{
+				StreamHash: 0x1,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
 		}},
 		request: httpExceedsLimitsRequest{
-			TenantID:     "test",
-			StreamHashes: []uint64{0x1},
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: 0x1,
+				TotalSize:  0x5,
+			}},
 		},
 		expected: httpExceedsLimitsResponse{
-			RejectedStreams: []*logproto.RejectedStream{{
+			Results: []*proto.ExceedsLimitsResult{{
 				StreamHash: 0x1,
-				Reason:     "exceeds_rate_limit",
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f := Frontend{
-				limits:      test.limits,
-				rateLimiter: limiter.NewRateLimiter(newRateLimitsAdapter(test.limits), time.Second),
-				streamUsage: &mockStreamUsageGatherer{
-					t:               t,
-					expectedRequest: test.expectedGetStreamUsageRequest,
-					responses:       test.getStreamUsageResponses,
+			readRing, _ := newMockRingWithClientPool(t, "test", nil, nil)
+			f, err := New(Config{
+				LifecyclerConfig: ring.LifecyclerConfig{
+					RingConfig: ring.Config{
+						KVStore: kv.Config{
+							Store: "inmemory",
+						},
+					},
 				},
-				metrics: newMetrics(prometheus.NewRegistry()),
+			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			f.limitsClient = &mockLimitsClient{
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
+				exceedsLimitsResponses:       test.exceedsLimitsResponses,
 			}
-			ts := httptest.NewServer(&f)
+			ts := httptest.NewServer(f)
 			defer ts.Close()
 
 			b, err := json.Marshal(test.request)

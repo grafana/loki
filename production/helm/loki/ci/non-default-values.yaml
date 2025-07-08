@@ -1,0 +1,38 @@
+deploymentMode: Distributed
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+ingester:
+  replicas: 0
+  zoneAwareReplication:
+    enabled: true
+minio:
+  enabled: true
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+ruler:
+  replicas: 1
+distributor:
+  replicas: 1
+memcached:
+  enabled: true
+  replicas: 1
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 1
+querier:
+  replicas: 1
+queryFrontend:
+  replicas: 1
+queryScheduler:
+  replicas: 1

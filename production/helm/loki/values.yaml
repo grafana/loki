@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.4.2
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -179,6 +179,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.block_builder }}
+    block_builder:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -207,7 +212,7 @@ loki:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
         memcached_client:
-          addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+          addresses: {{ .addresses }}
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
@@ -255,8 +260,8 @@ loki:
             writeback_buffer: {{ .writebackBuffer }}
             writeback_size_limit: {{ .writebackSizeLimit }}
           memcached_client:
+            addresses: {{ .addresses }}
             consistent_hash: true
-            addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
             timeout: {{ .timeout }}
             update_interval: 1m
       {{- end }}
@@ -284,6 +289,7 @@ loki:
 
     {{- if .Values.loki.ui.enabled }}
     ui:
+      enabled: true
       discovery:
         join_peers:
           - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
@@ -461,21 +467,6 @@ loki:
         # Optional storage account key
         account_key: null
 
-  # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
-  # must enable and specify a host for each cache you would like to use.
-  memcached:
-    chunk_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      batch_size: 256
-      parallelism: 10
-    results_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      timeout: "500ms"
-      default_validity: "12h"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
   # -- a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around
@@ -532,6 +523,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional block builder configuration
+  block_builder: {}
   # --  Optional index gateway configuration
   index_gateway:
     mode: simple
@@ -608,7 +601,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.4.1
+    tag: 3.5.1
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -627,6 +620,8 @@ enterprise:
     enabled: true
     # -- Comma-separated list of Loki modules to load for tokengen
     targetModule: "tokengen"
+    # -- Name of the secret to store the admin token.
+    adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
     # -- Additional Kubernetes environment
@@ -656,6 +651,7 @@ enterprise:
     # -- The name of the PriorityClass for tokengen Pods
     priorityClassName: ""
   # -- Configuration for `provisioner` target
+  # Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.
   provisioner:
     # -- Whether the job should be part of the deployment
     enabled: true
@@ -663,6 +659,8 @@ enterprise:
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
     hookType: "post-install"
+    # -- url of the admin api to use for the provisioner
+    apiUrl: '{{ include "loki.address" . }}'
     # -- Additional tenants to be created. Each tenant will get a read and write policy
     # and associated token. Tenant must have a name and a namespace for the secret containting
     # the token to be created in. For example
@@ -693,17 +691,19 @@ enterprise:
     # -- Provisioner image to Utilize
     image:
       # -- The Docker registry
-      registry: docker.io
+      registry: us-docker.pkg.dev
       # -- Docker image repository
-      repository: grafana/enterprise-logs-provisioner
+      repository: grafanalabs-global/docker-enterprise-provisioner-prod/enterprise-provisioner
       # -- Overrides the image tag whose default is the chart's appVersion
-      tag: null
+      tag: latest
       # -- Overrides the image tag with an image digest
       digest: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
     # -- Volume mounts to add to the provisioner pods
     extraVolumeMounts: []
+    # -- Additional volumes for Pods
+    extraVolumes: []
 # -- kubetclImage is used in the enterprise provisioner and tokengen jobs
 kubectlImage:
   # -- The Docker registry
@@ -756,6 +756,8 @@ lokiCanary:
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
+  # -- If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.
+  lokiurl: null
   # -- The name of the label to look for at loki when doing the checks.
   labelname: pod
   # -- Additional annotations for the `loki-canary` Daemonset
@@ -785,6 +787,8 @@ lokiCanary:
   nodeSelector: {}
   # -- Tolerations for canary pods
   tolerations: []
+  # -- Affinity for canary pods
+  affinity: {}
   # -- The name of the PriorityClass for loki-canary pods
   priorityClassName: null
   # -- Image to use for loki canary
@@ -919,6 +923,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables to add to the admin-api pods
+  extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the admin-api pods
   extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
@@ -1030,7 +1036,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.27-alpine
+    tag: 1.28-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy
@@ -1321,6 +1327,12 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    # -- Paths that are exposed by Loki Compactor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    compactor:
+      - /loki/api/v1/delete
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
     - loki.example.com
@@ -1644,6 +1656,8 @@ read:
   extraVolumes: []
   # -- Resource requests and limits for the read
   resources: {}
+  # -- liveness probe settings for read pods. If empty, applies no livenessProbe
+  livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for read pods.
@@ -2086,6 +2100,8 @@ distributor:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for distributor service
+  trafficDistribution: ""
 # --  Configuration for the querier
 querier:
   # -- Number of replicas for the querier
@@ -2881,6 +2897,8 @@ patternIngester:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
           topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
   # -- Labels for pattern ingester service
   serviceLabels: {}
   # -- Annotations for pattern ingester service
@@ -2962,6 +2980,8 @@ patternIngester:
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
   enabled: true
+  # -- Whether to enable the rules sidecar
+  sidecar: false
   # -- Number of replicas for the ruler
   replicas: 0
   # -- hostAliases to add
@@ -3177,7 +3197,10 @@ overridesExporter:
   appProtocol:
     grpc: ""
 
+# You can use a self hosted memcached by setting enabled to false and providing addresses.
 memcached:
+  # -- Enable the built in memcached server provided by the chart
+  enabled: true
   image:
     # -- Memcached Docker image repository
     repository: memcached
@@ -3193,6 +3216,14 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- Readiness probe for memcached pods (probe port defaults to container port)
+  readinessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
   # -- The SecurityContext for memcached containers
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -3204,7 +3235,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.2
+    tag: v0.15.3
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3228,6 +3259,8 @@ memcachedExporter:
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3326,6 +3359,8 @@ resultsCache:
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3528,7 +3563,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.2
+    tag: 1.30.6
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

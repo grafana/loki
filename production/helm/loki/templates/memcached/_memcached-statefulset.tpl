@@ -8,7 +8,7 @@ valuesSection and component are specified separately because helm prefers camelc
 */}}
 {{- define "loki.memcached.statefulSet" -}}
 {{ with (index $.ctx.Values $.valuesSection) }}
-{{- if .enabled -}}
+{{- if and .enabled ($.ctx.Values.memcached.enabled) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -124,6 +124,10 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
+          {{- with $.ctx.Values.memcached.readinessProbe }}
+          readinessProbe: 
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
@@ -177,4 +181,3 @@ spec:
 {{- end -}}
 {{- end -}}
 {{- end -}}
-

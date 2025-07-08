@@ -72,7 +72,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-planner
-            {{- with .Values.bloomPlanner.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.bloomPlanner.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -85,11 +85,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomPlanner.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.bloomPlanner.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomPlanner.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomPlanner.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -109,7 +109,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.bloomPlanner.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomPlanner.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.bloomPlanner.resources }}
@@ -152,7 +152,7 @@ spec:
         - name: data
           emptyDir: {}
         {{- end }}
-        {{- with .Values.bloomPlanner.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomPlanner.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if .Values.bloomPlanner.persistence.enabled }}
