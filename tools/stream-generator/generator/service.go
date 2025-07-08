@@ -249,7 +249,7 @@ func (s *Generator) create(ctx context.Context, tenant string, lockIdx int, stre
 				batch := streams[activeStreams : activeStreams+batchSize]
 				s.pushStreams(ctx, tenant, batch, errCh)
 
-				s.metrics.streamsCreatedTotal.WithLabelValues(tenant).Add(float64(batchSize))
+				s.metrics.streamsCreatedTotal.WithLabelValues(tenant).Inc()
 				s.activeStreams[lockIdx] += batchSize
 			}()
 		}
