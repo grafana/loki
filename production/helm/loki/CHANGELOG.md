@@ -13,7 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
+- [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
 - [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose
 
 ## 6.30.1
 
@@ -26,6 +29,13 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
 - [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
 - [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+- [FEATURE] Add config support for external memcache cluster by setting the following config:
+    memcached:
+        enabled: false # <- setting false here
+    resultsCache:
+        addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
+    chunksCache:
+        addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
 
 ## 6.29.0
 
