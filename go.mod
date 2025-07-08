@@ -51,10 +51,10 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250617101305-c93a1bb09ecb
+	github.com/grafana/dskit v0.0.0-20250714112734-cbc2c366b525
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20250318131618-74242eea118d
-	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
+	github.com/grafana/regexp v0.0.0-20240607082908-2cb410fa05da
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
 	github.com/hashicorp/consul/api v1.32.1
@@ -80,9 +80,9 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.22.1-0.20250714112350-b3c02a766eb9
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
+	github.com/prometheus/common v0.65.1-0.20250714095557-18a45b80c91d
 	github.com/prometheus/prometheus v0.304.3-0.20250707074231-ffcba01c5a4e
 	github.com/redis/go-redis/v9 v9.10.0
 	github.com/segmentio/fasthash v1.0.3
@@ -185,6 +185,7 @@ require (
 	github.com/containerd/containerd/v2 v2.0.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
+	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
@@ -198,6 +199,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/golang/glog v1.2.4 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/gophercloud/gophercloud/v2 v2.7.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
@@ -492,3 +494,21 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250210100727-533688b5600d
+
+// https://github.com/grafana/prometheus-alertmanager/pull/118
+replace github.com/prometheus/alertmanager => github.com/juliusmh/alertmanager v0.26.1-0.20250624114102-96969065f8d2
+
+// https://github.com/prometheus/client_golang/pull/1822
+replace github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.22.1-0.20250714112350-b3c02a766eb9
+
+// https://github.com/open-telemetry/opentelemetry-go/pull/6927
+replace go.opentelemetry.io/otel => github.com/aknuds1/opentelemetry-go v0.0.0-20250707083224-5bf4592583ac
+
+replace go.opentelemetry.io/otel/exporters/prometheus => github.com/aknuds1/opentelemetry-go/exporters/prometheus v0.0.0-20250714105753-6d10dabef4d5
+
+// https://github.com/prometheus/common/pull/804
+replace github.com/prometheus/common => github.com/prometheus/common v0.65.1-0.20250714193545-3382528d0c0b
+
+replace github.com/prometheus/prometheus => github.com/grafana/mimir-prometheus v1.8.2-0.20250714104201-83bfd5b90a8a
+
+replace go.opentelemetry.io/contrib/bridges/prometheus => github.com/aknuds1/opentelemetry-go-contrib/bridges/prometheus v0.0.0-20250714111156-1d40a1d868ea

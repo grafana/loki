@@ -26,11 +26,9 @@ import (
 // match.
 type LabelSet map[LabelName]LabelValue
 
-// Validate checks whether all names and values in the label set
-// are valid.
-func (ls LabelSet) Validate() error {
+func (ls LabelSet) validate(scheme ValidationScheme) error {
 	for ln, lv := range ls {
-		if !ln.IsValid() {
+		if !ln.isValid(scheme) {
 			return fmt.Errorf("invalid name %q", ln)
 		}
 		if !lv.IsValid() {
@@ -139,20 +137,7 @@ func (ls LabelSet) FastFingerprint() Fingerprint {
 	return labelSetToFastFingerprint(ls)
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (l *LabelSet) UnmarshalJSON(b []byte) error {
-	var m map[LabelName]LabelValue
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	// encoding/json only unmarshals maps of the form map[string]T. It treats
-	// LabelName as a string and does not call its UnmarshalJSON method.
-	// Thus, we have to replicate the behavior here.
-	for ln := range m {
-		if !ln.IsValid() {
-			return fmt.Errorf("%q is not a valid label name", ln)
-		}
-	}
-	*l = LabelSet(m)
-	return nil
-}
+var (
+	labelSet LabelSet
+	_        json.Unmarshaler = &labelSet
+)

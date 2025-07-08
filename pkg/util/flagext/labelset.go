@@ -64,7 +64,8 @@ func (v *LabelSet) Set(s string) error {
 		out[model.LabelName(kv[0])] = model.LabelValue(kv[1])
 	}
 
-	if err := out.Validate(); err != nil {
+	// TODO: Make configurable.
+	if err := out.Validate(model.LegacyValidation); err != nil {
 		return err
 	}
 	v.LabelSet = out

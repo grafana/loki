@@ -168,6 +168,12 @@ func getOOOSeriesChunks(s *memSeries, mint, maxt int64, lastGarbageCollectedMmap
 	return nil
 }
 
+// PostingsForMatchers needs to be overridden so that the right IndexReader
+// implementation gets passed down to the PostingsForMatchers call.
+func (oh *HeadAndOOOIndexReader) PostingsForMatchers(ctx context.Context, concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
+	return oh.head.pfmc.PostingsForMatchers(ctx, oh, concurrent, ms...)
+}
+
 // Fake Chunk object to pass a set of Metas inside Meta.Chunk.
 type multiMeta struct {
 	chunkenc.Chunk // We don't expect any of the methods to be called.
@@ -462,6 +468,16 @@ func (ir *OOOCompactionHeadIndexReader) SortedPostings(p index.Postings) index.P
 func (ir *OOOCompactionHeadIndexReader) ShardedPostings(p index.Postings, shardIndex, shardCount uint64) index.Postings {
 	hr := headIndexReader{head: ir.ch.head, mint: ir.ch.mint, maxt: ir.ch.maxt}
 	return hr.ShardedPostings(p, shardIndex, shardCount)
+}
+
+func (ir *OOOCompactionHeadIndexReader) LabelValuesFor(postings index.Postings, name string) storage.LabelValues {
+	hr := headIndexReader{head: ir.ch.head, mint: ir.ch.mint, maxt: ir.ch.maxt}
+	return hr.LabelValuesFor(postings, name)
+}
+
+func (ir *OOOCompactionHeadIndexReader) LabelValuesExcluding(postings index.Postings, name string) storage.LabelValues {
+	hr := headIndexReader{head: ir.ch.head, mint: ir.ch.mint, maxt: ir.ch.maxt}
+	return hr.LabelValuesExcluding(postings, name)
 }
 
 func (ir *OOOCompactionHeadIndexReader) Series(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {

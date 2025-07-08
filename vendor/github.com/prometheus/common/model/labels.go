@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -103,20 +105,17 @@ var LabelNameRE = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 // therewith.
 type LabelName string
 
-// IsValid returns true iff the name matches the pattern of LabelNameRE when
-// NameValidationScheme is set to LegacyValidation, or valid UTF-8 if
-// NameValidationScheme is set to UTF8Validation.
-func (ln LabelName) IsValid() bool {
+func (ln LabelName) isValid(scheme ValidationScheme) bool {
 	if len(ln) == 0 {
 		return false
 	}
-	switch NameValidationScheme {
+	switch scheme {
 	case LegacyValidation:
 		return ln.IsValidLegacy()
 	case UTF8Validation:
 		return utf8.ValidString(string(ln))
 	default:
-		panic(fmt.Sprintf("Invalid name validation scheme requested: %d", NameValidationScheme))
+		panic(fmt.Sprintf("Invalid name validation scheme requested: %s", scheme))
 	}
 }
 
@@ -136,31 +135,11 @@ func (ln LabelName) IsValidLegacy() bool {
 	return true
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (ln *LabelName) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	if !LabelName(s).IsValid() {
-		return fmt.Errorf("%q is not a valid label name", s)
-	}
-	*ln = LabelName(s)
-	return nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface.
-func (ln *LabelName) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	if !LabelName(s).IsValid() {
-		return fmt.Errorf("%q is not a valid label name", s)
-	}
-	*ln = LabelName(s)
-	return nil
-}
+var (
+	labelName LabelName
+	_         yaml.Unmarshaler = &labelName
+	_         json.Unmarshaler = &labelName
+)
 
 // LabelNames is a sortable LabelName slice. In implements sort.Interface.
 type LabelNames []LabelName

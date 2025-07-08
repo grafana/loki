@@ -20,6 +20,7 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -42,19 +43,6 @@ type Counter interface {
 	// Add adds the given value to the counter. It panics if the value is <
 	// 0.
 	Add(float64)
-}
-
-// ExemplarAdder is implemented by Counters that offer the option of adding a
-// value to the Counter together with an exemplar. Its AddWithExemplar method
-// works like the Add method of the Counter interface but also replaces the
-// currently saved exemplar (if any) with a new one, created from the provided
-// value, the current time as timestamp, and the provided labels. Empty Labels
-// will lead to a valid (label-less) exemplar. But if Labels is nil, the current
-// exemplar is left in place. AddWithExemplar panics if the value is < 0, if any
-// of the provided labels are invalid, or if the provided labels contain more
-// than 128 runes in total.
-type ExemplarAdder interface {
-	AddWithExemplar(value float64, exemplar Labels)
 }
 
 // CounterOpts is an alias for Opts. See there for doc comments.
@@ -143,11 +131,6 @@ func (c *counter) Add(v float64) {
 	}
 }
 
-func (c *counter) AddWithExemplar(v float64, e Labels) {
-	c.Add(v)
-	c.updateExemplar(v, e)
-}
-
 func (c *counter) Inc() {
 	atomic.AddUint64(&c.valInt, 1)
 }
@@ -169,11 +152,11 @@ func (c *counter) Write(out *dto.Metric) error {
 	return populateMetric(CounterValue, val, c.labelPairs, exemplar, out, c.createdTs)
 }
 
-func (c *counter) updateExemplar(v float64, l Labels) {
+func (c *counter) updateExemplar(v float64, l Labels, scheme model.ValidationScheme) {
 	if l == nil {
 		return
 	}
-	e, err := newExemplar(v, c.now(), l)
+	e, err := newExemplar(v, c.now(), l, scheme)
 	if err != nil {
 		panic(err)
 	}

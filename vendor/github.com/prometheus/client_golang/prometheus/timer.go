@@ -63,19 +63,3 @@ func (t *Timer) ObserveDuration() time.Duration {
 	}
 	return d
 }
-
-// ObserveDurationWithExemplar is like ObserveDuration, but it will also
-// observe exemplar with the duration unless exemplar is nil or provided Observer can't
-// be casted to ExemplarObserver.
-func (t *Timer) ObserveDurationWithExemplar(exemplar Labels) time.Duration {
-	d := time.Since(t.begin)
-	eo, ok := t.observer.(ExemplarObserver)
-	if ok && exemplar != nil {
-		eo.ObserveWithExemplar(d.Seconds(), exemplar)
-		return d
-	}
-	if t.observer != nil {
-		t.observer.Observe(d.Seconds())
-	}
-	return d
-}

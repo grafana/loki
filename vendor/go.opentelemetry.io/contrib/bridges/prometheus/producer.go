@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -42,7 +43,8 @@ type producer struct {
 func NewMetricProducer(opts ...Option) metric.Producer {
 	cfg := newConfig(opts...)
 	return &producer{
-		gatherers: cfg.gatherers,
+		// TODO: Parameterize name validation scheme.
+		gatherers: prometheus.NewGatherers(cfg.gatherers, model.UTF8Validation),
 	}
 }
 
@@ -50,18 +52,18 @@ func (p *producer) Produce(context.Context) ([]metricdata.ScopeMetrics, error) {
 	now := time.Now()
 	var errs multierr
 	otelMetrics := make([]metricdata.Metrics, 0)
-	for _, gatherer := range p.gatherers {
+	p.gatherers.Range(func(gatherer prometheus.Gatherer) {
 		promMetrics, err := gatherer.Gather()
 		if err != nil {
 			errs = append(errs, err)
-			continue
+			return
 		}
 		m, err := convertPrometheusMetricsInto(promMetrics, now)
 		otelMetrics = append(otelMetrics, m...)
 		if err != nil {
 			errs = append(errs, err)
 		}
-	}
+	})
 	if errs.errOrNil() != nil {
 		otel.Handle(errs.errOrNil())
 	}

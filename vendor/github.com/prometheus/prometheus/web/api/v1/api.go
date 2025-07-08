@@ -14,6 +14,7 @@
 package v1
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -200,6 +201,9 @@ type API struct {
 	QueryEngine       promql.QueryEngine
 	ExemplarQueryable storage.ExemplarQueryable
 
+	// ValidationScheme for metric and label names. Defaults to model.UTF8Validation.
+	ValidationScheme model.ValidationScheme
+
 	scrapePoolsRetriever  func(context.Context) ScrapePoolsRetriever
 	targetRetriever       func(context.Context) TargetRetriever
 	alertmanagerRetriever func(context.Context) AlertmanagerRetriever
@@ -264,12 +268,14 @@ func NewAPI(
 	acceptRemoteWriteProtoMsgs []config.RemoteWriteProtoMsg,
 	otlpEnabled, otlpDeltaToCumulative, otlpNativeDeltaIngestion bool,
 	ctZeroIngestionEnabled bool,
+	validIntervalCTZeroIngestion time.Duration,
 	lookbackDelta time.Duration,
 ) *API {
 	a := &API{
 		QueryEngine:       qe,
 		Queryable:         q,
 		ExemplarQueryable: eq,
+		ValidationScheme:  model.UTF8Validation,
 
 		scrapePoolsRetriever:  spsr,
 		targetRetriever:       tr,
@@ -311,7 +317,7 @@ func NewAPI(
 		a.remoteWriteHandler = remote.NewWriteHandler(logger, registerer, ap, acceptRemoteWriteProtoMsgs, ctZeroIngestionEnabled)
 	}
 	if otlpEnabled {
-		a.otlpWriteHandler = remote.NewOTLPWriteHandler(logger, registerer, ap, configFunc, remote.OTLPOptions{
+		a.otlpWriteHandler = remote.NewOTLPWriteHandler(logger, registerer, ap, configFunc, ctZeroIngestionEnabled, validIntervalCTZeroIngestion, remote.OTLPOptions{
 			ConvertDelta:  otlpDeltaToCumulative,
 			NativeDelta:   otlpNativeDeltaIngestion,
 			LookbackDelta: lookbackDelta,
@@ -466,7 +472,7 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 		defer cancel()
 	}
 
-	opts, err := extractQueryOpts(r)
+	opts, err := extractQueryOpts(r, cmp.Or(api.ValidationScheme, model.UTF8Validation))
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
@@ -532,7 +538,7 @@ func (api *API) parseQuery(r *http.Request) apiFuncResult {
 	return apiFuncResult{data: translateAST(expr), err: nil, warnings: nil, finalizer: nil}
 }
 
-func extractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
+func extractQueryOpts(r *http.Request, scheme model.ValidationScheme) (promql.QueryOpts, error) {
 	var duration time.Duration
 
 	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
@@ -543,7 +549,7 @@ func extractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
 		duration = parsedDuration
 	}
 
-	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration), nil
+	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration, scheme), nil
 }
 
 func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
@@ -591,7 +597,7 @@ func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
 		defer cancel()
 	}
 
-	opts, err := extractQueryOpts(r)
+	opts, err := extractQueryOpts(r, cmp.Or(api.ValidationScheme, model.UTF8Validation))
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
@@ -786,8 +792,7 @@ func (api *API) labelValues(r *http.Request) (result apiFuncResult) {
 		name = model.UnescapeName(name, model.ValueEncodingEscaping)
 	}
 
-	label := model.LabelName(name)
-	if !label.IsValid() {
+	if !model.LabelName(name).IsValid(cmp.Or(api.ValidationScheme, model.UTF8Validation)) {
 		return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("invalid label name: %q", name)}, nil, nil}
 	}
 

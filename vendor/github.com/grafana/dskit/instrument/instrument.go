@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/tracing"
@@ -70,10 +71,12 @@ func (c *HistogramCollector) After(ctx context.Context, method, statusCode strin
 // (this will always work for a HistogramVec).
 func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, seconds float64) {
 	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
-		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
+		// TODO: Parameterize name validation scheme.
+		observeWithExemplar(
+			histogram.(prometheus.ExemplarObserver),
 			seconds,
 			prometheus.Labels{"trace_id": traceID, "traceID": traceID},
-		)
+			model.UTF8Validation)
 		return
 	}
 	histogram.Observe(seconds)

@@ -151,14 +151,17 @@ type PrometheusQueryOpts struct {
 	enablePerStepStats bool
 	// Lookback delta duration for this query.
 	lookbackDelta time.Duration
+	// validationScheme for metric/label names.
+	validationScheme model.ValidationScheme
 }
 
 var _ QueryOpts = &PrometheusQueryOpts{}
 
-func NewPrometheusQueryOpts(enablePerStepStats bool, lookbackDelta time.Duration) QueryOpts {
+func NewPrometheusQueryOpts(enablePerStepStats bool, lookbackDelta time.Duration, validationScheme model.ValidationScheme) QueryOpts {
 	return &PrometheusQueryOpts{
 		enablePerStepStats: enablePerStepStats,
 		lookbackDelta:      lookbackDelta,
+		validationScheme:   validationScheme,
 	}
 }
 
@@ -170,11 +173,17 @@ func (p *PrometheusQueryOpts) LookbackDelta() time.Duration {
 	return p.lookbackDelta
 }
 
+func (p *PrometheusQueryOpts) ValidationScheme() model.ValidationScheme {
+	return p.validationScheme
+}
+
 type QueryOpts interface {
 	// Enables recording per-step statistics if the engine has it enabled as well. Disabled by default.
 	EnablePerStepStats() bool
 	// Lookback delta duration for this query.
 	LookbackDelta() time.Duration
+	// ValidationScheme to use for metric and label names.
+	ValidationScheme() model.ValidationScheme
 }
 
 // query implements the Query interface.
@@ -193,6 +202,8 @@ type query struct {
 	matrix Matrix
 	// Cancellation function for the query.
 	cancel func()
+	// validationScheme used for metric and label names.
+	validationScheme model.ValidationScheme
 
 	// The engine against which the query is executed.
 	ng *Engine
@@ -520,7 +531,7 @@ func (ng *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts Q
 
 func (ng *Engine) newQuery(q storage.Queryable, qs string, opts QueryOpts, start, end time.Time, interval time.Duration) (*parser.Expr, *query) {
 	if opts == nil {
-		opts = NewPrometheusQueryOpts(false, 0)
+		opts = NewPrometheusQueryOpts(false, 0, model.UTF8Validation)
 	}
 
 	lookbackDelta := opts.LookbackDelta()
@@ -535,12 +546,13 @@ func (ng *Engine) newQuery(q storage.Queryable, qs string, opts QueryOpts, start
 		LookbackDelta: lookbackDelta,
 	}
 	qry := &query{
-		q:           qs,
-		stmt:        es,
-		ng:          ng,
-		stats:       stats.NewQueryTimers(),
-		sampleStats: stats.NewQuerySamples(ng.enablePerStepStats && opts.EnablePerStepStats()),
-		queryable:   q,
+		q:                qs,
+		stmt:             es,
+		ng:               ng,
+		stats:            stats.NewQueryTimers(),
+		sampleStats:      stats.NewQuerySamples(ng.enablePerStepStats && opts.EnablePerStepStats()),
+		queryable:        q,
+		validationScheme: opts.ValidationScheme(),
 	}
 	return &es.Expr, qry
 }
@@ -745,6 +757,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			enableDelayedNameRemoval: ng.enableDelayedNameRemoval,
 			enableTypeAndUnitLabels:  ng.enableTypeAndUnitLabels,
 			querier:                  querier,
+			validationScheme:         query.validationScheme,
 		}
 		query.sampleStats.InitStepTracking(start, start, 1)
 
@@ -805,6 +818,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		enableDelayedNameRemoval: ng.enableDelayedNameRemoval,
 		enableTypeAndUnitLabels:  ng.enableTypeAndUnitLabels,
 		querier:                  querier,
+		validationScheme:         query.validationScheme,
 	}
 	query.sampleStats.InitStepTracking(evaluator.startTimestamp, evaluator.endTimestamp, evaluator.interval)
 	val, warnings, err := evaluator.Eval(ctxInnerEval, s.Expr)
@@ -1079,6 +1093,7 @@ type evaluator struct {
 	enableDelayedNameRemoval bool
 	enableTypeAndUnitLabels  bool
 	querier                  storage.Querier
+	validationScheme         model.ValidationScheme
 }
 
 // errorf causes a panic with the input formatted into an error.
@@ -1428,12 +1443,24 @@ func (ev *evaluator) rangeEvalAgg(ctx context.Context, aggExpr *parser.Aggregate
 		if params.Max() < 1 {
 			return nil, annos
 		}
+		if params.HasAnyNaN() {
+			ev.errorf("Parameter value is NaN")
+		}
+		if fParam := params.Min(); fParam <= minInt64 {
+			ev.errorf("Scalar value %v underflows int64", fParam)
+		}
+		if fParam := params.Max(); fParam >= maxInt64 {
+			ev.errorf("Scalar value %v overflows int64", fParam)
+		}
 		seriess = make(map[uint64]Series, len(inputMatrix))
 
 	case parser.LIMIT_RATIO:
 		// Return early if all r values are zero.
 		if params.Max() == 0 && params.Min() == 0 {
 			return nil, annos
+		}
+		if params.HasAnyNaN() {
+			ev.errorf("Ratio value is NaN")
 		}
 		if params.Max() > 1.0 {
 			annos.Add(annotations.NewInvalidRatioWarning(params.Max(), 1.0, aggExpr.Param.PositionRange()))
@@ -1666,7 +1693,7 @@ func (ev *evaluator) eval(ctx context.Context, expr parser.Expr) (parser.Value, 
 
 		if e.Op == parser.COUNT_VALUES {
 			valueLabel := param.(*parser.StringLiteral)
-			if !model.LabelName(valueLabel.Val).IsValid() {
+			if !model.LabelName(valueLabel.Val).IsValid(ev.validationScheme) {
 				ev.errorf("invalid label name %s", valueLabel)
 			}
 			if !e.Without {
@@ -2072,6 +2099,7 @@ func (ev *evaluator) eval(ctx context.Context, expr parser.Expr) (parser.Value, 
 			enableDelayedNameRemoval: ev.enableDelayedNameRemoval,
 			enableTypeAndUnitLabels:  ev.enableTypeAndUnitLabels,
 			querier:                  ev.querier,
+			validationScheme:         ev.validationScheme,
 		}
 
 		if e.Step != 0 {
@@ -2118,6 +2146,7 @@ func (ev *evaluator) eval(ctx context.Context, expr parser.Expr) (parser.Value, 
 			enableDelayedNameRemoval: ev.enableDelayedNameRemoval,
 			enableTypeAndUnitLabels:  ev.enableTypeAndUnitLabels,
 			querier:                  ev.querier,
+			validationScheme:         ev.validationScheme,
 		}
 		res, ws := newEv.eval(ctx, e.Expr)
 		ev.currentSamples = newEv.currentSamples
@@ -3320,9 +3349,6 @@ seriesLoop:
 		var r float64
 		switch op {
 		case parser.TOPK, parser.BOTTOMK, parser.LIMITK:
-			if !convertibleToInt64(fParam) {
-				ev.errorf("Scalar value %v overflows int64", fParam)
-			}
 			k = int64(fParam)
 			if k > int64(len(inputMatrix)) {
 				k = int64(len(inputMatrix))
@@ -3334,9 +3360,6 @@ seriesLoop:
 				return nil, annos
 			}
 		case parser.LIMIT_RATIO:
-			if math.IsNaN(fParam) {
-				ev.errorf("Ratio value %v is NaN", fParam)
-			}
 			switch {
 			case fParam == 0:
 				if enh.Ts != ev.endTimestamp {
