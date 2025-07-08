@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
 - [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
 - [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose
+- [BUGFIX] Fix custom gateway nginx config rendering error [#18167](https://github.com/grafana/loki/pull/18167)
 
 ## 6.30.1
 
