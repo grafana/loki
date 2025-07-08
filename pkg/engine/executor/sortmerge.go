@@ -113,10 +113,11 @@ start:
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
 
+loop:
 	for i := range len(p.inputs) {
 		// Skip exhausted inputs
 		if p.exhausted[i] {
-			continue
+			continue loop
 		}
 
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
@@ -130,7 +131,7 @@ start:
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
 					p.batches[i] = nil // remove reference to arrow.Record from slice
-					continue
+					continue loop
 				}
 				return err
 			}

@@ -192,9 +192,8 @@ func (s *dataobjScan) initStreams() error {
 // one of the sections.
 func (s *dataobjScan) read() (arrow.Record, error) {
 	var (
-		gotData bool
-		n       int
-		err     error
+		n   int
+		err error
 	)
 
 	// Reset buffer
@@ -202,22 +201,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for n == 0 {
 		buf := make([]logs.Record, s.opts.batchSize) // do not re-use buffer
-		n, err = s.reader.Read(context.Background(), buf)
-		// if n > 0 {
-		// 	fmt.Println("read()", "section=", s.opts.Section, "streams=", s.opts.StreamIDs, "n=", n)
-		// }
+		n, err = s.reader.Read(s.ctx, buf)
+		// fmt.Println("read()", "section=", s.opts.Section, "streams=", s.opts.StreamIDs, "n=", n, "err", err, "batchSize", s.opts.batchSize)
 		if n == 0 && errors.Is(err, io.EOF) {
-			break
+			return nil, EOF
 		} else if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
-
-		gotData = true
 		s.records = append(s.records, buf[:n]...)
-	}
-
-	if !gotData {
-		return nil, EOF
 	}
 
 	projections, err := s.effectiveProjections(s.records)
