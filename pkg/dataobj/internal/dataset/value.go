@@ -11,14 +11,14 @@ import (
 
 // InvalidTypeError is used as a panic value when using [Value] methods with
 // the incorrect type.
-type InavlidTypeError struct {
+type InvalidTypeError struct {
 	Expected datasetmd.ValueType
 	Actual   datasetmd.ValueType
 }
 
 // Error returns a string representation denoting the expected and actual
 // types.
-func (e *InavlidTypeError) Error() string {
+func (e *InvalidTypeError) Error() string {
 	return fmt.Sprintf("invalid type: expected %s, got %s", e.Expected, e.Actual)
 }
 
@@ -115,7 +115,7 @@ func (v *Value) Type() datasetmd.ValueType {
 // [datasetmd.VALUE_TYPE_INT64].
 func (v *Value) Int64() int64 {
 	if expect, actual := datasetmd.VALUE_TYPE_INT64, v.Type(); expect != actual {
-		panic(&InavlidTypeError{expect, actual})
+		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.int64()
 }
@@ -126,7 +126,7 @@ func (v *Value) int64() int64 { return int64(v.num) }
 // [datasetmd.VALUE_TYPE_UINT64].
 func (v *Value) Uint64() uint64 {
 	if expect, actual := datasetmd.VALUE_TYPE_UINT64, v.Type(); expect != actual {
-		panic(&InavlidTypeError{expect, actual})
+		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.uint64()
 }
@@ -138,7 +138,7 @@ func (v *Value) uint64() uint64 { return v.num }
 // underlying type of v.
 func (v *Value) ByteArray() []byte {
 	if expect, actual := datasetmd.VALUE_TYPE_BYTE_ARRAY, v.Type(); expect != actual {
-		panic(&InavlidTypeError{expect, actual})
+		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.byteArray()
 }
@@ -276,7 +276,7 @@ func CompareValues(a, b *Value) int {
 		return 0
 
 	case aType != bType:
-		panic(&InavlidTypeError{aType, bType})
+		panic(&InvalidTypeError{aType, bType})
 
 	case aType == datasetmd.VALUE_TYPE_INT64:
 		return cmpInteger(a.int64(), b.int64())
