@@ -17,8 +17,8 @@ var matchAllFilter = logs.LogMessageFilterRowPredicate{
 	Keep: func(_ []byte) bool { return true },
 }
 
-// buildLogsPredicate builds a logs predicate from an expression.
-func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
+// buildLogsRowPredicate builds a [logs.RowPredicate] from an expression.
+func buildLogsRowPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	// TODO(rfratto): implement converting expressions into logs predicates.
 	//
 	// There's a few challenges here:
@@ -53,26 +53,26 @@ func buildLogsPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	// think we should start removing things from internal for this; we can probably
 	// find a way to remove the explicit dependency from the dataobj package from
 	// the physical planner instead.
-	return mapInitiallySupportedPredicates(expr)
+	return mapInitiallySupportedRowPredicates(expr)
 }
 
 // Support for timestamp and metadata predicates has been implemented.
 // TODO(owen-d): this can go away when we use dataset.Reader & dataset.Predicate directly
-func mapInitiallySupportedPredicates(expr physical.Expression) (logs.RowPredicate, error) {
-	return mapPredicates(expr)
+func mapInitiallySupportedRowPredicates(expr physical.Expression) (logs.RowPredicate, error) {
+	return mapRowPredicates(expr)
 }
 
-func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
+func mapRowPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 
 		// Special case: both sides of the binary op are again binary expressions (where LHS is expected to be a column expression)
 		if e.Left.Type() == physical.ExprTypeBinary && e.Right.Type() == physical.ExprTypeBinary {
-			left, err := mapPredicates(e.Left)
+			left, err := mapRowPredicates(e.Left)
 			if err != nil {
 				return nil, err
 			}
-			right, err := mapPredicates(e.Right)
+			right, err := mapRowPredicates(e.Right)
 			if err != nil {
 				return nil, err
 			}
@@ -100,14 +100,14 @@ func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 		switch left.Ref.Type {
 		case types.ColumnTypeBuiltin:
 			if left.Ref.Column == types.ColumnNameBuiltinTimestamp {
-				return mapTimestampPredicate(e)
+				return mapTimestampRowPredicate(e)
 			}
 			if left.Ref.Column == types.ColumnNameBuiltinMessage {
-				return mapMessagePredicate(e)
+				return mapMessageRowPredicate(e)
 			}
 			return nil, fmt.Errorf("unsupported builtin column in predicate (only timestamp is supported for now): %s", left.Ref.Column)
 		case types.ColumnTypeMetadata:
-			return mapMetadataPredicate(e)
+			return mapMetadataRowPredicate(e)
 		default:
 			return nil, fmt.Errorf("unsupported column ref type (%T) in predicate: %s", left.Ref, left.Ref.String())
 		}
@@ -116,8 +116,8 @@ func mapPredicates(expr physical.Expression) (logs.RowPredicate, error) {
 	}
 }
 
-func mapTimestampPredicate(expr physical.Expression) (logs.TimeRangeRowPredicate, error) {
-	m := newTimestampPredicateMapper()
+func mapTimestampRowPredicate(expr physical.Expression) (logs.TimeRangeRowPredicate, error) {
+	m := newTimestampRowPredicateMapper()
 	if err := m.verify(expr); err != nil {
 		return logs.TimeRangeRowPredicate{}, err
 	}
@@ -139,25 +139,25 @@ func mapTimestampPredicate(expr physical.Expression) (logs.TimeRangeRowPredicate
 	return m.res, nil
 }
 
-func newTimestampPredicateMapper() *timestampPredicateMapper {
+func newTimestampRowPredicateMapper() *timestampRowPredicateMapper {
 	open := logs.TimeRangeRowPredicate{
 		StartTime:    time.Unix(0, math.MinInt64).UTC(),
 		EndTime:      time.Unix(0, math.MaxInt64).UTC(),
 		IncludeStart: true,
 		IncludeEnd:   true,
 	}
-	return &timestampPredicateMapper{
+	return &timestampRowPredicateMapper{
 		res: open,
 	}
 }
 
-type timestampPredicateMapper struct {
+type timestampRowPredicateMapper struct {
 	res logs.TimeRangeRowPredicate
 }
 
 // ensures the LHS is a timestamp column reference
 // and the RHS is either a literal or a binary expression
-func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
+func (m *timestampRowPredicateMapper) verify(expr physical.Expression) error {
 	binop, ok := expr.(*physical.BinaryExpr)
 	if !ok {
 		return fmt.Errorf("unsupported expression type for timestamp predicate: %T, expected *physical.BinaryExpr", expr)
@@ -195,7 +195,7 @@ func (m *timestampPredicateMapper) verify(expr physical.Expression) error {
 }
 
 // processExpr recursively processes the expression tree to update the time range.
-func (m *timestampPredicateMapper) processExpr(expr physical.Expression) error {
+func (m *timestampRowPredicateMapper) processExpr(expr physical.Expression) error {
 	// verify should have already ensured expr is *physical.BinaryExpr
 	binExp := expr.(*physical.BinaryExpr)
 
@@ -221,7 +221,7 @@ func (m *timestampPredicateMapper) processExpr(expr physical.Expression) error {
 // The `rightExpr` is the RHS of the comparison, which might be a literal
 // or a nested binary expression (e.g., `timestamp > (timestamp = X)`).
 // This function will traverse `rightExpr` to find the innermost literal value.
-func (m *timestampPredicateMapper) rebound(op types.BinaryOp, rightExpr physical.Expression) error {
+func (m *timestampRowPredicateMapper) rebound(op types.BinaryOp, rightExpr physical.Expression) error {
 	// `verify` (called by processExpr before this) now ensures that for comparison ops,
 	// the original expression's RHS was a literal, or if it was an AND, its constituent parts were.
 	// `processExpr` will pass the direct LiteralExpr from a comparison to rebound.
@@ -260,7 +260,7 @@ func (m *timestampPredicateMapper) rebound(op types.BinaryOp, rightExpr physical
 // updateLowerBound updates the start of the time range (m.res.StartTime, m.res.IncludeStart).
 // `val` is the new potential start time from the condition.
 // `includeVal` indicates if this new start time is inclusive (e.g., from '>=' or '==').
-func (m *timestampPredicateMapper) updateLowerBound(val time.Time, includeVal bool) {
+func (m *timestampRowPredicateMapper) updateLowerBound(val time.Time, includeVal bool) {
 	if val.After(m.res.StartTime) {
 		// The new value is strictly greater than the current start, so it becomes the new start.
 		m.res.StartTime = val
@@ -294,7 +294,7 @@ func (m *timestampPredicateMapper) updateLowerBound(val time.Time, includeVal bo
 // updateUpperBound updates the end of the time range (m.res.EndTime, m.res.IncludeEnd).
 // `val` is the new potential end time from the condition.
 // `includeVal` indicates if this new end time is inclusive (e.g., from '<=' or '==').
-func (m *timestampPredicateMapper) updateUpperBound(val time.Time, includeVal bool) {
+func (m *timestampRowPredicateMapper) updateUpperBound(val time.Time, includeVal bool) {
 	if val.Before(m.res.EndTime) {
 		// The new value is strictly less than the current end, so it becomes the new end.
 		m.res.EndTime = val
@@ -309,10 +309,10 @@ func (m *timestampPredicateMapper) updateUpperBound(val time.Time, includeVal bo
 	// If val is after m.res.EndTime, the current EndTime is already more restrictive, so no change.
 }
 
-// mapMetadataPredicate converts a physical.Expression into a dataobj.Predicate for metadata filtering.
+// mapMetadataRowPredicate converts a physical.Expression into a dataobj.Predicate for metadata filtering.
 // It supports MetadataMatcherPredicate for equality checks on metadata fields,
 // and can recursively handle AndPredicate, OrPredicate, and NotPredicate.
-func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
+func mapMetadataRowPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 		switch e.Op {
@@ -345,11 +345,11 @@ func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 				Value: val,
 			}, nil
 		case types.BinaryOpAnd:
-			leftPredicate, err := mapMetadataPredicate(e.Left)
+			leftPredicate, err := mapMetadataRowPredicate(e.Left)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map left operand of AND: %w", err)
 			}
-			rightPredicate, err := mapMetadataPredicate(e.Right)
+			rightPredicate, err := mapMetadataRowPredicate(e.Right)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
 			}
@@ -358,11 +358,11 @@ func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 				Right: rightPredicate,
 			}, nil
 		case types.BinaryOpOr:
-			leftPredicate, err := mapMetadataPredicate(e.Left)
+			leftPredicate, err := mapMetadataRowPredicate(e.Left)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map left operand of OR: %w", err)
 			}
-			rightPredicate, err := mapMetadataPredicate(e.Right)
+			rightPredicate, err := mapMetadataRowPredicate(e.Right)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
 			}
@@ -377,7 +377,7 @@ func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 		if e.Op != types.UnaryOpNot {
 			return nil, fmt.Errorf("unsupported unary operator (%s) for metadata predicate, expected NOT", e.Op)
 		}
-		innerPredicate, err := mapMetadataPredicate(e.Left)
+		innerPredicate, err := mapMetadataRowPredicate(e.Left)
 		if err != nil {
 			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
 		}
@@ -389,23 +389,23 @@ func mapMetadataPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	}
 }
 
-func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
+func mapMessageRowPredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	switch e := expr.(type) {
 	case *physical.BinaryExpr:
 		switch e.Op {
 
 		case types.BinaryOpMatchSubstr, types.BinaryOpNotMatchSubstr, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
-			return match(e)
+			return matchRow(e)
 
 		case types.BinaryOpMatchPattern, types.BinaryOpNotMatchPattern:
 			return nil, fmt.Errorf("unsupported binary operator (%s) for log message predicate", e.Op)
 
 		case types.BinaryOpAnd:
-			leftPredicate, err := mapMessagePredicate(e.Left)
+			leftPredicate, err := mapMessageRowPredicate(e.Left)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map left operand of AND: %w", err)
 			}
-			rightPredicate, err := mapMessagePredicate(e.Right)
+			rightPredicate, err := mapMessageRowPredicate(e.Right)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of AND: %w", err)
 			}
@@ -415,11 +415,11 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 			}, nil
 
 		case types.BinaryOpOr:
-			leftPredicate, err := mapMessagePredicate(e.Left)
+			leftPredicate, err := mapMessageRowPredicate(e.Left)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map left operand of OR: %w", err)
 			}
-			rightPredicate, err := mapMessagePredicate(e.Right)
+			rightPredicate, err := mapMessageRowPredicate(e.Right)
 			if err != nil {
 				return nil, fmt.Errorf("failed to map right operand of OR: %w", err)
 			}
@@ -436,7 +436,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 		if e.Op != types.UnaryOpNot {
 			return nil, fmt.Errorf("unsupported unary operator (%s) for log message predicate, expected NOT", e.Op)
 		}
-		innerPredicate, err := mapMessagePredicate(e.Left)
+		innerPredicate, err := mapMessageRowPredicate(e.Left)
 		if err != nil {
 			return nil, fmt.Errorf("failed to map inner expression of NOT: %w", err)
 		}
@@ -449,7 +449,7 @@ func mapMessagePredicate(expr physical.Expression) (logs.RowPredicate, error) {
 	}
 }
 
-func match(e *physical.BinaryExpr) (logs.RowPredicate, error) {
+func matchRow(e *physical.BinaryExpr) (logs.RowPredicate, error) {
 	val, err := rhsValue(e)
 	if err != nil {
 		return nil, err
