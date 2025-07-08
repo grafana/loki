@@ -17,9 +17,15 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
 - [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose []#17742(https://github.com/grafana/loki/pull/17742)
+- [FEATURE] Allow external memcached setup [#17432](https://github.com/grafana/loki/pull/17432)
+- [FEATURE] Add block_builder config to helm chart [#17451](https://github.com/grafana/loki/pull/17451)
+- [FEATURE] Support bypass all s3/gcs/azure config in object_store [#17597](https://github.com/grafana/loki/pull/17597)
 - [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
-- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose
 - [BUGFIX] Fix custom gateway nginx config rendering error [#18167](https://github.com/grafana/loki/pull/18167)
+- [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
+- [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
+- [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
 
 ## 6.30.1
 
