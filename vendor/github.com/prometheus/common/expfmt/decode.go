@@ -29,7 +29,7 @@ import (
 
 // Decoder types decode an input stream into metric families.
 type Decoder interface {
-	Decode(*dto.MetricFamily) error
+	Decode(*dto.MetricFamily, model.ValidationScheme) error
 }
 
 // DecodeOptions contains options used by the Decoder and in sample extraction.
@@ -86,14 +86,14 @@ type protoDecoder struct {
 }
 
 // Decode implements the Decoder interface.
-func (d *protoDecoder) Decode(v *dto.MetricFamily) error {
+func (d *protoDecoder) Decode(v *dto.MetricFamily, nameValidationScheme model.ValidationScheme) error {
 	opts := protodelim.UnmarshalOptions{
 		MaxSize: -1,
 	}
 	if err := opts.UnmarshalFrom(d.r, v); err != nil {
 		return err
 	}
-	if !model.IsValidMetricName(model.LabelValue(v.GetName())) {
+	if !model.IsValidMetricName(model.LabelValue(v.GetName()), nameValidationScheme) {
 		return fmt.Errorf("invalid metric name %q", v.GetName())
 	}
 	for _, m := range v.GetMetric() {
@@ -107,7 +107,7 @@ func (d *protoDecoder) Decode(v *dto.MetricFamily) error {
 			if !model.LabelValue(l.GetValue()).IsValid() {
 				return fmt.Errorf("invalid label value %q", l.GetValue())
 			}
-			if !model.LabelName(l.GetName()).IsValid() {
+			if !model.LabelName(l.GetName()).IsValid(nameValidationScheme) {
 				return fmt.Errorf("invalid label name %q", l.GetName())
 			}
 		}
@@ -123,7 +123,7 @@ type textDecoder struct {
 }
 
 // Decode implements the Decoder interface.
-func (d *textDecoder) Decode(v *dto.MetricFamily) error {
+func (d *textDecoder) Decode(v *dto.MetricFamily, _ model.ValidationScheme) error {
 	if d.err == nil {
 		// Read all metrics in one shot.
 		var p TextParser
@@ -156,8 +156,8 @@ type SampleDecoder struct {
 
 // Decode calls the Decode method of the wrapped Decoder and then extracts the
 // samples from the decoded MetricFamily into the provided model.Vector.
-func (sd *SampleDecoder) Decode(s *model.Vector) error {
-	err := sd.Dec.Decode(&sd.f)
+func (sd *SampleDecoder) Decode(s *model.Vector, nameValidationScheme model.ValidationScheme) error {
+	err := sd.Dec.Decode(&sd.f, nameValidationScheme)
 	if err != nil {
 		return err
 	}

@@ -21,6 +21,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 // A Linter is a Prometheus metrics linter.  It identifies issues with metric
@@ -64,7 +65,7 @@ func (l *Linter) AddCustomValidations(vs ...Validation) {
 // Lint performs a linting pass, returning a slice of Problems indicating any
 // issues found in the metrics stream. The slice is sorted by metric name
 // and issue description.
-func (l *Linter) Lint() ([]Problem, error) {
+func (l *Linter) Lint(nameValidationScheme model.ValidationScheme) ([]Problem, error) {
 	var problems []Problem
 
 	if l.r != nil {
@@ -72,7 +73,7 @@ func (l *Linter) Lint() ([]Problem, error) {
 
 		mf := &dto.MetricFamily{}
 		for {
-			if err := d.Decode(mf); err != nil {
+			if err := d.Decode(mf, nameValidationScheme); err != nil {
 				if errors.Is(err, io.EOF) {
 					break
 				}

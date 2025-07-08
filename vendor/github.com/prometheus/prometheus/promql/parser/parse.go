@@ -71,6 +71,8 @@ type parser struct {
 
 	generatedParserResult interface{}
 	parseErrors           ParseErrors
+
+	validationScheme model.ValidationScheme
 }
 
 type Opt func(p *parser)
@@ -78,6 +80,14 @@ type Opt func(p *parser)
 func WithFunctions(functions map[string]*Function) Opt {
 	return func(p *parser) {
 		p.functions = functions
+	}
+}
+
+// WithValidationScheme controls how metric/label names are validated.
+// Defaults to UTF8Validation.
+func WithValidationScheme(scheme model.ValidationScheme) Opt {
+	return func(p *parser) {
+		p.validationScheme = scheme
 	}
 }
 
@@ -90,6 +100,7 @@ func NewParser(input string, opts ...Opt) *parser { //nolint:revive // unexporte
 	p.parseErrors = nil
 	p.generatedParserResult = nil
 	p.closingParens = make([]posrange.Pos, 0)
+	p.validationScheme = model.UTF8Validation
 
 	// Clear lexer struct before reusing.
 	p.lex = Lexer{
@@ -474,7 +485,9 @@ func (p *parser) newAggregateExpr(op Item, modifier, args Node) (ret *AggregateE
 	desiredArgs := 1
 	if ret.Op.IsAggregatorWithParam() {
 		if !EnableExperimentalFunctions && ret.Op.IsExperimentalAggregator() {
-			p.addParseErrf(ret.PositionRange(), "%s() is experimental and must be enabled with --enable-feature=promql-experimental-functions", ret.Op)
+			// In mimir we return a custom message which doesn't mention the CLI flag that should be used to enable
+			// experimental functions, given it's different (and in SaaS customers don't even have access to it).
+			p.addParseErrf(ret.PositionRange(), "limitk() and limit_ratio() functions are not enabled")
 			return
 		}
 		desiredArgs = 2

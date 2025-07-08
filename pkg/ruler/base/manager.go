@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -306,7 +307,8 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 			Alert:  yaml.Node{Value: r.Alert},
 			Expr:   yaml.Node{Value: r.Expr},
 		}
-		for _, err := range r.Validate(ruleNode) {
+		// TODO: Make configurable.
+		for _, err := range r.Validate(ruleNode, model.LegacyValidation) {
 			var ruleName string
 			if r.Alert != "" {
 				ruleName = r.Alert

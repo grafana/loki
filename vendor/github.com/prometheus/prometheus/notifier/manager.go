@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/version"
 
@@ -308,6 +309,11 @@ func (n *Manager) Send(alerts ...*Alert) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 
+	for i, rc := range n.opts.RelabelConfigs {
+		if rc.MetricNameValidationScheme == model.UnsetValidation {
+			n.opts.RelabelConfigs[i].MetricNameValidationScheme = model.UTF8Validation
+		}
+	}
 	alerts = relabelAlerts(n.opts.RelabelConfigs, n.opts.ExternalLabels, alerts)
 	if len(alerts) == 0 {
 		return

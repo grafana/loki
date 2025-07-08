@@ -31,6 +31,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -62,14 +63,27 @@ func init() {
 	MustRegister(NewGoCollector())
 }
 
+type RegistryOption func(*Registry)
+
+func WithNameValidationScheme(scheme model.ValidationScheme) RegistryOption {
+	return func(r *Registry) {
+		r.nameValidationScheme = scheme
+	}
+}
+
 // NewRegistry creates a new vanilla Registry without any Collectors
 // pre-registered.
-func NewRegistry() *Registry {
-	return &Registry{
-		collectorsByID:  map[uint64]Collector{},
-		descIDs:         map[uint64]struct{}{},
-		dimHashesByName: map[string]uint64{},
+func NewRegistry(opts ...RegistryOption) *Registry {
+	reg := &Registry{
+		collectorsByID:       map[uint64]Collector{},
+		descIDs:              map[uint64]struct{}{},
+		dimHashesByName:      map[string]uint64{},
+		nameValidationScheme: model.UTF8Validation,
 	}
+	for _, opt := range opts {
+		opt(reg)
+	}
+	return reg
 }
 
 // NewPedanticRegistry returns a registry that checks during collection if each
@@ -264,6 +278,7 @@ type Registry struct {
 	dimHashesByName       map[string]uint64
 	uncheckedCollectors   []Collector
 	pedanticChecksEnabled bool
+	nameValidationScheme  model.ValidationScheme
 }
 
 // Register implements Registerer.
@@ -503,6 +518,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 				metric, metricFamiliesByName,
 				metricHashes,
 				registeredDescIDs,
+				r.nameValidationScheme,
 			))
 		case metric, ok := <-umc:
 			if !ok {
@@ -513,6 +529,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 				metric, metricFamiliesByName,
 				metricHashes,
 				nil,
+				r.nameValidationScheme,
 			))
 		default:
 			if goroutineBudget <= 0 || len(checkedCollectors)+len(uncheckedCollectors) == 0 {
@@ -530,6 +547,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 						metric, metricFamiliesByName,
 						metricHashes,
 						registeredDescIDs,
+						r.nameValidationScheme,
 					))
 				case metric, ok := <-umc:
 					if !ok {
@@ -540,6 +558,7 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 						metric, metricFamiliesByName,
 						metricHashes,
 						nil,
+						r.nameValidationScheme,
 					))
 				}
 				break
@@ -622,6 +641,7 @@ func processMetric(
 	metricFamiliesByName map[string]*dto.MetricFamily,
 	metricHashes map[uint64]struct{},
 	registeredDescIDs map[uint64]struct{},
+	nameValidationScheme model.ValidationScheme,
 ) error {
 	desc := metric.Desc()
 	// Wrapped metrics collected by an unchecked Collector can have an
@@ -705,7 +725,7 @@ func processMetric(
 		}
 		metricFamiliesByName[desc.fqName] = metricFamily
 	}
-	if err := checkMetricConsistency(metricFamily, dtoMetric, metricHashes); err != nil {
+	if err := checkMetricConsistency(metricFamily, dtoMetric, metricHashes, nameValidationScheme); err != nil {
 		return err
 	}
 	if registeredDescIDs != nil {
@@ -791,7 +811,8 @@ func (gs Gatherers) Gather() ([]*dto.MetricFamily, error) {
 				metricFamiliesByName[mf.GetName()] = existingMF
 			}
 			for _, m := range mf.Metric {
-				if err := checkMetricConsistency(existingMF, m, metricHashes); err != nil {
+				// TODO(juliusmh): hardcoded UTF8 validation
+				if err := checkMetricConsistency(existingMF, m, metricHashes, model.UTF8Validation); err != nil {
 					errs = append(errs, err)
 					continue
 				}
@@ -870,6 +891,7 @@ func checkMetricConsistency(
 	metricFamily *dto.MetricFamily,
 	dtoMetric *dto.Metric,
 	metricHashes map[uint64]struct{},
+	nameValidationScheme model.ValidationScheme,
 ) error {
 	name := metricFamily.GetName()
 
@@ -894,7 +916,7 @@ func checkMetricConsistency(
 				name, dtoMetric, labelName,
 			)
 		}
-		if !checkLabelName(labelName) {
+		if !checkLabelName(labelName, nameValidationScheme) {
 			return fmt.Errorf(
 				"collected metric %q { %s} has a label with an invalid name: %s",
 				name, dtoMetric, labelName,

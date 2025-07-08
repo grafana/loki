@@ -70,8 +70,9 @@ type HTTPDoer interface {
 type Pusher struct {
 	error error
 
-	url, job string
-	grouping map[string]string
+	url, job         string
+	grouping         map[string]string
+	validationScheme model.ValidationScheme
 
 	gatherers  prometheus.Gatherers
 	registerer prometheus.Registerer
@@ -84,11 +85,22 @@ type Pusher struct {
 	expfmt expfmt.Format
 }
 
+// Option used to create Pusher instances.
+type Option func(*Pusher)
+
+// WithValidationScheme sets the validation used for label and metric names.
+// Default is model.UTF8Validation.
+func WithValidationScheme(scheme model.ValidationScheme) Option {
+	return func(p *Pusher) {
+		p.validationScheme = scheme
+	}
+}
+
 // New creates a new Pusher to push to the provided URL with the provided job
 // name (which must not be empty). You can use just host:port or ip:port as url,
 // in which case “http://” is added automatically. Alternatively, include the
 // schema in the URL. However, do not include the “/metrics/jobs/…” part.
-func New(url, job string) *Pusher {
+func New(url, job string, opts ...Option) *Pusher {
 	var (
 		reg = prometheus.NewRegistry()
 		err error
@@ -101,16 +113,21 @@ func New(url, job string) *Pusher {
 	}
 	url = strings.TrimSuffix(url, "/")
 
-	return &Pusher{
-		error:      err,
-		url:        url,
-		job:        job,
-		grouping:   map[string]string{},
-		gatherers:  prometheus.Gatherers{reg},
-		registerer: reg,
-		client:     &http.Client{},
-		expfmt:     expfmt.NewFormat(expfmt.TypeProtoDelim),
+	pusher := &Pusher{
+		error:            err,
+		url:              url,
+		job:              job,
+		grouping:         map[string]string{},
+		gatherers:        prometheus.Gatherers{reg},
+		registerer:       reg,
+		client:           &http.Client{},
+		expfmt:           expfmt.NewFormat(expfmt.TypeProtoDelim),
+		validationScheme: model.UTF8Validation,
 	}
+	for _, opt := range opts {
+		opt(pusher)
+	}
+	return pusher
 }
 
 // Push collects/gathers all metrics from all Collectors and Gatherers added to
@@ -182,7 +199,7 @@ func (p *Pusher) Error() error {
 // For convenience, this method returns a pointer to the Pusher itself.
 func (p *Pusher) Grouping(name, value string) *Pusher {
 	if p.error == nil {
-		if !model.LabelName(name).IsValid() {
+		if !model.LabelName(name).IsValid(p.validationScheme) {
 			p.error = fmt.Errorf("grouping label has invalid name: %s", name)
 			return p
 		}

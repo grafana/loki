@@ -104,19 +104,18 @@ var LabelNameRE = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 type LabelName string
 
 // IsValid returns true iff the name matches the pattern of LabelNameRE when
-// NameValidationScheme is set to LegacyValidation, or valid UTF-8 if
-// NameValidationScheme is set to UTF8Validation.
-func (ln LabelName) IsValid() bool {
+// scheme is LegacyValidation, or valid UTF-8 if it is UTF8Validation.
+func (ln LabelName) IsValid(scheme ValidationScheme) bool {
 	if len(ln) == 0 {
 		return false
 	}
-	switch NameValidationScheme {
+	switch scheme {
 	case LegacyValidation:
 		return ln.IsValidLegacy()
 	case UTF8Validation:
 		return utf8.ValidString(string(ln))
 	default:
-		panic(fmt.Sprintf("Invalid name validation scheme requested: %d", NameValidationScheme))
+		panic(fmt.Sprintf("Invalid name validation scheme requested: %s", scheme.String()))
 	}
 }
 
@@ -137,12 +136,13 @@ func (ln LabelName) IsValidLegacy() bool {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
+// Validation is done using UTF8Validation.
 func (ln *LabelName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
 	}
-	if !LabelName(s).IsValid() {
+	if !LabelName(s).IsValid(UTF8Validation) {
 		return fmt.Errorf("%q is not a valid label name", s)
 	}
 	*ln = LabelName(s)
@@ -150,12 +150,13 @@ func (ln *LabelName) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
+// Validation is done using UTF8Validation.
 func (ln *LabelName) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
-	if !LabelName(s).IsValid() {
+	if !LabelName(s).IsValid(UTF8Validation) {
 		return fmt.Errorf("%q is not a valid label name", s)
 	}
 	*ln = LabelName(s)
