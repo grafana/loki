@@ -290,7 +290,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	for i := 0; i < len(events); i++ {
 		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Info(objLogger).Log("msg", "processing object")
+		level.Info(objLogger).Log("msg", "processing object", "size", len(*obj.objectBytes))
 
 		if obj.err != nil {
 			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
@@ -369,7 +369,7 @@ func (p *Builder) getKey(tenantID string, object *bytes.Buffer) string {
 	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:])
 }
 
-func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
+func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath string) error {
 	streamSection, err := streams.Open(p.ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)
@@ -377,6 +377,7 @@ func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath str
 
 	streamBuf := make([]streams.Stream, 2048)
 	rowReader := streams.NewRowReader(streamSection)
+	cnt := 0
 	for {
 		n, err := rowReader.Read(p.ctx, streamBuf)
 		if err != nil && err != io.EOF {
@@ -385,6 +386,7 @@ func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath str
 		if n == 0 && err == io.EOF {
 			break
 		}
+		cnt += n
 		for _, stream := range streamBuf[:n] {
 			newStreamID, err := p.builder.AppendStream(stream)
 			if err != nil {
@@ -393,6 +395,7 @@ func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath str
 			p.builder.RecordStreamRef(objectPath, stream.ID, newStreamID)
 		}
 	}
+	fmt.Printf("streams section: %d rows\n", cnt)
 	return nil
 }
 
@@ -445,8 +448,8 @@ func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logg
 			break
 		}
 
+		cnt += n
 		for i, log := range logsBuf[:n] {
-			cnt++
 			for _, md := range log.Metadata {
 				columnBloomBuilders[md.Name].Add([]byte(md.Value))
 			}
