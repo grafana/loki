@@ -165,14 +165,16 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
-		node := &DataObjScan{
-			Location:  objects[i],
-			StreamIDs: streams[i],
-			Sections:  sections[i],
-			Direction: ctx.direction, // apply direction from previously visited Sort node
+		for _, section := range sections[i] {
+			node := &DataObjScan{
+				Location:  objects[i],
+				StreamIDs: streams[i],
+				Section:   section,
+				Direction: ctx.direction, // apply direction from previously visited Sort node
+			}
+			p.plan.addNode(node)
+			nodes = append(nodes, node)
 		}
-		p.plan.addNode(node)
-		nodes = append(nodes, node)
 	}
 	return nodes, nil
 }

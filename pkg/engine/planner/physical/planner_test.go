@@ -127,7 +127,7 @@ func sections(t *testing.T, nodes []Node) [][]int {
 		if !ok {
 			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
 		}
-		res = append(res, obj.Sections)
+		res = append(res, []int{obj.Section})
 	}
 	return res
 }
@@ -156,9 +156,13 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 		expSections [][]int
 	}{
 		{
-			shard:       logical.NewShard(0, 1), // no sharding
-			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
-			expSections: [][]int{{0, 1}, {0, 1}, {0, 1}, {0, 1}, {0, 1}},
+			shard: logical.NewShard(0, 1), // no sharding
+			expPaths: []string{
+				// Each section gets its own DataObjScan node, so objects here are
+				// repeated once per section to scan.
+				"obj1", "obj1", "obj2", "obj2", "obj3", "obj3", "obj4", "obj4", "obj5", "obj5",
+			},
+			expSections: [][]int{{0}, {1}, {0}, {1}, {0}, {1}, {0}, {1}, {0}, {1}},
 		},
 		{
 			shard:       logical.NewShard(0, 2), // shard 1 of 2
