@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -92,7 +93,7 @@ func TestIndexBuilder(t *testing.T) {
 			EnabledTenantIDs:   []string{tenant},
 		},
 		kafka.Config{},
-		log.NewNopLogger(),
+		log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout)),
 		"instance-id",
 		bucket,
 		prometheus.NewRegistry(),
@@ -128,57 +129,43 @@ func TestIndexBuilder(t *testing.T) {
 func readAllSectionPointers(t *testing.T, bucket objstore.Bucket, indexPrefix string) []pointers.SectionPointer {
 	var out []pointers.SectionPointer
 
-	directories := []string{}
 	err := bucket.Iter(context.Background(), fmt.Sprintf("%s/tenant-test-tenant/indexes/", indexPrefix), func(name string) error {
-		directories = append(directories, name)
-		return nil
-	})
-	require.NoError(t, err)
-
-	for _, directory := range directories {
-		err := bucket.Iter(context.Background(), directory, func(name string) error {
-
-			objReader, err := bucket.Get(context.Background(), name)
-			require.NoError(t, err)
-			defer objReader.Close()
-
-			objectBytes, err := io.ReadAll(objReader)
-			require.NoError(t, err)
-
-			object, err := dataobj.FromReaderAt(bytes.NewReader(objectBytes), int64(len(objectBytes)))
-			require.NoError(t, err)
-
-			var reader pointers.RowReader
-			defer reader.Close()
-
-			buf := make([]pointers.SectionPointer, 64)
-
-			for _, section := range object.Sections() {
-				if !pointers.CheckSection(section) {
-					continue
-				}
-
-				sec, err := pointers.Open(context.Background(), section)
-				if err != nil {
-					return fmt.Errorf("opening section: %w", err)
-				}
-
-				reader.Reset(sec)
-				for {
-					num, err := reader.Read(context.Background(), buf)
-					if err != nil && err != io.EOF {
-						return fmt.Errorf("reading section: %w", err)
-					}
-					if num == 0 && err == io.EOF {
-						break
-					}
-					out = append(out, buf[:num]...)
-				}
-			}
-			return nil
-		})
+		t.Logf("File: %v", name)
+		objReader, err := bucket.Get(context.Background(), name)
 		require.NoError(t, err)
-	}
+		defer objReader.Close()
+
+		objectBytes, err := io.ReadAll(objReader)
+		require.NoError(t, err)
+
+		object, err := dataobj.FromReaderAt(bytes.NewReader(objectBytes), int64(len(objectBytes)))
+		require.NoError(t, err)
+
+		var reader pointers.RowReader
+		defer reader.Close()
+
+		buf := make([]pointers.SectionPointer, 64)
+
+		for _, section := range object.Sections().Filter(pointers.CheckSection) {
+			sec, err := pointers.Open(context.Background(), section)
+			if err != nil {
+				return fmt.Errorf("opening section: %w", err)
+			}
+
+			reader.Reset(sec)
+			for {
+				num, err := reader.Read(context.Background(), buf)
+				if err != nil && err != io.EOF {
+					return fmt.Errorf("reading section: %w", err)
+				}
+				if num == 0 && err == io.EOF {
+					break
+				}
+				out = append(out, buf[:num]...)
+			}
+		}
+		return nil
+	}, objstore.WithRecursiveIter())
 	require.NoError(t, err)
 
 	return out
