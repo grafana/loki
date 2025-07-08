@@ -6294,6 +6294,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.operational_config</td>
+			<td>object</td>
+			<td>Optional operational configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.pattern_ingester</td>
 			<td>object</td>
 			<td>Optional pattern ingester configuration</td>
@@ -12359,3 +12368,4 @@ null
 {{< /responsive-table >}}
 
 <!-- vale Grafana.Spelling = YES -->
+
