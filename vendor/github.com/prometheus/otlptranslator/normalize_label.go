@@ -24,15 +24,23 @@ import (
 	"unicode"
 )
 
-// NormalizeLabel normalizes the specified label to follow Prometheus label names standard.
+// LabelNamer is a helper struct to build label names.
+type LabelNamer struct {
+	UTF8Allowed bool
+}
+
+// Build normalizes the specified label to follow Prometheus label names standard.
 //
 // See rules at https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels.
 //
 // Labels that start with non-letter rune will be prefixed with "key_".
 // An exception is made for double-underscores which are allowed.
-func NormalizeLabel(label string) string {
+//
+// If UTF8Allowed is true, the label is returned as is. This option is provided just to
+// keep a consistent interface with the MetricNamer.
+func (ln *LabelNamer) Build(label string) string {
 	// Trivial case.
-	if len(label) == 0 {
+	if len(label) == 0 || ln.UTF8Allowed {
 		return label
 	}
 

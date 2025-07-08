@@ -43,7 +43,7 @@ GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
                       -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) \
                       -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-GO_FLAGS           := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+GO_FLAGS           := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo -tags slicelabels
 DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
