@@ -67,6 +67,7 @@ func NewReader(opts ReaderOptions) *Reader {
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	if len(s) == 0 {
+		fmt.Printf("len(s) == 0\n")
 		return 0, nil
 	}
 	// Init stats object and use the context, otherwise we create a new one every time we increment a stat.
@@ -144,6 +145,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if count == 0 && errors.Is(err, io.EOF) {
+			fmt.Printf("ReadColumns: count == 0 && errors.Is(err, io.EOF)\n")
 			return 0, io.EOF
 		}
 
@@ -288,6 +290,7 @@ func (r *Reader) alignRow() (uint64, error) {
 
 	nextRow, ok := r.ranges.Next(uint64(r.row))
 	if !ok {
+		fmt.Printf("ranges are nil\n")
 		return 0, io.EOF
 	}
 	r.row = int64(nextRow)

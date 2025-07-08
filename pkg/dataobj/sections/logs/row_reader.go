@@ -81,6 +81,7 @@ func (r *RowReader) SetPredicates(p []RowPredicate) error {
 // the end of the logs section, Read returns 0, io.EOF.
 func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	if r.sec == nil {
+		fmt.Printf("sec is nil\n")
 		return 0, io.EOF
 	}
 
