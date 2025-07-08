@@ -179,6 +179,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.block_builder }}
+    block_builder:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -528,6 +533,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional block builder configuration
+  block_builder: {}
   # --  Optional index gateway configuration
   index_gateway:
     mode: simple

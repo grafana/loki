@@ -6074,6 +6074,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.block_builder</td>
+			<td>object</td>
+			<td>Optional block builder configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.commonConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
