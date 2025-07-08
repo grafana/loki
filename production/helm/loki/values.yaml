@@ -2108,6 +2108,8 @@ distributor:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for distributor service
+  trafficDistribution: ""
 # --  Configuration for the querier
 querier:
   # -- Number of replicas for the querier

@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
 - [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
 - [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose
 
 ## 6.30.1
 
