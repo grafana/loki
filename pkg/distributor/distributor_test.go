@@ -725,6 +725,20 @@ func Test_TruncateLogLines(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
+
+	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 8
+		limits.MaxLineSizeTruncateIdentifier = "[...]"
+
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, int(limits.MaxLineSize))
+		require.Equal(t, "000[...]", topVal.Streams[0].Entries[0].Line)
+	})
 }
 
 func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
@@ -1281,7 +1295,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1323,7 +1337,7 @@ func TestParseStreamLabels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver)
+			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -2221,7 +2235,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 

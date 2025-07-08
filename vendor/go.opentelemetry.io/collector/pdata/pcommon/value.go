@@ -336,44 +336,7 @@ func (v Value) MoveTo(dest Value) {
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) CopyTo(dest Value) {
 	dest.getState().AssertMutable()
-	destOrig := dest.getOrig()
-	switch ov := v.getOrig().Value.(type) {
-	case *otlpcommon.AnyValue_KvlistValue:
-		kv, ok := destOrig.Value.(*otlpcommon.AnyValue_KvlistValue)
-		if !ok {
-			kv = &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}
-			destOrig.Value = kv
-		}
-		if ov.KvlistValue == nil {
-			kv.KvlistValue = nil
-			return
-		}
-		// Deep copy to dest.
-		newMap(&ov.KvlistValue.Values, v.getState()).CopyTo(newMap(&kv.KvlistValue.Values, dest.getState()))
-	case *otlpcommon.AnyValue_ArrayValue:
-		av, ok := destOrig.Value.(*otlpcommon.AnyValue_ArrayValue)
-		if !ok {
-			av = &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}
-			destOrig.Value = av
-		}
-		if ov.ArrayValue == nil {
-			av.ArrayValue = nil
-			return
-		}
-		// Deep copy to dest.
-		newSlice(&ov.ArrayValue.Values, v.getState()).CopyTo(newSlice(&av.ArrayValue.Values, dest.getState()))
-	case *otlpcommon.AnyValue_BytesValue:
-		bv, ok := destOrig.Value.(*otlpcommon.AnyValue_BytesValue)
-		if !ok {
-			bv = &otlpcommon.AnyValue_BytesValue{}
-			destOrig.Value = bv
-		}
-		bv.BytesValue = make([]byte, len(ov.BytesValue))
-		copy(bv.BytesValue, ov.BytesValue)
-	default:
-		// Primitive immutable type, no need for deep copy.
-		destOrig.Value = ov
-	}
+	internal.CopyOrigValue(dest.getOrig(), v.getOrig())
 }
 
 // AsString converts an OTLP Value object of any type to its equivalent string

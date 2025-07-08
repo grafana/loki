@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -41,7 +42,7 @@ var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
-func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngine, *GeneratorConfig) {
+func setupBenchmarkWithStore(tb testing.TB, storeType string) (logql.Engine, *GeneratorConfig) {
 	tb.Helper()
 	entries, err := os.ReadDir(DefaultDataDir)
 	if err != nil || len(entries) == 0 {
@@ -61,10 +62,8 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (*logql.QueryEngin
 		if err != nil {
 			tb.Fatal(err)
 		}
-		querier, err = store.Querier()
-		if err != nil {
-			tb.Fatal(err)
-		}
+
+		return store.engine, config
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
 		if err != nil {
@@ -105,7 +104,7 @@ func TestStorageEquality(t *testing.T) {
 	type store struct {
 		Name   string
 		Cases  []TestCase
-		Engine *logql.QueryEngine
+		Engine logql.Engine
 	}
 
 	generateStore := func(name string) *store {
@@ -138,54 +137,72 @@ func TestStorageEquality(t *testing.T) {
 	}
 
 	for _, baseCase := range baseStore.Cases {
-		t.Run(baseCase.Name(), func(t *testing.T) {
-			defer func() {
-				if t.Failed() {
-					t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
-				}
-			}()
+		for _, store := range stores {
+			if store == baseStore {
+				continue
+			}
 
-			t.Logf("Query information:\n%s", baseCase.Description())
+			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
+				defer func() {
+					if t.Failed() {
+						t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+					}
+				}()
 
-			params, err := logql.NewLiteralParams(
-				baseCase.Query,
-				baseCase.Start,
-				baseCase.End,
-				baseCase.Step,
-				0,
-				baseCase.Direction,
-				1000,
-				nil,
-				nil,
-			)
-			require.NoError(t, err)
+				t.Logf("Query information:\n%s", baseCase.Description())
 
-			expected, err := baseStore.Engine.Query(params).Exec(ctx)
-			require.NoError(t, err)
+				params, err := logql.NewLiteralParams(
+					baseCase.Query,
+					baseCase.Start,
+					baseCase.End,
+					baseCase.Step,
+					0,
+					baseCase.Direction,
+					1000,
+					nil,
+					nil,
+				)
+				require.NoError(t, err)
 
-			// Find matching test case in other stores and then compare results.
-			for _, store := range stores {
-				if store == baseStore {
-					continue
-				}
+				expected, err := baseStore.Engine.Query(params).Exec(ctx)
+				require.NoError(t, err)
 
+				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+					baseStore.Name,
+					expected.Statistics.Summary.TotalLinesProcessed,
+					expected.Statistics.Summary.TotalEntriesReturned,
+					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+					uint64(expected.Statistics.Summary.ExecTime),
+					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+				)
+
+				// Find matching test case in other stores and then compare results.
 				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
 					return tc == baseCase
 				})
 				if idx == -1 {
 					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
-					continue
+					return
 				}
 
 				actual, err := store.Engine.Query(params).Exec(ctx)
 				if err != nil && errors.Is(err, errStoreUnimplemented) {
 					t.Logf("Store %s does not implement test case %s", store.Name, baseCase.Name())
-					continue
+					return
 				} else if assert.NoError(t, err) {
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						store.Name,
+						actual.Statistics.Summary.TotalLinesProcessed,
+						actual.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+						uint64(actual.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+					)
+
 					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -204,7 +221,8 @@ func testNameRegex(name string) string {
 func TestLogQLQueries(t *testing.T) {
 	// We keep this test for debugging even though it's too slow for now.
 	t.Skip("Too slow for now.")
-	engine, config := setupBenchmarkWithStore(t, StoreDataObjV2Engine)
+	store := StoreDataObjV2Engine
+	engine, config := setupBenchmarkWithStore(t, store)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	// Generate test cases
@@ -222,53 +240,56 @@ func TestLogQLQueries(t *testing.T) {
 	// }
 
 	for _, c := range cases {
-		// Uncomment this to run only log queries
-		// if c.Kind() != "log" {
-		// 	continue
-		// }
-		if _, exists := uniqueQueries[c.Query]; exists {
-			continue
-		}
-		uniqueQueries[c.Query] = struct{}{}
+		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
 
-		t.Log(c.Description())
-		params, err := logql.NewLiteralParams(
-			c.Query,
-			c.Start,
-			c.Start.Add(5*time.Minute),
-			1*time.Minute,
-			0,
-			c.Direction,
-			1000,
-			nil,
-			nil,
-		)
-		require.NoError(t, err)
-
-		q := engine.Query(params)
-		res, err := q.Exec(ctx)
-		require.NoError(t, err)
-		require.Equal(t, logqlmodel.ValueTypeStreams, string(res.Data.Type()))
-		xs := res.Data.(logqlmodel.Streams)
-		require.Greater(t, len(xs), 0, "no streams returned")
-
-		if testing.Verbose() {
-			// Log the result type and some basic stats
-			t.Logf("Result Type: %s", res.Data.Type())
-			switch v := res.Data.(type) {
-			case promql.Vector:
-				t.Logf("Number of Samples: %d", len(v))
-				if len(v) > 0 {
-					t.Logf("First Sample: %+v", v[0])
-				}
-			case promql.Matrix:
-				t.Logf("Number of Series: %d", len(v))
-				if len(v) > 0 {
-					t.Logf("First Series: %+v", v[0])
-				}
+			// Uncomment this to run only log queries
+			// if c.Kind() != "log" {
+			// 	continue
+			// }
+			if _, exists := uniqueQueries[c.Query]; exists {
+				t.Skip("skipping duplicate query: " + c.Query)
 			}
-			t.Log("----------------------------------------")
-		}
+			uniqueQueries[c.Query] = struct{}{}
+
+			t.Log(c.Description())
+			params, err := logql.NewLiteralParams(
+				c.Query,
+				c.Start,
+				c.Start.Add(5*time.Minute),
+				1*time.Minute,
+				0,
+				c.Direction,
+				1000,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			q := engine.Query(params)
+			res, err := q.Exec(ctx)
+			require.NoError(t, err)
+			require.Equal(t, logqlmodel.ValueTypeStreams, string(res.Data.Type()))
+			xs := res.Data.(logqlmodel.Streams)
+			require.Greater(t, len(xs), 0, "no streams returned")
+
+			if testing.Verbose() {
+				// Log the result type and some basic stats
+				t.Logf("Result Type: %s", res.Data.Type())
+				switch v := res.Data.(type) {
+				case promql.Vector:
+					t.Logf("Number of Samples: %d", len(v))
+					if len(v) > 0 {
+						t.Logf("First Sample: %+v", v[0])
+					}
+				case promql.Matrix:
+					t.Logf("Number of Series: %d", len(v))
+					if len(v) > 0 {
+						t.Logf("First Series: %+v", v[0])
+					}
+				}
+				t.Log("----------------------------------------")
+			}
+		})
 	}
 }
 

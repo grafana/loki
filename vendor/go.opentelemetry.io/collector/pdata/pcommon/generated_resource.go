@@ -73,6 +73,5 @@ func (ms Resource) SetDroppedAttributesCount(v uint32) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Resource) CopyTo(dest Resource) {
 	dest.getState().AssertMutable()
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetDroppedAttributesCount(ms.DroppedAttributesCount())
+	internal.CopyOrigResource(dest.getOrig(), ms.getOrig())
 }

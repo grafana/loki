@@ -179,6 +179,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.block_builder }}
+    block_builder:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -528,6 +533,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional block builder configuration
+  block_builder: {}
   # --  Optional index gateway configuration
   index_gateway:
     mode: simple
@@ -1328,6 +1335,12 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    # -- Paths that are exposed by Loki Compactor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    compactor:
+      - /loki/api/v1/delete
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
     - loki.example.com
@@ -2095,6 +2108,8 @@ distributor:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for distributor service
+  trafficDistribution: ""
 # --  Configuration for the querier
 querier:
   # -- Number of replicas for the querier
@@ -2890,6 +2905,8 @@ patternIngester:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
           topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
   # -- Labels for pattern ingester service
   serviceLabels: {}
   # -- Annotations for pattern ingester service
@@ -3204,6 +3221,14 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- Readiness probe for memcached pods (probe port defaults to container port)
+  readinessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
   # -- The SecurityContext for memcached containers
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -3539,7 +3564,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.3
+    tag: 1.30.6
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

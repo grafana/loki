@@ -89,7 +89,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(context.Background(), logproto.Stream{
 			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, nil)
+		}, nil, "loki")
 
 		if err != nil {
 			return err
@@ -143,6 +143,7 @@ func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series
 			Labels: series.Labels.String(),
 		},
 		nil,
+		"loki",
 	)
 	if err != nil {
 		return err
@@ -169,7 +170,7 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))

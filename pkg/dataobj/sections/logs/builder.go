@@ -62,11 +62,12 @@ type Builder struct {
 	// encoded separately.
 
 	records     []Record // Buffered records to flush to a group.
-	recordsSize int
+	recordsSize int      // Byte size of all buffered records (uncompressed).
 
-	stripes      []*table // In-progress section; flushed with [mergeTables] into a single table.
-	stripeBuffer tableBuffer
-	stripesSize  int // Estimated byte size of all elements in stripes.
+	stripes                 []*table // In-progress section; flushed with [mergeTables] into a single table.
+	stripeBuffer            tableBuffer
+	stripesUncompressedSize int // Estimated byte size of all elements in stripes (uncompressed).
+	stripesCompressedSize   int // Estimated byte size of all elements in stripes (compressed).
 
 	sectionBuffer tableBuffer
 }
@@ -128,7 +129,8 @@ func (b *Builder) flushRecords() {
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, compressionOpts, b.records)
 	b.stripes = append(b.stripes, stripe)
-	b.stripesSize += stripe.Size()
+	b.stripesUncompressedSize += stripe.UncompressedSize()
+	b.stripesCompressedSize += stripe.CompressedSize()
 
 	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0
@@ -150,8 +152,20 @@ func (b *Builder) flushSection() *table {
 	}
 
 	b.stripes = sliceclear.Clear(b.stripes)
-	b.stripesSize = 0
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
 	return section
+}
+
+// UncompressedSize returns the current uncompressed size of the logs section
+// in bytes.
+func (b *Builder) UncompressedSize() int {
+	var size int
+
+	size += b.recordsSize
+	size += b.stripesUncompressedSize
+
+	return size
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
@@ -159,7 +173,7 @@ func (b *Builder) EstimatedSize() int {
 	var size int
 
 	size += b.recordsSize
-	size += b.stripesSize
+	size += b.stripesCompressedSize
 
 	return size
 }
@@ -262,7 +276,8 @@ func (b *Builder) Reset() {
 
 	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripeBuffer.Reset()
-	b.stripesSize = 0
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
 
 	b.sectionBuffer.Reset()
 }

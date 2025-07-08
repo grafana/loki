@@ -12,8 +12,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/arrowtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestReader(t *testing.T) {
@@ -97,6 +97,52 @@ func TestReader_Predicate(t *testing.T) {
 			streams.EqualPredicate{
 				Column: appLabel,
 				Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("bar")), arrow.BinaryTypes.Binary),
+			},
+		},
+		Allocator: alloc,
+	})
+
+	actualTable, err := readTable(context.Background(), r)
+	if actualTable != nil {
+		defer actualTable.Release()
+	}
+	require.NoError(t, err)
+
+	actual, err := arrowtest.TableRows(alloc, actualTable)
+	require.NoError(t, err, "failed to get rows from table")
+	require.Equal(t, expect, actual)
+}
+
+func TestReader_InPredicate(t *testing.T) {
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0)
+
+	expect := arrowtest.Rows{
+		{
+			"stream_id.int64":         int64(2),
+			"app.label.binary":        []byte("bar"),
+			"cluster.label.binary":    []byte("test"),
+			"min_timestamp.timestamp": arrowUnixTime(5),
+			"max_timestamp.timestamp": arrowUnixTime(20),
+			"rows.int64":              int64(2),
+			"uncompressed_size.int64": int64(45),
+		},
+	}
+
+	sec := buildStreamsSection(t, 1)
+
+	streamID := sec.Columns()[0]
+	require.Equal(t, "", streamID.Name)
+	require.Equal(t, streams.ColumnTypeStreamID, streamID.Type)
+
+	r := streams.NewReader(streams.ReaderOptions{
+		Columns: sec.Columns(),
+		Predicates: []streams.Predicate{
+			streams.InPredicate{
+				Column: streamID,
+				Values: []scalar.Scalar{
+					scalar.NewInt64Scalar(2),
+				},
 			},
 		},
 		Allocator: alloc,

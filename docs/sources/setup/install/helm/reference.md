@@ -2727,7 +2727,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -3055,6 +3056,15 @@ null
 			<td>Topology Spread Constraints for distributor pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for distributor service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -5847,6 +5857,9 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
+    "compactor": [
+      "/loki/api/v1/delete"
+    ],
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
@@ -5893,6 +5906,17 @@ null
 			<td><pre lang="json">
 [
   "loki.example.com"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.compactor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Compactor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/loki/api/v1/delete"
 ]
 </pre>
 </td>
@@ -6054,6 +6078,15 @@ See values.yaml
 			<td>loki.annotations</td>
 			<td>object</td>
 			<td>Common annotations for all deployments/StatefulSets</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.block_builder</td>
+			<td>object</td>
+			<td>Optional block builder configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6921,6 +6954,23 @@ false
 			<td>The name of the PriorityClass for memcached pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached pods (probe port defaults to container port)</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -8169,6 +8219,7 @@ null
   },
   "initContainers": [],
   "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -8342,6 +8393,15 @@ null
 			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -10989,7 +11049,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.3"
+"1.30.6"
 </pre>
 </td>
 		</tr>
