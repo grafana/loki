@@ -27,31 +27,15 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 		// number is less than the previous row number. That can't happen here, so
 		// to keep the code readable we ignore the error values.
 
-		err := streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
-		if err != nil {
-			fmt.Printf("streamIDBuilder.Append: %v\n", err)
-			panic(err)
-		}
-		err = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
-		if err != nil {
-			fmt.Printf("timestampBuilder.Append: %v\n", err)
-			panic(err)
-		}
-		err = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
-		if err != nil {
-			fmt.Printf("messageBuilder.Append: %v\n", err)
-			panic(err)
-		}
+		_ = streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
+		_ = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
 
 		for _, md := range record.Metadata {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
 			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			err := metadataBuilder.Append(i, dataset.ByteArrayValue(unsafeSlice(md.Value, 0)))
-			if err != nil {
-				fmt.Printf("metadataBuilder.Append: %v\n", err)
-				panic(err)
-			}
+			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(unsafeSlice(md.Value, 0)))
 		}
 	}
 

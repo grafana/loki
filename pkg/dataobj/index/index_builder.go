@@ -421,6 +421,7 @@ func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logg
 	if err != nil {
 		return fmt.Errorf("failed to read log section stats: %w", err)
 	}
+	fmt.Printf("stats: %+v\n", stats)
 
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
