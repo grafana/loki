@@ -56,11 +56,10 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    512 * 1024,        // 2MB
-		TargetObjectSize:  512 * 1024 * 1024, // 128MB
-		TargetSectionSize: 32 * 1024 * 1024,  // 16MB
-		BufferSize:        32 * 1024 * 1024,  // 16MB
-
+		TargetPageSize:          2 * 1024 * 1024,   // 2MB
+		TargetObjectSize:        128 * 1024 * 1024, // 128MB
+		TargetSectionSize:       16 * 1024 * 1024,  // 16MB
+		BufferSize:              16 * 1024 * 1024,  // 16MB
 		SectionStripeMergeLimit: 2,
 	})
 	if err != nil {
