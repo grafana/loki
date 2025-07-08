@@ -92,6 +92,7 @@ func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) 
 //
 // Append returns an error if the row number is out-of-order.
 func (cb *ColumnBuilder) Append(row int, value Value) error {
+	fmt.Printf("CB Append %q: row %d, value %v\n", cb.name, row, value)
 	if row < cb.rows {
 		return fmt.Errorf("row %d is older than current row %d", row, cb.rows)
 	}
