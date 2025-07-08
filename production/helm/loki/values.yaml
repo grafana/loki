@@ -3374,7 +3374,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache{{ include "loki.memcached.suffix" .Values.chunksCache.suffix }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
