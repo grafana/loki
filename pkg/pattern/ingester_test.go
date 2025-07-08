@@ -407,3 +407,160 @@ func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
 func (f *fakeLimits) PatternPersistenceEnabled(_ string) bool {
 	return f.patternPersistenceEnabled
 }
+
+func TestIngesterShutdownFlush(t *testing.T) {
+	lbs := labels.FromStrings("test", "test", "service_name", "test_service")
+	now := model.Now()
+
+	ingesterID := "foo"
+	replicationSet := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Id: ingesterID, Addr: "ingester0"},
+			{Id: "bar", Addr: "ingester1"},
+			{Id: "baz", Addr: "ingester2"},
+		},
+	}
+
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(replicationSet, nil)
+
+	ringClient := &fakeRingClient{
+		ring: fakeRing,
+	}
+
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	mockWriter.On("Stop")
+
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		drain.DefaultConfig(),
+		&fakeLimits{patternPersistenceEnabled: true},
+		ringClient,
+		ingesterID,
+		mockWriter,
+		mockWriter,
+	)
+	require.NoError(t, err)
+
+	// Push some log entries to create patterns
+	err = inst.Push(context.Background(), &push.PushRequest{
+		Streams: []push.Stream{
+			{
+				Labels: lbs.String(),
+				Entries: []push.Entry{
+					{
+						Timestamp: now.Time(),
+						Line:      "info: user logged in",
+					},
+					{
+						Timestamp: now.Add(time.Second).Time(),
+						Line:      "info: user logged out",
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// Verify patterns exist before shutdown
+	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
+		Query: "{test=\"test\"}",
+		Start: time.Unix(0, 0),
+		End:   time.Unix(0, math.MaxInt64),
+	})
+	require.NoError(t, err)
+	res, err := iter.ReadAll(it)
+	require.NoError(t, err)
+	require.Greater(t, len(res.Series), 0, "should have patterns before shutdown")
+
+	// To isloate that the WriteEntry was called during flush
+	mockWriter.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	// Flush patterns (simulating shutdown)
+	inst.flushPatterns()
+
+	// Verify WriteEntry was called during flush
+	mockWriter.AssertCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
+	lbs := labels.FromStrings("test", "test", "service_name", "test_service")
+
+	ingesterID := "foo"
+	replicationSet := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Id: ingesterID, Addr: "ingester0"},
+		},
+	}
+
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(replicationSet, nil)
+
+	ringClient := &fakeRingClient{
+		ring: fakeRing,
+	}
+
+	mockWriter := &mockEntryWriter{}
+	// Track WriteEntry calls to verify chunk boundaries
+	var writeEntryCalls []mock.Call
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		writeEntryCalls = append(writeEntryCalls, mock.Call{Arguments: args})
+	})
+	mockWriter.On("Stop")
+
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		drain.DefaultConfig(),
+		&fakeLimits{patternPersistenceEnabled: true},
+		ringClient,
+		ingesterID,
+		mockWriter,
+		mockWriter,
+	)
+	require.NoError(t, err)
+
+	// Push log entries across different time windows to create multiple chunks
+	baseTime := time.Now()
+	err = inst.Push(context.Background(), &push.PushRequest{
+		Streams: []push.Stream{
+			{
+				Labels: lbs.String(),
+				Entries: []push.Entry{
+					{
+						Timestamp: baseTime,
+						Line:      "info: user action completed",
+					},
+					{
+						Timestamp: baseTime.Add(2 * time.Hour), // Force new chunk (> 1 hour)
+						Line:      "info: user action completed",
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// To isloate that the WriteEntry was called during flush
+	mockWriter.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	// Flush patterns (simulating shutdown)
+	inst.flushPatterns()
+
+	// Verify WriteEntry was called multiple times (once per chunk)
+	// With 2 entries across 2 hour windows, we should get 2 pattern writes
+	require.Greater(t, len(writeEntryCalls), 0, "should have written patterns during shutdown")
+
+	// Verify each call has the expected pattern (URL-encoded in the entry)
+	for _, call := range writeEntryCalls {
+		entry := call.Arguments[1].(string)
+		require.Contains(t, entry, "detected_pattern=", "should contain detected_pattern field")
+		require.Contains(t, entry, "info", "should contain pattern info")
+	}
+}
