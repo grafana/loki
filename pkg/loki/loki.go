@@ -428,7 +428,7 @@ type Loki struct {
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
-	dataObjIndexBuilder       *dataobjindex.IndexBuilder
+	dataObjIndexBuilder       *dataobjindex.Builder
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics

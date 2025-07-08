@@ -62,7 +62,7 @@ type downloadedObject struct {
 const indexEventTopic = "loki.metastore-events"
 const indexConsumerGroup = "metastore-event-reader"
 
-type IndexBuilder struct {
+type Builder struct {
 	services.Service
 
 	cfg Config
@@ -101,7 +101,7 @@ func NewIndexBuilder(
 	instanceID string,
 	bucket objstore.Bucket,
 	reg prometheus.Registerer,
-) (*IndexBuilder, error) {
+) (*Builder, error) {
 	kafkaCfg.AutoCreateTopicEnabled = true
 	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
 	eventConsumerClient, err := client.NewReaderClient(
@@ -147,7 +147,7 @@ func NewIndexBuilder(
 	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
 	downloadedObjects := make(chan downloadedObject, 1)
 
-	s := &IndexBuilder{
+	s := &Builder{
 		cfg:               cfg,
 		client:            eventConsumerClient,
 		logger:            logger,
@@ -167,7 +167,7 @@ func NewIndexBuilder(
 	return s, nil
 }
 
-func (p *IndexBuilder) run(ctx context.Context) error {
+func (p *Builder) run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	p.ctx = ctx
 	p.cancel = cancel
@@ -228,16 +228,16 @@ func (p *IndexBuilder) run(ctx context.Context) error {
 	}
 }
 
-func (p *IndexBuilder) stopping(failureCase error) error {
+func (p *Builder) stopping(failureCase error) error {
 	close(p.downloadQueue)
 	p.cancel()
 	p.wg.Wait()
 	close(p.downloadedObjects)
 	p.client.Close()
-	return nil
+	return failureCase
 }
 
-func (p *IndexBuilder) processRecord(record *kgo.Record) {
+func (p *Builder) processRecord(record *kgo.Record) {
 	event := &metastore.ObjectWrittenEvent{}
 	if err := event.Unmarshal(record.Value); err != nil {
 		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
@@ -255,10 +255,7 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 		}
 		err := p.buildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
 		if err != nil {
-			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
 			// TODO(benclive): Improve error handling for failed index builds.
-			level.Error(p.logger).Log("msg", "failed to build index", "err", err)
-			return
 			panic(err)
 		}
 
@@ -270,7 +267,7 @@ func (p *IndexBuilder) processRecord(record *kgo.Record) {
 	}
 }
 
-func (p *IndexBuilder) buildIndex(events []metastore.ObjectWrittenEvent) error {
+func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.cfg.IndexStoragePrefix)
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
 	start := time.Now()
@@ -365,14 +362,14 @@ func (p *IndexBuilder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 }
 
 // getKey determines the key in object storage to upload the object to, based on our path scheme.
-func (p *IndexBuilder) getKey(tenantID string, object *bytes.Buffer) string {
+func (p *Builder) getKey(tenantID string, object *bytes.Buffer) string {
 	sum := sha256.Sum224(object.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 
 	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:])
 }
 
-func (p *IndexBuilder) processStreamsSection(section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
+func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
 	streamSection, err := streams.Open(p.ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)
@@ -400,7 +397,7 @@ func (p *IndexBuilder) processStreamsSection(section *dataobj.Section, objectPat
 }
 
 // processLogsSection reads information from the logs section in order to build index information in a new object.
-func (p *IndexBuilder) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
+func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
 	logsBuf := make([]logs.Record, 1024)
 	type logInfo struct {
 		objectPath string
@@ -434,6 +431,9 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, sectionLogger log
 
 	// Read the whole logs section to extract all the column values.
 	cnt := 0
+	// TODO(benclive): Switch to a columnar reader instead of row based
+	// This is also likely to be more performant, especially if we don't need to read the whole log line.
+	// Note: the source object would need a new column storing just the length to avoid reading the log line itself.
 	rowReader := logs.NewRowReader(logsSection)
 	for {
 		n, err := rowReader.Read(p.ctx, logsBuf)
@@ -444,8 +444,6 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, sectionLogger log
 			break
 		}
 
-		// TODO(benclive): Consider doing this column by column to avoid reading whole rows when we don't care about some of the columns (i.e. the content of the log line)
-		// Note: the object would need a new column storing just the line length to avoid reading the log line itself, here.
 		for i, log := range logsBuf[:n] {
 			cnt++
 			for _, md := range log.Metadata {
@@ -488,7 +486,7 @@ func (p *IndexBuilder) processLogsSection(ctx context.Context, sectionLogger log
 	return nil
 }
 
-func (p *IndexBuilder) commitRecords(record *kgo.Record) error {
+func (p *Builder) commitRecords(record *kgo.Record) error {
 	backoff := backoff.New(p.ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
