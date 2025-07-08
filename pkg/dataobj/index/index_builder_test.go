@@ -100,6 +100,7 @@ func TestIndexBuilder(t *testing.T) {
 	require.NoError(t, err)
 	p.client = client
 	require.NoError(t, p.StartAsync(ctx))
+	require.NoError(t, p.AwaitRunning(ctx))
 
 	buildLogObject(t, "loki", "test-path-0", bucket)
 	buildLogObject(t, "testing", "test-path-1", bucket)
