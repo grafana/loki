@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -193,17 +192,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	// * Records are ordered by timestamp, and
 	// * Records from the same dataobjScan do not overlap in time
 	//
-	// we *must* read the entire data object before creating a record, as the
+	// we *must* read the entire section before creating a record, as the
 	// sections in the dataobj itself are not already sorted by timestamp (though
 	// we only need to keep up to Limit rows in memory).
 
-	var (
-		heapMut sync.Mutex
-		heap    = topk.Heap[logs.Record]{
-			Limit: int(s.opts.Limit),
-			Less:  s.getLessFunc(s.opts.Direction),
-		}
-	)
+	heap := topk.Heap[logs.Record]{
+		Limit: int(s.opts.Limit),
+		Less:  s.getLessFunc(s.opts.Direction),
+	}
 
 	var gotData bool
 
@@ -218,11 +214,9 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 		gotData = true
 
-		heapMut.Lock()
 		for _, rec := range buf[:n] {
 			heap.Push(rec)
 		}
-		heapMut.Unlock()
 	}
 
 	if !gotData {
