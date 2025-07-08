@@ -17,7 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
 - [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
-- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose []#17742(https://github.com/grafana/loki/pull/17742)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose [#17742](https://github.com/grafana/loki/pull/17742)
 - [FEATURE] Allow external memcached setup [#17432](https://github.com/grafana/loki/pull/17432)
 - [FEATURE] Add block_builder config to helm chart [#17451](https://github.com/grafana/loki/pull/17451)
 - [FEATURE] Support bypass all s3/gcs/azure config in object_store [#17597](https://github.com/grafana/loki/pull/17597)
