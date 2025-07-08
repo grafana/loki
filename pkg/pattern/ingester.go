@@ -273,6 +273,10 @@ func (i *Ingester) stopping(_ error) error {
 		flushQueue.Close()
 	}
 	i.flushQueuesDone.Wait()
+
+	// Flush all patterns before stopping writers to ensure patterns are persisted
+	i.flushPatterns()
+
 	i.stopWriters()
 	return err
 }
@@ -489,6 +493,18 @@ func (i *Ingester) stopWriters() {
 		}
 		if instance.patternWriter != nil {
 			instance.patternWriter.Stop()
+		}
+	}
+}
+
+// flushPatterns flushes all patterns from all instances on shutdown.
+func (i *Ingester) flushPatterns() {
+	level.Info(i.logger).Log("msg", "flushing patterns on shutdown")
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		if i.limits.PatternPersistenceEnabled(instance.instanceID) {
+			instance.flushPatterns()
 		}
 	}
 }

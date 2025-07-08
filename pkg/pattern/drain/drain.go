@@ -32,8 +32,6 @@ import (
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-
 )
 
 type Config struct {
@@ -204,8 +202,7 @@ func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-
-func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
@@ -218,10 +215,14 @@ func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogClu
 		return nil
 	}
 
-	return d.train(lvl, d.tokens, d.state, ts, lbls)
+	var (
+		tokens = d.tokens
+		state  = d.state
+	)
+	return d.train(tokens, state, ts)
 }
 
-func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()

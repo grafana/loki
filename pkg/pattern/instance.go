@@ -265,6 +265,14 @@ func (i *instance) removeStream(s *stream) {
 	}
 }
 
+// flushPatterns flushes all patterns from all streams in this instance.
+func (i *instance) flushPatterns() {
+	_ = i.streams.ForEach(func(s *stream) (bool, error) {
+		s.flush()
+		return true, nil
+	})
+}
+
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
