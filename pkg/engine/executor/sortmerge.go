@@ -3,6 +3,7 @@ package executor
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -103,6 +104,7 @@ func (p *KWayMerge) init() {
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
 func (p *KWayMerge) read() error {
+start:
 	// Release previous batch
 	if p.state.batch != nil {
 		p.state.batch.Release()
@@ -118,7 +120,8 @@ func (p *KWayMerge) read() error {
 		}
 
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
-		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+		// Retry loading if NumRows()==0
+		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			// Reset offset
 			p.offsets[i] = 0
 
@@ -136,11 +139,11 @@ func (p *KWayMerge) read() error {
 			p.batches[i], _ = p.inputs[i].Value()
 		}
 
-		// Prevent out-of-bounds error: `p.inputs[i].Read()` returned a batch with 0 rows, and therefore does not have a value at offset `p.offsets[i]`.
-		// However, since the call did not return EOF, the next read may return rows again, so we only skip without marking the input as exhausted.
-		if p.batches[i].NumRows() == 0 {
-			continue
-		}
+		// // Prevent out-of-bounds error: `p.inputs[i].Read()` returned a batch with 0 rows, and therefore does not have a value at offset `p.offsets[i]`.
+		// // However, since the call did not return EOF, the next read may return rows again, so we only skip without marking the input as exhausted.
+		// if p.batches[i].NumRows() == 0 {
+		// 	continue
+		// }
 
 		// Fetch timestamp value at current offset
 		col, err := p.columnEval(p.batches[i])
@@ -158,8 +161,12 @@ func (p *KWayMerge) read() error {
 		timestamps = append(timestamps, int64(ts))
 	}
 
-	// Pipeline is exhausted if no more input batches are available
 	if len(inputIndexes) == 0 {
+		goto start
+	}
+
+	// Pipeline is exhausted if no more input batches are available
+	if !slices.Contains(p.exhausted, false) {
 		p.state = Exhausted
 		return p.state.err
 	}

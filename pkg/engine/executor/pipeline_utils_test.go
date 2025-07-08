@@ -83,7 +83,7 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 
 		// Check schema compatibility
 		require.True(t, leftBatch.Schema().Equal(rightBatch.Schema()),
-			"Pipelines have incompatible schemas: %v vs %v",
+			"Pipelines have incompatible schemas:\nleft %v\nright %v",
 			leftBatch.Schema(), rightBatch.Schema())
 
 		// Compare rows until one of the batches is exhausted

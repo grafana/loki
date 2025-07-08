@@ -230,7 +230,6 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 			heapMut.Unlock()
 
 			return nil
-
 		})
 	}
 
