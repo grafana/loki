@@ -93,10 +93,10 @@ func (s *stream) Push(
 
 		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
 		if pattern, ok := s.patterns[lvl]; ok {
-			pattern.Train(lvl, entry.Line, entry.Timestamp.UnixNano(), s.labels)
+			pattern.Train(entry.Line, entry.Timestamp.UnixNano())
 		} else {
 			// since we're defaulting the level to unknown above, we should never get here.
-			s.patterns[constants.LogLevelUnknown].Train(constants.LogLevelUnknown, entry.Line, entry.Timestamp.UnixNano(), s.labels)
+			s.patterns[constants.LogLevelUnknown].Train(entry.Line, entry.Timestamp.UnixNano())
 		}
 	}
 	return nil
@@ -153,6 +153,11 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	}
 
 	return totalClusters == 0
+}
+
+func (s *stream) flush() {
+	// Flush all patterns by pruning everything older than 0 (i.e., everything)
+	s.prune(0)
 }
 
 func (s *stream) writePattern(
