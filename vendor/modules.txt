@@ -1167,7 +1167,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
-# github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20250708083806-78f154f77d65
 ## explicit; go 1.23.0
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.5.1
@@ -3021,7 +3021,6 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
-# github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250210100727-533688b5600d
 # github.com/prometheus/prometheus => github.com/grafana/mimir-prometheus v1.8.2-0.20250707122715-397973ed225b
