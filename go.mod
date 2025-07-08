@@ -21,7 +21,8 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/bmatcuk/doublestar/v4 v4.8.1
+	github.com/baidubce/bce-sdk-go v0.9.234
+	github.com/bmatcuk/doublestar/v4 v4.9.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -51,7 +52,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250714112734-cbc2c366b525
+	github.com/grafana/dskit v0.0.0-20250617101305-c93a1bb09ecb
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20250318131618-74242eea118d
 	github.com/grafana/regexp v0.0.0-20240607082908-2cb410fa05da
@@ -82,8 +83,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.1-0.20250714112350-b3c02a766eb9
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.65.1-0.20250714095557-18a45b80c91d
-	github.com/prometheus/prometheus v0.304.3-0.20250707074231-ffcba01c5a4e
+	github.com/prometheus/common v0.65.1-0.20250714091050-c6ae72fb63e9
+	github.com/prometheus/prometheus v0.304.3-0.20250710152723-d2f1f4fb27af
 	github.com/redis/go-redis/v9 v9.10.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
@@ -116,7 +117,6 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.2
 	github.com/apache/arrow-go/v18 v18.3.1
 	github.com/axiomhq/hyperloglog v0.2.5
-	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/charmbracelet/bubbles v0.21.0
@@ -129,7 +129,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
-	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
+	github.com/grafana/loki/pkg/push v0.0.0-20250708083806-78f154f77d65
 	github.com/heroku/x v0.4.3
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -196,7 +196,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/golang/glog v1.2.4 // indirect
@@ -212,7 +212,7 @@ require (
 	github.com/kamstrup/intmap v0.5.1 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.0 // indirect
-	github.com/knadh/koanf/v2 v2.2.0 // indirect
+	github.com/knadh/koanf/v2 v2.2.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240226150601-1dcf7310316a // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
@@ -230,9 +230,9 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.128.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.128.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.129.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.129.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.129.0 // indirect
 	github.com/opentracing-contrib/go-stdlib v1.0.0 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
@@ -255,14 +255,14 @@ require (
 	github.com/zeebo/errs v1.4.0 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/collector/component v1.34.0 // indirect
-	go.opentelemetry.io/collector/confmap v1.34.0 // indirect
-	go.opentelemetry.io/collector/confmap/xconfmap v0.128.0 // indirect
-	go.opentelemetry.io/collector/consumer v1.34.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.34.0 // indirect
-	go.opentelemetry.io/collector/internal/telemetry v0.128.0 // indirect
-	go.opentelemetry.io/collector/pipeline v0.128.0 // indirect
-	go.opentelemetry.io/collector/processor v1.34.0 // indirect
+	go.opentelemetry.io/collector/component v1.35.0 // indirect
+	go.opentelemetry.io/collector/confmap v1.35.0 // indirect
+	go.opentelemetry.io/collector/confmap/xconfmap v0.129.0 // indirect
+	go.opentelemetry.io/collector/consumer v1.35.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.35.0 // indirect
+	go.opentelemetry.io/collector/internal/telemetry v0.129.0 // indirect
+	go.opentelemetry.io/collector/pipeline v0.129.0 // indirect
+	go.opentelemetry.io/collector/processor v1.35.0 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.11.0 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.61.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.36.0 // indirect
@@ -488,8 +488,6 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 // Insist on the optimised version of grafana/regexp
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 
-replace github.com/grafana/loki/pkg/push => ./pkg/push
-
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 
@@ -498,17 +496,10 @@ replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-2025
 // https://github.com/grafana/prometheus-alertmanager/pull/118
 replace github.com/prometheus/alertmanager => github.com/juliusmh/alertmanager v0.26.1-0.20250624114102-96969065f8d2
 
-// https://github.com/prometheus/client_golang/pull/1822
-replace github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.22.1-0.20250714112350-b3c02a766eb9
+replace github.com/prometheus/prometheus => github.com/grafana/mimir-prometheus v1.8.2-0.20250716064140-3dcabdddf64d
 
-// https://github.com/open-telemetry/opentelemetry-go/pull/6927
-replace go.opentelemetry.io/otel => github.com/aknuds1/opentelemetry-go v0.0.0-20250707083224-5bf4592583ac
+replace opentelemetry.io/otel/exporters/prometheus => github.com/aknuds1/opentelemetry-go/exporters/prometheus v0.0.0-20250714105753-6d10dabef4d5
 
-replace go.opentelemetry.io/otel/exporters/prometheus => github.com/aknuds1/opentelemetry-go/exporters/prometheus v0.0.0-20250714105753-6d10dabef4d5
+replace go.opentelemetry.io/otel => github.com/aknuds1/opentelemetry-go v0.0.0-20250714105753-6d10dabef4d5
 
-// https://github.com/prometheus/common/pull/804
-replace github.com/prometheus/common => github.com/prometheus/common v0.65.1-0.20250714193545-3382528d0c0b
-
-replace github.com/prometheus/prometheus => github.com/grafana/mimir-prometheus v1.8.2-0.20250714104201-83bfd5b90a8a
-
-replace go.opentelemetry.io/contrib/bridges/prometheus => github.com/aknuds1/opentelemetry-go-contrib/bridges/prometheus v0.0.0-20250714111156-1d40a1d868ea
+replace go.opentelemetry.io/contrib/bridges/prometheus => github.com/aknuds1/opentelemetry-go-contrib/bridges/prometheus v0.0.0-20250716061915-e4a04e1efdd8

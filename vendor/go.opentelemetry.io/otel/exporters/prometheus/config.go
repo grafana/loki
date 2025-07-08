@@ -25,7 +25,6 @@ type config struct {
 	disableScopeInfo         bool
 	namespace                string
 	resourceAttributesFilter attribute.Filter
-	validationScheme         model.ValidationScheme
 }
 
 var logDeprecatedLegacyScheme = sync.OnceFunc(func() {
@@ -126,8 +125,9 @@ func WithoutCounterSuffixes() Option {
 	})
 }
 
-// WithoutScopeInfo configures the Exporter to not export
-// labels about Instrumentation Scope to all metric points.
+// WithoutScopeInfo configures the Exporter to not export the otel_scope_info metric.
+// If not specified, the Exporter will create a otel_scope_info metric containing
+// the metrics' Instrumentation Scope, and also add labels about Instrumentation Scope to all metric points.
 func WithoutScopeInfo() Option {
 	return optionFunc(func(cfg config) config {
 		cfg.disableScopeInfo = true
@@ -136,11 +136,11 @@ func WithoutScopeInfo() Option {
 }
 
 // WithNamespace configures the Exporter to prefix metric with the given namespace.
-// Metadata metrics such as target_info are not prefixed since these
+// Metadata metrics such as target_info and otel_scope_info are not prefixed since these
 // have special behavior based on their name.
-func WithNamespace(ns string, validationScheme model.ValidationScheme) Option {
+func WithNamespace(ns string) Option {
 	return optionFunc(func(cfg config) config {
-		if validationScheme != model.UTF8Validation { // nolint:staticcheck // We need this check to keep supporting the legacy scheme.
+		if model.NameValidationScheme != model.UTF8Validation { // nolint:staticcheck // We need this check to keep supporting the legacy scheme.
 			logDeprecatedLegacyScheme()
 			// Only sanitize if prometheus does not support UTF-8.
 			ns = model.EscapeName(ns, model.NameEscapingScheme)
@@ -163,15 +163,6 @@ func WithNamespace(ns string, validationScheme model.ValidationScheme) Option {
 func WithResourceAsConstantLabels(resourceFilter attribute.Filter) Option {
 	return optionFunc(func(cfg config) config {
 		cfg.resourceAttributesFilter = resourceFilter
-		return cfg
-	})
-}
-
-// WithValidationScheme configures the Exporter to validate label and metric names
-// according to this scheme. Defaults to UTF8Validation.
-func WithValidationScheme(scheme model.ValidationScheme) Option {
-	return optionFunc(func(cfg config) config {
-		cfg.validationScheme = scheme
 		return cfg
 	})
 }
