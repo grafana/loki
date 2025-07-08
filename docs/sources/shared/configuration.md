@@ -1056,27 +1056,41 @@ dataobj:
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
-    # If true, partition processing will be enabled
-    # CLI flag: -dataobj-consumer.partition-processing-enabled
-    [partition_processing_enabled: <boolean> | default = true]
+  index:
+    # The size of the target page to use for the data object builder.
+    # CLI flag: -dataobj-index-builder.target-page-size
+    [target_page_size: <int> | default = 128KiB]
 
-    # If true, index building will be enabled
-    # CLI flag: -dataobj-consumer.index-building-enabled
-    [index_building_enabled: <boolean> | default = false]
+    # The size of the target object to use for the data object builder.
+    # CLI flag: -dataobj-index-builder.target-object-size
+    [target_object_size: <int> | default = 64MiB]
+
+    # Configures a maximum size for sections, for sections that support it.
+    # CLI flag: -dataobj-index-builder.target-section-size
+    [target_section_size: <int> | default = 16MiB]
+
+    # The size of the buffer to use for sorting logs.
+    # CLI flag: -dataobj-index-builder.buffer-size
+    [buffer_size: <int> | default = 2MiB]
+
+    # The maximum number of stripes to merge into a section at once. Must be
+    # greater than 1.
+    # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
+    [section_stripe_merge_limit: <int> | default = 2]
 
     # Experimental: The number of events to batch before building an index
-    # CLI flag: -dataobj-consumer.index-building-events-per-index
-    [index_building_events_per_index: <int> | default = 32]
+    # CLI flag: -dataobj-index-builder.events-per-index
+    [events_per_index: <int> | default = 32]
 
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-consumer.index-storage-prefix
-    [index_storage_prefix: <string> | default = "indexing-v0/"]
+    # CLI flag: -dataobj-index-builder.storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0/"]
 
     # Experimental: A list of tenant IDs to enable index building for. If empty,
     # all tenants will be enabled.
-    # CLI flag: -dataobj-consumer.enabled-tenant-ids
-    [enabled_tenant_ids: <list of strings> | default = []]
+    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
+    [enabled_tenant_ids: <string> | default = ""]
 
   querier:
     # Enable the dataobj querier.
