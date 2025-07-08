@@ -93,6 +93,7 @@ func (b *Builder) Append(entry Record) {
 
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
+	fmt.Println("records", len(b.records))
 
 	if b.recordsSize >= b.opts.BufferSize {
 		b.flushRecords()

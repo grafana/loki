@@ -441,6 +441,7 @@ func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logg
 			return fmt.Errorf("failed to read logs section: %w", err)
 		}
 		if n == 0 && err == io.EOF {
+			level.Warn(sectionLogger).Log("msg", "EOF while reading logs section", "rowsProcessed", cnt)
 			break
 		}
 
