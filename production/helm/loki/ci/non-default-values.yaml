@@ -36,3 +36,8 @@ queryFrontend:
   replicas: 1
 queryScheduler:
   replicas: 1
+chunksCache:
+  suffix: "l1"
+  enabled: true
+  l2:
+    enabled: true

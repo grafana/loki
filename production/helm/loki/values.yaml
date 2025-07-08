@@ -3374,7 +3374,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache{{ include "loki.memcached.suffix" .suffix }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache{{ include "loki.memcached.suffix" .Values.chunksCache.suffix }}.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3481,9 +3481,9 @@ chunksCache:
     # -- The age of chunks should be transfered from l1 cache to l2
     l2ChunkCacheHandoff: 345600s # 4 days
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
-    enabled: false
+    enabled: true
     # -- Comma separated addresses list in DNS Service Discovery format
-    addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache{{ include "loki.memcached.suffix" .suffix }}.{{ $.Release.Namespace }}.svc
+    addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache{{ include "loki.memcached.suffix" .Values.chunksCache.l2.suffix }}.{{ $.Release.Namespace }}.svc
     # -- Batchsize for sending and receiving chunks from chunks cache
     batchSize: 4
     # -- Parallel threads for sending and receiving chunks from chunks cache
