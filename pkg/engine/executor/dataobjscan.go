@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
-	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
 type dataobjScan struct {
@@ -29,6 +28,7 @@ type dataobjScan struct {
 	initialized bool
 	reader      *logs.RowReader
 	streams     map[int64]labels.Labels
+	records     []logs.Record
 
 	state state
 }
@@ -79,6 +79,8 @@ func (s *dataobjScan) init() error {
 	if s.initialized {
 		return nil
 	}
+
+	s.records = make([]logs.Record, 0, s.opts.batchSize)
 
 	if err := s.initStreams(); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
@@ -189,27 +191,21 @@ func (s *dataobjScan) initStreams() error {
 // from the data. It returns an error upon encountering an error while reading
 // one of the sections.
 func (s *dataobjScan) read() (arrow.Record, error) {
-	// Since [physical.DataObjScan] requires that:
-	//
-	// * Records are ordered by timestamp, and
-	// * Records from the same dataobjScan do not overlap in time
-	//
-	// we *must* read the entire data object before creating a record, as the
-	// sections in the dataobj itself are not already sorted by timestamp (though
-	// we only need to keep up to Limit rows in memory).
-
 	var (
-		heap = topk.Heap[logs.Record]{
-			Limit: 0, // unlimited
-			Less:  s.getLessFunc(s.opts.Direction),
-		}
+		gotData bool
+		n       int
+		err     error
 	)
 
-	var gotData bool
+	// Reset buffer
+	s.records = s.records[:0]
 
-	for {
-		buf := make([]logs.Record, 1024) // do not re-use buffer
-		n, err := s.reader.Read(context.Background(), buf)
+	for n == 0 {
+		buf := make([]logs.Record, s.opts.batchSize) // do not re-use buffer
+		n, err = s.reader.Read(context.Background(), buf)
+		// if n > 0 {
+		// 	fmt.Println("read()", "section=", s.opts.Section, "streams=", s.opts.StreamIDs, "n=", n)
+		// }
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil && !errors.Is(err, io.EOF) {
@@ -217,17 +213,14 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 		}
 
 		gotData = true
-
-		for _, rec := range buf[:n] {
-			heap.Push(rec)
-		}
+		s.records = append(s.records, buf[:n]...)
 	}
 
 	if !gotData {
 		return nil, EOF
 	}
 
-	projections, err := s.effectiveProjections(&heap)
+	projections, err := s.effectiveProjections(s.records)
 	if err != nil {
 		return nil, fmt.Errorf("getting effective projections: %w", err)
 	}
@@ -241,10 +234,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 	defer rb.Release()
 
-	records := heap.PopAll()
-	slices.Reverse(records)
-
-	for _, record := range records {
+	for _, record := range s.records {
 		for i := 0; i < schema.NumFields(); i++ {
 			field, builder := rb.Schema().Field(i), rb.Field(i)
 			s.appendToBuilder(builder, &field, &record)
@@ -306,7 +296,7 @@ func (s *dataobjScan) getLessFunc(direction physical.SortOrder) func(a, b logs.R
 // * Log message
 //
 // effectiveProjections does not mutate h.
-func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physical.ColumnExpression, error) {
+func (s *dataobjScan) effectiveProjections(records []logs.Record) ([]physical.ColumnExpression, error) {
 	if len(s.opts.Projections) > 0 {
 		return s.opts.Projections, nil
 	}
@@ -328,7 +318,7 @@ func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physica
 		}
 	}
 
-	for rec := range h.Range() {
+	for _, rec := range records {
 		stream, ok := s.streams[rec.StreamID]
 		if !ok {
 			// If we hit this, there's a problem with either initStreams (we missed a
