@@ -58,16 +58,15 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 	buf := bytes.NewBuffer(nil)
 	_, err = candidate.Flush(buf)
 	require.NoError(t, err)
+	t.Logf("LogsObject size: %d", buf.Len())
 
 	err = bucket.Upload(context.Background(), path, buf)
 	require.NoError(t, err)
 }
 
 func TestIndexBuilder(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// Setup test dependencies
 	bucket := objstore.NewInMemBucket()
 
 	cluster, configString := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "loki.metastore-events")
