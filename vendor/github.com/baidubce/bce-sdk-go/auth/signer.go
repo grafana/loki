@@ -88,8 +88,8 @@ func (b *BceV1Signer) Sign(req *http.Request, cred *BceCredentials, opt *SignOpt
 		signDate = util.FormatISO8601Date(opt.Timestamp)
 	}
 
-	// Set security token if using session credentials and session token not in param
-	if len(cred.SessionToken) != 0 && req.Param(http.BCE_SECURITY_TOKEN) == "" {
+	// Set security token if using session credentials
+	if len(cred.SessionToken) != 0 {
 		req.SetHeader(http.BCE_SECURITY_TOKEN, cred.SessionToken)
 	}
 

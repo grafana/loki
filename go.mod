@@ -21,8 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/baidubce/bce-sdk-go v0.9.234
-	github.com/bmatcuk/doublestar/v4 v4.9.0
+	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -76,7 +75,6 @@ require (
 	github.com/oklog/run v1.2.0
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing-contrib/go-grpc v0.1.2 // indirect
-	github.com/opentracing-contrib/go-stdlib v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b // indirect
 	github.com/oschwald/geoip2-golang v1.11.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
@@ -118,6 +116,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.2
 	github.com/apache/arrow-go/v18 v18.3.1
 	github.com/axiomhq/hyperloglog v0.2.5
+	github.com/baidubce/bce-sdk-go v0.9.111
 	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/charmbracelet/bubbles v0.21.0
@@ -232,6 +231,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.128.0 // indirect
+	github.com/opentracing-contrib/go-stdlib v1.0.0 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/xattr v0.4.10 // indirect

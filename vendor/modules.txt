@@ -518,15 +518,13 @@ github.com/axiomhq/hyperloglog
 # github.com/aymanbagabas/go-osc52/v2 v2.0.1
 ## explicit; go 1.16
 github.com/aymanbagabas/go-osc52/v2
-# github.com/baidubce/bce-sdk-go v0.9.234
+# github.com/baidubce/bce-sdk-go v0.9.111
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
 github.com/baidubce/bce-sdk-go/http
 github.com/baidubce/bce-sdk-go/services/bos
 github.com/baidubce/bce-sdk-go/services/bos/api
-github.com/baidubce/bce-sdk-go/services/sts
-github.com/baidubce/bce-sdk-go/services/sts/api
 github.com/baidubce/bce-sdk-go/util
 github.com/baidubce/bce-sdk-go/util/log
 # github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
@@ -1545,7 +1543,7 @@ github.com/opencontainers/image-spec/specs-go/v1
 # github.com/opentracing-contrib/go-grpc v0.1.2
 ## explicit; go 1.23.8
 github.com/opentracing-contrib/go-grpc
-# github.com/opentracing-contrib/go-stdlib v1.1.0
+# github.com/opentracing-contrib/go-stdlib v1.0.0
 ## explicit; go 1.14
 github.com/opentracing-contrib/go-stdlib/nethttp
 # github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b

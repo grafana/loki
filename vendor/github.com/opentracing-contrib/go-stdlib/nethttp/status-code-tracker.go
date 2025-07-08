@@ -1,4 +1,3 @@
-//go:build go1.8
 // +build go1.8
 
 package nethttp
@@ -8,31 +7,28 @@ import (
 	"net/http"
 )
 
-type metricsTracker struct {
+type statusCodeTracker struct {
 	http.ResponseWriter
 	status int
-	size   int
 }
 
-func (w *metricsTracker) WriteHeader(status int) {
+func (w *statusCodeTracker) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func (w *metricsTracker) Write(b []byte) (int, error) {
-	size, err := w.ResponseWriter.Write(b)
-	w.size += size
-	return size, err
+func (w *statusCodeTracker) Write(b []byte) (int, error) {
+	return w.ResponseWriter.Write(b)
 }
 
 // wrappedResponseWriter returns a wrapped version of the original
 // ResponseWriter and only implements the same combination of additional
 // interfaces as the original.  This implementation is based on
 // https://github.com/felixge/httpsnoop.
-func (w *metricsTracker) wrappedResponseWriter() http.ResponseWriter {
+func (w *statusCodeTracker) wrappedResponseWriter() http.ResponseWriter {
 	var (
 		hj, i0 = w.ResponseWriter.(http.Hijacker)
-		cn, i1 = w.ResponseWriter.(http.CloseNotifier) //nolint:staticcheck // TODO: Replace deprecated CloseNotifier
+		cn, i1 = w.ResponseWriter.(http.CloseNotifier)
 		pu, i2 = w.ResponseWriter.(http.Pusher)
 		fl, i3 = w.ResponseWriter.(http.Flusher)
 		rf, i4 = w.ResponseWriter.(io.ReaderFrom)

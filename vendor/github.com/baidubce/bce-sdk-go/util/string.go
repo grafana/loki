@@ -26,10 +26,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"hash/crc32"
 	"io"
-	"os"
-	"strconv"
 )
 
 func HmacSha256Hex(key, str_to_sign string) string {
@@ -48,44 +45,6 @@ func CalculateContentMD5(data io.Reader, size int64) (string, error) {
 		return "", fmt.Errorf("calculate content-md5 writing size %d != size %d", n, size)
 	}
 	return base64.StdEncoding.EncodeToString(hasher.Sum(nil)), nil
-}
-
-func CalculateContentCrc32c(data io.Reader, size int64) (string, error) {
-	castagnoliTable := crc32.MakeTable(crc32.Castagnoli)
-	hashCrc32c := crc32.New(castagnoliTable)
-	n, err := io.CopyN(hashCrc32c, data, size)
-	if err != nil {
-		return "", fmt.Errorf("calculate content-crc32c occurs error: %w", err)
-	}
-	if n != size {
-		return "", fmt.Errorf("calculate content-crc32c writing size %d != size %d", n, size)
-	}
-	return strconv.FormatUint(uint64(hashCrc32c.Sum32()), 10), nil
-}
-
-func CalculateContentCrc32cFromStream(reader io.Reader) (string, error) {
-	var buf bytes.Buffer
-	rdLen, err := io.Copy(&buf, reader)
-	if err != nil {
-		return "", err
-	}
-	if rdLen != int64(buf.Len()) {
-		return "", fmt.Errorf("unexpected reader")
-	}
-	return CalculateContentCrc32c(bytes.NewBuffer(buf.Bytes()), rdLen)
-}
-
-func CalculateContentCrc32cFromFile(fileName string) (string, error) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	fileInfo, infoErr := file.Stat()
-	if infoErr != nil {
-		return "", infoErr
-	}
-	return CalculateContentCrc32c(file, fileInfo.Size())
 }
 
 func UriEncode(uri string, encodeSlash bool) string {
