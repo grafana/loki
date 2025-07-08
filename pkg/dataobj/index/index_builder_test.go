@@ -65,6 +65,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 }
 
 func TestIndexBuilder(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	bucket := objstore.NewInMemBucket()
