@@ -29,6 +29,13 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
 - [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
 - [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+- [FEATURE] Add config support for external memcache cluster by setting the following config:
+    memcached:
+        enabled: false # <- setting false here
+    resultsCache:
+        addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
+    chunksCache:
+        addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
 
 ## 6.29.0
 
