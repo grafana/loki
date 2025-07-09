@@ -54,9 +54,11 @@ func (r *RowReader) MatchStreams(ids iter.Seq[int64]) error {
 	}
 
 	if r.matchIDs == nil {
+		fmt.Println("making new matchID map")
 		r.matchIDs = make(map[int64]struct{})
 	}
 	for id := range ids {
+		fmt.Printf("adding streamID matcher %d\n", id)
 		r.matchIDs[id] = struct{}{}
 	}
 	return nil
@@ -140,6 +142,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	// r.predicate doesn't contain mappings of stream IDs; we need to build
 	// that as a separate predicate and AND them together.
 	var predicates []dataset.Predicate
+	fmt.Printf("matchIDs (before predicate): %+v\n", r.matchIDs)
 	if p := streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs); p != nil {
 		predicates = append(predicates, p)
 	}
@@ -220,9 +223,11 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 
 	var values []dataset.Value
 	for id := range ids {
+		fmt.Printf("streamIDPredicate: id %d\n", id)
 		values = append(values, dataset.Int64Value(id))
 	}
 
+	fmt.Printf("values: len %d, values %+v\n", len(values), values)
 	if len(values) == 0 {
 		return nil
 	}
