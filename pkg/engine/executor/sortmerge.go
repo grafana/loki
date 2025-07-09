@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -13,6 +14,13 @@ import (
 
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
 func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
+	wrappedInputs := make([]Pipeline, 0, len(inputs))
+
+	// Wrap our inputs so they lazily evaluate in the background.
+	for _, orig := range inputs {
+		wrappedInputs = append(wrappedInputs, newLazyPipeline(context.Background(), orig))
+	}
+
 	var compare func(a, b int64) bool
 	switch order {
 	case physical.ASC:
@@ -24,7 +32,7 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 	}
 
 	return &KWayMerge{
-		inputs:     inputs,
+		inputs:     wrappedInputs,
 		columnEval: evaluator.newFunc(column),
 		compare:    compare,
 	}, nil
