@@ -1209,7 +1209,7 @@ gateway:
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
-      {{- include "loki.nginxFile" . | indent 2 -}}
+      {{- include "loki.nginxFile" . -}}
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
