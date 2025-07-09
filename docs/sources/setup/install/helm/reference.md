@@ -7203,6 +7203,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.kind</td>
+			<td>string</td>
+			<td>The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.</td>
+			<td><pre lang="json">
+"DaemonSet"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.labelname</td>
 			<td>string</td>
 			<td>The name of the label to look for at loki when doing the checks.</td>

@@ -41,3 +41,5 @@ chunksCache:
   enabled: true
   l2:
     enabled: true
+lokiCanary:
+  kind: Deployment

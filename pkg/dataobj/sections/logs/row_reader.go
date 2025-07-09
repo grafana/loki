@@ -222,6 +222,10 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 		values = append(values, dataset.Int64Value(i))
 	}
 
+	if len(values) == 0 {
+		return nil
+	}
+
 	return dataset.InPredicate{
 		Column: streamIDColumn,
 		Values: dataset.NewInt64ValueSet(values),
