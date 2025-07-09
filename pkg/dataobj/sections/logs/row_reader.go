@@ -223,15 +223,14 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 
 	var values []dataset.Value
 	for id := range ids {
-		fmt.Printf("streamIDPredicate: id %d\n", id)
 		values = append(values, dataset.Int64Value(id))
 	}
 
-	fmt.Printf("values: len %d, values %+v\n", len(values), values)
 	if len(values) == 0 {
 		return nil
 	}
 
+	fmt.Printf("building streamIDPredicate: values %+v\n", values)
 	return dataset.InPredicate{
 		Column: streamIDColumn,
 		Values: values,
