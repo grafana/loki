@@ -32,8 +32,13 @@ func newLazyPipeline(ctx context.Context, inner Pipeline) *lazyPipeline {
 	}
 }
 
-func (lp *lazyPipeline) Read() error {
+// Start starts the pipeline.
+func (lp *lazyPipeline) Start() {
 	lp.once.Do(func() { go lp.loop() })
+}
+
+func (lp *lazyPipeline) Read() error {
+	lp.Start() // Make sure loop is running.
 
 	select {
 	case <-lp.ctx.Done():

@@ -18,7 +18,9 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 
 	// Wrap our inputs so they lazily evaluate in the background.
 	for _, orig := range inputs {
-		wrappedInputs = append(wrappedInputs, newLazyPipeline(context.Background(), orig))
+		lp := newLazyPipeline(context.Background(), orig)
+		lp.Start() // Start the prefetching immediately
+		wrappedInputs = append(wrappedInputs, lp)
 	}
 
 	var compare func(a, b int64) bool
