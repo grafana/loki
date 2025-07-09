@@ -125,7 +125,7 @@ func TestDeleteCreateQuery(t *testing.T) {
 			w.Close()
 			os.Stdout = oldStdout
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify results
@@ -265,7 +265,7 @@ func TestDeleteListQuery(t *testing.T) {
 			w.Close()
 			os.Stdout = oldStdout
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify results
@@ -353,7 +353,7 @@ func TestDeleteListQueryJSON(t *testing.T) {
 			w.Close()
 			os.Stdout = oldStdout
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify results
@@ -441,7 +441,7 @@ func TestDeleteCancelQuery(t *testing.T) {
 			w.Close()
 			os.Stdout = oldStdout
 			var buf bytes.Buffer
-			io.Copy(&buf, r)
+			_, _ = io.Copy(&buf, r)
 			output := buf.String()
 
 			// Verify results

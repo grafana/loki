@@ -39,7 +39,7 @@ func TestDeleteWorkflowIntegration(t *testing.T) {
 
 	// Test 2: List delete requests to verify creation
 	listQuery := Query{Quiet: true}
-	
+
 	// Capture stdout
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -52,7 +52,7 @@ func TestDeleteWorkflowIntegration(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	assert.Contains(t, output, "{job=\"test\"}")
@@ -73,11 +73,11 @@ func TestDeleteWorkflowIntegration(t *testing.T) {
 // TestDeleteWorkflowWithErrors tests the workflow with various error conditions
 func TestDeleteWorkflowWithErrors(t *testing.T) {
 	tests := []struct {
-		name         string
-		createError  error
-		listError    error
-		cancelError  error
-		expectFails  []string // which operations should fail
+		name        string
+		createError error
+		listError   error
+		cancelError error
+		expectFails []string // which operations should fail
 	}{
 		{
 			name:        "create fails",
@@ -188,7 +188,7 @@ func TestDeleteWorkflowMultipleRequests(t *testing.T) {
 
 	// List all requests
 	listQuery := Query{Quiet: true}
-	
+
 	// Capture stdout
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -201,7 +201,7 @@ func TestDeleteWorkflowMultipleRequests(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Verify all queries appear in output
@@ -218,7 +218,7 @@ func TestDeleteWorkflowMultipleRequests(t *testing.T) {
 	requests, err := mockClient.ListDeleteRequests(true)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(requests))
-	
+
 	// Find the cancelled request
 	found := false
 	for _, req := range requests {
@@ -240,19 +240,19 @@ type workflowMockClient struct {
 	cancelError    error
 }
 
-func (m *workflowMockClient) CreateDeleteRequest(params client.DeleteRequestParams, quiet bool) error {
+func (m *workflowMockClient) CreateDeleteRequest(params client.DeleteRequestParams, _ bool) error {
 	if m.createError != nil {
 		return m.createError
 	}
 
 	m.requestCounter++
 	requestID := fmt.Sprintf("test-request-%d", m.requestCounter)
-	
+
 	startTime := int64(0)
 	if params.Start != "" {
 		startTime = parseInt64(params.Start)
 	}
-	
+
 	endTime := int64(0)
 	if params.End != "" {
 		endTime = parseInt64(params.End)
@@ -268,7 +268,7 @@ func (m *workflowMockClient) CreateDeleteRequest(params client.DeleteRequestPara
 	return nil
 }
 
-func (m *workflowMockClient) ListDeleteRequests(quiet bool) ([]client.DeleteRequest, error) {
+func (m *workflowMockClient) ListDeleteRequests(_ bool) ([]client.DeleteRequest, error) {
 	if m.listError != nil {
 		return nil, m.listError
 	}
@@ -281,7 +281,7 @@ func (m *workflowMockClient) ListDeleteRequests(quiet bool) ([]client.DeleteRequ
 	return requests, nil
 }
 
-func (m *workflowMockClient) CancelDeleteRequest(requestID string, force bool, quiet bool) error {
+func (m *workflowMockClient) CancelDeleteRequest(requestID string, _ bool, _ bool) error {
 	if m.cancelError != nil {
 		return m.cancelError
 	}

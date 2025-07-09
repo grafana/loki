@@ -171,7 +171,7 @@ func TestEdgeCasesListBehavior(t *testing.T) {
 			description: "Unusual status values should be handled",
 		},
 		{
-			name: "very large number of requests",
+			name:           "very large number of requests",
 			deleteRequests: generateLargeRequestList(1000),
 			expectError:    false,
 			description:    "Large number of requests should be handled",
@@ -387,7 +387,7 @@ func TestEdgeCasesTimeConversion(t *testing.T) {
 			// Test time conversion
 			timeObj := time.Unix(tt.timestamp, 0)
 			formatted := timeObj.Format(time.RFC3339)
-			
+
 			assert.NotEmpty(t, formatted, tt.description)
 		})
 	}

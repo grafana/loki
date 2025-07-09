@@ -90,27 +90,27 @@ func (m *mockDeleteClient) CancelDeleteRequest(requestID string, force bool, qui
 }
 
 // Stub implementations for other Client interface methods
-func (m *mockDeleteClient) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (m *mockDeleteClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (m *mockDeleteClient) QueryRange(_ string, _ int, _, _ time.Time, _ logproto.Direction, _, _ time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (m *mockDeleteClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (m *mockDeleteClient) ListLabelValues(_ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (m *mockDeleteClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (m *mockDeleteClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	panic("not implemented")
 }
 
@@ -118,18 +118,18 @@ func (m *mockDeleteClient) GetOrgID() string {
 	return "test-org"
 }
 
-func (m *mockDeleteClient) GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+func (m *mockDeleteClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) GetVolume(query *volume.Query) (*loghttp.QueryResponse, error) {
+func (m *mockDeleteClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error) {
+func (m *mockDeleteClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (m *mockDeleteClient) GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error) {
+func (m *mockDeleteClient) GetDetectedFields(_, _ string, _, _ int, _, _ time.Time, _ time.Duration, _ bool) (*loghttp.DetectedFieldsResponse, error) {
 	panic("not implemented")
 }
