@@ -217,6 +217,18 @@ func (f *FileClient) GetDetectedFields(
 	return nil, ErrNotSupported
 }
 
+func (f *FileClient) CreateDeleteRequest(_ DeleteRequestParams, _ bool) error {
+	return ErrNotSupported
+}
+
+func (f *FileClient) ListDeleteRequests(_ bool) ([]DeleteRequest, error) {
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
+	return ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }

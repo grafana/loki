@@ -39,6 +39,7 @@ const (
 	volumeRangePath         = "/loki/api/v1/index/volume_range"
 	detectedFieldsPath      = "/loki/api/v1/detected_fields"
 	detectedFieldValuesPath = "/loki/api/v1/detected_field/%s/values"
+	deletePath              = "/loki/api/v1/delete"
 	defaultAuthHeader       = "Authorization"
 
 	// HTTP header keys
@@ -63,6 +64,9 @@ type Client interface {
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
+	CreateDeleteRequest(params DeleteRequestParams, quiet bool) error
+	ListDeleteRequests(quiet bool) ([]DeleteRequest, error)
+	CancelDeleteRequest(requestID string, force bool, quiet bool) error
 }
 
 // Tripperware can wrap a roundtripper.
@@ -267,6 +271,40 @@ func (c *DefaultClient) GetDetectedFields(
 	return &r, nil
 }
 
+func (c *DefaultClient) CreateDeleteRequest(params DeleteRequestParams, quiet bool) error {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", params.Query)
+	if params.Start != "" {
+		qsb.SetString("start", params.Start)
+	}
+	if params.End != "" {
+		qsb.SetString("end", params.End)
+	}
+	if params.MaxInterval != "" {
+		qsb.SetString("max_interval", params.MaxInterval)
+	}
+
+	return c.doPostRequest(deletePath, qsb.Encode(), quiet)
+}
+
+func (c *DefaultClient) ListDeleteRequests(quiet bool) ([]DeleteRequest, error) {
+	var deleteRequests []DeleteRequest
+	if err := c.doRequest(deletePath, "", quiet, &deleteRequests); err != nil {
+		return nil, err
+	}
+	return deleteRequests, nil
+}
+
+func (c *DefaultClient) CancelDeleteRequest(requestID string, force bool, quiet bool) error {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("request_id", requestID)
+	if force {
+		qsb.SetString("force", "true")
+	}
+
+	return c.doDeleteRequest(deletePath, qsb.Encode(), quiet)
+}
+
 func (c *DefaultClient) doQuery(
 	path string,
 	query string,
@@ -386,6 +424,208 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+func (c *DefaultClient) doPostRequest(path, query string, quiet bool) error {
+	us, err := buildURL(c.Address, path, query)
+	if err != nil {
+		return err
+	}
+	if !quiet {
+		log.Print(us)
+	}
+
+	req, err := http.NewRequest("POST", us, nil)
+	if err != nil {
+		return err
+	}
+
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return err
+	}
+	req.Header = h
+
+	// Parse the URL to extract the host
+	clientConfig := config.HTTPClientConfig{
+		TLSConfig: c.TLSConfig,
+	}
+
+	if c.EnvironmentProxy {
+		clientConfig.ProxyFromEnvironment = true
+	}
+
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
+	}
+
+	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
+	client.Timeout = 0
+	if err != nil {
+		return err
+	}
+	if c.Tripperware != nil {
+		client.Transport = c.Tripperware(client.Transport)
+	}
+	if c.Compression {
+		// NewClientFromConfig() above returns an http.Client that uses a transport which
+		// has compression explicitly disabled. Here we re-enable it. If the caller
+		// defines a custom Tripperware that isn't an http.Transport then this won't work,
+		// but in that case they control the transport anyway and can configure
+		// compression that way.
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			transport.DisableCompression = false
+		}
+	}
+
+	var resp *http.Response
+	success := false
+
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
+
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			log.Println("error sending request", err)
+			backoff.Wait()
+			continue
+		}
+		if resp.StatusCode/100 != 2 {
+			buf, _ := io.ReadAll(resp.Body) // nolint
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
+			if err := resp.Body.Close(); err != nil {
+				log.Println("error closing body", err)
+			}
+			backoff.Wait()
+			continue
+		}
+		success = true
+		break
+	}
+	if !success {
+		return fmt.Errorf("run out of attempts while querying the server")
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println("error closing body", err)
+		}
+	}()
+	return nil
+}
+
+func (c *DefaultClient) doDeleteRequest(path, query string, quiet bool) error {
+	us, err := buildURL(c.Address, path, query)
+	if err != nil {
+		return err
+	}
+	if !quiet {
+		log.Print(us)
+	}
+
+	req, err := http.NewRequest("DELETE", us, nil)
+	if err != nil {
+		return err
+	}
+
+	h, err := c.getHTTPRequestHeader()
+	if err != nil {
+		return err
+	}
+	req.Header = h
+
+	// Parse the URL to extract the host
+	clientConfig := config.HTTPClientConfig{
+		TLSConfig: c.TLSConfig,
+	}
+
+	if c.EnvironmentProxy {
+		clientConfig.ProxyFromEnvironment = true
+	}
+
+	if c.ProxyURL != "" {
+		prox, err := url.Parse(c.ProxyURL)
+		if err != nil {
+			return err
+		}
+		clientConfig.ProxyURL = config.URL{URL: prox}
+	}
+
+	client, err := config.NewClientFromConfig(clientConfig, "promtail", config.WithHTTP2Disabled())
+	client.Timeout = 0
+	if err != nil {
+		return err
+	}
+	if c.Tripperware != nil {
+		client.Transport = c.Tripperware(client.Transport)
+	}
+	if c.Compression {
+		// NewClientFromConfig() above returns an http.Client that uses a transport which
+		// has compression explicitly disabled. Here we re-enable it. If the caller
+		// defines a custom Tripperware that isn't an http.Transport then this won't work,
+		// but in that case they control the transport anyway and can configure
+		// compression that way.
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			transport.DisableCompression = false
+		}
+	}
+
+	var resp *http.Response
+	success := false
+
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
+
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			log.Println("error sending request", err)
+			backoff.Wait()
+			continue
+		}
+		if resp.StatusCode/100 != 2 {
+			buf, _ := io.ReadAll(resp.Body) // nolint
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
+			if err := resp.Body.Close(); err != nil {
+				log.Println("error closing body", err)
+			}
+			backoff.Wait()
+			continue
+		}
+		success = true
+		break
+	}
+	if !success {
+		return fmt.Errorf("run out of attempts while querying the server")
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Println("error closing body", err)
+		}
+	}()
+	return nil
+}
+
 // nolint:goconst
 func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h := make(http.Header)
@@ -499,4 +739,20 @@ func buildURL(u, p, q string) (string, error) {
 	url.Path = path.Join(url.Path, p)
 	url.RawQuery = q
 	return url.String(), nil
+}
+
+// DeleteRequest represents a log deletion request
+type DeleteRequest struct {
+	StartTime int64  `json:"start_time"`
+	EndTime   int64  `json:"end_time"`
+	Query     string `json:"query"`
+	Status    string `json:"status"`
+}
+
+// DeleteRequestParams represents the parameters for creating a delete request
+type DeleteRequestParams struct {
+	Query       string `json:"query"`
+	Start       string `json:"start,omitempty"`
+	End         string `json:"end,omitempty"`
+	MaxInterval string `json:"max_interval,omitempty"`
 }
