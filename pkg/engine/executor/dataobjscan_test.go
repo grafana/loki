@@ -64,8 +64,9 @@ func Test_dataobjScan(t *testing.T) {
 			StreamIDs:   []int64{1, 2}, // All streams
 			Section:     0,             // First section.
 			Projections: nil,           // All columns
-			Direction:   physical.ASC,
+			Direction:   physical.DESC,
 			Limit:       0, // No limit
+			batchSize:   512,
 		})
 
 		expectFields := []arrow.Field{
@@ -77,10 +78,10 @@ func Test_dataobjScan(t *testing.T) {
 			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
-		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world
-prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
+		expectCSV := `prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world
 prod,loki,aaaa-bbbb-cccc-dddd,NULL,1970-01-01 00:00:05,hello world
-prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
+prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
+prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -98,8 +99,9 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeLabel}},
 			},
-			Direction: physical.ASC,
+			Direction: physical.DESC,
 			Limit:     0, // No limit
+			batchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -107,10 +109,10 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
 		}
 
-		expectCSV := `1970-01-01 00:00:02,prod
-1970-01-01 00:00:03,prod
+		expectCSV := `1970-01-01 00:00:10,prod
 1970-01-01 00:00:05,prod
-1970-01-01 00:00:10,prod`
+1970-01-01 00:00:03,prod
+1970-01-01 00:00:02,prod`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -129,8 +131,9 @@ prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world`
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
 			},
-			Direction: physical.ASC,
+			Direction: physical.DESC,
 			Limit:     0, // No limit
+			batchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -192,8 +195,9 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			StreamIDs:   []int64{1, 2, 3}, // All streams
 			Section:     0,                // First section.
 			Projections: nil,              // All columns
-			Direction:   physical.ASC,
+			Direction:   physical.DESC,
 			Limit:       0, // No limit
+			batchSize:   512,
 		})
 
 		expectFields := []arrow.Field{
@@ -209,9 +213,9 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
-		expectCSV := `prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1
+		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
 prod,NULL,NULL,loki,namespace-1,NULL,1970-01-01 00:00:02,message 2
-prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
+prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -228,8 +232,9 @@ prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "pod", Type: types.ColumnTypeAmbiguous}},
 			},
-			Direction: physical.ASC,
+			Direction: physical.DESC,
 			Limit:     0, // No limit
+			batchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -237,9 +242,9 @@ prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3`
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 		}
 
-		expectCSV := `pod-1,override
+		expectCSV := `NULL,NULL
 NULL,NULL
-NULL,NULL`
+pod-1,override`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -256,8 +261,9 @@ NULL,NULL`
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "namespace", Type: types.ColumnTypeAmbiguous}},
 			},
-			Direction: physical.ASC,
+			Direction: physical.DESC,
 			Limit:     0, // No limit
+			batchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -265,9 +271,9 @@ NULL,NULL`
 			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 		}
 
-		expectCSV := `NULL,NULL
+		expectCSV := `namespace-2,NULL
 NULL,namespace-1
-namespace-2,NULL`
+NULL,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
