@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver
+	_ "github.com/go-sql-driver/mysql" // MySQL driver
 )
 
 // CloudSQLStorage implements Storage for Google Cloud SQL
@@ -23,16 +24,16 @@ func NewCloudSQLStorage(config StorageConfig, password string) (*CloudSQLStorage
 	}
 
 	// Build DSN for CloudSQL proxy connection
-	// The proxy handles SSL/TLS, so we use sslmode=disable
-	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
+	// MySQL DSN format: username:password@tcp(host:port)/dbname?params
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci",
+		config.CloudSQLUser,
+		password,
 		config.CloudSQLHost,
 		config.CloudSQLPort,
 		config.CloudSQLDatabase,
-		config.CloudSQLUser,
-		password,
 	)
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -41,6 +42,12 @@ func NewCloudSQLStorage(config StorageConfig, password string) (*CloudSQLStorage
 	db.SetMaxOpenConns(config.MaxConnections)
 	db.SetMaxIdleConns(config.MaxConnections / 2)
 	db.SetConnMaxIdleTime(time.Duration(config.MaxIdleTime) * time.Second)
+
+	// Verify connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
 
 	// Initialize schema
 	if err := initSchema(db); err != nil {
@@ -73,7 +80,7 @@ func (s *CloudSQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySam
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
 			sampled_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := s.db.ExecContext(ctx, query,
@@ -131,7 +138,7 @@ func (s *CloudSQLStorage) StoreComparisonResult(ctx context.Context, result *Com
 			correlation_id, comparison_status,
 			difference_details, performance_metrics,
 			compared_at
-		) VALUES ($1, $2, $3, $4, $5)
+		) VALUES (?, ?, ?, ?, ?)
 	`
 
 	_, err = s.db.ExecContext(ctx, query,
@@ -197,21 +204,25 @@ func initSchema(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS comparison_outcomes (
 			correlation_id VARCHAR(36) PRIMARY KEY,
 			comparison_status VARCHAR(50) NOT NULL,
-			difference_details JSONB,
-			performance_metrics JSONB,
+			difference_details JSON,
+			performance_metrics JSON,
 			compared_at TIMESTAMP NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (correlation_id) REFERENCES sampled_queries(correlation_id)
 		)`,
 
-		`CREATE INDEX IF NOT EXISTS idx_sampled_queries_tenant ON sampled_queries(tenant_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_sampled_queries_time ON sampled_queries(sampled_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_comparison_status ON comparison_outcomes(comparison_status)`,
+		`CREATE INDEX idx_sampled_queries_tenant ON sampled_queries(tenant_id)`,
+		`CREATE INDEX idx_sampled_queries_time ON sampled_queries(sampled_at)`,
+		`CREATE INDEX idx_comparison_status ON comparison_outcomes(comparison_status)`,
 	}
 
-	for _, schema := range schemas {
+	for i, schema := range schemas {
 		if _, err := db.Exec(schema); err != nil {
-			return err
+			// MySQL might return an error if index already exists, which is OK
+			if i >= 2 && strings.Contains(err.Error(), "Duplicate key name") {
+				continue
+			}
+			return fmt.Errorf("failed to execute schema statement %d: %w", i+1, err)
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -100,13 +101,24 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		"query_type", getQueryType(req.URL.Path))
 
 	// Create query sample with performance statistics
+	startTime := parseTime(req.URL.Query().Get("start"))
+	endTime := parseTime(req.URL.Query().Get("end"))
+
+	// If we couldn't parse the times, use current time as a fallback for MySQL compatibility
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+
 	sample := &QuerySample{
 		CorrelationID:     correlationID,
 		TenantID:          extractTenant(req),
 		Query:             req.URL.Query().Get("query"),
 		QueryType:         getQueryType(req.URL.Path),
-		StartTime:         parseTime(req.URL.Query().Get("start")),
-		EndTime:           parseTime(req.URL.Query().Get("end")),
+		StartTime:         startTime,
+		EndTime:           endTime,
 		Step:              parseDuration(req.URL.Query().Get("step")),
 		CellAStats:        cellAResp.Stats,
 		CellBStats:        cellBResp.Stats,
@@ -121,6 +133,9 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	m.metrics.sampledQueries.Inc()
 
+	// Track whether the sample was stored successfully
+	sampleStored := false
+
 	// Store the sample if storage is available
 	if m.storage != nil {
 		if err := m.storage.StoreQuerySample(ctx, sample); err != nil {
@@ -128,6 +143,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 			m.metrics.storageOperations.WithLabelValues("store_sample", "error").Inc()
 		} else {
 			m.metrics.storageOperations.WithLabelValues("store_sample", "success").Inc()
+			sampleStored = true
 		}
 	}
 
@@ -202,8 +218,8 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		}
 	}
 
-	// Store comparison result if storage is available
-	if m.storage != nil {
+	// Store comparison result only if the sample was stored successfully
+	if m.storage != nil && sampleStored {
 		if err := m.storage.StoreComparisonResult(ctx, &result); err != nil {
 			level.Error(m.logger).Log("msg", "failed to store comparison result", "correlation_id", correlationID, "err", err)
 			m.metrics.storageOperations.WithLabelValues("store_result", "error").Inc()
@@ -298,11 +314,22 @@ func parseTime(s string) time.Time {
 	if s == "" {
 		return time.Time{}
 	}
-	// Try parsing as Unix timestamp first
+
+	// Try parsing as nanosecond Unix timestamp (Loki format)
+	if ns, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return time.Unix(0, ns)
+	}
+
+	// Try parsing as RFC3339
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t
 	}
-	// Try other formats
+
+	// Try parsing as Unix seconds
+	if sec, err := strconv.ParseInt(s, 10, 64); err == nil && sec < 1e10 {
+		return time.Unix(sec, 0)
+	}
+
 	return time.Time{}
 }
 
