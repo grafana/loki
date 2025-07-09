@@ -1,9 +1,9 @@
 package index
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -39,7 +39,7 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {
-					return nil, errors.Wrapf(err, "creating tsdb inverted index for period starting %v", pd.From)
+					return nil, fmt.Errorf("creating tsdb inverted index for period starting %v: %w", pd.From, err)
 				}
 			}
 			periodIndices = append(periodIndices, periodIndex{
@@ -107,7 +107,7 @@ func (m *Multi) indexFor(t time.Time) Interface {
 type noopInvertedIndex struct{}
 
 func (noopInvertedIndex) Add(_ []logproto.LabelAdapter, _ model.Fingerprint) labels.Labels {
-	return nil
+	return labels.EmptyLabels()
 }
 
 func (noopInvertedIndex) Delete(_ labels.Labels, _ model.Fingerprint) {}

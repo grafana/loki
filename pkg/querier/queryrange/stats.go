@@ -122,7 +122,7 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 func StatsCollectorMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			logger := spanlogger.FromContext(ctx)
+			logger := spanlogger.FromContext(ctx, util_log.Logger)
 			start := time.Now()
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
@@ -179,6 +179,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in query patterns
 					totalEntries = len(r.Response.Series)
 					queryType = queryTypeQueryPatterns
+				case *DetectedLabelsResponse:
+					responseStats = &stats.Result{}
+					totalEntries = 1
+					queryType = queryTypeDetectedLabels
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
@@ -191,7 +195,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
-				responseStats.Log(level.Debug(logger))
+				logger.LogKV(responseStats.KVList()...)
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

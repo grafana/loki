@@ -6,21 +6,19 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/grafana/dskit/tenant"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/math"
-
-	"github.com/grafana/dskit/tenant"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -102,8 +100,8 @@ func (h *splitByInterval) Process(
 	maxSeries int,
 ) ([]queryrangebase.Response, error) {
 	var responses []queryrangebase.Response
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errors.New("split by interval process canceled"))
 
 	ch := h.Feed(ctx, input)
 
@@ -114,7 +112,7 @@ func (h *splitByInterval) Process(
 	}
 
 	// Parallelism will be at least 1
-	p := math.Max(parallelism, 1)
+	p := max(parallelism, 1)
 	// don't spawn unnecessary goroutines
 	if len(input) < parallelism {
 		p = len(input)
@@ -156,11 +154,13 @@ func (h *splitByInterval) Process(
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
 	for data := range ch {
 
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
-		data.req.LogToSpan(sp)
+		ctx, sp := tracer.Start(ctx, "interval")
+		if sp.SpanContext().IsSampled() {
+			data.req.LogToSpan(sp)
+		}
 
 		resp, err := next.Do(ctx, data.req)
-		sp.Finish()
+		sp.End()
 
 		select {
 		case <-ctx.Done():
@@ -178,7 +178,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	var interval time.Duration
@@ -194,10 +194,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
-	if err != nil {
-		return nil, err
-	}
+	intervals := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 
 	h.metrics.splits.Observe(float64(len(intervals)))
 
@@ -206,9 +203,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
-	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("n_intervals", len(intervals)))
 
 	if len(intervals) == 1 {
 		return h.next.Do(ctx, intervals[0])
@@ -228,7 +223,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
 			intervals[i], intervals[j] = intervals[j], intervals[i]
 		}
-	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest, *logproto.ShardsRequest:
+	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest, *logproto.ShardsRequest, *DetectedLabelsRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
@@ -259,18 +254,19 @@ func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, ti
 	if err != nil {
 		return 0, 0, err
 	}
-	return maxRangeVectorAndOffsetDuration(parsed)
+	dur, offset := maxRangeVectorAndOffsetDuration(parsed)
+	return dur, offset, nil
 }
 
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
-func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration, error) {
+func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration) {
 	if _, ok := expr.(syntax.SampleExpr); !ok {
-		return 0, 0, nil
+		return 0, 0
 	}
 
 	var maxRVDuration, maxOffset time.Duration
-	expr.Walk(func(e syntax.Expr) {
-		if r, ok := e.(*syntax.LogRange); ok {
+	expr.Walk(func(e syntax.Expr) bool {
+		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
 			}
@@ -278,6 +274,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 				maxOffset = r.Offset
 			}
 		}
+		return true
 	})
-	return maxRVDuration, maxOffset, nil
+	return maxRVDuration, maxOffset
 }

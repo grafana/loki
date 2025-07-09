@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -190,11 +191,13 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context) (err erro
 		}
 	}()
 
-	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
-	level.Info(logger).Log("msg", "building table names cache")
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("building table names cache")
 	now := time.Now()
 	defer func() {
-		level.Info(logger).Log("msg", "table names cache built", "duration", time.Since(now))
+		sp.AddEvent("table names cache built", trace.WithAttributes(
+			attribute.String("duration", time.Since(now).String()),
+		))
 	}()
 
 	_, tableNames, err := c.ObjectClient.List(ctx, "", delimiter)
@@ -276,11 +279,13 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 		}
 	}()
 
-	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
-	level.Info(logger).Log("msg", "building table cache")
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("building table cache")
 	now := time.Now()
 	defer func() {
-		level.Info(logger).Log("msg", "table cache built", "duration", time.Since(now))
+		sp.AddEvent("table cache built", trace.WithAttributes(
+			attribute.String("duration", time.Since(now).String()),
+		))
 	}()
 
 	objects, _, err := objectClient.List(ctx, t.name+delimiter, "")

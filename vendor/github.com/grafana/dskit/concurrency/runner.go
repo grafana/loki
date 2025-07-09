@@ -7,7 +7,6 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/internal/math"
 	"github.com/grafana/dskit/multierror"
 )
 
@@ -31,7 +30,7 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	errsMx := sync.Mutex{}
 
 	wg := sync.WaitGroup{}
-	for ix := 0; ix < math.Min(concurrency, len(userIDs)); ix++ {
+	for ix := 0; ix < min(concurrency, len(userIDs)); ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -83,10 +82,24 @@ func CreateJobsFromStrings(values []string) []interface{} {
 }
 
 // ForEachJob runs the provided jobFunc for each job index in [0, jobs) up to concurrency concurrent workers.
+// If the concurrency value is <= 0 all jobs will be executed in parallel.
+//
 // The execution breaks on first error encountered.
+//
+// ForEachJob cancels the context.Context passed to each invocation of jobFunc before ForEachJob returns.
 func ForEachJob(ctx context.Context, jobs int, concurrency int, jobFunc func(ctx context.Context, idx int) error) error {
 	if jobs == 0 {
 		return nil
+	}
+	if jobs == 1 {
+		// Honor the function contract, cancelling the context passed to the jobFunc once it completed.
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		return jobFunc(ctx, 0)
+	}
+	if concurrency <= 0 {
+		concurrency = jobs
 	}
 
 	// Initialise indexes with -1 so first Inc() returns index 0.
@@ -94,7 +107,7 @@ func ForEachJob(ctx context.Context, jobs int, concurrency int, jobFunc func(ctx
 
 	// Start workers to process jobs.
 	g, ctx := errgroup.WithContext(ctx)
-	for ix := 0; ix < math.Min(concurrency, jobs); ix++ {
+	for ix := 0; ix < min(concurrency, jobs); ix++ {
 		g.Go(func() error {
 			for ctx.Err() == nil {
 				idx := int(indexes.Inc())
@@ -112,4 +125,36 @@ func ForEachJob(ctx context.Context, jobs int, concurrency int, jobFunc func(ctx
 
 	// Wait until done (or context has canceled).
 	return g.Wait()
+}
+
+// ForEachJobMergeResults is like ForEachJob but expects jobFunc to return a slice of results which are then
+// merged with results from all jobs. This function returns no results if an error occurred running any jobFunc.
+//
+// ForEachJobMergeResults cancels the context.Context passed to each invocation of jobFunc before ForEachJobMergeResults returns.
+func ForEachJobMergeResults[J any, R any](ctx context.Context, jobs []J, concurrency int, jobFunc func(ctx context.Context, job J) ([]R, error)) ([]R, error) {
+	var (
+		resultsMx sync.Mutex
+		results   = make([]R, 0, len(jobs)) // Assume at least 1 result per job.
+	)
+
+	err := ForEachJob(ctx, len(jobs), concurrency, func(ctx context.Context, idx int) error {
+		jobResult, jobErr := jobFunc(ctx, jobs[idx])
+		if jobErr != nil {
+			return jobErr
+		}
+
+		resultsMx.Lock()
+		results = append(results, jobResult...)
+		resultsMx.Unlock()
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Given no error occurred, it means that all job results have already been collected
+	// and so it's safe to access results slice with no locking.
+	return results, nil
 }

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -21,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -90,7 +91,10 @@ func (c *storeEntry) GetChunks(
 func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(refs))
 	for _, ref := range refs {
-		if through >= ref.From && from < ref.Through {
+		// Only include chunks where the query start time (from) is < the chunk end time (ref.Through)
+		// and the query end time (through) is >= the chunk start time (ref.From)
+		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, and that is equal to the from time.
+		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
 			filtered = append(filtered, chunk.Chunk{
 				ChunkRef: *ref,
 			})
@@ -108,11 +112,11 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelNamesForMetricName", trace.WithAttributes(
+		attribute.String("metric", metricName),
+	))
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -120,16 +124,13 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	} else if shortcut {
 		return nil, nil
 	}
-	level.Debug(log).Log("metric", metricName)
 
-	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -153,8 +154,8 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.Volume")
+	defer sp.End()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -163,15 +164,19 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		return nil, nil
 	}
 
-	sp.LogKV(
-		"user", userID,
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"err", err,
-		"limit", limit,
-		"aggregateBy", aggregateBy,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int("limit", int(limit)),
+		attribute.String("aggregateBy", aggregateBy),
 	)
+	if err != nil {
+		sp.SetAttributes(
+			attribute.String("err", err.Error()),
+		)
+	}
 
 	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 }

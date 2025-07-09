@@ -69,7 +69,7 @@ const (
 // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions
 // borrowed from this article and also testing various ASCII characters following regex
 // is supported by AWS S3 for both tags and values.
-var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ ]+$`)
+var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ =]+$`)
 
 func checkKey(key string) error {
 	if len(key) == 0 {

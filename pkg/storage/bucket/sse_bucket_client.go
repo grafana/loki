@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
-// TenantConfigProvider defines a per-tenant config provider.
-type TenantConfigProvider interface {
+// SSEConfigProvider defines a per-tenant SSE config provider.
+type SSEConfigProvider interface {
 	// S3SSEType returns the per-tenant S3 SSE type.
 	S3SSEType(userID string) string
 
@@ -29,11 +29,11 @@ type TenantConfigProvider interface {
 type SSEBucketClient struct {
 	userID      string
 	bucket      objstore.Bucket
-	cfgProvider TenantConfigProvider
+	cfgProvider SSEConfigProvider
 }
 
 // NewSSEBucketClient makes a new SSEBucketClient. The cfgProvider can be nil.
-func NewSSEBucketClient(userID string, bucket objstore.Bucket, cfgProvider TenantConfigProvider) *SSEBucketClient {
+func NewSSEBucketClient(userID string, bucket objstore.Bucket, cfgProvider SSEConfigProvider) *SSEBucketClient {
 	return &SSEBucketClient{
 		userID:      userID,
 		bucket:      bucket,
@@ -57,6 +57,10 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 	}
 
 	return b.bucket.Upload(ctx, name, r)
+}
+
+func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+	return b.bucket.GetAndReplace(ctx, name, fn)
 }
 
 // Delete implements objstore.Bucket.
@@ -94,9 +98,23 @@ func (b *SSEBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 	return sse, nil
 }
 
+// SupportedIterOptions returns a list of supported IterOptions by the underlying provider.
+func (b *SSEBucketClient) SupportedIterOptions() []objstore.IterOptionType {
+	return b.bucket.SupportedIterOptions()
+}
+
 // Iter implements objstore.Bucket.
 func (b *SSEBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, dir, f, options...)
+}
+
+// IterWithAttributes calls f for each entry in the given directory similar to Iter.
+// In addition to Name, it also includes requested object attributes in the argument to f.
+//
+// Attributes can be requested using IterOption.
+// Not all IterOptions are supported by all providers, requesting for an unsupported option will fail with ErrOptionNotSupported.
+func (b *SSEBucketClient) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return b.bucket.IterWithAttributes(ctx, dir, f, options...)
 }
 
 // Get implements objstore.Bucket.
@@ -132,6 +150,11 @@ func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpected
 // IsAccessDeniedErr returns true if access to object is denied.
 func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
+}
+
+// Provider returns the provider of the bucket.
+func (b *SSEBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
 }
 
 // WithExpectedErrs implements objstore.Bucket.

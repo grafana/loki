@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,12 +14,16 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type QueryRangeType string
@@ -42,6 +47,7 @@ type Params interface {
 	Shards() []string
 	GetExpression() syntax.Expr
 	GetStoreChunks() *logproto.ChunkRefGroup
+	CachingOptions() resultscache.CachingOptions
 }
 
 func NewLiteralParams(
@@ -53,21 +59,69 @@ func NewLiteralParams(
 	shards []string,
 	storeChunks *logproto.ChunkRefGroup,
 ) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		resultscache.CachingOptions{},
+	)
+}
+
+func NewLiteralParamsWithCaching(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
+	return newLiteralParams(
+		qs,
+		start,
+		end,
+		step,
+		interval,
+		direction,
+		limit,
+		shards,
+		storeChunks,
+		cachingOptions,
+	)
+}
+
+func newLiteralParams(
+	qs string,
+	start, end time.Time,
+	step, interval time.Duration,
+	direction logproto.Direction,
+	limit uint32,
+	shards []string,
+	storeChunks *logproto.ChunkRefGroup,
+	cachingOptions resultscache.CachingOptions,
+) (LiteralParams, error) {
 	p := LiteralParams{
-		queryString: qs,
-		start:       start,
-		end:         end,
-		step:        step,
-		interval:    interval,
-		direction:   direction,
-		limit:       limit,
-		shards:      shards,
-		storeChunks: storeChunks,
+		queryString:    qs,
+		start:          start,
+		end:            end,
+		step:           step,
+		interval:       interval,
+		direction:      direction,
+		limit:          limit,
+		shards:         shards,
+		storeChunks:    storeChunks,
+		cachingOptions: cachingOptions,
 	}
 	var err error
 	p.queryExpr, err = syntax.ParseExpr(qs)
 	return p, err
-
 }
 
 // LiteralParams impls Params
@@ -80,6 +134,7 @@ type LiteralParams struct {
 	shards         []string
 	queryExpr      syntax.Expr
 	storeChunks    *logproto.ChunkRefGroup
+	cachingOptions resultscache.CachingOptions
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
@@ -113,6 +168,11 @@ func (p LiteralParams) Shards() []string { return p.shards }
 
 // StoreChunks impls Params
 func (p LiteralParams) GetStoreChunks() *logproto.ChunkRefGroup { return p.storeChunks }
+
+// CachingOptions returns whether Loki query created from this params should be cached.
+func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
+	return p.cachingOptions
+}
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
@@ -179,28 +239,30 @@ func ParamOverridesFromShard(base Params, shard *ShardWithChunkRefs) (result Par
 
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
-	var sortable bool
-	expr, ok := q.GetExpression().(syntax.SampleExpr)
-	if !ok {
-		return false, errors.New("only sample expression supported")
+	switch expr := q.GetExpression().(type) {
+	case syntax.VariantsExpr:
+		return false, nil
+	case syntax.SampleExpr:
+		var sortable bool
+		expr.Walk(func(e syntax.Expr) bool {
+			if rangeExpr, ok := e.(*syntax.VectorAggregationExpr); ok {
+				if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
+					sortable = true
+				}
+			}
+			return true
+		})
+		return sortable, nil
+	default:
+		return false, errors.New("only sample and variants expressions supported")
 	}
-	expr.Walk(func(e syntax.Expr) {
-		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
-		if !ok {
-			return
-		}
-		if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
-			sortable = true
-			return
-		}
-	})
-	return sortable, nil
 }
 
 // EvaluatorFactory is an interface for iterating over data at different nodes in the AST
 type EvaluatorFactory interface {
 	SampleEvaluatorFactory
 	EntryEvaluatorFactory
+	VariantEvaluatorFactory
 }
 
 type SampleEvaluatorFactory interface {
@@ -226,15 +288,17 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod time.Duration
-	querier           Querier
+	maxLookBackPeriod         time.Duration
+	maxCountMinSketchHeapSize int
+	querier                   Querier
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int) *DefaultEvaluator {
 	return &DefaultEvaluator{
-		querier:           querier,
-		maxLookBackPeriod: maxLookBackPeriod,
+		querier:                   querier,
+		maxLookBackPeriod:         maxLookBackPeriod,
+		maxCountMinSketchHeapSize: maxCountMinSketchHeapSize,
 	}
 }
 
@@ -275,9 +339,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						End:      q.End().Add(-rangExpr.Left.Offset),
-						Selector: e.String(), // intentionally send the vector for reducing labels.
+						// extend startTs backwards by step
+						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
+						// intentionally send the vector for reducing labels.
+						Selector: e.String(),
 						Shards:   q.Shards(),
 						Plan: &plan.QueryPlan{
 							AST: expr,
@@ -291,13 +358,18 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return newVectorAggEvaluator(ctx, nextEvFactory, e, q)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
+	case *CountMinSketchEvalExpr:
+		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.End().Add(-e.Left.Offset),
-				Selector: expr.String(),
+				// extend startTs backwards by step
+				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: e.String(),
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
 					AST: expr,
@@ -329,7 +401,8 @@ func newVectorAggEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (*VectorAggEvaluator, error) {
+	maxCountMinSketchHeapSize int,
+) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
@@ -339,11 +412,15 @@ func newVectorAggEvaluator(
 	}
 	sort.Strings(expr.Grouping.Groups)
 
+	if expr.Operation == syntax.OpTypeCountMinSketch {
+		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr, maxCountMinSketchHeapSize)
+	}
+
 	return &VectorAggEvaluator{
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
-		lb:            labels.NewBuilder(nil),
+		lb:            labels.NewBuilder(labels.EmptyLabels()),
 	}, nil
 }
 
@@ -387,16 +464,16 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 				e.lb.Del(labels.MetricName)
 				m = e.lb.Labels()
 			} else {
-				m = make(labels.Labels, 0, len(e.expr.Grouping.Groups))
-				for _, l := range metric {
+				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
+				metric.Range(func(l labels.Label) {
 					for _, n := range e.expr.Grouping.Groups {
 						if l.Name == n {
-							m = append(m, l)
+							b.Add(l.Name, l.Value)
 							break
 						}
 					}
-				}
-				sort.Sort(m)
+				})
+				m = b.Labels()
 			}
 			result[groupingKey] = &groupedAggregation{
 				labels:     m,
@@ -595,6 +672,28 @@ func newRangeAggEvaluator(
 		return &QuantileSketchStepEvaluator{
 			iter: iter,
 		}, nil
+	case syntax.OpRangeTypeFirstWithTimestamp:
+		iter := newFirstWithTimestampIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
+	case syntax.OpRangeTypeLastWithTimestamp:
+		iter := newLastWithTimestampIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	default:
 		iter, err := newRangeVectorIterator(
 			it, expr,
@@ -727,7 +826,7 @@ func newBinOpStepEvaluator(
 
 	var lse, rse StepEvaluator
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	g := errgroup.Group{}
 
 	// We have two non-literal legs,
@@ -736,7 +835,7 @@ func newBinOpStepEvaluator(
 		var err error
 		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
 		return err
 	})
@@ -744,7 +843,7 @@ func newBinOpStepEvaluator(
 		var err error
 		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
 		return err
 	})
@@ -999,15 +1098,14 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		matching := opts.VectorMatching
 		if matching.Card == syntax.CardOneToOne {
 			if matching.On {
-			Outer:
-				for _, l := range lhs {
+				lhs.Range(func(l labels.Label) {
 					for _, n := range matching.MatchingLabels {
 						if l.Name == n {
-							continue Outer
+							return
 						}
 					}
 					lb.Del(l.Name)
-				}
+				})
 			} else {
 				lb.Del(matching.MatchingLabels...)
 			}
@@ -1114,7 +1212,8 @@ type VectorIterator struct {
 }
 
 func newVectorIterator(val float64,
-	stepMs, startMs, endMs int64) *VectorIterator {
+	stepMs, startMs, endMs int64,
+) *VectorIterator {
 	if stepMs == 0 {
 		stepMs = 1
 	}
@@ -1132,7 +1231,7 @@ func (r *VectorIterator) Next() (bool, int64, StepResult) {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
-	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
+	vectorPoint := promql.Sample{T: r.currentMs, F: r.val, Metric: labels.EmptyLabels()}
 	results = append(results, vectorPoint)
 	return true, r.currentMs, SampleVector(results)
 }
@@ -1210,6 +1309,7 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 func (e *LabelReplaceEvaluator) Close() error {
 	return e.nextEvaluator.Close()
 }
+
 func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
@@ -1220,7 +1320,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	selector, err := expr.Selector()
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
 	lm := selector.Matchers()
 	if len(lm) == 0 {
@@ -1243,4 +1343,286 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m, nil
+}
+
+type VariantEvaluatorFactory interface {
+	NewVariantsStepEvaluator(
+		ctx context.Context,
+		expr syntax.VariantsExpr,
+		p Params,
+	) (StepEvaluator, error)
+}
+
+type VariantsEvaluatorFunc func(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error)
+
+func (s VariantsEvaluatorFunc) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	p Params,
+) (StepEvaluator, error) {
+	return s(ctx, expr, p)
+}
+
+func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	q Params,
+) (StepEvaluator, error) {
+	switch e := expr.(type) {
+	case *syntax.MultiVariantExpr:
+		logRange := e.LogRange()
+
+		// We don't have the benefit of sending the vector expression to the source for reducing labels
+		// Since multiple samples are allowed, and they may not share the same labels to reduce by
+		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				// extend startTs backwards by step
+				Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End:      q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+				Selector: expr.String(),
+				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+				StoreChunks: q.GetStoreChunks(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return ev.newVariantsEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q)
+	default:
+		return nil, EvaluatorUnsupportedType(e, ev)
+	}
+}
+
+func (ev *DefaultEvaluator) newVariantsEvaluator(
+	_ context.Context,
+	it iter.PeekingSampleIterator,
+	expr *syntax.MultiVariantExpr,
+	q Params,
+) (StepEvaluator, error) {
+	// an iterator that can buffer samples across all variants for each step
+	bufferedIterator := &bufferedVariantsIterator{
+		iter: it,
+	}
+
+	variantEvaluators := []StepEvaluator{}
+	// TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
+	idx := 0
+	for _, variant := range expr.Variants() {
+		extractors, err := variant.Extractors()
+		if err != nil {
+			return nil, err
+		}
+
+		for range extractors {
+			// wraps the buffered iterator to only return samples for the current variant (determined by the index)
+			variantIterator := &bufferedVariantsIteratorWrapper{
+				bufferedVariantsIterator: bufferedIterator,
+				index:                    idx,
+			}
+
+			var variantEvaluator StepEvaluator
+			var err error
+			switch e := variant.(type) {
+			case *syntax.VectorAggregationExpr:
+				if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok {
+					rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset)
+					if err != nil {
+						return nil, err
+					}
+
+					e.Grouping.Groups = append(e.Grouping.Groups, constants.VariantLabel)
+
+					sort.Strings(e.Grouping.Groups)
+					variantEvaluator = &VectorAggEvaluator{
+						nextEvaluator: rangeEvaluator,
+						expr:          e,
+						buf:           make([]byte, 0, 1024),
+						lb:            labels.NewBuilder(labels.EmptyLabels()),
+					}
+				} else {
+					return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
+				}
+			case *syntax.RangeAggregationExpr:
+				variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset)
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			variantEvaluators = append(variantEvaluators, variantEvaluator)
+			idx++
+		}
+	}
+
+	return &VariantsEvaluator{
+		current:           q.Start().UnixNano() - q.Step().Nanoseconds(),
+		variantEvaluators: variantEvaluators,
+	}, nil
+}
+
+type bufferedVariantsIterator struct {
+	iter          iter.PeekingSampleIterator
+	buffer        map[int][]sampleWithLabelsAndStreamHash
+	current       sampleWithLabelsAndStreamHash
+	currentLabels string
+	err           error
+}
+
+type sampleWithLabelsAndStreamHash struct {
+	sample     logproto.Sample
+	labels     string
+	streamHash uint64
+}
+
+func (it *bufferedVariantsIterator) Next(index int) bool {
+	// Check if there are samples in the buffer for the requested index
+	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
+		it.current = samples[0]
+		it.buffer[index] = samples[1:]
+		return true
+	}
+
+	// If not, keep popping samples from the underlying iterator
+	for it.iter.Next() {
+		sample := it.iter.At()
+		labels := it.iter.Labels()
+		variantIndex := it.getVariantIndex(labels)
+		if variantIndex == -1 {
+			it.err = fmt.Errorf("variant label not found in %s", labels)
+			return false
+		}
+
+		currentSample := sampleWithLabelsAndStreamHash{
+			sample:     sample,
+			labels:     labels,
+			streamHash: it.iter.StreamHash(),
+		}
+
+		if variantIndex == index {
+			it.current = currentSample
+			return true
+		}
+
+		// Store the sample in the buffer for its variant
+		it.storeSample(variantIndex, currentSample)
+	}
+
+	return false
+}
+
+// getVariantIndex determines the variant index for a given sample based on the "__variant__" label
+func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
+	metric, err := parser.ParseMetric(lbls)
+	if err != nil {
+		it.err = err
+		return -1
+	}
+
+	if variant := metric.Get(constants.VariantLabel); variant != "" {
+		val, err := strconv.Atoi(variant)
+		if err != nil {
+			it.err = err
+			return -1
+		}
+		return val
+	}
+
+	it.err = fmt.Errorf("variant label not found in %s", lbls)
+	return -1
+}
+
+func (it *bufferedVariantsIterator) storeSample(index int, sample sampleWithLabelsAndStreamHash) {
+	if it.buffer == nil {
+		it.buffer = make(map[int][]sampleWithLabelsAndStreamHash)
+	}
+	it.buffer[index] = append(it.buffer[index], sample)
+}
+
+func (it *bufferedVariantsIterator) At() logproto.Sample {
+	return it.current.sample
+}
+
+func (it *bufferedVariantsIterator) Labels() string {
+	return it.current.labels
+}
+
+func (it *bufferedVariantsIterator) StreamHash() uint64 {
+	return it.current.streamHash
+}
+
+func (it *bufferedVariantsIterator) Err() error {
+	return it.err
+}
+
+func (it *bufferedVariantsIterator) Close() error {
+	return it.iter.Close()
+}
+
+type bufferedVariantsIteratorWrapper struct {
+	*bufferedVariantsIterator
+	index int
+}
+
+func (it *bufferedVariantsIteratorWrapper) Next() bool {
+	return it.bufferedVariantsIterator.Next(it.index)
+}
+
+// VariantsEvaluator is responsible for making sure the window is loaded from all
+// evaluators for all variants
+type VariantsEvaluator struct {
+	current int64
+
+	variantEvaluators []StepEvaluator
+	currentSamples    SampleVector
+	err               error
+}
+
+// Reports any error
+func (it *VariantsEvaluator) Error() error {
+	return it.err
+}
+
+// Explain returns a print of the step evaluation tree
+func (it *VariantsEvaluator) Explain(_ Node) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (it *VariantsEvaluator) Next() (bool, int64, StepResult) {
+	samples := it.currentSamples[:0]
+	hasNext := false
+
+	for _, variantEval := range it.variantEvaluators {
+		if ok, ts, result := variantEval.Next(); ok {
+			hasNext = true
+			samples = append(samples, result.SampleVector()...)
+			if ts > it.current {
+				it.current = ts
+			}
+		}
+	}
+
+	if !hasNext {
+		return false, 0, SampleVector{}
+	}
+
+	it.currentSamples = samples
+	return true, it.current, it.currentSamples
+}
+
+func (it *VariantsEvaluator) Close() error {
+	var errs []error
+	for _, variantIter := range it.variantEvaluators {
+		if err := variantIter.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple errors on close: %v", errs)
+	}
+	return nil
 }

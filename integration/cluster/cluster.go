@@ -68,12 +68,22 @@ limits_config:
       attributes_config:
         - action: index_label
           attributes: ["service.name"]
+    log_attributes:
+      - action: drop
+        attributes: [email]
 
 storage_config:
+  # Legacy config
   named_stores:
     filesystem:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
+  # Thanos config
+  object_store:
+    named_stores:
+      filesystem:
+        store-1:
+          dir: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
     active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
@@ -86,7 +96,7 @@ storage_config:
 bloom_gateway:
   enabled: false
 
-bloom_compactor:
+bloom_build:
   enabled: false
 
 compactor:
@@ -173,7 +183,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0o777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0640) // #nosec G306 -- this is fencing off the "other" permissions
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -345,7 +355,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile.Name(), mergedConfig, 0o644); err != nil {
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -430,6 +440,7 @@ func (c *Component) run() error {
 		return err
 	}
 
+	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
 	var err error
 	c.loki, err = loki.New(config.Config)
 	if err != nil {
@@ -521,7 +532,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 		return err
 	}
 
-	return os.WriteFile(c.overridesFile, config, 0o777)
+	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions
 }
 
 func (c *Component) GetTenantLimits(tenant string) validation.Limits {

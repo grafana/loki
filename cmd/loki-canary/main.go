@@ -39,7 +39,6 @@ type canary struct {
 }
 
 func main() {
-
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
@@ -79,11 +78,18 @@ func main() {
 	metricTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query."+
 		" Note: this value is truncated to the running time of the canary until this value is reached")
 
+	cacheTestInterval := flag.Duration("cache-test-interval", 15*time.Minute, "The interval the cache test query should be run")
+	cacheTestQueryRange := flag.Duration("cache-test-range", 24*time.Hour, "The range value [24h] used in the cache test instant-query.")
+	cacheTestQueryNow := flag.Duration("cache-test-now", 1*time.Hour, "duration how far back from current time the execution time (--now) should be set for running this query in the cache test instant-query.")
+
 	spotCheckInterval := flag.Duration("spot-check-interval", 15*time.Minute, "Interval that a single result will be kept from sent entries and spot-checked against Loki, "+
 		"e.g. 15min default one entry every 15 min will be saved and then queried again every 15min until spot-check-max is reached")
 	spotCheckMax := flag.Duration("spot-check-max", 4*time.Hour, "How far back to check a spot check entry before dropping it")
 	spotCheckQueryRate := flag.Duration("spot-check-query-rate", 1*time.Minute, "Interval that the canary will query Loki for the current list of all spot check entries")
 	spotCheckWait := flag.Duration("spot-check-initial-wait", 10*time.Second, "How long should the spot check query wait before starting to check for entries")
+
+	logBatchSize := flag.Int("logs-batch-size", writer.DefaultLogBatchSize, "Send logs to Loki in batches of a specified size.  Must be a non-negative value (0 or 1 will disable batching)")
+	logBatchSizeMax := flag.Int("logs-batch-size-max", writer.DefaultLogBatchSizeMax, "Upper bound on -logs-batch-size.  Only increase this value if you have increased memory limits for the canary pods")
 
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
@@ -105,6 +111,21 @@ func main() {
 
 	if *outOfOrderPercentage < 0 || *outOfOrderPercentage > 100 {
 		_, _ = fmt.Fprintf(os.Stderr, "Out of order percentage must be between 0 and 100\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSize < 0 {
+		_, _ = fmt.Fprint(os.Stderr, "-logs-batch-size must not be negative.  A value of '0' or '1' will disable batching entirely\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSizeMax <= 0 {
+		_, _ = fmt.Fprint(os.Stderr, "-logs-batch-size-max must not be <= 0\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSize > *logBatchSizeMax {
+		_, _ = fmt.Fprintf(os.Stderr, "-logs-batch-size must not be more than -logs-batch-size-max\n")
 		os.Exit(1)
 	}
 
@@ -158,6 +179,7 @@ func main() {
 				MaxBackoff: *writeMaxBackoff,
 				MaxRetries: *writeMaxRetries,
 			}
+
 			push, err := writer.NewPush(
 				*addr,
 				*tenantID,
@@ -170,6 +192,7 @@ func main() {
 				*caFile, *certFile, *keyFile,
 				*user, *pass,
 				&backoffCfg,
+				*logBatchSize,
 				log.NewLogfmtLogger(os.Stderr),
 			)
 			if err != nil {
@@ -189,7 +212,7 @@ func main() {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
 		}
-		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *interval, *buckets, sentChan, receivedChan, c.reader, true)
+		c.comparator = comparator.NewComparator(os.Stderr, *wait, *maxWait, *pruneInterval, *spotCheckInterval, *spotCheckMax, *spotCheckQueryRate, *spotCheckWait, *metricTestInterval, *metricTestQueryRange, *cacheTestInterval, *cacheTestQueryRange, *cacheTestQueryNow, *interval, *buckets, sentChan, receivedChan, c.reader, true)
 	}
 
 	startCanary()
@@ -204,8 +227,16 @@ func main() {
 	})
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err := http.ListenAndServe(":"+strconv.Itoa(*port), nil)
-		if err != nil {
+		srv := &http.Server{
+			Addr:              ":" + strconv.Itoa(*port),
+			Handler:           nil, // uses default mux from http.Handle calls above
+			ReadTimeout:       120 * time.Second,
+			WriteTimeout:      120 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 120 * time.Second,
+		}
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
 			panic(err)
 		}
 	}()

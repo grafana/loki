@@ -27,8 +27,16 @@ const secretToken = "<secret>"
 // Secret special type for storing secrets.
 type Secret string
 
+// MarshalSecretValue if set to true will expose Secret type
+// through the marshal interfaces. Useful for outside projects
+// that load and marshal the Prometheus config.
+var MarshalSecretValue bool = false
+
 // MarshalYAML implements the yaml.Marshaler interface for Secrets.
 func (s Secret) MarshalYAML() (interface{}, error) {
+	if MarshalSecretValue {
+		return string(s), nil
+	}
 	if s != "" {
 		return secretToken, nil
 	}
@@ -43,15 +51,18 @@ func (s *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalJSON implements the json.Marshaler interface for Secret.
 func (s Secret) MarshalJSON() ([]byte, error) {
+	if MarshalSecretValue {
+		return json.Marshal(string(s))
+	}
 	if len(s) == 0 {
 		return json.Marshal("")
 	}
 	return json.Marshal(secretToken)
 }
 
-type Header map[string][]Secret
+type ProxyHeader map[string][]Secret
 
-func (h *Header) HTTPHeader() http.Header {
+func (h *ProxyHeader) HTTPHeader() http.Header {
 	if h == nil || *h == nil {
 		return nil
 	}

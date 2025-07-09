@@ -1,60 +1,46 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 import (
+	"google.golang.org/grpc/stats"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	// ScopeName is the instrumentation scope name.
-	ScopeName = "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	// GRPCStatusCodeKey is convention for numeric status code of a gRPC request.
-	GRPCStatusCodeKey = attribute.Key("rpc.grpc.status_code")
-)
+// ScopeName is the instrumentation scope name.
+const ScopeName = "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
+// InterceptorFilter is a predicate used to determine whether a given request in
+// interceptor info should be instrumented. A InterceptorFilter must return true if
+// the request should be traced.
+//
+// Deprecated: Use stats handlers instead.
+type InterceptorFilter func(*InterceptorInfo) bool
 
 // Filter is a predicate used to determine whether a given request in
-// interceptor info should be traced. A Filter must return true if
-// the request should be traced.
-type Filter func(*InterceptorInfo) bool
+// should be instrumented by the attached RPC tag info.
+// A Filter must return true if the request should be instrumented.
+type Filter func(*stats.RPCTagInfo) bool
 
 // config is a group of options for this instrumentation.
 type config struct {
-	Filter           Filter
-	Propagators      propagation.TextMapPropagator
-	TracerProvider   trace.TracerProvider
-	MeterProvider    metric.MeterProvider
-	SpanStartOptions []trace.SpanStartOption
+	Filter            Filter
+	InterceptorFilter InterceptorFilter
+	Propagators       propagation.TextMapPropagator
+	TracerProvider    trace.TracerProvider
+	MeterProvider     metric.MeterProvider
+	SpanStartOptions  []trace.SpanStartOption
+	SpanAttributes    []attribute.KeyValue
+	MetricAttributes  []attribute.KeyValue
 
 	ReceivedEvent bool
 	SentEvent     bool
-
-	tracer trace.Tracer
-	meter  metric.Meter
-
-	rpcDuration        metric.Float64Histogram
-	rpcRequestSize     metric.Int64Histogram
-	rpcResponseSize    metric.Int64Histogram
-	rpcRequestsPerRPC  metric.Int64Histogram
-	rpcResponsesPerRPC metric.Int64Histogram
 }
 
 // Option applies an option value for a config.
@@ -63,7 +49,7 @@ type Option interface {
 }
 
 // newConfig returns a config configured with all the passed Options.
-func newConfig(opts []Option, role string) *config {
+func newConfig(opts []Option) *config {
 	c := &config{
 		Propagators:    otel.GetTextMapPropagator(),
 		TracerProvider: otel.GetTracerProvider(),
@@ -72,69 +58,6 @@ func newConfig(opts []Option, role string) *config {
 	for _, o := range opts {
 		o.apply(c)
 	}
-
-	c.tracer = c.TracerProvider.Tracer(
-		ScopeName,
-		trace.WithInstrumentationVersion(SemVersion()),
-	)
-
-	c.meter = c.MeterProvider.Meter(
-		ScopeName,
-		metric.WithInstrumentationVersion(Version()),
-		metric.WithSchemaURL(semconv.SchemaURL),
-	)
-
-	var err error
-	c.rpcDuration, err = c.meter.Float64Histogram("rpc."+role+".duration",
-		metric.WithDescription("Measures the duration of inbound RPC."),
-		metric.WithUnit("ms"))
-	if err != nil {
-		otel.Handle(err)
-		if c.rpcDuration == nil {
-			c.rpcDuration = noop.Float64Histogram{}
-		}
-	}
-
-	c.rpcRequestSize, err = c.meter.Int64Histogram("rpc."+role+".request.size",
-		metric.WithDescription("Measures size of RPC request messages (uncompressed)."),
-		metric.WithUnit("By"))
-	if err != nil {
-		otel.Handle(err)
-		if c.rpcRequestSize == nil {
-			c.rpcRequestSize = noop.Int64Histogram{}
-		}
-	}
-
-	c.rpcResponseSize, err = c.meter.Int64Histogram("rpc."+role+".response.size",
-		metric.WithDescription("Measures size of RPC response messages (uncompressed)."),
-		metric.WithUnit("By"))
-	if err != nil {
-		otel.Handle(err)
-		if c.rpcResponseSize == nil {
-			c.rpcResponseSize = noop.Int64Histogram{}
-		}
-	}
-
-	c.rpcRequestsPerRPC, err = c.meter.Int64Histogram("rpc."+role+".requests_per_rpc",
-		metric.WithDescription("Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs."),
-		metric.WithUnit("{count}"))
-	if err != nil {
-		otel.Handle(err)
-		if c.rpcRequestsPerRPC == nil {
-			c.rpcRequestsPerRPC = noop.Int64Histogram{}
-		}
-	}
-
-	c.rpcResponsesPerRPC, err = c.meter.Int64Histogram("rpc."+role+".responses_per_rpc",
-		metric.WithDescription("Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs."),
-		metric.WithUnit("{count}"))
-	if err != nil {
-		otel.Handle(err)
-		if c.rpcResponsesPerRPC == nil {
-			c.rpcResponsesPerRPC = noop.Int64Histogram{}
-		}
-	}
-
 	return c
 }
 
@@ -163,15 +86,30 @@ func (o tracerProviderOption) apply(c *config) {
 // WithInterceptorFilter returns an Option to use the request filter.
 //
 // Deprecated: Use stats handlers instead.
-func WithInterceptorFilter(f Filter) Option {
+func WithInterceptorFilter(f InterceptorFilter) Option {
 	return interceptorFilterOption{f: f}
 }
 
 type interceptorFilterOption struct {
-	f Filter
+	f InterceptorFilter
 }
 
 func (o interceptorFilterOption) apply(c *config) {
+	if o.f != nil {
+		c.InterceptorFilter = o.f
+	}
+}
+
+// WithFilter returns an Option to use the request filter.
+func WithFilter(f Filter) Option {
+	return filterOption{f: f}
+}
+
+type filterOption struct {
+	f Filter
+}
+
+func (o filterOption) apply(c *config) {
 	if o.f != nil {
 		c.Filter = o.f
 	}
@@ -242,4 +180,30 @@ func (o spanStartOption) apply(c *config) {
 // trace.SpanOptions, which are applied to each new span.
 func WithSpanOptions(opts ...trace.SpanStartOption) Option {
 	return spanStartOption{opts}
+}
+
+type spanAttributesOption struct{ a []attribute.KeyValue }
+
+func (o spanAttributesOption) apply(c *config) {
+	if o.a != nil {
+		c.SpanAttributes = o.a
+	}
+}
+
+// WithSpanAttributes returns an Option to add custom attributes to the spans.
+func WithSpanAttributes(a ...attribute.KeyValue) Option {
+	return spanAttributesOption{a: a}
+}
+
+type metricAttributesOption struct{ a []attribute.KeyValue }
+
+func (o metricAttributesOption) apply(c *config) {
+	if o.a != nil {
+		c.MetricAttributes = o.a
+	}
+}
+
+// WithMetricAttributes returns an Option to add custom attributes to the metrics.
+func WithMetricAttributes(a ...attribute.KeyValue) Option {
+	return metricAttributesOption{a: a}
 }

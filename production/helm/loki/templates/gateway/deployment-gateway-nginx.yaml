@@ -6,7 +6,7 @@ metadata:
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.gateway.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -30,10 +30,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/gateway/configmap-gateway.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/gateway/configmap-gateway.yaml") }}
         {{- with .Values.gateway.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -62,7 +59,7 @@ spec:
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
             - name: http-metrics
-              containerPort: 8080
+              containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
           {{- with .Values.gateway.extraEnv }}
           env:

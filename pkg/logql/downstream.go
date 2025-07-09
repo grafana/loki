@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -138,7 +139,14 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 	return s
 }
 
-func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
+	if !f(d) {
+		return
+	}
+	if d.SampleExpr != nil {
+		d.SampleExpr.Walk(f)
+	}
+}
 
 var defaultMaxDepth = 4
 
@@ -171,8 +179,15 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
-	f(c.next)
+	if !f(c) {
+		return
+	}
+	if c.SampleExpr != nil {
+		c.SampleExpr.Walk(f)
+	}
+	if c.next != nil {
+		c.next.Walk(f)
+	}
 }
 
 // ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
@@ -269,8 +284,15 @@ func (e QuantileSketchEvalExpr) String() string {
 }
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	e.quantileMergeExpr.Walk(f)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	if e.quantileMergeExpr != nil {
+		e.quantileMergeExpr.Walk(f)
+	}
 }
 
 type QuantileSketchMergeExpr struct {
@@ -295,7 +317,116 @@ func (e QuantileSketchMergeExpr) String() string {
 }
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type MergeFirstOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+	offset      time.Duration
+}
+
+func (e MergeFirstOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeFirstOverTime<%s>", sb.String())
+}
+
+func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type MergeLastOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+	offset      time.Duration
+}
+
+func (e MergeLastOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
+}
+
+func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type CountMinSketchEvalExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e CountMinSketchEvalExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	if len(e.downstreams) == 0 {
+		sb.WriteString(e.SampleExpr.String())
+	}
+	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
+}
+
+func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -379,7 +510,7 @@ func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer:     downstreamer,
-		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0),
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0, 0),
 	}
 }
 
@@ -471,10 +602,123 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
+	case *MergeFirstOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
 
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
+	case *MergeLastOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
+	case *CountMinSketchEvalExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := newCountMinSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded count min sketch: got (%d), want (1)", len(results))
+		}
+
+		vector, ok := results[0].Data.(*CountMinSketchVector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
+		}
+		return NewCountMinSketchVectorStepEvaluator(vector), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
+}
+
+func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
+	_ context.Context,
+	_ syntax.VariantsExpr,
+	_ Params,
+) (StepEvaluator, error) {
+	// TODO(twhitney): does the downstream evaluator need to handle variants?
+	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
 }
 
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr

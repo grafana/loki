@@ -14,7 +14,7 @@ memberlist:
 
 schema_config:
   configs:
-    - from: 2021-08-01
+    - from: 2023-01-01
       store: tsdb
       object_store: s3
       schema: v13

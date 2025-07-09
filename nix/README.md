@@ -27,4 +27,4 @@ To build the repo (including running tests), from the root of the repo you can r
 
 Nix is supported on Linux, MacOS, and Windows (WSL2). Check [here](https://nixos.org/download.html#download-nix) for installation instructions for your specific platform.
 
-You will also need to enable the Flakes feature to use Nix with this repo. See this [wiki](https://nixos.wiki/wiki/Flakes) for instructions on enabling Flakes.
+You will also need to enable the Flakes feature to use Nix with this repo. See this [wiki](https://wiki.nixos.org/wiki/Flakes) for instructions on enabling Flakes.

@@ -8,6 +8,7 @@ import (
 type LifecyclerMetrics struct {
 	consulHeartbeats prometheus.Counter
 	shutdownDuration *prometheus.HistogramVec
+	readonly         prometheus.Gauge
 }
 
 func NewLifecyclerMetrics(ringName string, reg prometheus.Registerer) *LifecyclerMetrics {
@@ -23,6 +24,11 @@ func NewLifecyclerMetrics(ringName string, reg prometheus.Registerer) *Lifecycle
 			Buckets:     prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
 			ConstLabels: prometheus.Labels{"name": ringName},
 		}, []string{"op", "status"}),
+		readonly: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "lifecycler_read_only",
+			Help:        "Set to 1 if this lifecycler's instance entry is in read-only state.",
+			ConstLabels: prometheus.Labels{"name": ringName},
+		}),
 	}
 
 }

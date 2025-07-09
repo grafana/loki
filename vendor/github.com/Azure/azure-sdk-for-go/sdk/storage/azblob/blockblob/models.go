@@ -7,7 +7,7 @@
 package blockblob
 
 import (
-	"fmt"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
@@ -20,7 +20,7 @@ import (
 // Block - Represents a single block in a block blob. It describes the block's ID and size.
 type Block = generated.Block
 
-// BlockList - type of blocklist (committed/uncommitted)
+// BlockList - can be uncommitted or committed blocks (committed/uncommitted)
 type BlockList = generated.BlockList
 
 // Request Model Declaration -------------------------------------------------------------------------------------------
@@ -31,64 +31,123 @@ type UploadOptions struct {
 	Tags map[string]string
 
 	// Optional. Specifies a user-defined name-value pair associated with the blob.
-	Metadata map[string]string
+	Metadata map[string]*string
 
 	// Optional. Indicates the tier to be set on the blob.
 	Tier *blob.AccessTier
 
-	// Specify the transactional md5 for the body, to be validated by the service.
-	TransactionalContentMD5 []byte
+	// TransactionalValidation specifies the transfer validation type to use.
+	// The default is nil (no transfer validation).
+	TransactionalValidation blob.TransferValidationType
 
-	HTTPHeaders      *blob.HTTPHeaders
-	CpkInfo          *blob.CpkInfo
-	CpkScopeInfo     *blob.CpkScopeInfo
-	AccessConditions *blob.AccessConditions
+	HTTPHeaders                  *blob.HTTPHeaders
+	CPKInfo                      *blob.CPKInfo
+	CPKScopeInfo                 *blob.CPKScopeInfo
+	AccessConditions             *blob.AccessConditions
+	LegalHold                    *bool
+	ImmutabilityPolicyMode       *blob.ImmutabilityPolicySetting
+	ImmutabilityPolicyExpiryTime *time.Time
+
+	// Deprecated: TransactionalContentMD5 can be set by using TransactionalValidation instead
+	TransactionalContentMD5 []byte
 }
 
 func (o *UploadOptions) format() (*generated.BlockBlobClientUploadOptions, *generated.BlobHTTPHeaders, *generated.LeaseAccessConditions,
-	*generated.CpkInfo, *generated.CpkScopeInfo, *generated.ModifiedAccessConditions) {
+	*generated.CPKInfo, *generated.CPKScopeInfo, *generated.ModifiedAccessConditions) {
 	if o == nil {
 		return nil, nil, nil, nil, nil, nil
 	}
 
 	basics := generated.BlockBlobClientUploadOptions{
-		BlobTagsString:          shared.SerializeBlobTagsToStrPtr(o.Tags),
-		Metadata:                o.Metadata,
-		Tier:                    o.Tier,
-		TransactionalContentMD5: o.TransactionalContentMD5,
+		BlobTagsString:           shared.SerializeBlobTagsToStrPtr(o.Tags),
+		Metadata:                 o.Metadata,
+		Tier:                     o.Tier,
+		TransactionalContentMD5:  o.TransactionalContentMD5,
+		LegalHold:                o.LegalHold,
+		ImmutabilityPolicyMode:   o.ImmutabilityPolicyMode,
+		ImmutabilityPolicyExpiry: o.ImmutabilityPolicyExpiryTime,
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return &basics, o.HTTPHeaders, leaseAccessConditions, o.CpkInfo, o.CpkScopeInfo, modifiedAccessConditions
+	return &basics, o.HTTPHeaders, leaseAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// UploadBlobFromURLOptions contains the optional parameters for the Client.UploadBlobFromURL method.
+type UploadBlobFromURLOptions struct {
+	// Optional. Used to set blob tags in various blob operations.
+	Tags map[string]string
+
+	// Only Bearer type is supported. Credentials should be a valid OAuth access token to copy source.
+	CopySourceAuthorization *string
+
+	// Optional, default is true. Indicates if properties from the source blob should be copied.
+	CopySourceBlobProperties *bool
+
+	// Optional, default 'replace'. Indicates if source tags should be copied or replaced with the tags specified by x-ms-tags.
+	CopySourceTags *BlobCopySourceTags
+
+	// Optional. Specifies a user-defined name-value pair associated with the blob.
+	Metadata map[string]*string
+
+	// Optional. Specifies the md5 calculated for the range of bytes that must be read from the copy source.
+	SourceContentMD5 []byte
+
+	// Optional. Indicates the tier to be set on the blob.
+	Tier *blob.AccessTier
+
+	// Additional optional headers
+	HTTPHeaders                    *blob.HTTPHeaders
+	AccessConditions               *blob.AccessConditions
+	CPKInfo                        *blob.CPKInfo
+	CPKScopeInfo                   *blob.CPKScopeInfo
+	SourceModifiedAccessConditions *blob.SourceModifiedAccessConditions
+}
+
+func (o *UploadBlobFromURLOptions) format() (*generated.BlockBlobClientPutBlobFromURLOptions, *generated.BlobHTTPHeaders,
+	*generated.LeaseAccessConditions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.ModifiedAccessConditions,
+	*generated.SourceModifiedAccessConditions) {
+	if o == nil {
+		return nil, nil, nil, nil, nil, nil, nil
+	}
+
+	options := generated.BlockBlobClientPutBlobFromURLOptions{
+		BlobTagsString:           shared.SerializeBlobTagsToStrPtr(o.Tags),
+		CopySourceAuthorization:  o.CopySourceAuthorization,
+		CopySourceBlobProperties: o.CopySourceBlobProperties,
+		CopySourceTags:           o.CopySourceTags,
+		Metadata:                 o.Metadata,
+		SourceContentMD5:         o.SourceContentMD5,
+		Tier:                     o.Tier,
+	}
+
+	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
+	return &options, o.HTTPHeaders, leaseAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions, o.SourceModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
 // StageBlockOptions contains the optional parameters for the Client.StageBlock method.
 type StageBlockOptions struct {
-	CpkInfo *blob.CpkInfo
+	CPKInfo *blob.CPKInfo
 
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 
 	LeaseAccessConditions *blob.LeaseAccessConditions
 
-	// Specify the transactional crc64 for the body, to be validated by the service.
-	TransactionalContentCRC64 []byte
-
-	// Specify the transactional md5 for the body, to be validated by the service.
-	TransactionalContentMD5 []byte
+	// TransactionalValidation specifies the transfer validation type to use.
+	// The default is nil (no transfer validation).
+	TransactionalValidation blob.TransferValidationType
 }
 
 // StageBlockOptions contains the optional parameters for the Client.StageBlock method.
-func (o *StageBlockOptions) format() (*generated.BlockBlobClientStageBlockOptions, *generated.LeaseAccessConditions, *generated.CpkInfo, *generated.CpkScopeInfo) {
+func (o *StageBlockOptions) format() (*generated.BlockBlobClientStageBlockOptions, *generated.LeaseAccessConditions, *generated.CPKInfo, *generated.CPKScopeInfo) {
 	if o == nil {
 		return nil, nil, nil, nil
 	}
 
-	return &generated.BlockBlobClientStageBlockOptions{
-		TransactionalContentCRC64: o.TransactionalContentCRC64,
-		TransactionalContentMD5:   o.TransactionalContentMD5,
-	}, o.LeaseAccessConditions, o.CpkInfo, o.CpkScopeInfo
+	return &generated.BlockBlobClientStageBlockOptions{}, o.LeaseAccessConditions, o.CPKInfo, o.CPKScopeInfo
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -101,49 +160,57 @@ type StageBlockFromURLOptions struct {
 	LeaseAccessConditions *blob.LeaseAccessConditions
 
 	SourceModifiedAccessConditions *blob.SourceModifiedAccessConditions
-	// Specify the md5 calculated for the range of bytes that must be read from the copy source.
-	SourceContentMD5 []byte
-	// Specify the crc64 calculated for the range of bytes that must be read from the copy source.
-	SourceContentCRC64 []byte
+
+	// SourceContentValidation contains the validation mechanism used on the range of bytes read from the source.
+	SourceContentValidation blob.SourceContentValidationType
 
 	// Range specifies a range of bytes.  The default value is all bytes.
 	Range blob.HTTPRange
 
-	CpkInfo *blob.CpkInfo
+	CPKInfo *blob.CPKInfo
 
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 }
 
-func (o *StageBlockFromURLOptions) format() (*generated.BlockBlobClientStageBlockFromURLOptions, *generated.CpkInfo, *generated.CpkScopeInfo, *generated.LeaseAccessConditions, *generated.SourceModifiedAccessConditions) {
+func (o *StageBlockFromURLOptions) format() (*generated.BlockBlobClientStageBlockFromURLOptions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.LeaseAccessConditions, *generated.SourceModifiedAccessConditions) {
 	if o == nil {
 		return nil, nil, nil, nil, nil
 	}
 
 	options := &generated.BlockBlobClientStageBlockFromURLOptions{
 		CopySourceAuthorization: o.CopySourceAuthorization,
-		SourceContentMD5:        o.SourceContentMD5,
-		SourceContentcrc64:      o.SourceContentCRC64,
 		SourceRange:             exported.FormatHTTPRange(o.Range),
 	}
 
-	return options, o.CpkInfo, o.CpkScopeInfo, o.LeaseAccessConditions, o.SourceModifiedAccessConditions
+	if o.SourceContentValidation != nil {
+		o.SourceContentValidation.Apply(options)
+	}
+
+	return options, o.CPKInfo, o.CPKScopeInfo, o.LeaseAccessConditions, o.SourceModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
 // CommitBlockListOptions contains the optional parameters for Client.CommitBlockList method.
 type CommitBlockListOptions struct {
-	Tags                      map[string]string
-	Metadata                  map[string]string
-	RequestID                 *string
-	Tier                      *blob.AccessTier
-	Timeout                   *int32
+	Tags                         map[string]string
+	Metadata                     map[string]*string
+	RequestID                    *string
+	Tier                         *blob.AccessTier
+	Timeout                      *int32
+	HTTPHeaders                  *blob.HTTPHeaders
+	CPKInfo                      *blob.CPKInfo
+	CPKScopeInfo                 *blob.CPKScopeInfo
+	AccessConditions             *blob.AccessConditions
+	LegalHold                    *bool
+	ImmutabilityPolicyMode       *blob.ImmutabilityPolicySetting
+	ImmutabilityPolicyExpiryTime *time.Time
+
+	// Deprecated: TransactionalContentCRC64 cannot be generated
 	TransactionalContentCRC64 []byte
-	TransactionalContentMD5   []byte
-	HTTPHeaders               *blob.HTTPHeaders
-	CpkInfo                   *blob.CpkInfo
-	CpkScopeInfo              *blob.CpkScopeInfo
-	AccessConditions          *blob.AccessConditions
+
+	// Deprecated: TransactionalContentMD5 cannot be generated
+	TransactionalContentMD5 []byte
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -178,7 +245,7 @@ type uploadFromReaderOptions struct {
 	HTTPHeaders *blob.HTTPHeaders
 
 	// Metadata indicates the metadata to be associated with the blob when PutBlockList is called.
-	Metadata map[string]string
+	Metadata map[string]*string
 
 	// AccessConditions indicates the access conditions for the block blob.
 	AccessConditions *blob.AccessConditions
@@ -190,30 +257,35 @@ type uploadFromReaderOptions struct {
 	Tags map[string]string
 
 	// ClientProvidedKeyOptions indicates the client provided key by name and/or by value to encrypt/decrypt data.
-	CpkInfo      *blob.CpkInfo
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKInfo      *blob.CPKInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 
 	// Concurrency indicates the maximum number of blocks to upload in parallel (0=default)
 	Concurrency uint16
 
-	// Optional header, Specifies the transactional crc64 for the body, to be validated by the service.
-	TransactionalContentCRC64 *[]byte
-	// Specify the transactional md5 for the body, to be validated by the service.
-	TransactionalContentMD5 *[]byte
+	TransactionalValidation blob.TransferValidationType
+
+	// Deprecated: TransactionalContentCRC64 cannot be generated at block level
+	TransactionalContentCRC64 uint64
+
+	// Deprecated: TransactionalContentMD5 cannot be generated at block level
+	TransactionalContentMD5 []byte
 }
 
-// UploadBufferOptions provides set of configurations for UploadBuffer operation
+// UploadBufferOptions provides set of configurations for UploadBuffer operation.
 type UploadBufferOptions = uploadFromReaderOptions
 
-// UploadFileOptions provides set of configurations for UploadFile operation
+// UploadFileOptions provides set of configurations for UploadFile operation.
 type UploadFileOptions = uploadFromReaderOptions
 
 func (o *uploadFromReaderOptions) getStageBlockOptions() *StageBlockOptions {
 	leaseAccessConditions, _ := exported.FormatBlobAccessConditions(o.AccessConditions)
 	return &StageBlockOptions{
-		CpkInfo:               o.CpkInfo,
-		CpkScopeInfo:          o.CpkScopeInfo,
+		CPKInfo:               o.CPKInfo,
+		CPKScopeInfo:          o.CPKScopeInfo,
 		LeaseAccessConditions: leaseAccessConditions,
+
+		TransactionalValidation: o.TransactionalValidation,
 	}
 }
 
@@ -224,8 +296,8 @@ func (o *uploadFromReaderOptions) getUploadBlockBlobOptions() *UploadOptions {
 		Tier:             o.AccessTier,
 		HTTPHeaders:      o.HTTPHeaders,
 		AccessConditions: o.AccessConditions,
-		CpkInfo:          o.CpkInfo,
-		CpkScopeInfo:     o.CpkScopeInfo,
+		CPKInfo:          o.CPKInfo,
+		CPKScopeInfo:     o.CPKScopeInfo,
 	}
 }
 
@@ -235,41 +307,34 @@ func (o *uploadFromReaderOptions) getCommitBlockListOptions() *CommitBlockListOp
 		Metadata:     o.Metadata,
 		Tier:         o.AccessTier,
 		HTTPHeaders:  o.HTTPHeaders,
-		CpkInfo:      o.CpkInfo,
-		CpkScopeInfo: o.CpkScopeInfo,
+		CPKInfo:      o.CPKInfo,
+		CPKScopeInfo: o.CPKScopeInfo,
 	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-// UploadStreamOptions provides set of configurations for UploadStream operation
+// UploadStreamOptions provides set of configurations for UploadStream operation.
 type UploadStreamOptions struct {
-	// transferManager provides a transferManager that controls buffer allocation/reuse and
-	// concurrency. This overrides BlockSize and MaxConcurrency if set.
-	transferManager      shared.TransferManager
-	transferMangerNotSet bool
+	// BlockSize defines the size of the buffer used during upload. The default and minimum value is 1 MiB.
+	BlockSize int64
 
-	// BlockSize defines the size of the buffer used during upload. The default and mimimum value is 1 MiB.
-	BlockSize int
-
-	// Concurrency defines the number of concurrent uploads to be performed to upload the file.
+	// Concurrency defines the max number of concurrent uploads to be performed to upload the file.
 	// Each concurrent upload will create a buffer of size BlockSize.  The default value is one.
 	Concurrency int
 
+	TransactionalValidation blob.TransferValidationType
+
 	HTTPHeaders      *blob.HTTPHeaders
-	Metadata         map[string]string
+	Metadata         map[string]*string
 	AccessConditions *blob.AccessConditions
 	AccessTier       *blob.AccessTier
 	Tags             map[string]string
-	CpkInfo          *blob.CpkInfo
-	CpkScopeInfo     *blob.CpkScopeInfo
+	CPKInfo          *blob.CPKInfo
+	CPKScopeInfo     *blob.CPKScopeInfo
 }
 
-func (u *UploadStreamOptions) format() error {
-	if u == nil || u.transferManager != nil {
-		return nil
-	}
-
+func (u *UploadStreamOptions) setDefaults() {
 	if u.Concurrency == 0 {
 		u.Concurrency = 1
 	}
@@ -277,35 +342,70 @@ func (u *UploadStreamOptions) format() error {
 	if u.BlockSize < _1MiB {
 		u.BlockSize = _1MiB
 	}
-
-	var err error
-	u.transferManager, err = shared.NewStaticBuffer(u.BlockSize, u.Concurrency)
-	if err != nil {
-		return fmt.Errorf("bug: default transfer manager could not be created: %s", err)
-	}
-	u.transferMangerNotSet = true
-	return nil
 }
 
 func (u *UploadStreamOptions) getStageBlockOptions() *StageBlockOptions {
+	if u == nil {
+		return nil
+	}
+
 	leaseAccessConditions, _ := exported.FormatBlobAccessConditions(u.AccessConditions)
 	return &StageBlockOptions{
-		CpkInfo:               u.CpkInfo,
-		CpkScopeInfo:          u.CpkScopeInfo,
-		LeaseAccessConditions: leaseAccessConditions,
+		TransactionalValidation: u.TransactionalValidation,
+		CPKInfo:                 u.CPKInfo,
+		CPKScopeInfo:            u.CPKScopeInfo,
+		LeaseAccessConditions:   leaseAccessConditions,
 	}
 }
 
 func (u *UploadStreamOptions) getCommitBlockListOptions() *CommitBlockListOptions {
-	options := &CommitBlockListOptions{
+	if u == nil {
+		return nil
+	}
+
+	return &CommitBlockListOptions{
 		Tags:             u.Tags,
 		Metadata:         u.Metadata,
 		Tier:             u.AccessTier,
 		HTTPHeaders:      u.HTTPHeaders,
-		CpkInfo:          u.CpkInfo,
-		CpkScopeInfo:     u.CpkScopeInfo,
+		CPKInfo:          u.CPKInfo,
+		CPKScopeInfo:     u.CPKScopeInfo,
 		AccessConditions: u.AccessConditions,
 	}
-
-	return options
 }
+
+func (u *UploadStreamOptions) getUploadOptions() *UploadOptions {
+	if u == nil {
+		return nil
+	}
+
+	return &UploadOptions{
+		Tags:             u.Tags,
+		Metadata:         u.Metadata,
+		Tier:             u.AccessTier,
+		HTTPHeaders:      u.HTTPHeaders,
+		CPKInfo:          u.CPKInfo,
+		CPKScopeInfo:     u.CPKScopeInfo,
+		AccessConditions: u.AccessConditions,
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// ExpiryType defines values for ExpiryType.
+type ExpiryType = exported.ExpiryType
+
+// ExpiryTypeAbsolute defines the absolute time for the blob expiry.
+type ExpiryTypeAbsolute = exported.ExpiryTypeAbsolute
+
+// ExpiryTypeRelativeToNow defines the duration relative to now for the blob expiry.
+type ExpiryTypeRelativeToNow = exported.ExpiryTypeRelativeToNow
+
+// ExpiryTypeRelativeToCreation defines the duration relative to creation for the blob expiry.
+type ExpiryTypeRelativeToCreation = exported.ExpiryTypeRelativeToCreation
+
+// ExpiryTypeNever defines that the blob will be set to never expire.
+type ExpiryTypeNever = exported.ExpiryTypeNever
+
+// SetExpiryOptions contains the optional parameters for the Client.SetExpiry method.
+type SetExpiryOptions = exported.SetExpiryOptions

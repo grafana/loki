@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 	"gotest.tools/assert"
 
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
@@ -15,7 +14,7 @@ func TestAggregateBy(t *testing.T) {
 	tt := []struct {
 		name            string
 		rn              RuleNamespace
-		applyTo         func(group rwrulefmt.RuleGroup, rule rulefmt.RuleNode) bool
+		applyTo         func(group rwrulefmt.RuleGroup, rule rulefmt.Rule) bool
 		expectedExpr    []string
 		count, modified int
 		expect          error
@@ -31,8 +30,8 @@ func TestAggregateBy(t *testing.T) {
 				Groups: []rwrulefmt.RuleGroup{
 					{
 						RuleGroup: rulefmt.RuleGroup{
-							Name: "WithoutAggregation", Rules: []rulefmt.RuleNode{
-								{Alert: yaml.Node{Value: "WithoutAggregation"}, Expr: yaml.Node{Value: "up != 1"}},
+							Name: "WithoutAggregation", Rules: []rulefmt.Rule{
+								{Alert: "WithoutAggregation", Expr: "up != 1"},
 							},
 						},
 					},
@@ -48,11 +47,10 @@ func TestAggregateBy(t *testing.T) {
 					{
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "SkipWithout",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{Value: "SkipWithout"},
-									Expr: yaml.Node{
-										Value: `
+									Alert: "SkipWithout",
+									Expr: `
 											min without (alertmanager) (
 												rate(prometheus_notifications_errors_total{job="default/prometheus"}[5m])
 											/
@@ -60,7 +58,6 @@ func TestAggregateBy(t *testing.T) {
 											)
 											* 100
 											> 3`,
-									},
 								},
 							},
 						},
@@ -77,16 +74,14 @@ func TestAggregateBy(t *testing.T) {
 					{
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "WithAggregation",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{Value: "WithAggregation"},
-									Expr: yaml.Node{
-										Value: `
+									Alert: "WithAggregation",
+									Expr: `
 										sum(rate(cortex_prometheus_rule_evaluation_failures_total[1m])) by (namespace, job)
 										/
 										sum(rate(cortex_prometheus_rule_evaluations_total[1m])) by (namespace, job)
 										> 0.01`,
-									},
 								},
 							},
 						},
@@ -103,15 +98,11 @@ func TestAggregateBy(t *testing.T) {
 					{
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "CountAggregation",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{
-										Value: "CountAggregation",
-									},
-									Expr: yaml.Node{
-										Value: `
+									Alert: "CountAggregation",
+									Expr: `
 										count(count by (gitVersion) (label_replace(kubernetes_build_info{job!~"kube-dns|coredns"},"gitVersion","$1","gitVersion","(v[0-9]*.[0-9]*.[0-9]*).*"))) > 1`,
-									},
 								},
 							},
 						},
@@ -128,10 +119,10 @@ func TestAggregateBy(t *testing.T) {
 					{
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "BinaryExpressions",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{Value: "VectorMatching"},
-									Expr:  yaml.Node{Value: `count by (cluster, node) (sum by (node, cpu, cluster) (node_cpu_seconds_total{job="default/node-exporter"} * on (namespace, instance) group_left (node) node_namespace_pod:kube_pod_info:))`},
+									Alert: "VectorMatching",
+									Expr:  `count by (cluster, node) (sum by (node, cpu, cluster) (node_cpu_seconds_total{job="default/node-exporter"} * on (namespace, instance) group_left (node) node_namespace_pod:kube_pod_info:))`,
 								},
 							},
 						},
@@ -148,35 +139,27 @@ func TestAggregateBy(t *testing.T) {
 					{
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "CountAggregation",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{
-										Value: "CountAggregation",
-									},
-									Expr: yaml.Node{
-										Value: `count by (namespace) (test_series) > 1`,
-									},
+									Alert: "CountAggregation",
+									Expr:  `count by (namespace) (test_series) > 1`,
 								},
 							},
 						},
 					}, {
 						RuleGroup: rulefmt.RuleGroup{
 							Name: "CountSkipped",
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Alert: yaml.Node{
-										Value: "CountSkipped",
-									},
-									Expr: yaml.Node{
-										Value: `count by (namespace) (test_series) > 1`,
-									},
+									Alert: "CountSkipped",
+									Expr:  `count by (namespace) (test_series) > 1`,
 								},
 							},
 						},
 					},
 				},
 			},
-			applyTo: func(group rwrulefmt.RuleGroup, rule rulefmt.RuleNode) bool {
+			applyTo: func(group rwrulefmt.RuleGroup, _ rulefmt.Rule) bool {
 				return group.Name != "CountSkipped"
 			},
 			expectedExpr: []string{`count by (namespace, cluster) (test_series) > 1`, `count by (namespace) (test_series) > 1`},
@@ -196,7 +179,7 @@ func TestAggregateBy(t *testing.T) {
 			expectedIdx := 0
 			for _, g := range tc.rn.Groups {
 				for _, r := range g.Rules {
-					require.Equal(t, tc.expectedExpr[expectedIdx], r.Expr.Value)
+					require.Equal(t, tc.expectedExpr[expectedIdx], r.Expr)
 					expectedIdx++
 				}
 			}
@@ -255,10 +238,10 @@ func TestLintExpressions(t *testing.T) {
 			r := RuleNamespace{Groups: []rwrulefmt.RuleGroup{
 				{
 					RuleGroup: rulefmt.RuleGroup{
-						Rules: []rulefmt.RuleNode{
+						Rules: []rulefmt.Rule{
 							{
-								Alert: yaml.Node{Value: "AName"},
-								Expr:  yaml.Node{Value: tc.expr},
+								Alert: "AName",
+								Expr:  tc.expr,
 							},
 						},
 					},
@@ -267,7 +250,7 @@ func TestLintExpressions(t *testing.T) {
 			}
 
 			c, m, err := r.LintExpressions()
-			rexpr := r.Groups[0].Rules[0].Expr.Value
+			rexpr := r.Groups[0].Rules[0].Expr
 
 			require.Equal(t, tc.count, c)
 			require.Equal(t, tc.modified, m)
@@ -325,10 +308,11 @@ func TestCheckRecordingRules(t *testing.T) {
 				Groups: []rwrulefmt.RuleGroup{
 					{
 						RuleGroup: rulefmt.RuleGroup{
-							Rules: []rulefmt.RuleNode{
+							Rules: []rulefmt.Rule{
 								{
-									Record: yaml.Node{Value: tc.ruleName},
-									Expr:   yaml.Node{Value: "rate(some_metric_total)[5m]"}},
+									Record: tc.ruleName,
+									Expr:   "rate(some_metric_total)[5m]",
+								},
 							},
 						},
 					},

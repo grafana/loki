@@ -26,7 +26,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	_, ok := token["fakeURL"]
 	return ok
 }
@@ -124,7 +124,7 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		return exported.NewResponseError(p.resp)
 	}
 
-	return pollers.ResultHelper(p.resp, poller.Failed(p.FakeStatus), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.FakeStatus), "", out)
 }
 
 // SanitizePollerPath removes any fake-appended suffix from a URL's path.

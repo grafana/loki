@@ -11,10 +11,11 @@ type Config struct {
 	// Client configures the Bloom Gateway client
 	Client ClientConfig `yaml:"client,omitempty" doc:""`
 
-	WorkerConcurrency       int `yaml:"worker_concurrency"`
-	BlockQueryConcurrency   int `yaml:"block_query_concurrency"`
-	MaxOutstandingPerTenant int `yaml:"max_outstanding_per_tenant"`
-	NumMultiplexItems       int `yaml:"num_multiplex_tasks"`
+	WorkerConcurrency       int  `yaml:"worker_concurrency"`
+	BlockQueryConcurrency   int  `yaml:"block_query_concurrency"`
+	MaxOutstandingPerTenant int  `yaml:"max_outstanding_per_tenant"`
+	NumMultiplexItems       int  `yaml:"num_multiplex_tasks"`
+	FetchBlocksAsync        bool `yaml:"fetch_blocks_async" doc:"hidden"`
 }
 
 // RegisterFlags registers flags for the Bloom Gateway configuration.
@@ -29,6 +30,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockQueryConcurrency, prefix+"block-query-concurrency", 8, "Number of blocks processed concurrently on a single worker. Usually set to 2x number of CPU cores.")
 	f.IntVar(&cfg.MaxOutstandingPerTenant, prefix+"max-outstanding-per-tenant", 1024, "Maximum number of outstanding tasks per tenant.")
 	f.IntVar(&cfg.NumMultiplexItems, prefix+"num-multiplex-tasks", 512, "How many tasks are multiplexed at once.")
+	f.BoolVar(&cfg.FetchBlocksAsync, prefix+"fetch-blocks-async", true, "Whether blocks should be fetched asynchronously.")
 	// TODO(chaudum): Figure out what the better place is for registering flags
 	// -bloom-gateway.client.* or -bloom-gateway-client.*
 	cfg.Client.RegisterFlags(f)
@@ -45,7 +47,5 @@ func (cfg *Config) Validate() error {
 }
 
 type Limits interface {
-	CacheLimits
-	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
 }

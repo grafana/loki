@@ -406,7 +406,7 @@ func Test_batch(t *testing.T) {
 }
 
 type testQueryClient struct {
-	engine          *logql.Engine
+	engine          *logql.QueryEngine
 	queryRangeCalls int
 }
 
@@ -486,7 +486,7 @@ func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryRespons
 }
 
 func (t *testQueryClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
@@ -887,8 +887,6 @@ func TestParallelJobs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(
 			tt.name,
 			func(t *testing.T) {

@@ -52,7 +52,7 @@ func TestMigrateTables(t *testing.T) {
 	}
 	clientMetrics := storage.NewClientMetrics()
 
-	objClient, err := storage.NewObjectClient(pcfg.ObjectType, storageCfg, clientMetrics)
+	objClient, err := storage.NewObjectClient(pcfg.ObjectType, "test", storageCfg, clientMetrics)
 	require.NoError(t, err)
 	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pcfg.IndexTables.PathPrefix)
 
@@ -141,4 +141,5 @@ func TestMigrateTables(t *testing.T) {
 			}
 		})
 	}
+	clientMetrics.Unregister()
 }

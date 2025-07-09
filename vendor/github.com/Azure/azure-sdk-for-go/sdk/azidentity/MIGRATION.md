@@ -1,6 +1,6 @@
 # Migrating from autorest/adal to azidentity
 
-`azidentity` provides Microsoft Entra ID ([formerly Azure Active Directory](https://learn.microsoft.com/azure/active-directory/fundamentals/new-name)) authentication for the newest Azure SDK modules (`github.com/azure-sdk-for-go/sdk/...`). Older Azure SDK packages (`github.com/azure-sdk-for-go/services/...`) use types from `github.com/go-autorest/autorest/adal` instead.
+`azidentity` provides Microsoft Entra ID ([formerly Azure Active Directory](https://learn.microsoft.com/entra/fundamentals/new-name)) authentication for the newest Azure SDK modules (`github.com/azure-sdk-for-go/sdk/...`). Older Azure SDK packages (`github.com/azure-sdk-for-go/services/...`) use types from `github.com/go-autorest/autorest/adal` instead.
 
 This guide shows common authentication code using `autorest/adal` and its equivalent using `azidentity`.
 
@@ -284,7 +284,7 @@ if err == nil {
 }
 ```
 
-Note that `azidentity` credentials use the Microsoft Entra endpoint, which requires OAuth 2 scopes instead of the resource identifiers `autorest/adal` expects. For more information, see [Microsoft Entra ID documentation](https://learn.microsoft.com/azure/active-directory/develop/permissions-consent-overview).
+Note that `azidentity` credentials use the Microsoft Entra endpoint, which requires OAuth 2 scopes instead of the resource identifiers `autorest/adal` expects. For more information, see [Microsoft Entra ID documentation](https://learn.microsoft.com/entra/identity-platform/permissions-consent-overview).
 
 ## Use azidentity credentials with older packages
 
@@ -304,4 +304,4 @@ client := subscriptions.NewClient()
 client.Authorizer = azidext.NewTokenCredentialAdapter(cred, []string{"https://management.azure.com//.default"})
 ```
 
-![Impressions](https://azure-sdk-impressions.azurewebsites.net/api/impressions/azure-sdk-for-go%2Fsdk%2Fazidentity%2FMIGRATION.png)
+

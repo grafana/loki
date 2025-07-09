@@ -61,7 +61,7 @@ func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r r
 		return fmt.Sprintf("labelvalues:%s:%s:%s:%d:%d", userID, lr.GetName(), lr.GetQuery(), currentInterval, split)
 	}
 
-	return fmt.Sprintf("labels:%s:%d:%d", userID, currentInterval, split)
+	return fmt.Sprintf("labels:%s:%s:%d:%d", userID, lr.GetQuery(), currentInterval, split)
 }
 
 type labelsExtractor struct{}

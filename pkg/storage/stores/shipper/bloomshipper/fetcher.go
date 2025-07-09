@@ -2,16 +2,15 @@ package bloomshipper
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/dolthub/swiss"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/keymutex"
@@ -19,10 +18,11 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-var downloadQueueCapacity = 10000
+var downloadQueueCapacity = 100000
 
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
@@ -30,7 +30,9 @@ type options struct {
 	// return bloom blocks to pool after iteration; default=false
 	// NB(owen-d): this can only be safely used when blooms are not captured outside
 	// of iteration or it can introduce use-after-free bugs
-	usePool bool
+	usePool mempool.Allocator
+
+	CacheGetOptions []CacheGetOption
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -53,9 +55,15 @@ func WithFetchAsync(v bool) FetchOption {
 	}
 }
 
-func WithPool(v bool) FetchOption {
+func WithPool(v mempool.Allocator) FetchOption {
 	return func(opts *options) {
 		opts.usePool = v
+	}
+}
+
+func WithCacheGetOptions(cacheOpts ...CacheGetOption) FetchOption {
+	return func(opts *options) {
+		opts.CacheGetOptions = cacheOpts
 	}
 }
 
@@ -120,7 +128,7 @@ func (f *Fetcher) Close() {
 
 // FetchMetas implements fetcher
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	logger := spanlogger.FromContextWithFallback(ctx, f.logger)
+	logger := spanlogger.FromContext(ctx, f.logger)
 
 	if ctx.Err() != nil {
 		return nil, errors.Wrap(ctx.Err(), "fetch Metas")
@@ -189,6 +197,8 @@ func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, k
 
 	var lastErr error
 	var size int64
+
+	json := jsoniter.ConfigFastest
 	for i, ref := range refs {
 		if raw, ok := found[f.client.Meta(ref).Addr()]; ok {
 			meta := Meta{
@@ -209,6 +219,8 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	var err error
 	keys := make([]string, len(metas))
 	data := make([][]byte, len(metas))
+
+	json := jsoniter.ConfigFastest
 	for i := range metas {
 		keys[i] = f.client.Meta(metas[i].MetaRef).Addr()
 		data[i], err = json.Marshal(metas[i])
@@ -222,7 +234,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // FetchBlocks implements fetcher
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	// apply fetch options
-	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: false}
+	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: &mempool.SimpleHeapAllocator{}}
 	cfg.apply(opts...)
 
 	// first, resolve blocks from cache and enqueue missing blocks to download queue
@@ -239,8 +251,8 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
-		key := f.client.Block(refs[i]).Addr()
-		dir, isFound, err := f.fromCache(ctx, key)
+		key := cacheKey(refs[i])
+		dir, isFound, err := f.fromCache(ctx, key, cfg.CacheGetOptions...)
 		if err != nil {
 			return results, err
 		}
@@ -316,7 +328,10 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 }
 
 func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
+	errLogger := log.With(f.logger, "task", task.key, "msg", "failed to process download request")
+
 	if ctx.Err() != nil {
+		level.Error(errLogger).Log("err", ctx.Err())
 		task.errors <- ctx.Err()
 		return
 	}
@@ -324,6 +339,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// check if block was fetched while task was waiting in queue
 	result, exists, err := f.fromCache(ctx, task.key)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -341,11 +357,12 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// fetch from storage
 	result, err = f.fetchBlock(ctx, task.item)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
 
-	key := f.client.Block(result.BlockRef).Addr()
+	key := cacheKey(result.BlockRef)
 	if task.async {
 		// put item into cache
 		err = f.blocksCache.Put(ctx, key, result)
@@ -354,6 +371,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		err = f.blocksCache.PutInc(ctx, key, result)
 	}
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -366,14 +384,14 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	}
 }
 
-func (f *Fetcher) fromCache(ctx context.Context, key string) (BlockDirectory, bool, error) {
+func (f *Fetcher) fromCache(ctx context.Context, key string, opts ...CacheGetOption) (BlockDirectory, bool, error) {
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
 		return zero, false, errors.Wrap(ctx.Err(), "from cache")
 	}
 
-	item, found := f.blocksCache.Get(ctx, key)
+	item, found := f.blocksCache.Get(ctx, key, opts...)
 
 	// item wasn't found
 	if !found {
@@ -406,10 +424,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 	missing := make([]BlockRef, 0, len(refs))
 
 	for _, ref := range refs {
-		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar.gz extension
+		// the block directory does not contain the .tar(.compression) extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, ".tar.gz")
+		path := localFilePathWithoutExtension(ref, f.localFSResolver)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {
@@ -467,7 +484,7 @@ type downloadResponse[R any] struct {
 }
 
 type downloadQueue[T any, R any] struct {
-	queue         chan downloadRequest[T, R]
+	queue         chan *downloadRequest[T, R]
 	enqueued      *swiss.Map[string, struct{}]
 	enqueuedMutex sync.Mutex
 	mu            keymutex.KeyMutex
@@ -485,7 +502,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 		return nil, errors.New("queue requires at least 1 worker")
 	}
 	q := &downloadQueue[T, R]{
-		queue:    make(chan downloadRequest[T, R], size),
+		queue:    make(chan *downloadRequest[T, R], size),
 		enqueued: swiss.NewMap[string, struct{}](uint32(size)),
 		mu:       keymutex.NewHashed(workers),
 		done:     make(chan struct{}),
@@ -501,7 +518,8 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	if !t.async {
-		q.queue <- t
+		q.queue <- &t
+		return
 	}
 	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()
@@ -510,7 +528,7 @@ func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 		return
 	}
 	select {
-	case q.queue <- t:
+	case q.queue <- &t:
 		q.enqueued.Put(t.key, struct{}{})
 	default:
 		// todo we probably want a metric on dropped items
@@ -526,7 +544,7 @@ func (q *downloadQueue[T, R]) runWorker() {
 		case <-q.done:
 			return
 		case task := <-q.queue:
-			q.do(task.ctx, task)
+			q.do(task.ctx, *task)
 		}
 	}
 }

@@ -29,6 +29,7 @@ type BucketProperties struct {
 	Location     string    `xml:"Location"`     // Bucket datacenter
 	CreationDate time.Time `xml:"CreationDate"` // Bucket create time
 	StorageClass string    `xml:"StorageClass"` // Bucket storage class
+	Region       string    `xml:"Region"`       // Bucket region
 }
 
 // ListCloudBoxResult defines the result object from ListBuckets request
@@ -128,15 +129,17 @@ type LifecycleVersionTransition struct {
 
 // LifecycleFilter defines the rule's Filter propery
 type LifecycleFilter struct {
-	XMLName xml.Name             `xml:"Filter"`
-	Not     []LifecycleFilterNot `xml:"Not,omitempty"`
+	XMLName               xml.Name             `xml:"Filter"`
+	Not                   []LifecycleFilterNot `xml:"Not,omitempty"`
+	ObjectSizeGreaterThan *int64               `xml:"ObjectSizeGreaterThan,omitempty"`
+	ObjectSizeLessThan    *int64               `xml:"ObjectSizeLessThan,omitempty"`
 }
 
 // LifecycleFilterNot defines the rule's Filter Not propery
 type LifecycleFilterNot struct {
 	XMLName xml.Name `xml:"Not"`
-	Prefix  string   `xml:"Prefix,omitempty"` //Object prefix applicable to this exclusion rule
-	Tag     *Tag     `xml:"Tag,omitempty"`    //the tags applicable to this exclusion rule
+	Prefix  string   `xml:"Prefix"`        //Object prefix applicable to this exclusion rule
+	Tag     *Tag     `xml:"Tag,omitempty"` //the tags applicable to this exclusion rule
 }
 
 const iso8601DateFormat = "2006-01-02T15:04:05.000Z"
@@ -206,13 +209,19 @@ type GetBucketLifecycleResult LifecycleConfiguration
 
 // RefererXML defines Referer configuration
 type RefererXML struct {
-	XMLName           xml.Name `xml:"RefererConfiguration"`
-	AllowEmptyReferer bool     `xml:"AllowEmptyReferer"`   // Allow empty referrer
-	RefererList       []string `xml:"RefererList>Referer"` // Referer whitelist
+	XMLName                  xml.Name          `xml:"RefererConfiguration"`
+	AllowEmptyReferer        bool              `xml:"AllowEmptyReferer"` // Allow empty referrer
+	AllowTruncateQueryString *bool             `xml:"AllowTruncateQueryString,omitempty"`
+	RefererList              []string          `xml:"RefererList>Referer"`        // Referer whitelist
+	RefererBlacklist         *RefererBlacklist `xml:"RefererBlacklist,omitempty"` // Referer blacklist
 }
 
 // GetBucketRefererResult defines result object for GetBucketReferer request
 type GetBucketRefererResult RefererXML
+
+type RefererBlacklist struct {
+	Referer []string `xml:"Referer,omitempty"`
+}
 
 // LoggingXML defines logging configuration
 type LoggingXML struct {
@@ -316,8 +325,9 @@ type GetBucketWebsiteResult WebsiteXML
 
 // CORSXML defines CORS configuration
 type CORSXML struct {
-	XMLName   xml.Name   `xml:"CORSConfiguration"`
-	CORSRules []CORSRule `xml:"CORSRule"` // CORS rules
+	XMLName      xml.Name   `xml:"CORSConfiguration"`
+	CORSRules    []CORSRule `xml:"CORSRule"`               // CORS rules
+	ResponseVary *bool      `xml:"ResponseVary,omitempty"` // return Vary or not
 }
 
 // CORSRule defines CORS rules
@@ -332,6 +342,9 @@ type CORSRule struct {
 
 // GetBucketCORSResult defines the result from GetBucketCORS request.
 type GetBucketCORSResult CORSXML
+
+// PutBucketCORS defines the PutBucketCORS config xml.
+type PutBucketCORS CORSXML
 
 // GetBucketInfoResult defines the result from GetBucketInfo request.
 type GetBucketInfoResult struct {
@@ -598,6 +611,13 @@ type ProcessObjectResult struct {
 	FileSize int    `json:"fileSize"`
 	Object   string `json:"object"`
 	Status   string `json:"status"`
+}
+
+// AsyncProcessObjectResult defines result object of AsyncProcessObject
+type AsyncProcessObjectResult struct {
+	EventId   string `json:"EventId"`
+	RequestId string `json:"RequestId"`
+	TaskId    string `json:"TaskId"`
 }
 
 // decodeDeleteObjectsResult decodes deleting objects result in URL encoding
@@ -1601,10 +1621,10 @@ type Certificate struct {
 	ValidEndDate   string `xml:"ValidEndDate"`
 }
 
-//GetBucketResourceGroupResult define resource group for the bucket
+// GetBucketResourceGroupResult define resource group for the bucket
 type GetBucketResourceGroupResult BucketResourceGroupXml
 
-//PutBucketResourceGroup define the xml of bucket's resource group config
+// PutBucketResourceGroup define the xml of bucket's resource group config
 type PutBucketResourceGroup BucketResourceGroupXml
 
 // BucketResourceGroupXml define the information of the bucket's resource group
@@ -1632,4 +1652,44 @@ type BucketStyleXml struct {
 	Content        string   `xml:"Content"`                  // style content
 	CreateTime     string   `xml:"CreateTime,omitempty"`     // style create time
 	LastModifyTime string   `xml:"LastModifyTime,omitempty"` // style last modify time
+}
+
+// DescribeRegionsResult define get the describe regions result
+type DescribeRegionsResult RegionInfoList
+
+type RegionInfo struct {
+	Region             string `xml:"Region"`
+	InternetEndpoint   string `xml:"InternetEndpoint"`
+	InternalEndpoint   string `xml:"InternalEndpoint"`
+	AccelerateEndpoint string `xml:"AccelerateEndpoint"`
+}
+
+type RegionInfoList struct {
+	XMLName xml.Name     `xml:"RegionInfoList"`
+	Regions []RegionInfo `xml:"RegionInfo"`
+}
+
+//PutBucketResponseHeader define the xml of bucket's response header config
+type PutBucketResponseHeader ResponseHeaderXml
+
+//GetBucketResponseHeaderResult define the xml of bucket's response header result
+type GetBucketResponseHeaderResult ResponseHeaderXml
+
+type ResponseHeaderXml struct {
+	XMLName xml.Name             `xml:"ResponseHeaderConfiguration"`
+	Rule    []ResponseHeaderRule `xml:Rule,omitempty"` // rule
+}
+
+type ResponseHeaderRule struct {
+	Name        string                    `xml:"Name"`                  // rule name
+	Filters     ResponseHeaderRuleFilters `xml:"Filters,omitempty"`     // rule filters Operation
+	HideHeaders ResponseHeaderRuleHeaders `xml:"HideHeaders,omitempty"` // rule hide header
+}
+
+type ResponseHeaderRuleFilters struct {
+	Operation []string `xml:"Operation,omitempty"`
+}
+
+type ResponseHeaderRuleHeaders struct {
+	Header []string `xml:"Header,omitempty"`
 }

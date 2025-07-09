@@ -1,11 +1,16 @@
 # OpenTracing support for gRPC in Go
 
+[![CI](https://github.com/opentracing-contrib/go-grpc/actions/workflows/ci.yml/badge.svg)](https://github.com/opentracing-contrib/go-grpc/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/opentracing-contrib/go-grpc)](https://goreportcard.com/report/github.com/opentracing-contrib/go-grpc)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/opentracing-contrib/go-grpc)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/opentracing-contrib/go-grpc?logo=github&sort=semver)](https://github.com/opentracing-contrib/go-grpc/releases/latest)
+
 The `otgrpc` package makes it easy to add OpenTracing support to gRPC-based
 systems in Go.
 
 ## Installation
 
-```
+```shell
 go get github.com/opentracing-contrib/go-grpc
 ```
 
@@ -54,4 +59,3 @@ s := grpc.NewServer(
 
 // All future RPC activity involving `s` will be automatically traced.
 ```
-

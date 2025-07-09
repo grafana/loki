@@ -4,49 +4,55 @@ import (
 	"context"
 	"math"
 	"net/http"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 // TODO(kolesnikovae): parametrise QueryPatternsRequest
-const minClusterSize = 30
+const (
+	minClusterSize = 30
+	maxPatterns    = 300
+)
 
 type IngesterQuerier struct {
 	cfg    Config
 	logger log.Logger
 
-	ringClient *RingClient
+	ringClient RingClient
 
-	registerer prometheus.Registerer
+	registerer             prometheus.Registerer
+	ingesterQuerierMetrics *ingesterQuerierMetrics
 }
 
 func NewIngesterQuerier(
 	cfg Config,
-	ringClient *RingClient,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
 ) (*IngesterQuerier, error) {
 	return &IngesterQuerier{
-		logger:     log.With(logger, "component", "pattern-ingester-querier"),
-		ringClient: ringClient,
-		cfg:        cfg,
-		registerer: prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		logger:                 log.With(logger, "component", "pattern-ingester-querier"),
+		ringClient:             ringClient,
+		cfg:                    cfg,
+		registerer:             prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer),
+		ingesterQuerierMetrics: newIngesterQuerierMetrics(registerer, metricsNamespace),
 	}, nil
 }
 
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
@@ -63,35 +69,66 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	return prunePatterns(resp, minClusterSize), nil
+	return prunePatterns(resp, minClusterSize, q.ingesterQuerierMetrics), nil
 }
 
-func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int) *logproto.QueryPatternsResponse {
-	d := drain.New(drain.DefaultConfig())
-	for _, p := range resp.Series {
-		d.TrainPattern(p.Pattern, p.Samples)
+func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, metrics *ingesterQuerierMetrics) *logproto.QueryPatternsResponse {
+	patternsBefore := len(resp.Series)
+	total := make([]int64, len(resp.Series))
+
+	for i, p := range resp.Series {
+		for _, s := range p.Samples {
+			total[i] += s.Value
+		}
 	}
 
-	resp.Series = resp.Series[:0]
-	for _, cluster := range d.Clusters() {
-		if cluster.Size < minClusterSize {
-			continue
-		}
-		pattern := d.PatternString(cluster)
-		if pattern == "" {
-			continue
-		}
-		resp.Series = append(resp.Series, &logproto.PatternSeries{
-			Pattern: pattern,
-			Samples: cluster.Samples(),
-		})
+	// Create a slice of structs to keep Series and total together
+	type SeriesWithTotal struct {
+		Series *logproto.PatternSeries
+		Total  int64
 	}
+
+	seriesWithTotals := make([]SeriesWithTotal, len(resp.Series))
+	for i := range resp.Series {
+		seriesWithTotals[i] = SeriesWithTotal{
+			Series: resp.Series[i],
+			Total:  total[i],
+		}
+	}
+
+	// Sort the slice of structs by the Total field
+	sort.Slice(seriesWithTotals, func(i, j int) bool {
+		return seriesWithTotals[i].Total > seriesWithTotals[j].Total
+	})
+
+	// Initialize a variable to keep track of the position for valid series
+	pos := 0
+
+	// Iterate over the seriesWithTotals
+	for i := range seriesWithTotals {
+		if seriesWithTotals[i].Total >= minClusterSize {
+			// Place the valid series at the current position
+			resp.Series[pos] = seriesWithTotals[i].Series
+			pos++
+		}
+	}
+
+	// Slice the resp.Series to include only the valid series
+	resp.Series = resp.Series[:pos]
+
+	if len(resp.Series) > maxPatterns {
+		resp.Series = resp.Series[:maxPatterns]
+	}
+
+	metrics.patternsPrunedTotal.Add(float64(patternsBefore - len(resp.Series)))
+	metrics.patternsRetainedTotal.Add(float64(len(resp.Series)))
+
 	return resp
 }
 
 // ForAllIngesters runs f, in parallel, for all ingesters
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
-	replicationSet, err := q.ringClient.ring.GetReplicationSetForOperation(ring.Read)
+	replicationSet, err := q.ringClient.Ring().GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -104,32 +141,27 @@ type ResponseFromIngesters struct {
 	response interface{}
 }
 
-// forGivenIngesters runs f, in parallel, for given ingesters
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
-	cfg := ring.DoUntilQuorumConfig{
-		// Nothing here
+	g, ctx := errgroup.WithContext(ctx)
+	responses := make([]ResponseFromIngesters, len(replicationSet.Instances))
+
+	for i, ingester := range replicationSet.Instances {
+		g.Go(func() error {
+			client, err := q.ringClient.GetClientFor(ingester.Addr)
+			if err != nil {
+				return err
+			}
+
+			resp, err := f(ctx, client.(logproto.PatternClient))
+			if err != nil {
+				return err
+			}
+			responses[i] = ResponseFromIngesters{addr: ingester.Addr, response: resp}
+			return nil
+		})
 	}
-	results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (ResponseFromIngesters, error) {
-		client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
-		if err != nil {
-			return ResponseFromIngesters{addr: ingester.Addr}, err
-		}
-
-		resp, err := f(ctx, client.(logproto.PatternClient))
-		if err != nil {
-			return ResponseFromIngesters{addr: ingester.Addr}, err
-		}
-
-		return ResponseFromIngesters{ingester.Addr, resp}, nil
-	}, func(ResponseFromIngesters) {
-		// Nothing to do
-	})
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-
-	responses := make([]ResponseFromIngesters, 0, len(results))
-	responses = append(responses, results...)
-
-	return responses, err
+	return responses, nil
 }

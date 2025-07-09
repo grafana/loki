@@ -13,4 +13,4 @@ Releasing Grafana Loki consists of merging a long-running release PR. Two workfl
 
 ## Major releases
 
-Major releases follow the same process as minor and patch releases, but require a custom workflow to be created to run on the branch we want to release from. The reason for this is that we don't do major releases very often, so it is not economical to keep those workflows running all the time.To create a major release workflow, follow the steps in the [major release workflow]({{< relref "./major-release.md" >}}) document.
+Major releases follow the same process as minor and patch releases, but require a custom workflow to be created to run on the branch we want to release from. The reason for this is that we don't do major releases very often, so it is not economical to keep those workflows running all the time.To create a major release workflow, follow the steps in the [major release workflow](../major-release/) document.

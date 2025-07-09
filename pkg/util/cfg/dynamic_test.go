@@ -52,7 +52,7 @@ server:
 
 	t.Run("calls ApplyDynamicConfig on provided DynamicCloneable", func(t *testing.T) {
 		applyDynamicConfigCalled := false
-		mockApplyDynamicConfig := func(dst Cloneable) error {
+		mockApplyDynamicConfig := func(_ Cloneable) error {
 			applyDynamicConfigCalled = true
 			return nil
 		}
@@ -113,7 +113,7 @@ type DynamicConfig struct {
 
 func NewDynamicConfig(applyDynamicConfig Source) DynamicConfig {
 	if applyDynamicConfig == nil {
-		applyDynamicConfig = func(config Cloneable) error {
+		applyDynamicConfig = func(_ Cloneable) error {
 			return nil
 		}
 	}

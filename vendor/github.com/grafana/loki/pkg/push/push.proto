@@ -16,6 +16,8 @@ message PushRequest {
     (gogoproto.jsontag) = "streams",
     (gogoproto.customtype) = "Stream"
   ];
+  // format in which streams are ingested - loki or otlp
+  string format = 2 [(gogoproto.jsontag) = "format"];
 }
 
 message PushResponse {}

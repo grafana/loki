@@ -47,10 +47,45 @@ clients:
       name: value
 `
 
+const testDuplicateJobsName = `
+clients:
+  - external_labels:
+      cluster: dev1
+    url: https://1:shh@example.com/loki/api/v1/push
+  - external_labels:
+      cluster: prod1
+    url: https://1:shh@example.com/loki/api/v1/push
+scrape_configs:
+  - job_name: kubernetes-pods-name
+    kubernetes_sd_configs:
+      - role: pod
+  - job_name: system
+    static_configs:
+    - targets:
+      - localhost
+      labels:
+        job: varlogs
+  - job_name: system
+    static_configs:
+    - targets:
+      - localhost
+      labels:
+        job: varlogs2
+limits_config:
+  readline_rate: 100
+  readline_burst: 200
+`
+
 func Test_Load(t *testing.T) {
 	var dst Config
 	err := yaml.Unmarshal([]byte(testFile), &dst)
 	require.Nil(t, err)
+}
+
+func Test_Load_DuplicateJobsName(t *testing.T) {
+	var dst Config
+	err := yaml.Unmarshal([]byte(testDuplicateJobsName), &dst)
+	require.ErrorContains(t, err, `found multiple scrape configs with job name "system"`)
 }
 
 func TestHeadersConfigLoad(t *testing.T) {
@@ -140,7 +175,6 @@ func TestConfig_Setup(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			tt.in.Setup(log.NewNopLogger())
 			require.Equal(t, tt.expected, tt.in)

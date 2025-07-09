@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 
 	"github.com/grafana/loki/pkg/push"
@@ -16,7 +18,8 @@ import (
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs)
+	mockWriter := &mockEntryWriter{}
+	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), log.NewNopLogger(), drain.FormatUnknown, "123", drain.DefaultConfig(), &fakeLimits{}, mockWriter)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{
@@ -44,7 +47,8 @@ func TestAddStream(t *testing.T) {
 
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs)
+	mockWriter := &mockEntryWriter{}
+	stream, err := newStream(model.Fingerprint(lbs.Hash()), lbs, newIngesterMetrics(nil, "test"), log.NewNopLogger(), drain.FormatUnknown, "123", drain.DefaultConfig(), &fakeLimits{}, mockWriter)
 	require.NoError(t, err)
 
 	err = stream.Push(context.Background(), []push.Entry{

@@ -114,32 +114,20 @@ var (
 					F: 0.013333333333333334,
 				},
 			},
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	vector = promql.Vector{
 		{
 			T: toMs(testTime.Add(-4 * time.Hour)),
 			F: 0.013333333333333334,
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	streams = logqlmodel.Streams{
@@ -360,7 +348,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 	testLocal.CacheResults = false
 	testLocal.CacheIndexStatsResults = false
 	testLocal.CacheInstantMetricResults = false
-	var l = fakeLimits{
+	l := fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
 		maxQueryBytesRead:       1000,
@@ -1005,6 +993,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
+		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1038,12 +1027,11 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)"), err)
 	require.False(t, called)
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, test := range []struct {
@@ -1086,7 +1074,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 
 			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if test.expectedError != "" {
-				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, test.expectedError), err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", test.expectedError), err)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1095,7 +1083,6 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 }
 
 func TestTripperware_RequiredNumberLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, tc := range []struct {
@@ -1194,7 +1181,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 
 			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if tc.expectedError != noErr {
-				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, tc.expectedError), err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", tc.expectedError), err)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1215,7 +1202,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/prom/query",
+			path:       "/api/prom/query",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1230,7 +1217,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/prom/series",
+			path:       "/api/prom/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1240,7 +1227,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/labels",
+			path:       "/api/prom/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1250,7 +1237,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/label",
+			path:       "/api/prom/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1260,16 +1247,29 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/prom/label/__name__/values",
+			path:       "/api/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "detected_fields",
+			path:       "/loki/api/v1/detected_fields",
+			expectedOp: DetectedFieldsOp,
+		},
+		{
+			name:       "detected_fields_values",
+			path:       "/loki/api/v1/detected_field/foo/values",
+			expectedOp: DetectedFieldsOp,
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := getOperation(tc.path)
-			assert.Equal(t, tc.expectedOp, got)
-		})
+	for _, pathPrefix := range []string{"", "/proxy"} {
+		for _, tc := range cases {
+			name := tc.name + pathPrefix + tc.path
+			t.Run(name, func(t *testing.T) {
+				got := getOperation(pathPrefix + tc.path)
+				assert.Equal(t, tc.expectedOp, got)
+			})
+		}
 	}
 }
 
@@ -1401,6 +1401,7 @@ type fakeLimits struct {
 	maxStatsCacheFreshness      time.Duration
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
+	enableMultiVariantQueries   bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1453,7 +1454,7 @@ func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryRange(context.Context, string) time.Duration {
-	return time.Second
+	return time.Hour
 }
 
 func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {
@@ -1523,8 +1524,16 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+
 func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
+}
+
+func (f fakeLimits) ShardAggregations(string) []string {
+	return nil
+}
+func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
+	return f.enableMultiVariantQueries
 }
 
 type ingesterQueryOpts struct {
@@ -1543,7 +1552,7 @@ func (i ingesterQueryOpts) QueryIngestersWithin() time.Duration {
 func counter() (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1554,7 +1563,7 @@ func counter() (*int, base.Handler) {
 func counterWithError(err error) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1565,7 +1574,7 @@ func counterWithError(err error) (*int, base.Handler) {
 func promqlResult(v parser.Value) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1581,7 +1590,7 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 func seriesResult(v logproto.SeriesResponse) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++

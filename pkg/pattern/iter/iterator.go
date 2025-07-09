@@ -1,91 +1,59 @@
 package iter
 
 import (
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var Empty Iterator = &emptyIterator{}
-
 type Iterator interface {
-	Next() bool
+	iter.CloseIterator[logproto.PatternSample]
 
 	Pattern() string
-	At() logproto.PatternSample
-
-	Error() error
-	Close() error
+	Level() string
 }
 
-func NewSlice(pattern string, s []logproto.PatternSample) Iterator {
-	return &sliceIterator{
-		values:  s,
-		pattern: pattern,
-		i:       -1,
+func NewSlice(pattern, lvl string, s []logproto.PatternSample) *PatternIter {
+	return &PatternIter{
+		CloseIterator: iter.WithClose(iter.NewSliceIter(s), nil),
+		pattern:       pattern,
+		level:         lvl,
 	}
 }
 
-type sliceIterator struct {
-	i       int
+func NewEmpty(pattern string) *PatternIter {
+	return &PatternIter{
+		CloseIterator: iter.WithClose(iter.NewEmptyIter[logproto.PatternSample](), nil),
+		pattern:       pattern,
+	}
+}
+
+type PatternIter struct {
+	iter.CloseIterator[logproto.PatternSample]
 	pattern string
-	values  []logproto.PatternSample
+	level   string
 }
 
-func (s *sliceIterator) Next() bool {
-	s.i++
-	return s.i < len(s.values)
-}
-
-func (s *sliceIterator) Pattern() string {
+func (s *PatternIter) Pattern() string {
 	return s.pattern
 }
 
-func (s *sliceIterator) At() logproto.PatternSample {
-	return s.values[s.i]
-}
-
-func (s *sliceIterator) Error() error {
-	return nil
-}
-
-func (s *sliceIterator) Close() error {
-	return nil
-}
-
-type emptyIterator struct {
-	pattern string
-}
-
-func (e *emptyIterator) Next() bool {
-	return false
-}
-
-func (e *emptyIterator) Pattern() string {
-	return e.pattern
-}
-
-func (e *emptyIterator) At() logproto.PatternSample {
-	return logproto.PatternSample{}
-}
-
-func (e *emptyIterator) Error() error {
-	return nil
-}
-
-func (e *emptyIterator) Close() error {
-	return nil
+func (s *PatternIter) Level() string {
+	return s.level
 }
 
 type nonOverlappingIterator struct {
 	iterators []Iterator
 	curr      Iterator
 	pattern   string
+	level     string
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
-func NewNonOverlappingIterator(pattern string, iterators []Iterator) Iterator {
+func NewNonOverlappingIterator(pattern, lvl string, iterators []Iterator) Iterator {
 	return &nonOverlappingIterator{
 		iterators: iterators,
 		pattern:   pattern,
+		level:     lvl,
 	}
 }
 
@@ -114,11 +82,15 @@ func (i *nonOverlappingIterator) Pattern() string {
 	return i.pattern
 }
 
-func (i *nonOverlappingIterator) Error() error {
-	if i.curr == nil {
-		return nil
+func (i *nonOverlappingIterator) Level() string {
+	return i.level
+}
+
+func (i *nonOverlappingIterator) Err() error {
+	if i.curr != nil {
+		return i.curr.Err()
 	}
-	return i.curr.Error()
+	return nil
 }
 
 func (i *nonOverlappingIterator) Close() error {

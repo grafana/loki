@@ -2,9 +2,9 @@ package ring
 
 import (
 	"math"
+	"slices"
 
 	"github.com/pkg/errors"
-	"golang.org/x/exp/slices" // using exp/slices until moving to go 1.21.
 )
 
 // TokenRanges describes token ranges owned by an instance.

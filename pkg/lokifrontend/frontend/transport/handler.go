@@ -37,8 +37,8 @@ const (
 )
 
 var (
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
 	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
 )
 
@@ -152,8 +152,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(resp.StatusCode)
-	// we don't check for copy error as there is no much we can do at this point
-	_, _ = io.Copy(w, resp.Body)
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		level.Warn(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to write response", "err", err)
+	}
 
 	// Check whether we should parse the query string.
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan

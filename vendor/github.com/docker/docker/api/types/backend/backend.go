@@ -1,5 +1,5 @@
 // Package backend includes types to send information to server backends.
-package backend // import "github.com/docker/docker/api/types/backend"
+package backend
 
 import (
 	"io"
@@ -13,12 +13,12 @@ import (
 
 // ContainerCreateConfig is the parameter set to ContainerCreate()
 type ContainerCreateConfig struct {
-	Name             string
-	Config           *container.Config
-	HostConfig       *container.HostConfig
-	NetworkingConfig *network.NetworkingConfig
-	Platform         *ocispec.Platform
-	AdjustCPUShares  bool
+	Name                        string
+	Config                      *container.Config
+	HostConfig                  *container.HostConfig
+	NetworkingConfig            *network.NetworkingConfig
+	Platform                    *ocispec.Platform
+	DefaultReadOnlyNonRecursive bool
 }
 
 // ContainerRmConfig holds arguments for the container remove
@@ -30,7 +30,7 @@ type ContainerRmConfig struct {
 
 // ContainerAttachConfig holds the streams to use when connecting to a container to view logs.
 type ContainerAttachConfig struct {
-	GetStreams func(multiplexed bool) (io.ReadCloser, io.Writer, io.Writer, error)
+	GetStreams func(multiplexed bool, cancel func()) (io.ReadCloser, io.Writer, io.Writer, error)
 	UseStdin   bool
 	UseStdout  bool
 	UseStderr  bool
@@ -89,8 +89,22 @@ type LogSelector struct {
 type ContainerStatsConfig struct {
 	Stream    bool
 	OneShot   bool
-	OutStream io.Writer
-	Version   string
+	OutStream func() io.Writer
+}
+
+// ContainerInspectOptions defines options for the backend.ContainerInspect
+// call.
+type ContainerInspectOptions struct {
+	// Size controls whether to propagate the container's size fields.
+	Size bool
+}
+
+// ExecStartConfig holds the options to start container's exec.
+type ExecStartConfig struct {
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
+	ConsoleSize *[2]uint `json:",omitempty"`
 }
 
 // ExecInspect holds information about a running process started
@@ -130,11 +144,23 @@ type CreateImageConfig struct {
 	Changes []string
 }
 
+// GetImageOpts holds parameters to retrieve image information
+// from the backend.
+type GetImageOpts struct {
+	Platform *ocispec.Platform
+}
+
+// ImageInspectOpts holds parameters to inspect an image.
+type ImageInspectOpts struct {
+	Manifests bool
+	Platform  *ocispec.Platform
+}
+
 // CommitConfig is the configuration for creating an image as part of a build.
 type CommitConfig struct {
 	Author              string
 	Comment             string
-	Config              *container.Config
+	Config              *container.Config // TODO(thaJeztah); change this to [dockerspec.DockerOCIImageConfig]
 	ContainerConfig     *container.Config
 	ContainerID         string
 	ContainerMountLabel string

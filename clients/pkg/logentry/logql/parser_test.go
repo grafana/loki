@@ -151,7 +151,21 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.exp, ast)
+
+			// Prometheus label matchers are not comparable with a deep equal because of the internal
+			// fast regexp implementation. For this reason, we compare them without FastRegexMatchers.
+			require.Equal(t, removeFastRegexMatcher(tc.exp), removeFastRegexMatcher(ast))
 		})
 	}
+}
+
+func removeFastRegexMatcher(exp Expr) Expr {
+	if typed, ok := exp.(*matchersExpr); ok {
+		for i, matcher := range typed.matchers {
+			if matcher.Type == labels.MatchNotRegexp || matcher.Type == labels.MatchRegexp {
+				typed.matchers[i] = &labels.Matcher{Type: matcher.Type, Name: matcher.Name, Value: matcher.Value}
+			}
+		}
+	}
+	return exp
 }

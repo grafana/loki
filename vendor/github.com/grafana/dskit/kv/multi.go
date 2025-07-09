@@ -350,7 +350,7 @@ func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, ke
 		}
 
 		m.mirrorWritesCounter.Inc()
-		err := kvc.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+		err := kvc.client.CAS(ctx, key, func(interface{}) (out interface{}, retry bool, err error) {
 			// try once
 			return newValue, false, nil
 		})

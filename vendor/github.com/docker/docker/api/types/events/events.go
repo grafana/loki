@@ -1,4 +1,6 @@
-package events // import "github.com/docker/docker/api/types/events"
+package events
+
+import "github.com/docker/docker/api/types/filters"
 
 // Type is used for event-types.
 type Type string
@@ -110,11 +112,14 @@ type Actor struct {
 
 // Message represents the information an event contains
 type Message struct {
-	// Deprecated information from JSONMessage.
+	// Deprecated: use Action instead.
+	// Information from JSONMessage.
 	// With data only in container events.
-	Status string `json:"status,omitempty"` // Deprecated: use Action instead.
-	ID     string `json:"id,omitempty"`     // Deprecated: use Actor.ID instead.
-	From   string `json:"from,omitempty"`   // Deprecated: use Actor.Attributes["image"] instead.
+	Status string `json:"status,omitempty"`
+	// Deprecated: use Actor.ID instead.
+	ID string `json:"id,omitempty"`
+	// Deprecated: use Actor.Attributes["image"] instead.
+	From string `json:"from,omitempty"`
 
 	Type   Type
 	Action Action
@@ -124,4 +129,11 @@ type Message struct {
 
 	Time     int64 `json:"time,omitempty"`
 	TimeNano int64 `json:"timeNano,omitempty"`
+}
+
+// ListOptions holds parameters to filter events with.
+type ListOptions struct {
+	Since   string
+	Until   string
+	Filters filters.Args
 }

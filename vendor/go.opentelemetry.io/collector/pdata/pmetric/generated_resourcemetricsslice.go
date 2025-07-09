@@ -7,6 +7,7 @@
 package pmetric
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -56,6 +57,21 @@ func (es ResourceMetricsSlice) At(i int) ResourceMetrics {
 	return newResourceMetrics((*es.orig)[i], es.state)
 }
 
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es ResourceMetricsSlice) All() iter.Seq2[int, ResourceMetrics] {
+	return func(yield func(int, ResourceMetrics) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
 // 1. If the newCap <= cap then no change in capacity.
 // 2. If the newCap > cap then the slice capacity will be expanded to equal newCap.
@@ -93,6 +109,10 @@ func (es ResourceMetricsSlice) AppendEmpty() ResourceMetrics {
 func (es ResourceMetricsSlice) MoveAndAppendTo(dest ResourceMetricsSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -125,22 +145,7 @@ func (es ResourceMetricsSlice) RemoveIf(f func(ResourceMetrics) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ResourceMetricsSlice) CopyTo(dest ResourceMetricsSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newResourceMetrics((*es.orig)[i], es.state).CopyTo(newResourceMetrics((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlpmetrics.ResourceMetrics, srcLen)
-	wrappers := make([]*otlpmetrics.ResourceMetrics, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newResourceMetrics((*es.orig)[i], es.state).CopyTo(newResourceMetrics(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigResourceMetricsSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the ResourceMetrics elements within ResourceMetricsSlice given the
@@ -149,4 +154,19 @@ func (es ResourceMetricsSlice) CopyTo(dest ResourceMetricsSlice) {
 func (es ResourceMetricsSlice) Sort(less func(a, b ResourceMetrics) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigResourceMetricsSlice(dest, src []*otlpmetrics.ResourceMetrics) []*otlpmetrics.ResourceMetrics {
+	if cap(dest) < len(src) {
+		dest = make([]*otlpmetrics.ResourceMetrics, len(src))
+		data := make([]otlpmetrics.ResourceMetrics, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigResourceMetrics(dest[i], src[i])
+	}
+	return dest
 }

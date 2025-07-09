@@ -14,7 +14,7 @@ import (
 // SVCBKey is the type of the keys used in the SVCB RR.
 type SVCBKey uint16
 
-// Keys defined in draft-ietf-dnsop-svcb-https-08 Section 14.3.2.
+// Keys defined in rfc9460
 const (
 	SVCB_MANDATORY SVCBKey = iota
 	SVCB_ALPN
@@ -23,7 +23,8 @@ const (
 	SVCB_IPV4HINT
 	SVCB_ECHCONFIG
 	SVCB_IPV6HINT
-	SVCB_DOHPATH // draft-ietf-add-svcb-dns-02 Section 9
+	SVCB_DOHPATH // rfc9461 Section 5
+	SVCB_OHTTP   // rfc9540 Section 8
 
 	svcb_RESERVED SVCBKey = 65535
 )
@@ -37,6 +38,7 @@ var svcbKeyToStringMap = map[SVCBKey]string{
 	SVCB_ECHCONFIG:       "ech",
 	SVCB_IPV6HINT:        "ipv6hint",
 	SVCB_DOHPATH:         "dohpath",
+	SVCB_OHTTP:           "ohttp",
 }
 
 var svcbStringToKeyMap = reverseSVCBKeyMap(svcbKeyToStringMap)
@@ -201,6 +203,8 @@ func makeSVCBKeyValue(key SVCBKey) SVCBKeyValue {
 		return new(SVCBIPv6Hint)
 	case SVCB_DOHPATH:
 		return new(SVCBDoHPath)
+	case SVCB_OHTTP:
+		return new(SVCBOhttp)
 	case svcb_RESERVED:
 		return nil
 	default:
@@ -210,11 +214,7 @@ func makeSVCBKeyValue(key SVCBKey) SVCBKeyValue {
 	}
 }
 
-// SVCB RR. See RFC xxxx (https://tools.ietf.org/html/draft-ietf-dnsop-svcb-https-08).
-//
-// NOTE: The HTTPS/SVCB RFCs are in the draft stage.
-// The API, including constants and types related to SVCBKeyValues, may
-// change in future versions in accordance with the latest drafts.
+// SVCB RR. See RFC 9460.
 type SVCB struct {
 	Hdr      RR_Header
 	Priority uint16         // If zero, Value must be empty or discarded by the user of this library
@@ -222,12 +222,8 @@ type SVCB struct {
 	Value    []SVCBKeyValue `dns:"pairs"`
 }
 
-// HTTPS RR. Everything valid for SVCB applies to HTTPS as well.
+// HTTPS RR. See RFC 9460. Everything valid for SVCB applies to HTTPS as well.
 // Except that the HTTPS record is intended for use with the HTTP and HTTPS protocols.
-//
-// NOTE: The HTTPS/SVCB RFCs are in the draft stage.
-// The API, including constants and types related to SVCBKeyValues, may
-// change in future versions in accordance with the latest drafts.
 type HTTPS struct {
 	SVCB
 }
@@ -771,8 +767,8 @@ func (s *SVCBIPv6Hint) copy() SVCBKeyValue {
 // SVCBDoHPath pair is used to indicate the URI template that the
 // clients may use to construct a DNS over HTTPS URI.
 //
-// See RFC xxxx (https://datatracker.ietf.org/doc/html/draft-ietf-add-svcb-dns-02)
-// and RFC yyyy (https://datatracker.ietf.org/doc/html/draft-ietf-add-ddr-06).
+// See RFC 9461 (https://datatracker.ietf.org/doc/html/rfc9461)
+// and RFC 9462 (https://datatracker.ietf.org/doc/html/rfc9462).
 //
 // A basic example of using the dohpath option together with the alpn
 // option to indicate support for DNS over HTTPS on a certain path:
@@ -814,6 +810,44 @@ func (s *SVCBDoHPath) copy() SVCBKeyValue {
 	return &SVCBDoHPath{
 		Template: s.Template,
 	}
+}
+
+// The "ohttp" SvcParamKey is used to indicate that a service described in a SVCB RR
+// can be accessed as a target using an associated gateway.
+// Both the presentation and wire-format values for the "ohttp" parameter MUST be empty.
+//
+// See RFC 9460 (https://datatracker.ietf.org/doc/html/rfc9460/)
+// and RFC 9230 (https://datatracker.ietf.org/doc/html/rfc9230/)
+//
+// A basic example of using the dohpath option together with the alpn
+// option to indicate support for DNS over HTTPS on a certain path:
+//
+//	s := new(dns.SVCB)
+//	s.Hdr = dns.RR_Header{Name: ".", Rrtype: dns.TypeSVCB, Class: dns.ClassINET}
+//	e := new(dns.SVCBAlpn)
+//	e.Alpn = []string{"h2", "h3"}
+//	p := new(dns.SVCBOhttp)
+//	s.Value = append(s.Value, e, p)
+type SVCBOhttp struct{}
+
+func (*SVCBOhttp) Key() SVCBKey          { return SVCB_OHTTP }
+func (*SVCBOhttp) copy() SVCBKeyValue    { return &SVCBOhttp{} }
+func (*SVCBOhttp) pack() ([]byte, error) { return []byte{}, nil }
+func (*SVCBOhttp) String() string        { return "" }
+func (*SVCBOhttp) len() int              { return 0 }
+
+func (*SVCBOhttp) unpack(b []byte) error {
+	if len(b) != 0 {
+		return errors.New("dns: svcbotthp: svcbotthp must have no value")
+	}
+	return nil
+}
+
+func (*SVCBOhttp) parse(b string) error {
+	if b != "" {
+		return errors.New("dns: svcbotthp: svcbotthp must have no value")
+	}
+	return nil
 }
 
 // SVCBLocal pair is intended for experimental/private use. The key is recommended

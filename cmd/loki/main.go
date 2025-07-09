@@ -10,9 +10,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
-	"github.com/grafana/dskit/spanprofiler"
 	"github.com/grafana/dskit/tracing"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
@@ -60,6 +58,10 @@ func main() {
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
+	if config.InternalServer.Enable {
+		config.InternalServer.Log = serverCfg.Log
+	}
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
@@ -86,13 +88,11 @@ func main() {
 
 	if config.Tracing.Enabled {
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-		trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+		trace, err := tracing.NewOTelOrJaegerFromEnv(fmt.Sprintf("loki-%s", config.Target), util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-		if config.Tracing.ProfilingEnabled {
-			opentracing.SetGlobalTracer(spanprofiler.NewTracer(opentracing.GlobalTracer()))
-		}
+
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {
@@ -101,6 +101,8 @@ func main() {
 			}
 		}()
 	}
+
+	setProfilingOptions(config.Profiling)
 
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.
@@ -118,7 +120,20 @@ func main() {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Loading configuration file", "filename", config.ConfigFile)
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
+}
+
+func setProfilingOptions(cfg loki.ProfilingConfig) {
+	if cfg.BlockProfileRate > 0 {
+		runtime.SetBlockProfileRate(cfg.BlockProfileRate)
+	}
+	if cfg.CPUProfileRate > 0 {
+		runtime.SetCPUProfileRate(cfg.CPUProfileRate)
+	}
+	if cfg.MutexProfileFraction > 0 {
+		runtime.SetMutexProfileFraction(cfg.MutexProfileFraction)
+	}
 }

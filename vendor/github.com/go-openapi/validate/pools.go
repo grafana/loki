@@ -1,3 +1,5 @@
+//go:build !validatedebug
+
 package validate
 
 import (
@@ -6,26 +8,7 @@ import (
 	"github.com/go-openapi/spec"
 )
 
-var (
-	// memory pools for all validator objects.
-	//
-	// Each pool can be borrowed from and redeemed to.
-	poolOfSchemaValidators      schemaValidatorsPool
-	poolOfObjectValidators      objectValidatorsPool
-	poolOfSliceValidators       sliceValidatorsPool
-	poolOfItemsValidators       itemsValidatorsPool
-	poolOfBasicCommonValidators basicCommonValidatorsPool
-	poolOfHeaderValidators      headerValidatorsPool
-	poolOfParamValidators       paramValidatorsPool
-	poolOfBasicSliceValidators  basicSliceValidatorsPool
-	poolOfNumberValidators      numberValidatorsPool
-	poolOfStringValidators      stringValidatorsPool
-	poolOfSchemaPropsValidators schemaPropsValidatorsPool
-	poolOfFormatValidators      formatValidatorsPool
-	poolOfTypeValidators        typeValidatorsPool
-	poolOfSchemas               schemasPool
-	poolOfResults               resultsPool
-)
+var pools allPools
 
 func init() {
 	resetPools()
@@ -35,158 +18,168 @@ func resetPools() {
 	// NOTE: for testing purpose, we might want to reset pools after calling Validate twice.
 	// The pool is corrupted in that case: calling Put twice inserts a duplicate in the pool
 	// and further calls to Get are mishandled.
-	poolOfSchemaValidators = schemaValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &SchemaValidator{}
 
-				return s
+	pools = allPools{
+		poolOfSchemaValidators: schemaValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &SchemaValidator{}
+
+					return s
+				},
 			},
 		},
-	}
+		poolOfObjectValidators: objectValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &objectValidator{}
 
-	poolOfObjectValidators = objectValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &objectValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfSliceValidators: sliceValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &schemaSliceValidator{}
 
-	poolOfSliceValidators = sliceValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &schemaSliceValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfItemsValidators: itemsValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &itemsValidator{}
 
-	poolOfItemsValidators = itemsValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &itemsValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfBasicCommonValidators: basicCommonValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &basicCommonValidator{}
 
-	poolOfBasicCommonValidators = basicCommonValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &basicCommonValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfHeaderValidators: headerValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &HeaderValidator{}
 
-	poolOfHeaderValidators = headerValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &HeaderValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfParamValidators: paramValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &ParamValidator{}
 
-	poolOfParamValidators = paramValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &ParamValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfBasicSliceValidators: basicSliceValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &basicSliceValidator{}
 
-	poolOfBasicSliceValidators = basicSliceValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &basicSliceValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfNumberValidators: numberValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &numberValidator{}
 
-	poolOfNumberValidators = numberValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &numberValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfStringValidators: stringValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &stringValidator{}
 
-	poolOfStringValidators = stringValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &stringValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfSchemaPropsValidators: schemaPropsValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &schemaPropsValidator{}
 
-	poolOfSchemaPropsValidators = schemaPropsValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &schemaPropsValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfFormatValidators: formatValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &formatValidator{}
 
-	poolOfFormatValidators = formatValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &formatValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfTypeValidators: typeValidatorsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &typeValidator{}
 
-	poolOfTypeValidators = typeValidatorsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &typeValidator{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfSchemas: schemasPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &spec.Schema{}
 
-	poolOfSchemas = schemasPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &spec.Schema{}
-
-				return s
+					return s
+				},
 			},
 		},
-	}
+		poolOfResults: resultsPool{
+			Pool: &sync.Pool{
+				New: func() any {
+					s := &Result{}
 
-	poolOfResults = resultsPool{
-		Pool: &sync.Pool{
-			New: func() any {
-				s := &Result{}
-
-				return s
+					return s
+				},
 			},
 		},
 	}
 }
 
 type (
+	allPools struct {
+		// memory pools for all validator objects.
+		//
+		// Each pool can be borrowed from and redeemed to.
+		poolOfSchemaValidators      schemaValidatorsPool
+		poolOfObjectValidators      objectValidatorsPool
+		poolOfSliceValidators       sliceValidatorsPool
+		poolOfItemsValidators       itemsValidatorsPool
+		poolOfBasicCommonValidators basicCommonValidatorsPool
+		poolOfHeaderValidators      headerValidatorsPool
+		poolOfParamValidators       paramValidatorsPool
+		poolOfBasicSliceValidators  basicSliceValidatorsPool
+		poolOfNumberValidators      numberValidatorsPool
+		poolOfStringValidators      stringValidatorsPool
+		poolOfSchemaPropsValidators schemaPropsValidatorsPool
+		poolOfFormatValidators      formatValidatorsPool
+		poolOfTypeValidators        typeValidatorsPool
+		poolOfSchemas               schemasPool
+		poolOfResults               resultsPool
+	}
+
 	schemaValidatorsPool struct {
 		*sync.Pool
 	}

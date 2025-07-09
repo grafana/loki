@@ -25,7 +25,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	_, ok := token["oplocURL"]
 	return ok
 }
@@ -40,12 +40,13 @@ type Poller[T any] struct {
 	OrigURL    string                `json:"origURL"`
 	Method     string                `json:"method"`
 	FinalState pollers.FinalStateVia `json:"finalState"`
+	ResultPath string                `json:"resultPath"`
 	CurState   string                `json:"state"`
 }
 
 // New creates a new Poller from the provided initial response.
 // Pass nil for response to create an empty Poller for rehydration.
-func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.FinalStateVia) (*Poller[T], error) {
+func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.FinalStateVia, resultPath string) (*Poller[T], error) {
 	if resp == nil {
 		log.Write(log.EventLRO, "Resuming Operation-Location poller.")
 		return &Poller[T]{pl: pl}, nil
@@ -82,6 +83,7 @@ func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.Fi
 		OrigURL:    resp.Request.URL.String(),
 		Method:     resp.Request.Method,
 		FinalState: finalState,
+		ResultPath: resultPath,
 		CurState:   curState,
 	}, nil
 }
@@ -115,10 +117,9 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 	var req *exported.Request
 	var err error
+
 	if p.FinalState == pollers.FinalStateViaLocation && p.LocURL != "" {
 		req, err = exported.NewRequest(ctx, http.MethodGet, p.LocURL)
-	} else if p.FinalState == pollers.FinalStateViaOpLocation && p.Method == http.MethodPost {
-		// no final GET required, terminal response should have it
 	} else if rl, rlErr := poller.GetResourceLocation(p.resp); rlErr != nil && !errors.Is(rlErr, poller.ErrNoBody) {
 		return rlErr
 	} else if rl != "" {
@@ -134,6 +135,8 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 
 	// if a final GET request has been created, execute it
 	if req != nil {
+		// no JSON path when making a final GET request
+		p.ResultPath = ""
 		resp, err := p.pl.Do(req)
 		if err != nil {
 			return err
@@ -141,5 +144,5 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		p.resp = resp
 	}
 
-	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), p.ResultPath, out)
 }

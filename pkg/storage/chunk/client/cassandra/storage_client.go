@@ -543,6 +543,7 @@ func NewObjectClient(cfg Config, schemaCfg config.SchemaConfig, registerer prome
 	}
 	return client, nil
 }
+
 func (s *ObjectClient) reconnectWriteSession() error {
 	s.writeMtx.Lock()
 	defer s.writeMtx.Unlock()

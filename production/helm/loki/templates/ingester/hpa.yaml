@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.ingester.autoscaling.enabled }}
+{{- if and $isDistributed .Values.ingester.autoscaling.enabled (or (not .Values.ingester.zoneAwareReplication.enabled) .Values.ingester.zoneAwareReplication.migration.enabled) }}
 {{- $apiVersion := include "loki.hpa.apiVersion" . -}}
 apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
@@ -11,7 +11,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Statefulset
+    kind: StatefulSet
     name: {{ include "loki.ingesterFullname" . }}
   minReplicas: {{ .Values.ingester.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.ingester.autoscaling.maxReplicas }}

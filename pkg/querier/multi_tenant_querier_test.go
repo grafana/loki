@@ -3,12 +3,14 @@ package querier
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
 
+	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
@@ -97,7 +99,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			entriesCount := 0
 			for iter.Next() {
 				require.Equal(t, tc.expLabels[entriesCount], iter.Labels())
-				require.Equal(t, tc.expLines[entriesCount], iter.Entry().Line)
+				require.Equal(t, tc.expLines[entriesCount], iter.At().Line)
 				entriesCount++
 			}
 			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
@@ -245,7 +247,7 @@ type mockEntryIterator struct {
 }
 
 func newMockEntryIterator(numLabels int) mockEntryIterator {
-	builder := labels.NewBuilder(nil)
+	builder := labels.NewBuilder(labels.EmptyLabels())
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}
@@ -256,7 +258,7 @@ func (it mockEntryIterator) Labels() string {
 	return it.labels
 }
 
-func (it mockEntryIterator) Entry() logproto.Entry {
+func (it mockEntryIterator) At() logproto.Entry {
 	return logproto.Entry{}
 }
 
@@ -268,7 +270,7 @@ func (it mockEntryIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (it mockEntryIterator) Error() error {
+func (it mockEntryIterator) Err() error {
 	return nil
 }
 
@@ -519,6 +521,190 @@ func TestSliceToSet(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			actual := sliceToSet(tc.slice)
 			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc      string
+		orgID     string
+		expected  []*logproto.DetectedLabel
+		mockSetup func(*querierMock)
+	}{
+		{
+			desc:  "single tenant",
+			orgID: "1",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 100},
+				{Label: "env", Cardinality: 50},
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for app and env labels
+				appSketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketchData, _ := appSketch.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketchData},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
+					},
+				}, nil)
+			},
+		},
+		{
+			desc:  "multiple tenants with overlapping labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app", Cardinality: 150},    // Combined cardinality after merging sketches
+				{Label: "env", Cardinality: 50},     // from tenant 1
+				{Label: "service", Cardinality: 75}, // from tenant 2
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				appSketch1 := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					appSketch1.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch1Data, _ := appSketch1.MarshalBinary()
+
+				envSketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				}
+				envSketchData, _ := envSketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				appSketch2 := hyperloglog.New()
+				for i := 50; i < 150; i++ { // 50 new values + 50 overlapping values
+					appSketch2.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				}
+				appSketch2Data, _ := appSketch2.MarshalBinary()
+
+				serviceSketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					serviceSketch.Insert([]byte(fmt.Sprintf("service-value-%d", i)))
+				}
+				serviceSketchData, _ := serviceSketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "1"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketch1Data},
+						{Label: "env", Cardinality: 50, Sketch: envSketchData},
+					},
+				}, nil).Once()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "2"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app", Cardinality: 100, Sketch: appSketch2Data},
+						{Label: "service", Cardinality: 75, Sketch: serviceSketchData},
+					},
+				}, nil).Once()
+			},
+		},
+		{
+			desc:  "multiple tenants with unique labels",
+			orgID: "1|2",
+			expected: []*logproto.DetectedLabel{
+				{Label: "app1", Cardinality: 100},
+				{Label: "app2", Cardinality: 200},
+				{Label: "env1", Cardinality: 50},
+				{Label: "env2", Cardinality: 75},
+			},
+			mockSetup: func(q *querierMock) {
+				// Create sketches for tenant 1
+				app1Sketch := hyperloglog.New()
+				for i := 0; i < 100; i++ {
+					app1Sketch.Insert([]byte(fmt.Sprintf("app1-value-%d", i)))
+				}
+				app1SketchData, _ := app1Sketch.MarshalBinary()
+
+				env1Sketch := hyperloglog.New()
+				for i := 0; i < 50; i++ {
+					env1Sketch.Insert([]byte(fmt.Sprintf("env1-value-%d", i)))
+				}
+				env1SketchData, _ := env1Sketch.MarshalBinary()
+
+				// Create sketches for tenant 2
+				app2Sketch := hyperloglog.New()
+				for i := 0; i < 200; i++ {
+					app2Sketch.Insert([]byte(fmt.Sprintf("app2-value-%d", i)))
+				}
+				app2SketchData, _ := app2Sketch.MarshalBinary()
+
+				env2Sketch := hyperloglog.New()
+				for i := 0; i < 75; i++ {
+					env2Sketch.Insert([]byte(fmt.Sprintf("env2-value-%d", i)))
+				}
+				env2SketchData, _ := env2Sketch.MarshalBinary()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "1"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app1", Cardinality: 100, Sketch: app1SketchData},
+						{Label: "env1", Cardinality: 50, Sketch: env1SketchData},
+					},
+				}, nil).Once()
+
+				q.On("DetectedLabels", mock.MatchedBy(func(ctx context.Context) bool {
+					id, err := user.ExtractOrgID(ctx)
+					return err == nil && id == "2"
+				}), mock.Anything).Return(&logproto.DetectedLabelsResponse{
+					DetectedLabels: []*logproto.DetectedLabel{
+						{Label: "app2", Cardinality: 200, Sketch: app2SketchData},
+						{Label: "env2", Cardinality: 75, Sketch: env2SketchData},
+					},
+				}, nil).Once()
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			tc.mockSetup(querier)
+
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+			req := &logproto.DetectedLabelsRequest{
+				Query: `{app="foo"}`,
+				Start: time.Now().Add(-1 * time.Hour),
+				End:   time.Now(),
+			}
+
+			resp, err := multiTenantQuerier.DetectedLabels(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, len(tc.expected), len(resp.DetectedLabels))
+
+			// Sort both slices for comparison
+			sort.Slice(tc.expected, func(i, j int) bool {
+				return tc.expected[i].Label < tc.expected[j].Label
+			})
+			sort.Slice(resp.DetectedLabels, func(i, j int) bool {
+				return resp.DetectedLabels[i].Label < resp.DetectedLabels[j].Label
+			})
+
+			for i := range tc.expected {
+				require.Equal(t, tc.expected[i].Label, resp.DetectedLabels[i].Label)
+				// Allow for some error in cardinality estimation due to HyperLogLog approximation
+				require.InDelta(t, tc.expected[i].Cardinality, resp.DetectedLabels[i].Cardinality, float64(tc.expected[i].Cardinality)*0.02)
+			}
 		})
 	}
 }

@@ -2,6 +2,7 @@ package maxminddb
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"math/big"
 	"reflect"
@@ -418,7 +419,7 @@ func (d *decoder) unmarshalMap(
 	result = indirect(result)
 	switch result.Kind() {
 	default:
-		return 0, newUnmarshalTypeError("map", result.Type())
+		return 0, newUnmarshalTypeStrError("map", result.Type())
 	case reflect.Struct:
 		return d.decodeStruct(size, offset, result, depth)
 	case reflect.Map:
@@ -430,7 +431,7 @@ func (d *decoder) unmarshalMap(
 			result.Set(rv)
 			return newOffset, err
 		}
-		return 0, newUnmarshalTypeError("map", result.Type())
+		return 0, newUnmarshalTypeStrError("map", result.Type())
 	}
 }
 
@@ -465,7 +466,7 @@ func (d *decoder) unmarshalSlice(
 			return newOffset, err
 		}
 	}
-	return 0, newUnmarshalTypeError("array", result.Type())
+	return 0, newUnmarshalTypeStrError("array", result.Type())
 }
 
 func (d *decoder) unmarshalString(size, offset uint, result reflect.Value) (uint, error) {
@@ -596,24 +597,26 @@ func (d *decoder) decodeMap(
 	mapType := result.Type()
 	keyValue := reflect.New(mapType.Key()).Elem()
 	elemType := mapType.Elem()
-	elemKind := elemType.Kind()
 	var elemValue reflect.Value
 	for i := uint(0); i < size; i++ {
 		var key []byte
 		var err error
 		key, offset, err = d.decodeKey(offset)
-
 		if err != nil {
 			return 0, err
 		}
 
-		if !elemValue.IsValid() || elemKind == reflect.Interface {
+		if elemValue.IsValid() {
+			// After 1.20 is the minimum supported version, this can just be
+			// elemValue.SetZero()
+			reflectSetZero(elemValue)
+		} else {
 			elemValue = reflect.New(elemType).Elem()
 		}
 
 		offset, err = d.decode(offset, elemValue, depth)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("decoding value for %s: %w", key, err)
 		}
 
 		keyValue.SetString(string(key))
@@ -770,7 +773,7 @@ func (d *decoder) decodeStruct(
 
 		offset, err = d.decode(offset, result.Field(j), depth)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("decoding value for %s: %w", key, err)
 		}
 	}
 	return offset, nil

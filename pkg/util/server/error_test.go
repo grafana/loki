@@ -44,7 +44,7 @@ func Test_writeError(t *testing.T) {
 		{"mixed context and rpc deadline", util.MultiError{context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, ErrDeadlineExceeded, http.StatusGatewayTimeout},
 		{"mixed context, rpc deadline and another", util.MultiError{errors.New("standard error"), context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, "3 errors: standard error; context deadline exceeded; rpc error: code = DeadlineExceeded desc = context deadline exceeded", http.StatusInternalServerError},
 		{"parse error", logqlmodel.ParseError{}, "parse error : ", http.StatusBadRequest},
-		{"httpgrpc", httpgrpc.Errorf(http.StatusBadRequest, errors.New("foo").Error()), "foo", http.StatusBadRequest},
+		{"httpgrpc", httpgrpc.Errorf(http.StatusBadRequest, "%s", errors.New("foo").Error()), "foo", http.StatusBadRequest},
 		{"internal", errors.New("foo"), "foo", http.StatusInternalServerError},
 		{"query error", storage_errors.ErrQueryMustContainMetricName, storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},
 		{"wrapped query error", fmt.Errorf("wrapped: %w", storage_errors.ErrQueryMustContainMetricName), "wrapped: " + storage_errors.ErrQueryMustContainMetricName.Error(), http.StatusBadRequest},

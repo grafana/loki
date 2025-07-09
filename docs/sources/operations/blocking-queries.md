@@ -1,10 +1,10 @@
 ---
-title: Blocking Queries
-menuTitle:  
-description: Describes how to configure Loki to block expensive queries using per-tenant overrides.
+title: Block unwanted queries
+menuTitle: Unwanted queries
+description: Describes how to configure Grafana Loki to block unwanted or expensive queries using per-tenant overrides.
 weight: 
 ---
-# Blocking Queries
+# Block unwanted queries
 
 In certain situations, you may not be able to control the queries being sent to your Loki installation. These queries
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
@@ -35,9 +35,9 @@ overrides:
       - hash: 2943214005          # hash of {stream="stdout",pod="loki-canary-9w49x"}
         types: filter,limited
 ```
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file).
-{{% /admonition %}}
+{{< /admonition >}}
 
 The available query types are:
 
@@ -53,9 +53,9 @@ is logged with every query request in the `query-frontend` and `querier` logs, f
 level=info ts=2023-03-30T09:08:15.2614555Z caller=metrics.go:152 component=frontend org_id=29 latency=fast 
 query="{stream=\"stdout\",pod=\"loki-canary-9w49x\"}" query_hash=2943214005 query_type=limited range_type=range ...
 ```
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The order of patterns is preserved, so the first matching pattern will be used.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Observing blocked queries
 
@@ -63,4 +63,4 @@ Blocked queries are logged, as well as counted in the `loki_blocked_queries` met
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules]({{< relref "../alert" >}}) will be blocked.
+Queries received via the API and executed as [alerting/recording rules](../../alert/) will be blocked.

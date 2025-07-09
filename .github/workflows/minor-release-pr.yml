@@ -2,10 +2,11 @@ concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
-  BUILD_TIMEOUT: 40
+  BUILD_TIMEOUT: 60
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
+  GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
@@ -14,10 +15,14 @@ env:
   VERSIONING_STRATEGY: "always-bump-minor"
 jobs:
   check:
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
-      build_image: "grafana/loki-build-image:0.33.3"
-      golang_ci_lint_version: "v1.55.1"
+      build_image: "grafana/loki-build-image:0.34.6"
+      golang_ci_lint_version: "v1.64.5"
       release_lib_ref: "main"
       skip_validation: false
       use_github_app_token: true
@@ -31,19 +36,26 @@ jobs:
     - "loki"
     - "loki-canary"
     - "loki-canary-boringcrypto"
+    - "loki-docker-driver"
     - "promtail"
     - "querytee"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
@@ -55,23 +67,36 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "fetch_app_credentials"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "fetch app credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: |
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "actions/create-github-app-token@v1"
       with:
-        app-id: "${{ secrets.APP_ID }}"
+        app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+        private-key: "${{ env.PRIVATE_KEY }}"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
     - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_VERSION: "${{ needs.dist.outputs.version }}"
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
@@ -85,12 +110,12 @@ jobs:
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
           --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
-          --release-as "${{ needs.dist.outputs.version }}" \
+          --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --separate-pull-requests false \
-          --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-          --token "${{ steps.github_app_token.outputs.token }}" \
+          --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
+          --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
         
       working-directory: "lib"
@@ -99,24 +124,36 @@ jobs:
     - "version"
     outputs:
       version: "${{ needs.version.outputs.version }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
+    - name: "clean up build tools cache"
+      run: "rm -rf /opt/hostedtoolcache"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@v2"
+      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
     - id: "get-secrets"
       name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@main"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
       with:
         common_secrets: |
           NFPM_SIGNING_KEY=packages-gpg:private-key
@@ -141,15 +178,18 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.3"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.34.6"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
+          if echo "grafana/loki-build-image:0.34.6" | grep -q "golang"; then
+            /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+          fi
           make dist packages
         EOF
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
         path: "release/dist"
@@ -157,56 +197,65 @@ jobs:
   fluent-bit:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -214,61 +263,72 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   fluentd:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -276,61 +336,72 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   logcli:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/logcli/Dockerfile"
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -338,63 +409,78 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   logstash:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
         outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -402,61 +488,72 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   loki:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -464,63 +561,78 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki-canary/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -528,63 +640,78 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary-boringcrypto:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -592,63 +719,171 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
-  promtail:
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+  loki-docker-driver:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      id-token: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
       name: "parse image platform"
       run: |
         mkdir -p images
+        mkdir -p plugins
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        if [[ "${platform}" == "linux/arm64" ]]; then
+          echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
+        else
+          echo "plugin_arch=" >> $GITHUB_OUTPUT
+        fi
+      working-directory: "release"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "Build and export"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
+      with:
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GOARCH=${{ steps.platform.outputs.platform_short }}
+          BUILD_IMAGE=grafana/loki-build-image:0.34.6
+        context: "release"
+        file: "release/clients/cmd/docker-driver/Dockerfile"
+        outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
+        platforms: "${{ matrix.arch }}"
+        push: false
+        tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - env:
+        OUTPUTS_PLATFORM: "${{ steps.platform.outputs.platform }}"
+        OUTPUTS_VERSION: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "compress rootfs"
+      run: |
+        tar -cf release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM}.tar \
+        -C release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM} \
+        .
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
+      with:
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins"
+        path: "release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        process_gcloudignore: false
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+  promtail:
+    needs:
+    - "version"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        persist-credentials: false
+        ref: "${{ env.RELEASE_LIB_REF }}"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        persist-credentials: false
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "setup node"
+      uses: "actions/setup-node@v4"
+      with:
+        node-version: 20
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - id: "platform"
+      name: "Parse image platform"
+      run: |
+        mkdir -p images
+        
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/clients/cmd/promtail/Dockerfile"
         outputs: "type=docker,dest=release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/promtail:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -656,63 +891,78 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   querytee:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@v2"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@v3"
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
+      with:
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
         mkdir -p images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@v2"
+      name: "Upload artifacts"
+      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
         path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -720,26 +970,34 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   version:
     needs:
     - "check"
     outputs:
       pr_created: "${{ steps.version.outputs.pr_created }}"
       version: "${{ steps.version.outputs.version }}"
+    permissions:
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
       with:
         path: "lib"
+        persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
         path: "release"
+        persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
       uses: "actions/setup-node@v4"
@@ -750,23 +1008,36 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
+    - id: "fetch_app_credentials"
+      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+      name: "fetch app credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: |
+          APP_ID=${{ env.GITHUB_APP }}:app-id
+          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "actions/create-github-app-token@v1"
       with:
-        app-id: "${{ secrets.APP_ID }}"
+        app-id: "${{ env.APP_ID }}"
         owner: "${{ github.repository_owner }}"
-        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-    - id: "github_app_token"
+        private-key: "${{ env.PRIVATE_KEY }}"
+    - env:
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
+      id: "github_app_token"
       name: "set github token"
       run: |
         if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
         else
           echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
         fi
-    - id: "version"
+    - env:
+        OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
+        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+      id: "version"
       name: "get release version"
       run: |
         npm install
@@ -782,8 +1053,8 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
           npm exec -- release-please release-pr \
@@ -796,8 +1067,8 @@ jobs:
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
-            --target-branch "${{ steps.extract_branch.outputs.branch }}" \
-            --token "${{ steps.github_app_token.outputs.token }}" \
+            --target-branch "$OUTPUTS_BRANCH" \
+            --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
         
@@ -824,6 +1095,5 @@ name: "Prepare Minor Release PR from Weekly"
     branches:
     - "k[0-9]+"
 permissions:
-  contents: "write"
-  id-token: "write"
-  pull-requests: "write"
+  contents: "read"
+  pull-requests: "read"

@@ -22,6 +22,34 @@ func (e *ProtoMarshaler) MetricsSize(md Metrics) int {
 	return pb.Size()
 }
 
+func (e *ProtoMarshaler) ResourceMetricsSize(rm ResourceMetrics) int {
+	return rm.orig.Size()
+}
+
+func (e *ProtoMarshaler) ScopeMetricsSize(sm ScopeMetrics) int {
+	return sm.orig.Size()
+}
+
+func (e *ProtoMarshaler) MetricSize(m Metric) int {
+	return m.orig.Size()
+}
+
+func (e *ProtoMarshaler) NumberDataPointSize(ndp NumberDataPoint) int {
+	return ndp.orig.Size()
+}
+
+func (e *ProtoMarshaler) SummaryDataPointSize(sdps SummaryDataPoint) int {
+	return sdps.orig.Size()
+}
+
+func (e *ProtoMarshaler) HistogramDataPointSize(hdp HistogramDataPoint) int {
+	return hdp.orig.Size()
+}
+
+func (e *ProtoMarshaler) ExponentialHistogramDataPointSize(ehdp ExponentialHistogramDataPoint) int {
+	return ehdp.orig.Size()
+}
+
 type ProtoUnmarshaler struct{}
 
 func (d *ProtoUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {

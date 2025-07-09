@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetCacheGenNumberForUser(t *testing.T) {
-	deleteClientMetrics := NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer)
+	deleteClientMetrics := NewDeleteRequestClientMetrics(nil)
 
 	t.Run("it requests results from the compactor client", func(t *testing.T) {
 		compactorClient := mockCompactorClient{

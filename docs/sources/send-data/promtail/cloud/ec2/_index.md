@@ -9,7 +9,9 @@ weight: 100
 
 # Run the Promtail client on AWS EC2
 
-In this tutorial we're going to setup [Promtail]({{< relref "../../../../send-data/promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
+In this tutorial we're going to setup [Promtail](../../) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
+
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 ## Requirements
 
@@ -42,14 +44,16 @@ aws ec2 create-security-group --group-name promtail-ec2  --description "promtail
 }
 ```
 
-Now let's authorize inbound access for SSH and [Promtail]({{< relref "../../../../send-data/promtail" >}}) server:
+Now let's authorize inbound access for SSH and [Promtail](../../) server:
 
 ```bash
 aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --protocol tcp --port 22 --cidr 0.0.0.0/0
 aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --protocol tcp --port 3100 --cidr 0.0.0.0/0
 ```
 
-> You don't need to open those ports to all IPs as shown above you can use your own IP range.
+{{< admonition type="note" >}}
+You don't need to open those ports to all IPs as shown above you can use your own IP range.
+{{< /admonition >}}
 
 We're going to create an [Amazon Linux 2][Amazon Linux 2] instance as this is one of the most popular but feel free to use the AMI of your choice.
 
@@ -65,7 +69,9 @@ To make it more interesting later let's tag (`Name=promtail-demo`) our instance:
 aws ec2 create-tags --resources i-041b0be05c2d5cfad --tags Key=Name,Value=promtail-demo
 ```
 
-> Tags enable you to categorize your AWS resources in different ways, for example, by purpose, owner, or environment. This is useful when you have many resources of the same type—you can quickly identify a specific resource based on the tags that you've assigned to it. You'll see later, Promtail can transform those tags into [Loki labels][labels].
+{{< admonition type="note" >}}
+Tags enable you to categorize your AWS resources in different ways, for example, by purpose, owner, or environment. This is useful when you have many resources of the same type—you can quickly identify a specific resource based on the tags that you've assigned to it. You'll see later, Promtail can transform those tags into [Loki labels][labels].
+{{< /admonition >}}
 
 Finally let's grab the public DNS of our instance:
 
@@ -82,7 +88,7 @@ ssh ec2-user@ec2-13-59-62-37.us-east-2.compute.amazonaws.com
 ## Setting up Promtail
 
 First let's make sure we're running as root by using `sudo -s`.
-Next we'll download, install and give executable right to [Promtail]({{< relref "../../../../send-data/promtail" >}}).
+Next we'll download, install and give executable right to [Promtail](../../).
 
 ```bash
 mkdir /opt/promtail && cd /opt/promtail
@@ -91,7 +97,7 @@ unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
 
-Now we're going to download the [Promtail configuration]({{< relref "../../../../send-data/promtail" >}}) file below and edit it, don't worry we will explain what those means.
+Now we're going to download the [Promtail configuration](../../) file below and edit it, don't worry we will explain what those means.
 The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
@@ -134,11 +140,11 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting]({{< relref "../../../../send-data/promtail/troubleshooting" >}}) service discovery and targets.
+The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting](../../troubleshooting/) service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 
-[Promtail]({{< relref "../../../../send-data/promtail" >}}) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
+[Promtail](../../) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
@@ -150,7 +156,7 @@ Finally the [`relabeling_configs`][relabel] section has three purposes:
 
 2. Choosing where Promtail should find log files to tail, in our example we want to include all log files that exist in `/var/log` using the glob `/var/log/**.log`. If you need to use multiple glob, you can simply add another job in your `scrape_configs`.
 
-3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieved by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environment variable, the target will be dropped. 
+3. Ensuring discovered targets are only for the machine Promtail currently runs on. This is achieved by adding the label `__host__` using the incoming metadata `__meta_ec2_private_dns_name`. If it doesn't match the current `HOSTNAME` environment variable, the target will be dropped.
 If `__meta_ec2_private_dns_name` doesn't match your instance's hostname (on EC2 Windows instance for example, where it is the IP address and not the hostname), you can hardcode the hostname at this stage, or check if any of the instances tag contain the hostname (`__meta_ec2_tag_<tagkey>: each tag value of the instance`)
 
 Alright we should be ready to fire up Promtail, we're going to run it using the flag `--dry-run`. This is perfect to ensure everything is correctly, specially when you're still playing around with the configuration. Don't worry when using this mode, Promtail won't send any logs and won't remember any file positions.
@@ -175,7 +181,7 @@ open http://ec2-13-59-62-37.us-east-2.compute.amazonaws.com:3100/
 
 For example the page below is the service discovery page. It shows you all discovered targets, with their respective available labels and the reason it was dropped if it was the case.
 
-![discovery page page][discovery page]
+{{< figure alt="Service discovery page" align="center" src="./promtail-ec2-discovery.png" >}}
 
 This page is really useful to understand what labels are available to forward with the `relabeling` configuration but also why Promtail is not scraping your target.
 
@@ -230,9 +236,9 @@ Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[
 Jul 08 15:48:57 ip-172-31-45-69.us-east-2.compute.internal promtail-linux-amd64[2732]: level=info ts=2020-07-08T15:48:57.56029474Z caller=main.go:67 msg="Starting Promtail" version="(version=1.6.0, branch=HEAD, revision=12c7eab8)"
 ```
 
-You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL]({{< relref "../../../../query" >}}) query `{zone="us-east-2"}`.
+You can now verify in Grafana that Loki has correctly received your instance logs by using the [LogQL](../../../../query/) query `{zone="us-east-2"}`.
 
-![Grafana Loki logs][ec2 logs]
+{{< figure alt="Grafana Loki logs" align="center" src="./promtail-ec2-logs.png" >}}
 
 ## Sending systemd logs
 
@@ -255,11 +261,59 @@ We will edit our previous config (`vi ec2-promtail.yaml`) and add the following 
 
 Note that you can use [relabeling][relabeling] to convert systemd labels to match what you want. Finally make sure that the path of journald logs is correct, it might be different on some systems.
 
-> You can download the final config example from our [GitHub repository][final config].
+{{< admonition type="note" >}}
+You can download the final config example from our [GitHub repository][final config].
+{{< /admonition >}}
 
 That's it, save the config and you can `reboot` the machine (or simply restart the service `systemctl restart promtail.service`).
 
-Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL]({{< relref "../../../../query" >}}) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
+Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL](../../../../query/) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
+
+# Troubleshooting Promtail on AWS EC2
+
+If you encounter the error `error="filetarget.fsnotify.NewWatcher: too many open files"` in standalone EC2, you can resolve it by adding the `LimitNOFILE` setting to your `promtail.service` file as follows:
+
+```yaml
+# /etc/systemd/system/promtail.service
+[Service]
+...
+LimitNOFILE=500000
+```
+
+The complete `promtail.service` file should look like this:
+
+```yaml
+# /etc/systemd/system/promtail.service
+[Unit]
+Description=Promtail
+
+[Service]
+User=root
+WorkingDirectory=/opt/promtail/
+ExecStartPre=/bin/sleep 30
+ExecStart=/opt/promtail/promtail-linux-amd64 --config.file=./ec2-promtail.yaml
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=500000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload and restart the promtail daemon to apply the changed systemd settings.
+
+```bash
+systemctl daemon-reload
+systemctl restart promtail.service
+```
+
+Continue to monitor whether the too many open files error occurs again.
+
+```bash
+watch -d -n2 "systemctl status promtail -l"
+```
 
 [promtail]: ../../promtail/README
 [aws cli]: https://aws.amazon.com/cli/
@@ -276,14 +330,11 @@ Let's head back to Grafana and verify that your Promtail logs are available in G
 [prometheus scrape config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
 [ec2_sd_config]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#ec2_sd_config
 [role]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html
-[discovery page]: ./promtail-ec2-discovery.png "Service discovery"
 [relabel]: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
 [systemd]: https://www.freedesktop.org/software/systemd/man/systemd.service.html
 [logql]: ../../../query
-[ec2 logs]: ./promtail-ec2-logs.png "Grafana Loki logs"
 [config gist]: https://gist.github.com/cyriltovena/d0881cc717757db951b642be48c01445
 [labels]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
-[troubleshooting loki]: ../../../getting-started/troubleshooting#troubleshooting-targets
 [live tailing]: https://grafana.com/docs/grafana/latest/features/datasources/loki/#live-tailing
 [systemd]: ../../../installation/helm#run-promtail-with-systemd-journal-support
 [journald]: https://www.freedesktop.org/software/systemd/man/systemd-journald.service.html

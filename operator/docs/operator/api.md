@@ -237,6 +237,18 @@ string
 <p>The client-side key file path for the TLS configuration.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>insecureSkipVerify</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Skip validating server certificate.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -995,7 +1007,7 @@ BlockedQueryTypes
 </table>
 
 ## BlockedQueryTypes { #loki-grafana-com-v1-BlockedQueryTypes }
-(<code>[]github.com/grafana/loki/operator/apis/loki/v1.BlockedQueryType</code> alias)
+(<code>[]github.com/grafana/loki/operator/api/loki/v1.BlockedQueryType</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
 </p>
@@ -1404,7 +1416,7 @@ LimitsTemplateSpec
 <code>tenants</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.PerTenantLimitsTemplateSpec
+map[string]github.com/grafana/loki/operator/api/loki/v1.PerTenantLimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -1457,6 +1469,22 @@ QueryLimitSpec
 <td>
 <em>(Optional)</em>
 <p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
 </td>
 </tr>
 <tr>
@@ -1888,15 +1916,22 @@ DO NOT USE THIS IN PRODUCTION!</p>
 </td>
 </tr><tr><td><p>&#34;1x.extra-small&#34;</p></td>
 <td><p>SizeOneXExtraSmall defines the size of a single Loki deployment
-with extra small resources/limits requirements and without HA support.
-This size is ultimately dedicated for development and demo purposes.
-DO NOT USE THIS IN PRODUCTION!</p>
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
+requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
 </tr><tr><td><p>&#34;1x.medium&#34;</p></td>
 <td><p>SizeOneXMedium defines the size of a single Loki deployment
 with small resources/limits requirements and HA support for all
 Loki components. This size is dedicated for setup <strong>with</strong> the
+requirement for single replication factor and auto-compaction.</p>
+<p>FIXME: Add clear description of ingestion/query performance expectations.</p>
+</td>
+</tr><tr><td><p>&#34;1x.pico&#34;</p></td>
+<td><p>SizeOneXPico defines the size of a single Loki deployment
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
 requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
@@ -1935,6 +1970,7 @@ ManagementStateType
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>ManagementState defines if the CR should be managed by the operator or not.
 Default is managed.</p>
 </td>
@@ -2216,6 +2252,21 @@ scheduling of all Loki components to be deployed.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>compactor</code><br/>
@@ -2589,13 +2640,192 @@ string
 </tbody>
 </table>
 
+## OTLPAttributeReference { #loki-grafana-com-v1-OTLPAttributeReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPMetadataSpec">OTLPMetadataSpec</a>, <a href="#loki-grafana-com-v1-OTLPStreamLabelSpec">OTLPStreamLabelSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name contains either a verbatim name of an attribute or a regular expression matching many attributes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>If Regex is true, then Name is treated as a regular expression instead of as a verbatim attribute name.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPMetadataSpec { #loki-grafana-com-v1-OTLPMetadataSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resourceAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ResourceAttributes lists the names of resource attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>scopeAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ScopeAttributes lists the names of scope attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>logAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>LogAttributes lists the names of log attributes that should be included in structured metadata.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPSpec { #loki-grafana-com-v1-OTLPSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.</p>
+<p>Attributes need to be listed by their &ldquo;OpenTelemetry name&rdquo; and not the representation used by Loki. Please consult
+the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+are emitted.</p>
+<p>Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>streamLabels</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPStreamLabelSpec">
+OTLPStreamLabelSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>StreamLabels configures which resource attributes are converted to Loki stream labels.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>drop</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPMetadataSpec">
+OTLPMetadataSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Drop configures which attributes are dropped from the log entry.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPStreamLabelSpec { #loki-grafana-com-v1-OTLPStreamLabelSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resourceAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ResourceAttributes lists the names of the resource attributes that should be converted into Loki stream labels.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ObjectStorageSchema { #loki-grafana-com-v1-ObjectStorageSchema }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
-<p>ObjectStorageSchema defines the requirements needed to configure a new
-storage schema.</p>
+<p>ObjectStorageSchema defines a schema version and the date when it will become effective.</p>
 </div>
 <table>
 <thead>
@@ -2628,9 +2858,11 @@ StorageSchemaEffectiveDate
 </em>
 </td>
 <td>
-<p>EffectiveDate is the date in UTC that the schema will be applied on.
-To ensure readibility of logs, this date should be before the current
-date in UTC.</p>
+<p>EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.</p>
+<p>The configuration always needs at least one schema that is currently valid. This means that when creating a new
+LokiStack it is recommended to add a schema with the latest available version and an effective date of &ldquo;yesterday&rdquo;.
+New schema versions added to the configuration always needs to be placed &ldquo;in the future&rdquo;, so that Loki can start
+using it once the day rolls over.</p>
 </td>
 </tr>
 </tbody>
@@ -2860,6 +3092,56 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
+## OpenshiftOTLPConfig { #loki-grafana-com-v1-OpenshiftOTLPConfig }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OpenshiftTenantSpec">OpenshiftTenantSpec</a>)
+</p>
+<div>
+<p>OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>disableRecommendedAttributes</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
+<p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
@@ -2892,6 +3174,20 @@ Setting this to an empty array disables admin groups.</p>
 - dedicated-admin</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OpenshiftOTLPConfig">
+OpenshiftOTLPConfig
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2900,7 +3196,7 @@ Setting this to an empty array disables admin groups.</p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
 </p>
 <div>
-<p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+<p>PerTenantLimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
 </div>
 <table>
 <thead>
@@ -2936,6 +3232,23 @@ PerTenantQueryLimitSpec
 <td>
 <em>(Optional)</em>
 <p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>otlp</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
+<p>The per-tenant configuration for OTLP attributes will be merged with the global configuration.</p>
 </td>
 </tr>
 <tr>
@@ -3058,7 +3371,7 @@ At least one container is still running or is in the process of being restarted.
 </table>
 
 ## PodStatusMap { #loki-grafana-com-v1-PodStatusMap }
-(<code>map[github.com/grafana/loki/operator/apis/loki/v1.PodStatus][]string</code> alias)
+(<code>map[github.com/grafana/loki/operator/api/loki/v1.PodStatus][]string</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>
@@ -3099,7 +3412,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -3150,6 +3463,18 @@ int32
 <td>
 <em>(Optional)</em>
 <p>CardinalityLimit defines the cardinality limit for index queries.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxVolumeSeries</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response</p>
 </td>
 </tr>
 </tbody>
@@ -4235,7 +4560,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1.RulerOverrides
 </a>
 </em>
 </td>
@@ -5608,7 +5933,7 @@ LimitsTemplateSpec
 <code>tenants</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.LimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -6868,7 +7193,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -7829,7 +8154,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.RulerOverrides
 </a>
 </em>
 </td>

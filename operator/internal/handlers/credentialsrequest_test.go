@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )

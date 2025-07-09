@@ -16,7 +16,10 @@ import (
 	"github.com/go-kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/sercand/kuberesolver/v5"
+	"github.com/sercand/kuberesolver/v6"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -26,11 +29,21 @@ import (
 )
 
 var (
-	// DoNotLogErrorHeaderKey is a header key used for marking non-loggable errors. More precisely, if an HTTP response
+	// DoNotLogErrorHeaderKey is a header name used for marking non-loggable errors. More precisely, if an HTTP response
 	// has a status code 5xx, and contains a header with key DoNotLogErrorHeaderKey and any values, the generated error
 	// will be marked as non-loggable.
 	DoNotLogErrorHeaderKey = http.CanonicalHeaderKey("X-DoNotLogError")
+
+	// ErrorMessageHeaderKey is a header name for header that contains error message that should be used when Server.Handle
+	// (httpgrpc.HTTP/Handle implementation) decides to return the response as an error, using status.ErrorProto.
+	// Normally Server.Handle would use entire response body as a error message, but Message field of rcp.Status object
+	// is a string, and if body contains non-utf8 bytes, marshalling of this object will fail.
+	ErrorMessageHeaderKey = http.CanonicalHeaderKey("X-ErrorMessage")
 )
+
+type contextType int
+
+const handledByHttpgrpcServer contextType = 0
 
 type Option func(*Server)
 
@@ -59,6 +72,8 @@ func NewServer(handler http.Handler, opts ...Option) *Server {
 
 // Handle implements HTTPServer.
 func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+	ctx = context.WithValue(ctx, handledByHttpgrpcServer, true)
+
 	req, err := httpgrpc.ToHTTPRequest(ctx, r)
 	if err != nil {
 		return nil, err
@@ -74,13 +89,24 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 		header.Del(DoNotLogErrorHeaderKey) // remove before converting to httpgrpc resp
 	}
 
+	errorMessageFromHeader := ""
+	if msg, ok := header[ErrorMessageHeaderKey]; ok {
+		errorMessageFromHeader = msg[0]
+		header.Del(ErrorMessageHeaderKey) // remove before converting to httpgrpc resp
+	}
+
 	resp := &httpgrpc.HTTPResponse{
 		Code:    int32(recorder.Code),
 		Headers: httpgrpc.FromHeader(header),
 		Body:    recorder.Body.Bytes(),
 	}
 	if s.shouldReturnError(resp) {
-		err := httpgrpc.ErrorFromHTTPResponse(resp)
+		var err error
+		if errorMessageFromHeader != "" {
+			err = httpgrpc.ErrorFromHTTPResponseWithMessage(resp, errorMessageFromHeader)
+		} else {
+			err = httpgrpc.ErrorFromHTTPResponse(resp)
+		}
 		if doNotLogError {
 			err = middleware.DoNotLogError{Err: err}
 		}
@@ -154,16 +180,22 @@ func NewClient(address string) (*Client, error) {
 	}
 	const grpcServiceConfig = `{"loadBalancingPolicy":"round_robin"}`
 
+	var unaryInterceptors []grpc.UnaryClientInterceptor
+	if opentracing.IsGlobalTracerRegistered() {
+		unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
+	}
+	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
+
 	dialOptions := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(grpcServiceConfig),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithChainUnaryInterceptor(
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-			middleware.ClientUserHeaderInterceptor,
-		),
+		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
+	}
+	if !opentracing.IsGlobalTracerRegistered() { // Note: I'm not sure whether this condition is required, feel free to question it.
+		dialOptions = append(dialOptions, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	}
 
-	conn, err := grpc.Dial(address, dialOptions...)
+	conn, err := grpc.NewClient(address, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,12 +208,17 @@ func NewClient(address string) (*Client, error) {
 
 // ServeHTTP implements http.Handler
 func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if tracer := opentracing.GlobalTracer(); tracer != nil {
+	// Are we using OpenTracing?
+	if tracer := opentracing.GlobalTracer(); opentracing.IsGlobalTracerRegistered() && tracer != nil {
 		if span := opentracing.SpanFromContext(r.Context()); span != nil {
 			if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header)); err != nil {
 				level.Warn(log.Global()).Log("msg", "failed to inject tracing headers into request", "err", err)
 			}
 		}
+	}
+	// Are we using OpenTelemetry?
+	if span := trace.SpanFromContext(r.Context()); span.SpanContext().IsValid() {
+		otelhttptrace.Inject(r.Context(), r)
 	}
 
 	req, err := httpgrpc.FromHTTPRequest(r)
@@ -205,4 +242,14 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// IsHandledByHttpgrpcServer returns true if context is associated with HTTP request that was initiated by
+// Server.Handle, which is an implementation of httpgrpc.HTTP/Handle gRPC method.
+func IsHandledByHttpgrpcServer(ctx context.Context) bool {
+	val := ctx.Value(handledByHttpgrpcServer)
+	if v, ok := val.(bool); ok {
+		return v
+	}
+	return false
 }

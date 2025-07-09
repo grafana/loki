@@ -148,6 +148,7 @@ func (v Value) FromRaw(iv any) error {
 	case int64:
 		v.SetInt(tv)
 	case uint:
+		//nolint:gosec
 		v.SetInt(int64(tv))
 	case uint8:
 		v.SetInt(int64(tv))
@@ -156,6 +157,7 @@ func (v Value) FromRaw(iv any) error {
 	case uint32:
 		v.SetInt(int64(tv))
 	case uint64:
+		//nolint:gosec
 		v.SetInt(int64(tv))
 	case float32:
 		v.SetDouble(float64(tv))
@@ -316,48 +318,25 @@ func (v Value) SetEmptySlice() Slice {
 	return newSlice(&av.ArrayValue.Values, v.getState())
 }
 
+// MoveTo moves the Value from current overriding the destination and
+// resetting the current instance to empty value.
+// Calling this function on zero-initialized Value will cause a panic.
+func (v Value) MoveTo(dest Value) {
+	v.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if v.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = *v.getOrig()
+	v.getOrig().Value = nil
+}
+
 // CopyTo copies the Value instance overriding the destination.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) CopyTo(dest Value) {
 	dest.getState().AssertMutable()
-	destOrig := dest.getOrig()
-	switch ov := v.getOrig().Value.(type) {
-	case *otlpcommon.AnyValue_KvlistValue:
-		kv, ok := destOrig.Value.(*otlpcommon.AnyValue_KvlistValue)
-		if !ok {
-			kv = &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}
-			destOrig.Value = kv
-		}
-		if ov.KvlistValue == nil {
-			kv.KvlistValue = nil
-			return
-		}
-		// Deep copy to dest.
-		newMap(&ov.KvlistValue.Values, v.getState()).CopyTo(newMap(&kv.KvlistValue.Values, dest.getState()))
-	case *otlpcommon.AnyValue_ArrayValue:
-		av, ok := destOrig.Value.(*otlpcommon.AnyValue_ArrayValue)
-		if !ok {
-			av = &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}
-			destOrig.Value = av
-		}
-		if ov.ArrayValue == nil {
-			av.ArrayValue = nil
-			return
-		}
-		// Deep copy to dest.
-		newSlice(&ov.ArrayValue.Values, v.getState()).CopyTo(newSlice(&av.ArrayValue.Values, dest.getState()))
-	case *otlpcommon.AnyValue_BytesValue:
-		bv, ok := destOrig.Value.(*otlpcommon.AnyValue_BytesValue)
-		if !ok {
-			bv = &otlpcommon.AnyValue_BytesValue{}
-			destOrig.Value = bv
-		}
-		bv.BytesValue = make([]byte, len(ov.BytesValue))
-		copy(bv.BytesValue, ov.BytesValue)
-	default:
-		// Primitive immutable type, no need for deep copy.
-		destOrig.Value = ov
-	}
+	internal.CopyOrigValue(dest.getOrig(), v.getOrig())
 }
 
 // AsString converts an OTLP Value object of any type to its equivalent string
@@ -401,7 +380,7 @@ func (v Value) AsString() string {
 // This allows us to avoid using reflection.
 func float64AsString(f float64) string {
 	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return fmt.Sprintf("json: unsupported value: %s", strconv.FormatFloat(f, 'g', -1, 64))
+		return "json: unsupported value: " + strconv.FormatFloat(f, 'g', -1, 64)
 	}
 
 	// Convert as if by ES6 number to string conversion.
@@ -448,6 +427,33 @@ func (v Value) AsRaw() any {
 		return v.Slice().AsRaw()
 	}
 	return fmt.Sprintf("<Unknown OpenTelemetry value type %q>", v.Type())
+}
+
+func (v Value) Equal(c Value) bool {
+	if v.Type() != c.Type() {
+		return false
+	}
+
+	switch v.Type() {
+	case ValueTypeEmpty:
+		return true
+	case ValueTypeStr:
+		return v.Str() == c.Str()
+	case ValueTypeBool:
+		return v.Bool() == c.Bool()
+	case ValueTypeDouble:
+		return v.Double() == c.Double()
+	case ValueTypeInt:
+		return v.Int() == c.Int()
+	case ValueTypeBytes:
+		return v.Bytes().Equal(c.Bytes())
+	case ValueTypeMap:
+		return v.Map().Equal(c.Map())
+	case ValueTypeSlice:
+		return v.Slice().Equal(c.Slice())
+	}
+
+	return false
 }
 
 func newKeyValueString(k string, v string) otlpcommon.KeyValue {

@@ -9,14 +9,16 @@ import (
 
 type Stats struct {
 	Status                              string
-	NumTasks, NumFilters                int
+	NumTasks, NumMatchers               int
 	ChunksRequested, ChunksFiltered     int
 	SeriesRequested, SeriesFiltered     int
 	QueueTime                           *atomic.Duration
-	MetasFetchTime, BlocksFetchTime     *atomic.Duration
+	BlocksFetchTime                     *atomic.Duration
 	ProcessingTime, TotalProcessingTime *atomic.Duration
 	PostProcessingTime                  *atomic.Duration
-	ProcessedBlocks                     *atomic.Int32
+	SkippedBlocks                       *atomic.Int32 // blocks skipped because they were not available (yet)
+	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
+	ProcessedBlocksTotal                *atomic.Int32 // blocks processed for multiplexed request
 }
 
 type statsKey int
@@ -26,14 +28,15 @@ var ctxKey = statsKey(0)
 // ContextWithEmptyStats returns a context with empty stats.
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
-		Status:              "unknown",
-		ProcessedBlocks:     atomic.NewInt32(0),
-		QueueTime:           atomic.NewDuration(0),
-		MetasFetchTime:      atomic.NewDuration(0),
-		BlocksFetchTime:     atomic.NewDuration(0),
-		ProcessingTime:      atomic.NewDuration(0),
-		TotalProcessingTime: atomic.NewDuration(0),
-		PostProcessingTime:  atomic.NewDuration(0),
+		Status:               "unknown",
+		SkippedBlocks:        atomic.NewInt32(0),
+		ProcessedBlocks:      atomic.NewInt32(0),
+		ProcessedBlocksTotal: atomic.NewInt32(0),
+		QueueTime:            atomic.NewDuration(0),
+		BlocksFetchTime:      atomic.NewDuration(0),
+		ProcessingTime:       atomic.NewDuration(0),
+		TotalProcessingTime:  atomic.NewDuration(0),
+		PostProcessingTime:   atomic.NewDuration(0),
 	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
@@ -52,7 +55,6 @@ func FromContext(ctx context.Context) *Stats {
 // aggregates the total duration
 func (s *Stats) Duration() (dur time.Duration) {
 	dur += s.QueueTime.Load()
-	dur += s.MetasFetchTime.Load()
 	dur += s.BlocksFetchTime.Load()
 	dur += s.ProcessingTime.Load()
 	dur += s.PostProcessingTime.Load()
@@ -70,8 +72,10 @@ func (s *Stats) KVArgs() []any {
 		"msg", "stats-report",
 		"status", s.Status,
 		"tasks", s.NumTasks,
-		"filters", s.NumFilters,
+		"matchers", s.NumMatchers,
+		"blocks_skipped", s.SkippedBlocks.Load(),
 		"blocks_processed", s.ProcessedBlocks.Load(),
+		"blocks_processed_total", s.ProcessedBlocksTotal.Load(),
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
@@ -79,7 +83,6 @@ func (s *Stats) KVArgs() []any {
 		"chunks_remaining", chunksRemaining,
 		"filter_ratio", filterRatio,
 		"queue_time", s.QueueTime.Load(),
-		"metas_fetch_time", s.MetasFetchTime.Load(),
 		"blocks_fetch_time", s.BlocksFetchTime.Load(),
 		"processing_time", s.ProcessingTime.Load(),
 		"post_processing_time", s.PostProcessingTime.Load(),
@@ -92,13 +95,6 @@ func (s *Stats) AddQueueTime(t time.Duration) {
 		return
 	}
 	s.QueueTime.Add(t)
-}
-
-func (s *Stats) AddMetasFetchTime(t time.Duration) {
-	if s == nil {
-		return
-	}
-	s.MetasFetchTime.Add(t)
 }
 
 func (s *Stats) AddBlocksFetchTime(t time.Duration) {
@@ -129,9 +125,23 @@ func (s *Stats) AddPostProcessingTime(t time.Duration) {
 	s.PostProcessingTime.Add(t)
 }
 
+func (s *Stats) IncSkippedBlocks() {
+	if s == nil {
+		return
+	}
+	s.SkippedBlocks.Inc()
+}
+
 func (s *Stats) IncProcessedBlocks() {
 	if s == nil {
 		return
 	}
 	s.ProcessedBlocks.Inc()
+}
+
+func (s *Stats) AddProcessedBlocksTotal(delta int) {
+	if s == nil {
+		return
+	}
+	s.ProcessedBlocksTotal.Add(int32(delta))
 }

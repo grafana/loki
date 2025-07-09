@@ -26,6 +26,7 @@
 package weightedaggregator
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -89,7 +90,7 @@ func New(cc balancer.ClientConn, logger *grpclog.PrefixLogger, newWRR func() wrr
 }
 
 // Start starts the aggregator. It can be called after Stop to restart the
-// aggretator.
+// aggregator.
 func (wbsa *Aggregator) Start() {
 	wbsa.mu.Lock()
 	defer wbsa.mu.Unlock()
@@ -250,6 +251,14 @@ func (wbsa *Aggregator) buildAndUpdateLocked() {
 // Caller must hold wbsa.mu.
 func (wbsa *Aggregator) build() balancer.State {
 	wbsa.logger.Infof("Child pickers with config: %+v", wbsa.idToPickerState)
+
+	if len(wbsa.idToPickerState) == 0 {
+		// This is the case when all sub-balancers are removed.
+		return balancer.State{
+			ConnectivityState: connectivity.TransientFailure,
+			Picker:            base.NewErrPicker(errors.New("weighted-target: no targets to pick from")),
+		}
+	}
 
 	// Make sure picker's return error is consistent with the aggregatedState.
 	pickers := make([]weightedPickerState, 0, len(wbsa.idToPickerState))

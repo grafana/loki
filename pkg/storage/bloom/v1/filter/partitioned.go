@@ -56,7 +56,7 @@ type PartitionedBloomFilter struct {
 	optimalCount   uint        // optimal number of distinct items that can be stored in this filter
 }
 
-// NewPartitionedBloomFilterWithEstimates creates a new partitioned Bloom filter
+// NewPartitionedBloomFilterWithCapacity creates a new partitioned Bloom filter
 // with a specific capacity
 func NewPartitionedBloomFilterWithCapacity(m uint, fpRate float64) *PartitionedBloomFilter {
 	var (

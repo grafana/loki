@@ -22,7 +22,25 @@ import (
 )
 
 func observe(ctx context.Context, hist *prometheus.HistogramVec, method string, err error, duration time.Duration, instrumentLabel instrumentationLabel) {
-	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(gRPC, method, instrumentLabel.getInstrumentationLabel(err), "false"), duration.Seconds())
+	labelValues := []string{
+		gRPC,
+		method,
+		instrumentLabel.getInstrumentationLabel(err),
+		"false",
+		"", // this is a placeholder for the tenant ID
+	}
+	labelValues = labelValues[:len(labelValues)-1]
+
+	instrument.ObserveWithExemplar(ctx, hist.WithLabelValues(labelValues...), duration.Seconds())
+	if cfg, ok := instrumentLabel.perTenantInstrumentation.shouldInstrument(ctx); ok {
+		labelValues = append(labelValues, cfg.TenantID)
+		if cfg.DurationHistogram {
+			instrument.ObserveWithExemplar(ctx, instrumentLabel.perTenantDuration.WithLabelValues(labelValues...), duration.Seconds())
+		}
+		if cfg.TotalCounter {
+			instrumentLabel.perTenantTotal.WithLabelValues(labelValues...).Inc()
+		}
+	}
 }
 
 // UnaryServerInstrumentInterceptor instruments gRPC requests for errors and latency.
@@ -182,8 +200,18 @@ var (
 	}
 )
 
+func WithPerTenantInstrumentation(total *prometheus.CounterVec, histogram *prometheus.HistogramVec, f PerTenantCallback) InstrumentationOption {
+	return func(instrumentationLabel *instrumentationLabel) {
+		instrumentationLabel.perTenantInstrumentation = f
+		instrumentationLabel.perTenantDuration = histogram
+		instrumentationLabel.perTenantTotal = total
+	}
+}
+
 func applyInstrumentationOptions(maskHTTPStatuses bool, options ...InstrumentationOption) instrumentationLabel {
-	instrumentationLabel := instrumentationLabel{maskHTTPStatus: maskHTTPStatuses}
+	instrumentationLabel := instrumentationLabel{
+		maskHTTPStatus: maskHTTPStatuses,
+	}
 	for _, opt := range options {
 		opt(&instrumentationLabel)
 	}
@@ -191,8 +219,11 @@ func applyInstrumentationOptions(maskHTTPStatuses bool, options ...Instrumentati
 }
 
 type instrumentationLabel struct {
-	reportGRPCStatus bool
-	maskHTTPStatus   bool
+	reportGRPCStatus         bool
+	maskHTTPStatus           bool
+	perTenantInstrumentation PerTenantCallback
+	perTenantDuration        *prometheus.HistogramVec
+	perTenantTotal           *prometheus.CounterVec
 }
 
 // getInstrumentationLabel converts an error into an error code string by applying the configurations

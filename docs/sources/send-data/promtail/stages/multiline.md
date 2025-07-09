@@ -9,6 +9,8 @@ weight:
 
 # multiline
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `multiline` stage merges multiple lines into a multiline block before passing it on to the next stage in the pipeline.
 
 A new block is identified by the `firstline` regular expression. Any line that does *not* match the expression is considered to be part of the block of the previous match.

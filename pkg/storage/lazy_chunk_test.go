@@ -38,8 +38,6 @@ func TestLazyChunkIterator(t *testing.T) {
 	}
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
-
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -54,8 +52,10 @@ func TestLazyChunkIterator(t *testing.T) {
 					Hash:   fooLabelsWithName.Hash(),
 					Entries: []logproto.Entry{
 						{
-							Timestamp: from,
-							Line:      "1",
+							Timestamp:          from,
+							Line:               "1",
+							Parsed:             logproto.EmptyLabelAdapters(),
+							StructuredMetadata: logproto.EmptyLabelAdapters(),
 						},
 					},
 				}),
@@ -65,8 +65,10 @@ func TestLazyChunkIterator(t *testing.T) {
 						Hash:   fooLabels.Hash(),
 						Entries: []logproto.Entry{
 							{
-								Timestamp: from,
-								Line:      "1",
+								Timestamp:          from,
+								Line:               "1",
+								Parsed:             logproto.EmptyLabelAdapters(),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
 							},
 						},
 					},
@@ -208,7 +210,7 @@ func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterato
 	return nil
 }
 
-func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

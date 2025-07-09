@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {

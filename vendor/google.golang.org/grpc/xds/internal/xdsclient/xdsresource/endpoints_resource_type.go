@@ -54,7 +54,7 @@ type endpointsResourceType struct {
 
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
-func (endpointsResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
+func (endpointsResourceType) Decode(_ *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
 	name, rc, err := unmarshalEndpointsResource(resource)
 	switch {
 	case name == "":
@@ -81,8 +81,8 @@ type EndpointsResourceData struct {
 	Resource EndpointsUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (e *EndpointsResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (e *EndpointsResourceData) RawEqual(other ResourceData) bool {
 	if e == nil && other == nil {
 		return true
 	}
@@ -104,41 +104,40 @@ func (e *EndpointsResourceData) Raw() *anypb.Any {
 }
 
 // EndpointsWatcher wraps the callbacks to be invoked for different
-// events corresponding to the endpoints resource being watched.
+// events corresponding to the endpoints resource being watched. gRFC A88
+// contains an exhaustive list of what method is invoked under what conditions.
 type EndpointsWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*EndpointsResourceData)
+	// ResourceChanged indicates a new version of the resource is available.
+	ResourceChanged(resource *EndpointsResourceData, done func())
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error)
+	// ResourceError indicates an error occurred while trying to fetch or
+	// decode the associated resource. The previous version of the resource
+	// should be considered invalid.
+	ResourceError(err error, done func())
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	// AmbientError indicates an error occurred after a resource has been
+	// received that should not modify the use of that resource but may provide
+	// useful information about the state of the XDSClient for debugging
+	// purposes. The previous version of the resource should still be
+	// considered valid.
+	AmbientError(err error, done func())
 }
 
 type delegatingEndpointsWatcher struct {
 	watcher EndpointsWatcher
 }
 
-func (d *delegatingEndpointsWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingEndpointsWatcher) ResourceChanged(data ResourceData, onDone func()) {
 	e := data.(*EndpointsResourceData)
-	d.watcher.OnUpdate(e)
+	d.watcher.ResourceChanged(e, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingEndpointsWatcher) ResourceError(err error, onDone func()) {
+	d.watcher.ResourceError(err, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingEndpointsWatcher) AmbientError(err error, onDone func()) {
+	d.watcher.AmbientError(err, onDone)
 }
 
 // WatchEndpoints uses xDS to discover the configuration associated with the

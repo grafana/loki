@@ -89,7 +89,9 @@ func WriteError(w http.ResponseWriter, err error) {
 
 func ToHeader(hs []*Header, header http.Header) {
 	for _, h := range hs {
-		header[h.Key] = h.Values
+		// http.Header expects header to be stored in canonical form,
+		// otherwise they are inaccessible with Get() on a http.Header struct.
+		header[http.CanonicalHeaderKey(h.Key)] = h.Values
 	}
 }
 
@@ -104,18 +106,31 @@ func FromHeader(hs http.Header) []*Header {
 	return result
 }
 
-// Errorf returns a HTTP gRPC error than is correctly forwarded over
+// Error returns a HTTP gRPC error that is correctly forwarded over
 // gRPC, and can eventually be converted back to a HTTP response with
 // HTTPResponseFromError.
-func Errorf(code int, tmpl string, args ...interface{}) error {
+func Error(code int, msg string) error {
 	return ErrorFromHTTPResponse(&HTTPResponse{
 		Code: int32(code),
-		Body: []byte(fmt.Sprintf(tmpl, args...)),
+		Body: []byte(msg),
 	})
 }
 
-// ErrorFromHTTPResponse converts an HTTP response into a grpc error
+// Errorf returns a HTTP gRPC error that is correctly forwarded over
+// gRPC, and can eventually be converted back to a HTTP response with
+// HTTPResponseFromError.
+func Errorf(code int, tmpl string, args ...interface{}) error {
+	return Error(code, fmt.Sprintf(tmpl, args...))
+}
+
+// ErrorFromHTTPResponse converts an HTTP response into a grpc error, and uses HTTP response body as an error message.
+// Note that if HTTP response body contains non-utf8 string, then returned error cannot be marshalled by protobuf.
 func ErrorFromHTTPResponse(resp *HTTPResponse) error {
+	return ErrorFromHTTPResponseWithMessage(resp, string(resp.Body))
+}
+
+// ErrorFromHTTPResponseWithMessage converts an HTTP response into a grpc error, and uses supplied message for Error message.
+func ErrorFromHTTPResponseWithMessage(resp *HTTPResponse, msg string) error {
 	a, err := types.MarshalAny(resp)
 	if err != nil {
 		return err
@@ -123,7 +138,7 @@ func ErrorFromHTTPResponse(resp *HTTPResponse) error {
 
 	return status.ErrorProto(&spb.Status{
 		Code:    resp.Code,
-		Message: string(resp.Body),
+		Message: msg,
 		Details: []*types.Any{a},
 	})
 }

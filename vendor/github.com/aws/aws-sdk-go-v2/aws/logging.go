@@ -7,10 +7,12 @@ package aws
 // The entire 64-bit group is reserved for later expansion by the SDK.
 //
 // Example: Setting ClientLogMode to enable logging of retries and requests
-//  clientLogMode := aws.LogRetries | aws.LogRequest
+//
+//	clientLogMode := aws.LogRetries | aws.LogRequest
 //
 // Example: Adding an additional log mode to an existing ClientLogMode value
-//  clientLogMode |= aws.LogResponse
+//
+//	clientLogMode |= aws.LogResponse
 type ClientLogMode uint64
 
 // Supported ClientLogMode bits that can be configured to toggle logging of specific SDK events.

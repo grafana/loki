@@ -9,11 +9,13 @@ import (
 
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/dskit/concurrency"
 
@@ -32,8 +34,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/extract"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/storage/stores/series")
 
 var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -316,18 +319,16 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelNamesForMetricName")
+	defer sp.End()
 
 	// Fetch the series IDs from the index
-	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, nil)
+	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
+	sp.SetAttributes(attribute.Int("series-ids", len(seriesIDs)))
 
 	// Lookup the series in the index to get label names.
 	labelNames, err := c.lookupLabelNamesBySeries(ctx, from, through, userID, seriesIDs)
@@ -336,25 +337,30 @@ func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 		if err == series_index.ErrNotSupported {
 			return c.lookupLabelNamesByChunks(ctx, from, through, userID, seriesIDs)
 		}
-		level.Error(log).Log("msg", "lookupLabelNamesBySeries", "err", err)
+		sp.RecordError(err, trace.WithAttributes(
+			attribute.String("method", "lookupLabelNamesBySeries"),
+		))
 		return nil, err
 	}
-	level.Debug(log).Log("labelNames", len(labelNames))
+	sp.SetAttributes(attribute.Int("labelNames", len(labelNames)))
 
 	return labelNames, nil
 }
 
 func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer sp.End()
 
 	if len(matchers) != 0 {
 		return c.labelValuesForMetricNameWithMatchers(ctx, userID, from, through, metricName, labelName, matchers...)
 	}
 
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "labelName", labelName)
+	sp.SetAttributes(
+		attribute.String("from", from.String()),
+		attribute.String("through", through.String()),
+		attribute.String("metricName", metricName),
+		attribute.String("labelName", labelName),
+	)
 
 	queries, err := c.schema.GetReadQueriesForMetricLabel(from, through, userID, metricName, labelName)
 	if err != nil {
@@ -379,7 +385,7 @@ func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 	return result.Strings(), nil
 }
 
-// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+// labelValuesForMetricNameWithMatchers retrieves all label values for a single label name and metric name.
 func (c *IndexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
@@ -506,12 +512,12 @@ func (c *IndexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context
 }
 
 func (c *IndexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
+	return c.lookupIDsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *IndexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
+func (c *IndexReaderWriter) lookupIDsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
 	var err error
 	var queries []series_index.Query
 	var labelName string
@@ -632,12 +638,11 @@ func (c *IndexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries 
 }
 
 func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesBySeries")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.lookupLabelNamesBySeries", trace.WithAttributes(
+		attribute.Int("seriesIDs", len(seriesIDs)),
+	))
+	defer sp.End()
 
-	level.Debug(log).Log("seriesIDs", len(seriesIDs))
 	queries := make([]series_index.Query, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
@@ -646,7 +651,7 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 		}
 		queries = append(queries, qs...)
 	}
-	level.Debug(log).Log("queries", len(queries))
+	sp.SetAttributes(attribute.Int("queries", len(queries)))
 	entries := entriesPool.Get().(*[]series_index.Entry)
 	defer entriesPool.Put(entries)
 	err := c.lookupEntriesByQueries(ctx, queries, entries)
@@ -654,7 +659,7 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 		return nil, err
 	}
 
-	level.Debug(log).Log("entries", len(*entries))
+	sp.SetAttributes(attribute.Int("entries", len(*entries)))
 
 	var result util.UniqueStrings
 	for _, entry := range *entries {
@@ -669,36 +674,40 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 }
 
 func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesByChunks")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+	ctx, sp := tracer.Start(ctx, "SeriesStore.lookupLabelNamesByChunks")
+	defer sp.End()
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
 	if err != nil {
-		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
+		sp.RecordError(err, trace.WithAttributes(
+			attribute.String("method", "lookupChunksBySeries"),
+		))
 		return nil, err
 	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+	sp.SetAttributes(attribute.Int("chunk-ids", len(chunkIDs)))
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
-		level.Error(log).Log("err", "convertChunkIDsToChunks", "err", err)
+		sp.RecordError(err, trace.WithAttributes(
+			attribute.String("method", "convertChunkIDsToChunks"),
+		))
 		return nil, err
 	}
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
 	filtered = filterChunksByUniqueFingerprint(filtered)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	sp.SetAttributes(attribute.Int("Chunks post filtering", len(chunks)))
 
 	chunksPerQuery.Observe(float64(len(filtered)))
 
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered)
 	if err != nil {
-		level.Error(log).Log("msg", "FetchChunks", "err", err)
+		sp.RecordError(err, trace.WithAttributes(
+			attribute.String("method", "FetchChunks"),
+		))
 		return nil, err
 	}
 	return labelNamesFromChunks(allChunks), nil

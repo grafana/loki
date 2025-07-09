@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -25,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type IngesterQuerier interface {
@@ -73,42 +74,39 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	predicate chunk.Predicate,
 	storeChunksOverride *logproto.ChunkRefGroup,
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	spanLogger := spanlogger.FromContext(ctx)
-
-	errs := make(chan error)
 
 	var storeChunks [][]chunk.Chunk
+	g, ctx := errgroup.WithContext(ctx)
+
 	var fetchers []*fetcher.Fetcher
-	go func() {
+	g.Go(func() error {
 		var err error
 		storeChunks, fetchers, err = a.Store.GetChunks(ctx, userID, from, through, predicate, storeChunksOverride)
-		errs <- err
-	}()
+		return err
+	})
 
 	var ingesterChunks []string
 
-	go func() {
+	g.Go(func() error {
 		if !a.shouldQueryIngesters(through, model.Now()) {
 			level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
-			errs <- nil
-			return
+			return nil
 		}
 
 		var err error
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, predicate.Matchers...)
 
 		if err == nil {
-			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
+			sp := trace.SpanFromContext(ctx)
+			sp.SetAttributes(attribute.Int("ingester-chunks-count", len(ingesterChunks)))
+
 			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
-		errs <- err
-	}()
+		return err
+	})
 
-	for i := 0; i < 2; i++ {
-		err := <-errs
-		if err != nil {
-			return nil, nil, err
-		}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
 	}
 
 	if len(ingesterChunks) == 0 {
@@ -157,7 +155,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -175,8 +173,8 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "AsyncStore.Volume")
+	defer sp.End()
 
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
@@ -209,7 +207,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -218,12 +216,12 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		return nil, err
 	}
 
-	sp.LogKV(
-		"user", userID,
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"limit", limit,
+	sp.SetAttributes(
+		attribute.String("user", userID),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.Int("limit", int(limit)),
 	)
 
 	merged := seriesvolume.Merge(resps, limit)
@@ -325,7 +323,7 @@ func (a *AsyncStore) GetShards(
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			return jobs[i]()
 		},
 	); err != nil {
@@ -373,15 +371,8 @@ func mergeShardsFromIngestersAndStore(
 
 	shards := sharding.LinearShards(int(totalBytes/targetBytesPerShard), totalBytes)
 
-	// increment the total chunks by the number seen from ingesters
-	// NB(owen-d): this isn't perfect as it mixes signals a bit by joining
-	// store chunks which _could_ possibly be filtered with ingester chunks which can't,
-	// but it's still directionally helpful
-	updatedStats := storeResp.Statistics
-	updatedStats.Index.TotalChunks += int64(statsResp.Chunks)
 	return &logproto.ShardsResponse{
-		Shards:     shards,
-		Statistics: updatedStats,
+		Shards: shards,
 		// explicitly nil chunkgroups when we've changed the shards+included chunkrefs from ingesters
 		ChunkGroups: nil,
 	}

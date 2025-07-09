@@ -2,7 +2,9 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"time"
 )
 
 // mtxWithReadiness combines a mutex with readiness channel. It would acquire lock only when the channel is closed to mark it ready.
@@ -21,7 +23,19 @@ func (m *mtxWithReadiness) markReady() {
 	close(m.ready)
 }
 
+func (m *mtxWithReadiness) isReady() bool {
+	select {
+	case <-m.ready:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *mtxWithReadiness) awaitReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeoutCause(ctx, 30*time.Second, errors.New("exceeded 30 seconds in awaitReady"))
+	defer cancel()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

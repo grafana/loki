@@ -17,6 +17,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -40,6 +41,17 @@ type Request struct {
 	// Optional body and length fields to set the body stream and content length
 	body   io.ReadCloser
 	length int64
+	ctx    context.Context
+}
+
+func (r *Request) Context() context.Context {
+	return r.ctx
+}
+
+func (r *Request) SetContext(ctx context.Context) {
+	if ctx != nil {
+		r.ctx = ctx
+	}
 }
 
 func (r *Request) Protocol() string {
@@ -149,7 +161,11 @@ func (r *Request) SetParam(key, value string) {
 func (r *Request) QueryString() string {
 	buf := make([]string, 0, len(r.params))
 	for k, v := range r.params {
-		buf = append(buf, util.UriEncode(k, true)+"="+util.UriEncode(v, true))
+		if len(v) == 0 {
+			buf = append(buf, util.UriEncode(k, true))
+		} else {
+			buf = append(buf, util.UriEncode(k, true)+"="+util.UriEncode(v, true))
+		}
 	}
 	return strings.Join(buf, "&")
 }

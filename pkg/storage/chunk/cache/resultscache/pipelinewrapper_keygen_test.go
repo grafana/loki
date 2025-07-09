@@ -2,9 +2,11 @@ package resultscache
 
 import (
 	"context"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestPipelineWrapperKeygen(t *testing.T) {

@@ -21,9 +21,8 @@ func (a AccessPointARN) GetARN() arn.ARN {
 // AccessPoint resource.
 //
 // Supported Access point resource format:
-//	- Access point format: arn:{partition}:s3:{region}:{accountId}:accesspoint/{accesspointName}
-//	- example: arn.aws.s3.us-west-2.012345678901:accesspoint/myaccesspoint
-//
+//   - Access point format: arn:{partition}:s3:{region}:{accountId}:accesspoint/{accesspointName}
+//   - example: arn.aws.s3.us-west-2.012345678901:accesspoint/myaccesspoint
 func ParseAccessPointResource(a arn.ARN, resParts []string) (AccessPointARN, error) {
 	if len(a.Region) == 0 {
 		return AccessPointARN{}, InvalidARNError{ARN: a, Reason: "region not set"}

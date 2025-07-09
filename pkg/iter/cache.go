@@ -23,10 +23,10 @@ type cachedIterator struct {
 
 // NewCachedIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
-func NewCachedIterator(it EntryIterator, cap int) CacheEntryIterator {
+func NewCachedIterator(it EntryIterator, capacity int) CacheEntryIterator {
 	c := &cachedIterator{
 		wrapped: it,
-		cache:   make([]entryWithLabels, 0, cap),
+		cache:   make([]entryWithLabels, 0, capacity),
 		curr:    -1,
 	}
 	return c
@@ -48,12 +48,12 @@ func (it *cachedIterator) consumeWrapped() bool {
 	// we're done with the base iterator.
 	if !ok {
 		it.closeErr = it.Wrapped().Close()
-		it.iterErr = it.Wrapped().Error()
+		it.iterErr = it.Wrapped().Err()
 		it.wrapped = nil
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, entryWithLabels{Entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
+	it.cache = append(it.cache, entryWithLabels{Entry: it.Wrapped().At(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
 	it.curr++
 	return true
 }
@@ -72,7 +72,7 @@ func (it *cachedIterator) Next() bool {
 	return true
 }
 
-func (it *cachedIterator) Entry() logproto.Entry {
+func (it *cachedIterator) At() logproto.Entry {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return logproto.Entry{}
 	}
@@ -94,10 +94,13 @@ func (it *cachedIterator) StreamHash() uint64 {
 	return it.cache[it.curr].streamHash
 }
 
-func (it *cachedIterator) Error() error { return it.iterErr }
+func (it *cachedIterator) Err() error { return it.iterErr }
 
 func (it *cachedIterator) Close() error {
 	it.Reset()
+	if it.wrapped != nil {
+		it.wrapped.Close()
+	}
 	return it.closeErr
 }
 
@@ -120,10 +123,10 @@ type cachedSampleIterator struct {
 
 // NewCachedSampleIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
-func NewCachedSampleIterator(it SampleIterator, cap int) CacheSampleIterator {
+func NewCachedSampleIterator(it SampleIterator, capacity int) CacheSampleIterator {
 	c := &cachedSampleIterator{
 		wrapped: it,
-		cache:   make([]sampleWithLabels, 0, cap),
+		cache:   make([]sampleWithLabels, 0, capacity),
 		curr:    -1,
 	}
 	return c
@@ -145,12 +148,12 @@ func (it *cachedSampleIterator) consumeWrapped() bool {
 	// we're done with the base iterator.
 	if !ok {
 		it.closeErr = it.Wrapped().Close()
-		it.iterErr = it.Wrapped().Error()
+		it.iterErr = it.Wrapped().Err()
 		it.wrapped = nil
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, sampleWithLabels{Sample: it.Wrapped().Sample(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
+	it.cache = append(it.cache, sampleWithLabels{Sample: it.Wrapped().At(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
 	it.curr++
 	return true
 }
@@ -169,7 +172,7 @@ func (it *cachedSampleIterator) Next() bool {
 	return true
 }
 
-func (it *cachedSampleIterator) Sample() logproto.Sample {
+func (it *cachedSampleIterator) At() logproto.Sample {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
 		return logproto.Sample{}
 	}
@@ -190,9 +193,12 @@ func (it *cachedSampleIterator) StreamHash() uint64 {
 	return it.cache[it.curr].streamHash
 }
 
-func (it *cachedSampleIterator) Error() error { return it.iterErr }
+func (it *cachedSampleIterator) Err() error { return it.iterErr }
 
 func (it *cachedSampleIterator) Close() error {
 	it.Reset()
+	if it.wrapped != nil {
+		it.wrapped.Close()
+	}
 	return it.closeErr
 }

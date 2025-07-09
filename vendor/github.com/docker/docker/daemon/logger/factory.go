@@ -1,4 +1,4 @@
-package logger // import "github.com/docker/docker/daemon/logger"
+package logger
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/pkg/plugingetter"
-	units "github.com/docker/go-units"
+	"github.com/docker/go-units"
 	"github.com/pkg/errors"
 )
 

@@ -39,6 +39,10 @@ func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ 
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
 func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
@@ -93,6 +97,58 @@ func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
 func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
 	tr := ring.TokenRanges{0, math.MaxUint32}
 	return tr, nil
+}
+
+func (r *readRingMock) InstancesInZoneCount(zone string) int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if instance.Zone == zone {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if len(instance.Tokens) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(zone string) int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if len(instance.Tokens) > 0 && instance.Zone == zone {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) ZonesCount() int {
+	uniqueZone := make(map[string]any)
+	for _, instance := range r.replicationSet.Instances {
+		uniqueZone[instance.Zone] = nil
+	}
+	return len(uniqueZone)
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
 }
 
 type readLifecyclerMock struct {

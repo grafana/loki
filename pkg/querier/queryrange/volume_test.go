@@ -258,7 +258,7 @@ func Test_toPrometheusResponse(t *testing.T) {
 
 func Test_VolumeMiddleware(t *testing.T) {
 	makeVolumeRequest := func(req *logproto.VolumeRequest) *queryrangebase.PrometheusResponse {
-		nextHandler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		nextHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{

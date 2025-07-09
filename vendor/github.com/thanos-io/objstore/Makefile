@@ -39,7 +39,7 @@ check-docs: $(MDOX)
 
 .PHONY: deps
 deps: ## Ensures fresh go.mod and go.sum.
-	@go mod tidy -compat=1.18
+	@go mod tidy -compat=1.20
 	@go mod verify
 
 .PHONY: format

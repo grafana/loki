@@ -2,15 +2,19 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -24,6 +28,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
 )
+
+var tracer = otel.Tracer("pkg/storage/stores/shipper/indexshipper/tsdb")
 
 // implements stores.Index
 type IndexClient struct {
@@ -170,8 +176,8 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
-	return c.idx.LabelNames(ctx, userID, from, through)
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -221,26 +227,26 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 	res := acc.Stats()
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(
-			"function", "IndexClient.Stats",
-			"from", from.Time(),
-			"through", through.Time(),
-			"matchers", syntax.MatchersString(matchers),
-			"shard", shard,
-			"intervals", len(intervals),
-			"streams", res.Streams,
-			"chunks", res.Chunks,
-			"bytes", res.Bytes,
-			"entries", res.Entries,
-		)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(
+		attribute.String("function", "IndexClient.Stats"),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.String("shard", fmt.Sprintf("%+v", shard)),
+		attribute.Int("intervals", len(intervals)),
+		attribute.Int64("streams", int64(res.Streams)),
+		attribute.Int64("chunks", int64(res.Chunks)),
+		attribute.Int64("bytes", int64(res.Bytes)),
+		attribute.Int64("entries", int64(res.Entries)),
+	)
+
 	return &res, nil
 }
 
 func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "IndexClient.Volume")
+	defer sp.End()
 
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
@@ -263,14 +269,14 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 		}
 	}
 
-	sp.LogKV(
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"shard", shard,
-		"intervals", len(intervals),
-		"limit", limit,
-		"aggregateBy", aggregateBy,
+	sp.SetAttributes(
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.String("shard", fmt.Sprintf("%+v", shard)),
+		attribute.Int("intervals", len(intervals)),
+		attribute.Int("limit", int(limit)),
+		attribute.String("aggregateBy", aggregateBy),
 	)
 
 	if err != nil {
@@ -281,7 +287,6 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 }
 
 func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
-
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
 

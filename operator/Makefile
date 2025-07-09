@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.6.0
+VERSION ?= 0.8.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -126,10 +126,10 @@ deps: go.mod go.sum
 	go mod verify
 
 .PHONY: deps-api
-deps-api: apis/loki/go.mod apis/loki/go.sum
-	@cd ./apis/loki/ && go mod tidy
-	@cd ./apis/loki/ && go mod download
-	@cd ./apis/loki/ && go mod verify
+deps-api: api/loki/go.mod api/loki/go.sum
+	@cd ./api/loki/ && go mod tidy
+	@cd ./api/loki/ && go mod download
+	@cd ./api/loki/ && go mod verify
 
 .PHONY: cli
 cli: deps bin/loki-broker ## Build loki-broker CLI binary
@@ -138,11 +138,11 @@ bin/loki-broker: $(GO_FILES) | generate
 
 .PHONY: manager
 manager: deps generate ## Build manager binary
-	go build -o bin/manager main.go
+	go build -o bin/manager ./cmd/loki-operator/main.go
 
 .PHONY: size-calculator
 size-calculator: deps generate ## Build size-calculator binary
-	go build -o bin/size-calculator main.go
+	go build -o bin/size-calculator ./cmd/size-calculator/main.go
 
 .PHONY: go-generate
 go-generate: ## Run go generate
@@ -163,7 +163,7 @@ test: $(GO_FILES)
 
 .PHONY: test-unit-api
 test-unit-api: $(GO_FILES)
-	@cd ./apis/loki/ && go test ./... -coverprofile cover.out
+	@cd ./api/loki/ && go test ./... -coverprofile cover.out
 
 .PHONY: test-unit-prometheus
 test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
@@ -177,6 +177,7 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
+	$(GOLANGCI_LINT) config verify
 	$(GOLANGCI_LINT) run --timeout=5m ./...
 
 .PHONY: lint-fix
@@ -237,7 +238,7 @@ quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
 
 .PHONY: run
 run: generate manifests ## Run against the configured Kubernetes cluster in ~/.kube/config
-	go run ./main.go
+	go run ./cmd/loki-operator/main.go
 
 .PHONY: install
 install: manifests $(KUSTOMIZE) ## Install CRDs into a cluster
@@ -312,17 +313,18 @@ oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
 
 ##@ Website
-TYPES_TARGET := $(shell find apis/loki -type f -iname "*_types.go")
+
+TYPES_TARGET := $(shell find api/loki -type f -iname "*_types.go")
 docs/operator/api.md: $(TYPES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
-	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/api/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
 	sed -i 's/+docs:/  docs:/' $@
 	sed -i 's/+parent:/    parent:/' $@
 	sed -i 's/##/\n##/' $@
 	sed -i 's/+newline/\n/' $@
 
-FEATURE_GATES_TARGET := $(shell find apis/config -type f -iname "*_types.go")
+FEATURE_GATES_TARGET := $(shell find api/config -type f -iname "*_types.go")
 docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
-	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/config/v1/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/api/config/v1/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
 	sed -i 's/title: "API"/title: "Feature Gates"/' $@
 	sed -i 's/+docs:/  docs:/' $@
 	sed -i 's/+parent:/    parent:/' $@
@@ -330,7 +332,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 	sed -i 's/+newline/\n/' $@
 
 .PHONY: web-pre
-web-pre: docs/operator/api.md docs/operator/feature-gates.md
+web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
 	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content

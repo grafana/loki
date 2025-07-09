@@ -17,6 +17,7 @@ import (
 )
 
 func TestTailer_RoundTrip(t *testing.T) {
+	t.Parallel()
 	server := &fakeTailServer{}
 
 	lbs := makeRandomLabels()
@@ -66,6 +67,7 @@ func TestTailer_RoundTrip(t *testing.T) {
 }
 
 func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
+	t.Parallel()
 	runs := 100
 
 	stream := logproto.Stream{
@@ -89,7 +91,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		go assert.NotPanics(t, func() {
 			defer routines.Done()
 			time.Sleep(time.Duration(rand.Intn(1000)) * time.Microsecond)
-			tailer.send(stream, labels.Labels{{Name: "type", Value: "test"}})
+			tailer.send(stream, labels.FromStrings("type", "test"))
 		})
 
 		go assert.NotPanics(t, func() {
@@ -103,6 +105,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 }
 
 func Test_dropstream(t *testing.T) {
+	t.Parallel()
 	maxDroppedStreams := 10
 
 	entry := logproto.Entry{Timestamp: time.Now(), Line: "foo"}
@@ -224,15 +227,16 @@ func Test_TailerSendRace(t *testing.T) {
 }
 
 func Test_IsMatching(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		name     string
 		lbs      labels.Labels
 		matchers []*labels.Matcher
 		matches  bool
 	}{
-		{"not in lbs", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}, false},
-		{"equal", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{{Type: labels.MatchEqual, Name: "job", Value: "foo"}}, true},
-		{"regex", labels.Labels{{Name: "job", Value: "foo"}}, []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", ".+oo")}, true},
+		{"not in lbs", labels.FromStrings("job", "foo"), []*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}, false},
+		{"equal", labels.FromStrings("job", "foo"), []*labels.Matcher{{Type: labels.MatchEqual, Name: "job", Value: "foo"}}, true},
+		{"regex", labels.FromStrings("job", "foo"), []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "job", ".+oo")}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.matches, isMatching(tt.lbs, tt.matchers))
@@ -241,6 +245,7 @@ func Test_IsMatching(t *testing.T) {
 }
 
 func Test_StructuredMetadata(t *testing.T) {
+	t.Parallel()
 	lbs := makeRandomLabels()
 
 	for _, tc := range []struct {
@@ -310,9 +315,10 @@ func Test_StructuredMetadata(t *testing.T) {
 						Labels: labels.NewBuilder(lbs).Set("foo", "1").Labels().String(),
 						Entries: []logproto.Entry{
 							{
-								Timestamp: time.Unix(0, 1),
-								Line:      "foo=1",
-								Parsed:    logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+								Timestamp:          time.Unix(0, 1),
+								Line:               "foo=1",
+								Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
 							},
 						},
 					},
@@ -363,4 +369,22 @@ func Test_StructuredMetadata(t *testing.T) {
 			wg.Wait()
 		})
 	}
+}
+
+func Benchmark_isClosed(t *testing.B) {
+	var server fakeTailServer
+	expr, err := syntax.ParseLogSelector(`{app="foo"}`, true)
+	require.NoError(t, err)
+	tail, err := newTailer("foo", expr, &server, 0)
+	require.NoError(t, err)
+
+	require.Equal(t, false, tail.isClosed())
+
+	t.ResetTimer()
+	for i := 0; i < t.N; i++ {
+		tail.isClosed()
+	}
+
+	tail.close()
+	require.Equal(t, true, tail.isClosed())
 }

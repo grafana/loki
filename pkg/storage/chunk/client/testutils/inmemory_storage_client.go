@@ -392,20 +392,30 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 }
 
 // ObjectExists implments client.ObjectClient
-func (m *InMemoryObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
+func (m *InMemoryObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	if _, err := m.GetAttributes(ctx, objectKey); err != nil {
+		if m.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (m *InMemoryObjectClient) GetAttributes(_ context.Context, objectKey string) (client.ObjectAttributes, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	if m.mode == MockStorageModeWriteOnly {
-		return false, errPermissionDenied
+		return client.ObjectAttributes{}, errPermissionDenied
 	}
 
 	_, ok := m.objects[objectKey]
 	if !ok {
-		return false, nil
+		return client.ObjectAttributes{}, errStorageObjectNotFound
 	}
-
-	return true, nil
+	objectSize := len(m.objects[objectKey])
+	return client.ObjectAttributes{Size: int64(objectSize)}, nil
 }
 
 // GetObject implements client.ObjectClient.
@@ -425,8 +435,28 @@ func (m *InMemoryObjectClient) GetObject(_ context.Context, objectKey string) (i
 	return io.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
+// GetObject implements client.ObjectClient.
+func (m *InMemoryObjectClient) GetObjectRange(_ context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return nil, errPermissionDenied
+	}
+
+	buf, ok := m.objects[objectKey]
+	if !ok {
+		return nil, errStorageObjectNotFound
+	}
+	if len(buf) < int(offset+length) {
+		return nil, io.ErrUnexpectedEOF
+	}
+
+	return io.NopCloser(bytes.NewReader(buf[offset : offset+length])), nil
+}
+
 // PutObject implements client.ObjectClient.
-func (m *InMemoryObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+func (m *InMemoryObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err

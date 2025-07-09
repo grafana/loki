@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -23,6 +24,7 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
@@ -77,7 +79,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*Bloo
 
 	metasCache := cache.NewMockCache()
 	blocksCache := NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
 	}
@@ -108,13 +110,14 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 
 func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Block, error) {
 	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+	fp, _ := os.CreateTemp(t.TempDir(), "*.tar")
 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	enc := compression.GZIP
+	err = v1.TarCompress(enc, fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
 	_, _ = fp.Seek(0, 0)
@@ -127,6 +130,7 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 				StartTimestamp: start,
 				EndTimestamp:   start.Add(12 * time.Hour),
 			},
+			Codec: enc,
 		},
 		Data: fp,
 	}
@@ -352,7 +356,7 @@ func TestBloomStore_TenantFilesForInterval(t *testing.T) {
 		tenantFiles, err := store.TenantFilesForInterval(
 			ctx,
 			NewInterval(parseTime("2024-01-18 00:00"), parseTime("2024-02-12 00:00")),
-			func(tenant string, object client.StorageObject) bool {
+			func(tenant string, _ client.StorageObject) bool {
 				return tenant == "1"
 			},
 		)

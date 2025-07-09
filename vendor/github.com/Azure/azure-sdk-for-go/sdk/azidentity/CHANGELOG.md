@@ -1,5 +1,168 @@
 # Release History
 
+## 1.9.0 (2025-04-08)
+
+### Features Added
+* `GetToken()` sets `AccessToken.RefreshOn` when the token provider specifies a value
+
+### Other Changes
+* `NewManagedIdentityCredential` logs the configured user-assigned identity, if any
+* Deprecated `UsernamePasswordCredential` because it can't support multifactor
+  authentication (MFA), which Microsoft Entra ID requires for most tenants. See
+  https://aka.ms/azsdk/identity/mfa for migration guidance.
+* Updated dependencies
+
+## 1.8.2 (2025-02-12)
+
+### Other Changes
+* Upgraded dependencies
+
+## 1.8.1 (2025-01-15)
+
+### Bugs Fixed
+* User credential types inconsistently log access token scopes
+* `DefaultAzureCredential` skips managed identity in Azure Container Instances
+* Credentials having optional tenant IDs such as `AzureCLICredential` and
+  `InteractiveBrowserCredential` require setting `AdditionallyAllowedTenants`
+  when used with some clients
+
+### Other Changes
+* `ChainedTokenCredential` and `DefaultAzureCredential` continue to their next
+  credential after `ManagedIdentityCredential` receives an unexpected response
+  from IMDS, indicating the response is from something else such as a proxy
+
+## 1.8.0 (2024-10-08)
+
+### Other Changes
+* `AzurePipelinesCredential` sets an additional OIDC request header so that it
+  receives a 401 instead of a 302 after presenting an invalid system access token
+* Allow logging of debugging headers for `AzurePipelinesCredential` and include
+  them in error messages
+
+## 1.8.0-beta.3 (2024-09-17)
+
+### Features Added
+* Added `ObjectID` type for `ManagedIdentityCredentialOptions.ID`
+
+### Other Changes
+* Removed redundant content from error messages
+
+## 1.8.0-beta.2 (2024-08-06)
+
+### Breaking Changes
+* `NewManagedIdentityCredential` now returns an error when a user-assigned identity
+  is specified on a platform whose managed identity API doesn't support that.
+  `ManagedIdentityCredential.GetToken()` formerly logged a warning in these cases.
+  Returning an error instead prevents the credential authenticating an unexpected
+  identity, causing a client to act with unexpected privileges. The affected
+  platforms are:
+  * Azure Arc
+  * Azure ML (when a resource ID is specified; client IDs are supported)
+  * Cloud Shell
+  * Service Fabric
+
+### Other Changes
+* If `DefaultAzureCredential` receives a non-JSON response when probing IMDS before
+  attempting to authenticate a managed identity, it continues to the next credential
+  in the chain instead of immediately returning an error.
+
+## 1.8.0-beta.1 (2024-07-17)
+
+### Features Added
+* Restored persistent token caching feature
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.7.0-beta.1
+* Redesigned the persistent caching API. Encryption is now required in all cases
+  and persistent cache construction is separate from credential construction.
+  The `PersistentUserAuthentication` example in the package docs has been updated
+  to demonstrate the new API.
+
+## 1.7.0 (2024-06-20)
+
+### Features Added
+* `AzurePipelinesCredential` authenticates an Azure Pipelines service connection with
+  workload identity federation
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.7.0-beta.1
+* Removed the persistent token caching API. It will return in v1.8.0-beta.1
+
+## 1.7.0-beta.1 (2024-06-10)
+
+### Features Added
+* Restored `AzurePipelinesCredential` and persistent token caching API
+
+## Breaking Changes
+> These changes affect only code written against a beta version such as v1.6.0-beta.4
+* Values which `NewAzurePipelinesCredential` read from environment variables in
+  prior versions are now parameters
+* Renamed `AzurePipelinesServiceConnectionCredentialOptions` to `AzurePipelinesCredentialOptions`
+
+### Bugs Fixed
+* Managed identity bug fixes
+
+## 1.6.0 (2024-06-10)
+
+### Features Added
+* `NewOnBehalfOfCredentialWithClientAssertions` creates an on-behalf-of credential
+  that authenticates with client assertions such as federated credentials
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.6.0-beta.4
+* Removed `AzurePipelinesCredential` and the persistent token caching API.
+  They will return in v1.7.0-beta.1
+
+### Bugs Fixed
+* Managed identity bug fixes
+
+## 1.6.0-beta.4 (2024-05-14)
+
+### Features Added
+* `AzurePipelinesCredential` authenticates an Azure Pipeline service connection with
+  workload identity federation
+
+## 1.6.0-beta.3 (2024-04-09)
+
+### Breaking Changes
+* `DefaultAzureCredential` now sends a probe request with no retries for IMDS managed identity
+  environments to avoid excessive retry delays when the IMDS endpoint is not available. This
+  should improve credential chain resolution for local development scenarios.
+
+### Bugs Fixed
+* `ManagedIdentityCredential` now specifies resource IDs correctly for Azure Container Instances
+
+## 1.5.2 (2024-04-09)
+
+### Bugs Fixed
+* `ManagedIdentityCredential` now specifies resource IDs correctly for Azure Container Instances
+
+### Other Changes
+* Restored v1.4.0 error behavior for empty tenant IDs
+* Upgraded dependencies
+
+## 1.6.0-beta.2 (2024-02-06)
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.6.0-beta.1
+* Replaced `ErrAuthenticationRequired` with `AuthenticationRequiredError`, a struct
+  type that carries the `TokenRequestOptions` passed to the `GetToken` call which
+  returned the error.
+
+### Bugs Fixed
+* Fixed more cases in which credential chains like `DefaultAzureCredential`
+  should try their next credential after attempting managed identity
+  authentication in a Docker Desktop container
+
+### Other Changes
+* `AzureCLICredential` uses the CLI's `expires_on` value for token expiration
+
+## 1.6.0-beta.1 (2024-01-17)
+
+### Features Added
+* Restored persistent token caching API first added in v1.5.0-beta.1
+* Added `AzureCLICredentialOptions.Subscription`
+
 ## 1.5.1 (2024-01-17)
 
 ### Bugs Fixed
@@ -126,7 +289,7 @@
 
 ### Features Added
 * By default, credentials set client capability "CP1" to enable support for
-  [Continuous Access Evaluation (CAE)](https://docs.microsoft.com/azure/active-directory/develop/app-resilience-continuous-access-evaluation).
+  [Continuous Access Evaluation (CAE)](https://learn.microsoft.com/entra/identity-platform/app-resilience-continuous-access-evaluation).
   This indicates to Microsoft Entra ID that your application can handle CAE claims challenges.
   You can disable this behavior by setting the environment variable "AZURE_IDENTITY_DISABLE_CP1" to "true".
 * `InteractiveBrowserCredentialOptions.LoginHint` enables pre-populating the login

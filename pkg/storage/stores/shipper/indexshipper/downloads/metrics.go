@@ -14,6 +14,10 @@ type metrics struct {
 	queryTimeTableDownloadDurationSeconds  *prometheus.CounterVec
 	tablesSyncOperationTotal               *prometheus.CounterVec
 	tablesDownloadOperationDurationSeconds prometheus.Gauge
+
+	// new metrics that will supersed the incorrect old types
+	queryWaitTime    *prometheus.HistogramVec
+	tableSyncLatency *prometheus.HistogramVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -30,6 +34,15 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name: "tables_download_operation_duration_seconds",
 			Help: "Time (in seconds) spent in downloading updated files for all the tables",
 		}),
+
+		queryWaitTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name: "query_wait_time_seconds",
+			Help: "Time (in seconds) spent waiting for index files to be queryable at query time",
+		}, []string{"table"}),
+		tableSyncLatency: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name: "table_sync_latency_seconds",
+			Help: "Time (in seconds) spent in downloading updated files for all the tables",
+		}, []string{"table", "status"}),
 	}
 
 	return m

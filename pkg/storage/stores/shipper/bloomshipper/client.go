@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,14 +15,16 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -73,6 +74,7 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
+	compression.Codec
 }
 
 func (r BlockRef) String() string {
@@ -91,6 +93,10 @@ func (r MetaRef) String() string {
 	return defaultKeyResolver{}.Meta(r).Addr()
 }
 
+func MetaRefFromKey(k string) (MetaRef, error) {
+	return defaultKeyResolver{}.ParseMetaKey(key(k))
+}
+
 // todo rename it
 type Meta struct {
 	MetaRef `json:"-"`
@@ -102,9 +108,9 @@ type Meta struct {
 	Blocks []BlockRef
 }
 
-func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, bool) {
 	if len(m.Sources) == 0 {
-		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+		return tsdb.SingleTenantTSDBIdentifier{}, false
 	}
 
 	mostRecent := m.Sources[0]
@@ -114,7 +120,7 @@ func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
 		}
 	}
 
-	return mostRecent, nil
+	return mostRecent, true
 }
 
 func MetaRefFrom(
@@ -204,29 +210,34 @@ func (c ClosableReadSeekerAdapter) Close() error {
 	return nil
 }
 
-func BlockRefFrom(tenant, table string, md v1.BlockMetadata) BlockRef {
-	return BlockRef{
-		Ref: Ref{
-			TenantID:       tenant,
-			TableName:      table,
-			Bounds:         md.Series.Bounds,
-			StartTimestamp: md.Series.FromTs,
-			EndTimestamp:   md.Series.ThroughTs,
-			Checksum:       md.Checksum,
-		},
+func newRefFrom(tenant, table string, md v1.BlockMetadata) Ref {
+	return Ref{
+		TenantID:       tenant,
+		TableName:      table,
+		Bounds:         md.Series.Bounds,
+		StartTimestamp: md.Series.FromTs,
+		EndTimestamp:   md.Series.ThroughTs,
+		Checksum:       md.Checksum,
 	}
 }
 
-func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
-	md, _ := blk.Metadata()
-	ref := BlockRefFrom(tenant, table, md)
+func newBlockRefWithEncoding(ref Ref, enc compression.Codec) BlockRef {
+	return BlockRef{Ref: ref, Codec: enc}
+}
+
+func BlockFrom(enc compression.Codec, tenant, table string, blk *v1.Block) (Block, error) {
+	md, err := blk.Metadata()
+	if err != nil {
+		return Block{}, errors.Wrap(err, "decoding index")
+	}
+
+	ref := newBlockRefWithEncoding(newRefFrom(tenant, table, md), enc)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
-	err := v1.TarGz(buf, blk.Reader())
-
+	err = v1.TarCompress(ref.Codec, buf, blk.Reader())
 	if err != nil {
-		return Block{}, errors.Wrap(err, "archiving+compressing block")
+		return Block{}, err
 	}
 
 	reader := bytes.NewReader(buf.Bytes())
@@ -312,19 +323,18 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 
 	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to get block file %s: %w", key, err)
+		return BlockDirectory{}, errors.Wrap(err, fmt.Sprintf("failed to get block file %s", key))
 	}
 	defer rc.Close()
 
-	path := b.fsResolver.Block(ref).LocalPath()
-	// the block directory should not contain the .tar.gz extension
-	path = strings.TrimSuffix(path, ".tar.gz")
+	// the block directory must not contain the .tar(.compression) extension
+	path := localFilePathWithoutExtension(ref, b.fsResolver)
 	err = util.EnsureDirectory(path)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
-	err = v1.UnTarGz(path, rc)
+	err = v1.UnTarCompress(ref.Codec, path, rc)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}
@@ -386,7 +396,7 @@ func (b *BloomClient) Stop() {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	results := make([]Meta, len(refs))
+	results := make([]*Meta, len(refs))
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
@@ -395,11 +405,19 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 				return fmt.Errorf("failed to get meta file %s: %w", key, err)
 			}
 			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
+			return nil
 		}
-		results[idx] = meta
+		results[idx] = &meta
 		return nil
 	})
-	return results, err
+
+	filtered := make([]Meta, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			filtered = append(filtered, *r)
+		}
+	}
+	return filtered, err
 }
 
 // GetMeta fetches the meta file for given MetaRef from object storage and
@@ -482,15 +500,16 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var (
-		logger   = spanlogger.FromContext(ctx)
 		start    = time.Now()
 		cacheDur time.Duration
 	)
 	defer func() {
-		logger.LogKV(
-			"cache_duration", cacheDur,
-			"total_duration", time.Since(start),
+		sp := trace.SpanFromContext(ctx)
+		sp.SetAttributes(
+			attribute.String("cache_duration", cacheDur.String()),
+			attribute.String("total_duration", time.Since(start).String()),
 		)
+
 	}()
 
 	if delimiter != "" {

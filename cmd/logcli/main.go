@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
-	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/detected"
@@ -28,14 +28,31 @@ import (
 )
 
 var (
-	app        = kingpin.New("logcli", "A command-line for loki.").Version(version.Print("logcli"))
-	quiet      = app.Flag("quiet", "Suppress query metadata").Default("false").Short('q').Bool()
+	app = kingpin.New("logcli", "A command-line for loki.").
+		Version(version.Print("logcli"))
+	quiet = app.Flag("quiet", "Suppress query metadata").
+		Default("false").
+		Short('q').
+		Bool()
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
-	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
-	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
-	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
-	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
-	stdin      = app.Flag("stdin", "Take input logs from stdin").Bool()
+	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
+			Default("default").
+			Short('o').
+			Enum("default", "raw", "jsonl")
+	timezone = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").
+			Default("Local").
+			Short('z').
+			Enum("Local", "UTC")
+	outputTimestampFmt = app.Flag("output-timestamp-format", "Specify the format of timestamps in the default output mode [rfc3339, rfc3339nano, rfc822z, rfc1123z, stampmicro, stampmilli, stampnano, unixdate]").
+				Default("rfc3339").
+				Enum("rfc3339", "rfc3339nano", "rfc822z", "rfc1123z", "stampmicro", "stampmilli", "stampnano", "unixdate")
+	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").
+			Default("").
+			String()
+	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").
+			Default("").
+			String()
+	stdin = app.Flag("stdin", "Take input logs from stdin").Bool()
 
 	queryClient = newQueryClient(app)
 
@@ -62,6 +79,8 @@ or provide specific start and end times with --from and --to respectively.
 Notice that when using --from and --to then ensure to use RFC3339Nano
 time format, but without timezone at the end. The local timezone will be added
 automatically or if using  --timezone flag.
+In default output mode the --output-timestamp-format flag can be used to 
+modify the output timestamp.
 
 Example:
 
@@ -70,6 +89,15 @@ Example:
 	   --from="2021-01-19T10:00:00Z"
 	   --to="2021-01-19T20:00:00Z"
 	   --output=jsonl
+	   'my-query'
+
+Example with --output-timestamp-format:
+
+	logcli query
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output-timestamp-format=rfc3339nano
 	   'my-query'
 
 The output is limited to 30 entries by default; use --limit to increase.
@@ -358,6 +386,25 @@ func main() {
 			ColoredOutput: rangeQuery.ColoredOutput,
 		}
 
+		switch *outputTimestampFmt {
+		case "rfc3339nano":
+			outputOptions.TimestampFormat = time.RFC3339Nano
+		case "rfc822z":
+			outputOptions.TimestampFormat = time.RFC822Z
+		case "rfc1123z":
+			outputOptions.TimestampFormat = time.RFC1123Z
+		case "stampmilli":
+			outputOptions.TimestampFormat = time.StampMilli
+		case "stampmicro":
+			outputOptions.TimestampFormat = time.StampMicro
+		case "stampnano":
+			outputOptions.TimestampFormat = time.StampNano
+		case "unixdate":
+			outputOptions.TimestampFormat = time.UnixDate
+		default:
+			outputOptions.TimestampFormat = time.RFC3339
+		}
+
 		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
 		if err != nil {
 			log.Fatalf("Unable to create log output: %s", err)
@@ -450,7 +497,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	}
 
 	// extract host
-	addressAction := func(c *kingpin.ParseContext) error {
+	addressAction := func(_ *kingpin.ParseContext) error {
 		// If a proxy is to be used do not set TLS ServerName. In the case of HTTPS proxy this ensures
 		// the http client validates both the proxy's cert and the cert used by loki behind the proxy
 		// using the ServerName's from the provided --addr and --proxy-url flags.
@@ -475,6 +522,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
 	app.Flag("query-tags", "adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.").Default("").Envar("LOKI_QUERY_TAGS").StringVar(&client.QueryTags)
+	app.Flag("nocache", "adds Cache-Control: no-cache http header to API requests. Can also be set using LOKI_NO_CACHE env var.").Default("false").Envar("LOKI_NO_CACHE").BoolVar(&client.NoCache)
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
@@ -482,6 +530,8 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("max-backoff", "Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MAX_BACKOFF").IntVar(&client.BackoffConfig.MaxBackoff)
 	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
+	app.Flag("compress", "Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.").Default("false").Envar("LOKI_HTTP_COMPRESSION").BoolVar(&client.Compression)
+	app.Flag("envproxy", "Use ProxyFromEnvironment to use net/http ProxyFromEnvironment configuration, eg HTTP_PROXY").Default("false").Envar("LOKI_ENV_PROXY").BoolVar(&client.EnvironmentProxy)
 
 	return client
 }
@@ -493,7 +543,7 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 	q := &labelquery.LabelQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -521,7 +571,7 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 	q := &seriesquery.SeriesQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -549,7 +599,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	q := &query.Query{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		if instant {
 			q.SetInstant(mustParse(now, time.Now()))
@@ -594,6 +644,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("no-labels", "Do not print any labels").Default("false").BoolVar(&q.NoLabels)
 	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&q.IgnoreLabelsKey)
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
+	cmd.Flag("include-common-labels", "Include common labels in output for each log line.").Default("false").BoolVar(&q.IncludeCommonLabels)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
 	cmd.Flag("remote-schema", "Execute the current query using a remote schema retrieved from the configured -schema-store.").Default("false").BoolVar(&q.FetchSchemaFromStorage)
@@ -691,37 +742,41 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 
 func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	// calculate query range from cli params
-	var from, to string
+	var fieldName, from, to string
 	var since time.Duration
 
 	q := &detected.FieldsQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 
 		q.Start = mustParse(from, defaultStart)
 		q.End = mustParse(to, defaultEnd)
 
+		q.FieldName = fieldName
+
 		q.Quiet = *quiet
 
 		return nil
 	})
 
-	cmd.Flag("field-limit", "Limit on number of fields to return.").
+	cmd.Flag("limit", "Limit on number of fields or values to return.").
 		Default("100").
-		IntVar(&q.FieldLimit)
+		IntVar(&q.Limit)
 	cmd.Flag("line-limit", "Limit the number of lines each subquery is allowed to process.").
 		Default("1000").
 		IntVar(&q.LineLimit)
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
 		Required().
 		StringVar(&q.QueryString)
+	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		Default("10s").
 		DurationVar(&q.Step)
 
 	return q
