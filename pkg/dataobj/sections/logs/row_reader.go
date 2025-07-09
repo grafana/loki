@@ -231,6 +231,9 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 	}
 
 	fmt.Printf("building streamIDPredicate: values %+v\n", values)
+	if len(values) == 0 {
+		return nil
+	}
 	return dataset.InPredicate{
 		Column: streamIDColumn,
 		Values: values,
