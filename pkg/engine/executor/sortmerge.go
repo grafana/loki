@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -46,6 +47,7 @@ type KWayMerge struct {
 	offsets     []int64
 	columnEval  evalFunc
 	compare     compareFunc[int64]
+	mu          sync.RWMutex // protects batches, exhausted, and offsets during concurrent reads
 }
 
 var _ Pipeline = (*KWayMerge)(nil)
@@ -99,6 +101,57 @@ func (p *KWayMerge) init() {
 	}
 }
 
+// readInput reads from a single input pipeline and updates the corresponding batch and offset.
+// It returns an error if reading fails, or nil if the input is exhausted or successfully read.
+func (p *KWayMerge) readInput(i int) error {
+	// Skip exhausted inputs
+	p.mu.RLock()
+	if p.exhausted[i] {
+		p.mu.RUnlock()
+		return nil
+	}
+	p.mu.RUnlock()
+
+	// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
+	// Read another batch as long as the input yields zero-length batches.
+	for {
+		p.mu.RLock()
+		needsRead := p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows()
+		p.mu.RUnlock()
+
+		if !needsRead {
+			break
+		}
+
+		// Reset offset
+		p.mu.Lock()
+		p.offsets[i] = 0
+		p.mu.Unlock()
+
+		// Read from input
+		err := p.inputs[i].Read()
+		if err != nil {
+			if errors.Is(err, EOF) {
+				p.mu.Lock()
+				p.exhausted[i] = true
+				p.batches[i] = nil // remove reference to arrow.Record from slice
+				p.mu.Unlock()
+				return nil
+			}
+			return err
+		}
+
+		// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
+		// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
+		batch, _ := p.inputs[i].Value()
+		p.mu.Lock()
+		p.batches[i] = batch
+		p.mu.Unlock()
+	}
+
+	return nil
+}
+
 // Iterate through each record, looking at the value from their starting slice offset.
 // Track the top two winners (e.g., the record whose next value is the smallest and the record whose next value is the next smallest).
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
@@ -113,37 +166,46 @@ start:
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
 
+	// Read from all inputs in parallel
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(p.inputs))
+
+	for i := range len(p.inputs) {
+		wg.Add(1)
+		go func(inputIndex int) {
+			defer wg.Done()
+			if err := p.readInput(inputIndex); err != nil {
+				errChan <- err
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors from the goroutines
+	for err := range errChan {
+		return err
+	}
+
 loop:
 	for i := range len(p.inputs) {
 		// Skip exhausted inputs
+		p.mu.RLock()
 		if p.exhausted[i] {
+			p.mu.RUnlock()
 			continue loop
 		}
-
-		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
-		// Read another batch as long as the input yields zero-length batches.
-		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
-			// Reset offset
-			p.offsets[i] = 0
-
-			// Read from input
-			err := p.inputs[i].Read()
-			if err != nil {
-				if errors.Is(err, EOF) {
-					p.exhausted[i] = true
-					p.batches[i] = nil // remove reference to arrow.Record from slice
-					continue loop
-				}
-				return err
-			}
-
-			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
-			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
-			p.batches[i], _ = p.inputs[i].Value()
-		}
+		p.mu.RUnlock()
 
 		// Fetch timestamp value at current offset
-		col, err := p.columnEval(p.batches[i])
+		p.mu.RLock()
+		batch := p.batches[i]
+		offset := p.offsets[i]
+		p.mu.RUnlock()
+
+		col, err := p.columnEval(batch)
 		if err != nil {
 			return err
 		}
@@ -151,7 +213,7 @@ loop:
 		if !ok {
 			return errors.New("column is not a timestamp column")
 		}
-		ts := tsCol.Value(int(p.offsets[i]))
+		ts := tsCol.Value(int(offset))
 
 		// Populate slices for sorting
 		inputIndexes = append(inputIndexes, i)
@@ -159,7 +221,12 @@ loop:
 	}
 
 	// Pipeline is exhausted if no more input batches are available
-	if !slices.Contains(p.exhausted, false) {
+	p.mu.RLock()
+	exhaustedCopy := make([]bool, len(p.exhausted))
+	copy(exhaustedCopy, p.exhausted)
+	p.mu.RUnlock()
+
+	if !slices.Contains(exhaustedCopy, false) {
 		p.state = Exhausted
 		return p.state.err
 	}
@@ -171,8 +238,11 @@ loop:
 	// If there is only a single remaining batch, return the remaining record
 	if len(inputIndexes) == 1 {
 		j := inputIndexes[0]
+		p.mu.RLock()
 		start := p.offsets[j]
-		end := p.batches[j].NumRows()
+		batch := p.batches[j]
+		p.mu.RUnlock()
+		end := batch.NumRows()
 
 		// check against empty last batch
 		if start >= end || end == 0 {
@@ -180,8 +250,10 @@ loop:
 			return p.state.err
 		}
 
-		p.state = successState(p.batches[j].NewSlice(start, end))
+		p.state = successState(batch.NewSlice(start, end))
+		p.mu.Lock()
 		p.offsets[j] = end
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -191,7 +263,12 @@ loop:
 	j := inputIndexes[0]
 
 	// Fetch timestamp value at current offset
-	col, err := p.columnEval(p.batches[j])
+	p.mu.RLock()
+	batch := p.batches[j]
+	start := p.offsets[j]
+	p.mu.RUnlock()
+
+	col, err := p.columnEval(batch)
 	if err != nil {
 		return err
 	}
@@ -202,9 +279,8 @@ loop:
 	}
 
 	// Calculate start/end of the sub-slice of the record
-	start := p.offsets[j]
 	end := start + 1
-	for ; end < p.batches[j].NumRows(); end++ {
+	for ; end < batch.NumRows(); end++ {
 		ts := tsCol.Value(int(end))
 		if !p.compare(int64(ts), timestamps[1]) {
 			break
@@ -213,13 +289,17 @@ loop:
 
 	// check against empty batch
 	if start > end || end == 0 {
-		p.state = successState(p.batches[j])
+		p.state = successState(batch)
+		p.mu.Lock()
 		p.offsets[j] = end
+		p.mu.Unlock()
 		return nil
 	}
 
-	p.state = successState(p.batches[j].NewSlice(start, end))
+	p.state = successState(batch.NewSlice(start, end))
+	p.mu.Lock()
 	p.offsets[j] = end
+	p.mu.Unlock()
 	return nil
 }
 
