@@ -513,6 +513,7 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	//   1. Give it the inner dataset.
 	//   2. Add columns with a flag of whether a column is primary or secondary.
 	//   3. Provide the overall dataset row ranges that will be valid to read.
+	fmt.Printf("initDownloader outer: r.opts %+v\n", r.opts)
 
 	if r.dl == nil {
 		r.dl = newReaderDownloader(r.opts.Dataset, r.opts.TargetCacheSize)
@@ -581,6 +582,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 	// If there's no predicate, all columns are primary.
 	if len(r.opts.Predicates) == 0 {
 		for _, c := range r.opts.Columns {
+			fmt.Printf("adding column as primary: %s(%s)\n", c.ColumnInfo().Type, c.ColumnInfo().Name)
 			process(c)
 		}
 		return
