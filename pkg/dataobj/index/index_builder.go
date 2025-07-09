@@ -440,8 +440,9 @@ func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logg
 	// Note: the source object would need a new column storing just the length to avoid reading the log line itself.
 	rowReader := logs.NewRowReader(logsSection)
 	defer rowReader.Close()
-	level.Info(sectionLogger).Log("msg", "initialized row reader", "count", len(columnBloomBuilders), "rowReader", rowReader)
+	level.Info(sectionLogger).Log("msg", "initialized row reader", "count", len(columnBloomBuilders))
 	for {
+		level.Info(sectionLogger).Log("msg", "reading logs section", "buf", len(logsBuf))
 		n, err := rowReader.Read(ctx, logsBuf)
 		if err != nil && err != io.EOF {
 			return fmt.Errorf("failed to read logs section: %w", err)

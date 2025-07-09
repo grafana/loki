@@ -94,6 +94,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, len(s))
 	r.buf = r.buf[:len(s)]
 
+	fmt.Printf("RowReader Read: buf len %d\n", len(r.buf))
 	n, err := r.reader.Read(ctx, r.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("reading rows: %w", err)

@@ -141,6 +141,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
+		fmt.Printf("ReadColumns: readSize %d, currentRange %+v, readRange %+v\n", readSize, currentRange, readRange)
 		count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err

@@ -181,6 +181,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				return n, fmt.Errorf("seeking to row %d in column %d: %w", startRow, columnIndex, err)
 			}
 
+			fmt.Printf("ReaderBasic: read buf len %d\n", len(s)-n)
 			cn, err := r.Read(ctx, pr.buf[:len(s)-n])
 			if err != nil && !errors.Is(err, io.EOF) {
 				// If reading a column fails, we return immediately without advancing
