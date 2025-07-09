@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
 func TestRowReader_NoPredicates(t *testing.T) {
