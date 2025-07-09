@@ -747,7 +747,7 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
-{{- define "loki.nginxFile" }}
+{{- define "loki.nginxFile" -}}
 worker_processes  5;  ## Default: 1
 error_log  /dev/stderr;
 pid        /tmp/nginx.pid;
