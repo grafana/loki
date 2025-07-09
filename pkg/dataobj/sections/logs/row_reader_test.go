@@ -27,7 +27,8 @@ func TestRowReader_StreamIDPredicate(t *testing.T) {
 	readBuf := make([]Record, 3)
 	rowReader := NewRowReader(logsSection)
 
-	rowReader.MatchStreams(slices.Values([]int64{1}))
+	err := rowReader.MatchStreams(slices.Values([]int64{1}))
+	require.NoError(t, err)
 	n, err := rowReader.Read(context.Background(), readBuf)
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
@@ -50,8 +51,9 @@ func buildSection(t *testing.T) *Section {
 
 	out := bytes.NewBuffer(nil)
 	b := dataobj.NewBuilder()
-	b.Append(logsBuilder)
-	_, err := b.Flush(out)
+	err := b.Append(logsBuilder)
+	require.NoError(t, err)
+	_, err = b.Flush(out)
 	require.NoError(t, err)
 
 	obj, err := dataobj.FromReaderAt(bytes.NewReader(out.Bytes()), int64(out.Len()))
