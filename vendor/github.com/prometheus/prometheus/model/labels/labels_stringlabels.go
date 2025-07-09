@@ -24,31 +24,25 @@ import (
 )
 
 // Labels is implemented by a single flat string holding name/value pairs.
-// Each name and value is preceded by its length in varint encoding.
+// Each name and value is preceded by its length, encoded as a single byte
+// for size 0-254, or the following 3 bytes little-endian, if the first byte is 255.
+// Maximum length allowed is 2^24 or 16MB.
 // Names are in order.
 type Labels struct {
 	data string
 }
 
 func decodeSize(data string, index int) (int, int) {
-	// Fast-path for common case of a single byte, value 0..127.
 	b := data[index]
 	index++
-	if b < 0x80 {
-		return int(b), index
-	}
-	size := int(b & 0x7F)
-	for shift := uint(7); ; shift += 7 {
+	if b == 255 {
+		// Larger numbers are encoded as 3 bytes little-endian.
 		// Just panic if we go of the end of data, since all Labels strings are constructed internally and
 		// malformed data indicates a bug, or memory corruption.
-		b := data[index]
-		index++
-		size |= int(b&0x7F) << shift
-		if b < 0x80 {
-			break
-		}
+		return int(data[index]) + (int(data[index+1]) << 8) + (int(data[index+2]) << 16), index + 3
 	}
-	return size, index
+	// More common case of a single byte, value 0..254.
+	return int(b), index
 }
 
 func decodeString(data string, index int) (string, int) {
@@ -57,8 +51,8 @@ func decodeString(data string, index int) (string, int) {
 	return data[index : index+size], index + size
 }
 
-// Bytes returns ls as a byte slice.
-// It uses non-printing characters and so should not be used for printing.
+// Bytes returns an opaque, not-human-readable, encoding of ls, usable as a map key.
+// Encoding may change over time or between runs of Prometheus.
 func (ls Labels) Bytes(buf []byte) []byte {
 	if cap(buf) < len(ls.data) {
 		buf = make([]byte, len(ls.data))
@@ -289,6 +283,12 @@ func (ls Labels) WithoutEmpty() Labels {
 	return ls
 }
 
+// ByteSize returns the approximate size of the labels in bytes.
+// String header size is ignored because it should be amortized to zero.
+func (ls Labels) ByteSize() int {
+	return len(ls.data)
+}
+
 // Equal returns whether the two label sets are equal.
 func Equal(ls, o Labels) bool {
 	return ls.data == o.data
@@ -418,21 +418,28 @@ func (ls Labels) Validate(f func(l Label) error) error {
 	return nil
 }
 
-// DropMetricName returns Labels with "__name__" removed.
+// DropMetricName returns Labels with the "__name__" removed.
+// Deprecated: Use DropReserved instead.
 func (ls Labels) DropMetricName() Labels {
+	return ls.DropReserved(func(n string) bool { return n == MetricName })
+}
+
+// DropReserved returns Labels without the chosen (via shouldDropFn) reserved (starting with underscore) labels.
+func (ls Labels) DropReserved(shouldDropFn func(name string) bool) Labels {
 	for i := 0; i < len(ls.data); {
 		lName, i2 := decodeString(ls.data, i)
 		size, i2 := decodeSize(ls.data, i2)
 		i2 += size
-		if lName == MetricName {
+		if lName[0] > '_' { // Stop looking if we've gone past special labels.
+			break
+		}
+		if shouldDropFn(lName) {
 			if i == 0 { // Make common case fast with no allocations.
 				ls.data = ls.data[i2:]
 			} else {
 				ls.data = ls.data[:i] + ls.data[i2:]
 			}
-			break
-		} else if lName[0] > MetricName[0] { // Stop looking if we've gone past.
-			break
+			continue
 		}
 		i = i2
 	}
@@ -527,48 +534,27 @@ func marshalLabelToSizedBuffer(m *Label, data []byte) int {
 	return len(data) - i
 }
 
-func sizeVarint(x uint64) (n int) {
-	// Most common case first
-	if x < 1<<7 {
+func sizeWhenEncoded(x uint64) (n int) {
+	if x < 255 {
 		return 1
+	} else if x <= 1<<24 {
+		return 4
 	}
-	if x >= 1<<56 {
-		return 9
-	}
-	if x >= 1<<28 {
-		x >>= 28
-		n = 4
-	}
-	if x >= 1<<14 {
-		x >>= 14
-		n += 2
-	}
-	if x >= 1<<7 {
-		n++
-	}
-	return n + 1
+	panic("String too long to encode as label.")
 }
 
-func encodeVarint(data []byte, offset int, v uint64) int {
-	offset -= sizeVarint(v)
-	base := offset
-	for v >= 1<<7 {
-		data[offset] = uint8(v&0x7f | 0x80)
-		v >>= 7
-		offset++
-	}
-	data[offset] = uint8(v)
-	return base
-}
-
-// Special code for the common case that a size is less than 128
 func encodeSize(data []byte, offset, v int) int {
-	if v < 1<<7 {
+	if v < 255 {
 		offset--
 		data[offset] = uint8(v)
 		return offset
 	}
-	return encodeVarint(data, offset, uint64(v))
+	offset -= 4
+	data[offset] = 255
+	data[offset+1] = byte(v)
+	data[offset+2] = byte((v >> 8))
+	data[offset+3] = byte((v >> 16))
+	return offset
 }
 
 func labelsSize(lbls []Label) (n int) {
@@ -582,9 +568,9 @@ func labelsSize(lbls []Label) (n int) {
 func labelSize(m *Label) (n int) {
 	// strings are encoded as length followed by contents.
 	l := len(m.Name)
-	n += l + sizeVarint(uint64(l))
+	n += l + sizeWhenEncoded(uint64(l))
 	l = len(m.Value)
-	n += l + sizeVarint(uint64(l))
+	n += l + sizeWhenEncoded(uint64(l))
 	return n
 }
 

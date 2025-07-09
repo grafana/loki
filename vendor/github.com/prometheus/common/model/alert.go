@@ -88,20 +88,20 @@ func (a *Alert) StatusAt(ts time.Time) AlertStatus {
 }
 
 // Validate checks whether the alert data is inconsistent.
-func (a *Alert) Validate() error {
+func (a *Alert) Validate(nameValidationScheme ValidationScheme) error {
 	if a.StartsAt.IsZero() {
 		return errors.New("start time missing")
 	}
 	if !a.EndsAt.IsZero() && a.EndsAt.Before(a.StartsAt) {
 		return errors.New("start time must be before end time")
 	}
-	if err := a.Labels.Validate(); err != nil {
+	if err := a.Labels.Validate(nameValidationScheme); err != nil {
 		return fmt.Errorf("invalid label set: %w", err)
 	}
 	if len(a.Labels) == 0 {
 		return errors.New("at least one label pair required")
 	}
-	if err := a.Annotations.Validate(); err != nil {
+	if err := a.Annotations.Validate(nameValidationScheme); err != nil {
 		return fmt.Errorf("invalid annotations: %w", err)
 	}
 	return nil

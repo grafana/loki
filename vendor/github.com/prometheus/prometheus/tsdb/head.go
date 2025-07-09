@@ -29,6 +29,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/atomic"
 
 	"github.com/prometheus/prometheus/config"
@@ -112,6 +113,7 @@ type Head struct {
 
 	// TODO(codesome): Extend MemPostings to return only OOOPostings, Set OOOStatus, ... Like an additional map of ooo postings.
 	postings *index.MemPostings // Postings lists for terms.
+	pfmc     *PostingsForMatchersCache
 
 	tombstones *tombstones.MemTombstones
 
@@ -139,6 +141,8 @@ type Head struct {
 
 	memTruncationInProcess atomic.Bool
 	memTruncationCallBack  func() // For testing purposes.
+
+	secondaryHashFunc func(labels.Labels) uint32
 }
 
 type ExemplarStorage interface {
@@ -165,6 +169,7 @@ type HeadOptions struct {
 	ChunkDirRoot         string
 	ChunkPool            chunkenc.Pool
 	ChunkWriteBufferSize int
+	ChunkEndTimeVariance float64
 	ChunkWriteQueueSize  int
 
 	SamplesPerChunk int
@@ -186,6 +191,20 @@ type HeadOptions struct {
 
 	// EnableSharding enables ShardedPostings() support in the Head.
 	EnableSharding bool
+
+	// Timely compaction allows head compaction to happen when min block range can no longer be appended,
+	// without requiring 1.5x the chunk range worth of data in the head.
+	TimelyCompaction bool
+
+	PostingsForMatchersCacheTTL      time.Duration
+	PostingsForMatchersCacheMaxItems int
+	PostingsForMatchersCacheMaxBytes int64
+	PostingsForMatchersCacheForce    bool
+	PostingsForMatchersCacheMetrics  *PostingsForMatchersCacheMetrics
+
+	// Optional hash function applied to each new series. Computed hash value is preserved for each series in the head,
+	// and values can be iterated by using Head.ForEachSecondaryHash method.
+	SecondaryHashFunction func(labels.Labels) uint32
 }
 
 const (
@@ -197,16 +216,22 @@ const (
 
 func DefaultHeadOptions() *HeadOptions {
 	ho := &HeadOptions{
-		ChunkRange:           DefaultBlockDuration,
-		ChunkDirRoot:         "",
-		ChunkPool:            chunkenc.NewPool(),
-		ChunkWriteBufferSize: chunks.DefaultWriteBufferSize,
-		ChunkWriteQueueSize:  chunks.DefaultWriteQueueSize,
-		SamplesPerChunk:      DefaultSamplesPerChunk,
-		StripeSize:           DefaultStripeSize,
-		SeriesCallback:       &noopSeriesLifecycleCallback{},
-		IsolationDisabled:    defaultIsolationDisabled,
-		WALReplayConcurrency: defaultWALReplayConcurrency,
+		ChunkRange:                       DefaultBlockDuration,
+		ChunkDirRoot:                     "",
+		ChunkPool:                        chunkenc.NewPool(),
+		ChunkWriteBufferSize:             chunks.DefaultWriteBufferSize,
+		ChunkEndTimeVariance:             0,
+		ChunkWriteQueueSize:              chunks.DefaultWriteQueueSize,
+		SamplesPerChunk:                  DefaultSamplesPerChunk,
+		StripeSize:                       DefaultStripeSize,
+		SeriesCallback:                   &noopSeriesLifecycleCallback{},
+		IsolationDisabled:                defaultIsolationDisabled,
+		PostingsForMatchersCacheTTL:      DefaultPostingsForMatchersCacheTTL,
+		PostingsForMatchersCacheMaxItems: DefaultPostingsForMatchersCacheMaxItems,
+		PostingsForMatchersCacheMaxBytes: DefaultPostingsForMatchersCacheMaxBytes,
+		PostingsForMatchersCacheForce:    DefaultPostingsForMatchersCacheForce,
+		PostingsForMatchersCacheMetrics:  NewPostingsForMatchersCacheMetrics(nil),
+		WALReplayConcurrency:             defaultWALReplayConcurrency,
 	}
 	ho.OutOfOrderCapMax.Store(DefaultOutOfOrderCapMax)
 	return ho
@@ -260,6 +285,13 @@ func NewHead(r prometheus.Registerer, l *slog.Logger, wal, wbl *wlog.WL, opts *H
 		opts.MaxExemplars.Store(0)
 	}
 
+	shf := opts.SecondaryHashFunction
+	if shf == nil {
+		shf = func(labels.Labels) uint32 {
+			return 0
+		}
+	}
+
 	h := &Head{
 		wal:    wal,
 		wbl:    wbl,
@@ -270,8 +302,10 @@ func NewHead(r prometheus.Registerer, l *slog.Logger, wal, wbl *wlog.WL, opts *H
 				return &memChunk{}
 			},
 		},
-		stats: stats,
-		reg:   r,
+		stats:             stats,
+		reg:               r,
+		secondaryHashFunc: shf,
+		pfmc:              NewPostingsForMatchersCache(opts.PostingsForMatchersCacheTTL, opts.PostingsForMatchersCacheMaxItems, opts.PostingsForMatchersCacheMaxBytes, opts.PostingsForMatchersCacheForce, opts.PostingsForMatchersCacheMetrics, []attribute.KeyValue{attribute.String("block", headULID.String())}),
 	}
 	if err := h.resetInMemoryState(); err != nil {
 		return nil, err
@@ -556,6 +590,7 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 			m.mmapChunksTotal,
 			m.mmapChunkCorruptionTotal,
 			m.snapshotReplayErrorTotal,
+			m.oooHistogram,
 			// Metrics bound to functions and not needed in tests
 			// can be created and registered on the spot.
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{
@@ -768,6 +803,7 @@ func (h *Head) Init(minValidTime int64) error {
 
 	syms := labels.NewSymbolTable() // One table for the whole WAL.
 	multiRef := map[chunks.HeadSeriesRef]chunks.HeadSeriesRef{}
+	unknownSeriesRefs := &seriesRefSet{refs: make(map[chunks.HeadSeriesRef]struct{}), mtx: sync.Mutex{}}
 	if err == nil && startFrom >= snapIdx {
 		sr, err := wlog.NewSegmentsReader(dir)
 		if err != nil {
@@ -781,7 +817,7 @@ func (h *Head) Init(minValidTime int64) error {
 
 		// A corrupted checkpoint is a hard error for now and requires user
 		// intervention. There's likely little data that can be recovered anyway.
-		if err := h.loadWAL(wlog.NewReader(sr), syms, multiRef, mmappedChunks, oooMmappedChunks, endAt); err != nil {
+		if err := h.loadWAL(wlog.NewReader(sr), syms, multiRef, unknownSeriesRefs, mmappedChunks, oooMmappedChunks, endAt); err != nil {
 			return fmt.Errorf("backfill checkpoint: %w", err)
 		}
 		h.updateWALReplayStatusRead(startFrom)
@@ -815,7 +851,7 @@ func (h *Head) Init(minValidTime int64) error {
 		if err != nil {
 			return fmt.Errorf("segment reader (offset=%d): %w", offset, err)
 		}
-		err = h.loadWAL(wlog.NewReader(sr), syms, multiRef, mmappedChunks, oooMmappedChunks, endAt)
+		err = h.loadWAL(wlog.NewReader(sr), syms, multiRef, unknownSeriesRefs, mmappedChunks, oooMmappedChunks, endAt)
 		if err := sr.Close(); err != nil {
 			h.logger.Warn("Error while closing the wal segments reader", "err", err)
 		}
@@ -1546,7 +1582,7 @@ func (h *Head) Delete(ctx context.Context, mint, maxt int64, ms ...*labels.Match
 
 	ir := h.indexRange(mint, maxt)
 
-	p, err := PostingsForMatchers(ctx, ir, ms...)
+	p, err := ir.PostingsForMatchers(ctx, false, ms...)
 	if err != nil {
 		return fmt.Errorf("select series: %w", err)
 	}
@@ -1693,11 +1729,17 @@ func (h *Head) initialized() bool {
 }
 
 // compactable returns whether the head has a compactable range.
-// The head has a compactable range when the head time range is 1.5 times the chunk range.
+// When the TimelyCompaction option is enabled, the head is compactable when the min block end is .5 times the chunk range in the past.
+// Else the head has a compactable range when the head time range is 1.5 times the chunk range.
 // The 0.5 acts as a buffer of the appendable window.
 func (h *Head) compactable() bool {
 	if !h.initialized() {
 		return false
+	}
+
+	if h.opts.TimelyCompaction {
+		minBlockEnd := rangeForTimestamp(h.MinTime(), h.chunkRange.Load())
+		return minBlockEnd < h.appendableMinValidTime()
 	}
 
 	return h.MaxTime()-h.MinTime() > h.chunkRange.Load()/2*3
@@ -1756,7 +1798,7 @@ func (h *Head) getOrCreateWithID(id chunks.HeadSeriesRef, hash uint64, lset labe
 			shardHash = labels.StableHash(lset)
 		}
 
-		return newMemSeries(lset, id, shardHash, h.opts.IsolationDisabled, pendingCommit)
+		return newMemSeries(lset, id, shardHash, h.secondaryHashFunc(lset), h.opts.ChunkEndTimeVariance, h.opts.IsolationDisabled, pendingCommit)
 	})
 	if err != nil {
 		return nil, false, err
@@ -2144,6 +2186,9 @@ type memSeries struct {
 	// been explicitly enabled in TSDB.
 	shardHash uint64
 
+	// Value returned by secondary hash function.
+	secondaryHash uint32
+
 	// Everything after here should only be accessed with the lock held.
 	sync.Mutex
 
@@ -2168,6 +2213,10 @@ type memSeries struct {
 	ooo *memSeriesOOOFields
 
 	mmMaxTime int64 // Max time of any mmapped chunk, only used during WAL replay.
+
+	// chunkEndTimeVariance is how much variance (between 0 and 1) should be applied to the chunk end time,
+	// to spread chunks writing across time. Doesn't apply to the last chunk of the chunk range. 0 to disable variance.
+	chunkEndTimeVariance float64
 
 	nextAt                           int64 // Timestamp at which to cut the next chunk.
 	histogramChunkHasComputedEndTime bool  // True if nextAt has been predicted for the current histograms chunk; false otherwise.
@@ -2197,13 +2246,15 @@ type memSeriesOOOFields struct {
 	firstOOOChunkID  chunks.HeadChunkID // HeadOOOChunkID for oooMmappedChunks[0].
 }
 
-func newMemSeries(lset labels.Labels, id chunks.HeadSeriesRef, shardHash uint64, isolationDisabled, pendingCommit bool) *memSeries {
+func newMemSeries(lset labels.Labels, id chunks.HeadSeriesRef, shardHash uint64, secondaryHash uint32, chunkEndTimeVariance float64, isolationDisabled, pendingCommit bool) *memSeries {
 	s := &memSeries{
-		lset:          lset,
-		ref:           id,
-		nextAt:        math.MinInt64,
-		shardHash:     shardHash,
-		pendingCommit: pendingCommit,
+		lset:                 lset,
+		ref:                  id,
+		nextAt:               math.MinInt64,
+		chunkEndTimeVariance: chunkEndTimeVariance,
+		shardHash:            shardHash,
+		secondaryHash:        secondaryHash,
+		pendingCommit:        pendingCommit,
 	}
 	if !isolationDisabled {
 		s.txs = newTxRing(0)
@@ -2423,4 +2474,65 @@ func (h *Head) updateWALReplayStatusRead(current int) {
 	defer h.stats.WALReplayStatus.Unlock()
 
 	h.stats.WALReplayStatus.Current = current
+}
+
+// ForEachSecondaryHash iterates over all series in the Head, and passes references and secondary hashes of the series
+// to the function. Function is called with batch of refs and hashes, in no specific order. The order of the refs
+// in the same as the order of the hashes. Each series in the head is included exactly once.
+// Series may be deleted while the function is running, and series inserted while this function runs may be reported or ignored.
+//
+// No locks are held when function is called.
+//
+// Slices passed to the function are reused between calls.
+func (h *Head) ForEachSecondaryHash(fn func(ref []chunks.HeadSeriesRef, secondaryHash []uint32)) {
+	slices := newPairOfSlices[chunks.HeadSeriesRef, uint32](512)
+
+	for i := 0; i < h.series.size; i++ {
+		slices = slices.reset()
+
+		h.series.locks[i].RLock()
+		for _, s := range h.series.hashes[i].unique {
+			// No need to lock series lock, as we're only accessing its immutable secondary hash.
+			slices = slices.append(s.ref, s.secondaryHash)
+		}
+		for _, all := range h.series.hashes[i].conflicts {
+			for _, s := range all {
+				// No need to lock series lock, as we're only accessing its immutable secondary hash.
+				slices = slices.append(s.ref, s.secondaryHash)
+			}
+		}
+		h.series.locks[i].RUnlock()
+
+		if slices.len() > 0 {
+			fn(slices.slice1, slices.slice2)
+		}
+	}
+}
+
+type pairOfSlices[T1, T2 any] struct {
+	slice1 []T1
+	slice2 []T2
+}
+
+func newPairOfSlices[T1, T2 any](length int) pairOfSlices[T1, T2] {
+	return pairOfSlices[T1, T2]{
+		slice1: make([]T1, length),
+		slice2: make([]T2, length),
+	}
+}
+
+func (p pairOfSlices[T1, T2]) reset() pairOfSlices[T1, T2] {
+	p.slice1 = p.slice1[:0]
+	p.slice2 = p.slice2[:0]
+	return p
+}
+
+func (p pairOfSlices[T1, T2]) append(t1 T1, t2 T2) pairOfSlices[T1, T2] {
+	p.slice1 = append(p.slice1, t1)
+	p.slice2 = append(p.slice2, t2)
+	return p
+}
+
+func (p pairOfSlices[T1, T2]) len() int {
+	return len(p.slice1)
 }

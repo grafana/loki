@@ -66,6 +66,32 @@ type Desc struct {
 	err error
 }
 
+type descriptorOptions struct {
+	validationScheme model.ValidationScheme
+}
+
+// newDescriptorOptions creates default descriptor options and applies opts.
+func newDescriptorOptions(opts ...DescOption) *descriptorOptions {
+	d := &descriptorOptions{
+		validationScheme: model.UTF8Validation,
+	}
+	for _, o := range opts {
+		o(d)
+	}
+	return d
+}
+
+// WithValidationScheme ensures descriptor's label and metric names adhere to scheme.
+// Default is UTF-8 validation.
+func WithValidationScheme(scheme model.ValidationScheme) DescOption {
+	return func(o *descriptorOptions) {
+		o.validationScheme = scheme
+	}
+}
+
+// DescOption are options that can be passed to NewDesc
+type DescOption func(*descriptorOptions)
+
 // NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
 // and will be reported on registration time. variableLabels and constLabels can
 // be nil if no such labels should be set. fqName must not be empty.
@@ -75,8 +101,8 @@ type Desc struct {
 //
 // For constLabels, the label values are constant. Therefore, they are fully
 // specified in the Desc. See the Collector example for a usage pattern.
-func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *Desc {
-	return V2.NewDesc(fqName, help, UnconstrainedLabels(variableLabels), constLabels)
+func NewDesc(fqName, help string, variableLabels []string, constLabels Labels, opts ...DescOption) *Desc {
+	return V2.NewDesc(fqName, help, UnconstrainedLabels(variableLabels), constLabels, opts...)
 }
 
 // NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
@@ -89,13 +115,14 @@ func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *
 //
 // For constLabels, the label values are constant. Therefore, they are fully
 // specified in the Desc. See the Collector example for a usage pattern.
-func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, constLabels Labels) *Desc {
+func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, constLabels Labels, opts ...DescOption) *Desc {
 	d := &Desc{
 		fqName:         fqName,
 		help:           help,
 		variableLabels: variableLabels.compile(),
 	}
-	if !model.IsValidMetricName(model.LabelValue(fqName)) {
+	descOpts := newDescriptorOptions(opts...)
+	if !model.IsValidMetricName(model.LabelValue(fqName), descOpts.validationScheme) {
 		d.err = fmt.Errorf("%q is not a valid metric name", fqName)
 		return d
 	}
@@ -107,7 +134,7 @@ func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, const
 	labelNameSet := map[string]struct{}{}
 	// First add only the const label names and sort them...
 	for labelName := range constLabels {
-		if !checkLabelName(labelName) {
+		if !checkLabelName(labelName, descOpts.validationScheme) {
 			d.err = fmt.Errorf("%q is not a valid label name for metric %q", labelName, fqName)
 			return d
 		}
@@ -129,7 +156,7 @@ func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, const
 	// cannot be in a regular label name. That prevents matching the label
 	// dimension with a different mix between preset and variable labels.
 	for _, label := range d.variableLabels.names {
-		if !checkLabelName(label) {
+		if !checkLabelName(label, descOpts.validationScheme) {
 			d.err = fmt.Errorf("%q is not a valid label name for metric %q", label, fqName)
 			return d
 		}

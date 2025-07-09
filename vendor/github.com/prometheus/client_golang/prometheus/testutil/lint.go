@@ -18,23 +18,24 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil/promlint"
+	"github.com/prometheus/common/model"
 )
 
 // CollectAndLint registers the provided Collector with a newly created pedantic
 // Registry. It then calls GatherAndLint with that Registry and with the
 // provided metricNames.
-func CollectAndLint(c prometheus.Collector, metricNames ...string) ([]promlint.Problem, error) {
+func CollectAndLint(c prometheus.Collector, validationScheme model.ValidationScheme, metricNames ...string) ([]promlint.Problem, error) {
 	reg := prometheus.NewPedanticRegistry()
 	if err := reg.Register(c); err != nil {
 		return nil, fmt.Errorf("registering collector failed: %w", err)
 	}
-	return GatherAndLint(reg, metricNames...)
+	return GatherAndLint(reg, validationScheme, metricNames...)
 }
 
 // GatherAndLint gathers all metrics from the provided Gatherer and checks them
 // with the linter in the promlint package. If any metricNames are provided,
 // only metrics with those names are checked.
-func GatherAndLint(g prometheus.Gatherer, metricNames ...string) ([]promlint.Problem, error) {
+func GatherAndLint(g prometheus.Gatherer, validationScheme model.ValidationScheme, metricNames ...string) ([]promlint.Problem, error) {
 	got, err := g.Gather()
 	if err != nil {
 		return nil, fmt.Errorf("gathering metrics failed: %w", err)
@@ -42,5 +43,5 @@ func GatherAndLint(g prometheus.Gatherer, metricNames ...string) ([]promlint.Pro
 	if metricNames != nil {
 		got = filterMetrics(got, metricNames)
 	}
-	return promlint.NewWithMetricFamilies(got).Lint()
+	return promlint.NewWithMetricFamilies(got).Lint(validationScheme)
 }

@@ -168,10 +168,14 @@ func (p *MemPostings) LabelNames() []string {
 }
 
 // LabelValues returns label values for the given name.
-func (p *MemPostings) LabelValues(_ context.Context, name string) []string {
+func (p *MemPostings) LabelValues(_ context.Context, name string, hints *storage.LabelHints) []string {
 	p.mtx.RLock()
 	values := p.lvs[name]
 	p.mtx.RUnlock()
+
+	if hints != nil && hints.Limit > 0 && len(values) > hints.Limit {
+		values = values[:hints.Limit]
+	}
 
 	// The slice from p.lvs[name] is shared between all readers, and it is append-only.
 	// Since it's shared, we need to make a copy of it before returning it to make
@@ -595,10 +599,8 @@ func Intersect(its ...Postings) Postings {
 	if len(its) == 1 {
 		return its[0]
 	}
-	for _, p := range its {
-		if p == EmptyPostings() {
-			return EmptyPostings()
-		}
+	if slices.Contains(its, EmptyPostings()) {
+		return EmptyPostings()
 	}
 
 	return newIntersectPostings(its...)
@@ -916,6 +918,28 @@ func (it *bigEndianPostings) Err() error {
 	return nil
 }
 
+// PostingsCloner takes an existing Postings and allows independently clone them.
+type PostingsCloner struct {
+	ids []storage.SeriesRef
+	err error
+}
+
+// NewPostingsCloner takes an existing Postings and allows independently clone them.
+// The instance provided shouldn't have been used before (no Next() calls should have been done)
+// and it shouldn't be used once provided to the PostingsCloner.
+func NewPostingsCloner(p Postings) *PostingsCloner {
+	ids, err := ExpandPostings(p)
+	return &PostingsCloner{ids: ids, err: err}
+}
+
+// Clone returns another independent Postings instance.
+func (c *PostingsCloner) Clone() Postings {
+	if c.err != nil {
+		return ErrPostings(c.err)
+	}
+	return newListPostings(c.ids...)
+}
+
 // FindIntersectingPostings checks the intersection of p and candidates[i] for each i in candidates,
 // if intersection is non empty, then i is added to the indexes returned.
 // Returned indexes are not sorted.
@@ -939,6 +963,42 @@ func FindIntersectingPostings(p Postings, candidates []Postings) (indexes []int,
 			return indexes, p.Err()
 		}
 		if p.At() == h.at() {
+			indexes = append(indexes, h.popIndex())
+		} else if err := h.next(); err != nil {
+			return nil, err
+		}
+	}
+
+	return indexes, nil
+}
+
+// findNonContainedPostings checks whether candidates[i] for each i in candidates is contained in p.
+// If not contained, i is added to the indexes returned.
+// The idea is the need to find postings iterators not fully contained in a set you wish to exclude.
+// Returned indexes are not sorted.
+func findNonContainedPostings(p Postings, candidates []Postings) (indexes []int, err error) {
+	h := make(postingsWithIndexHeap, 0, len(candidates))
+	for idx, it := range candidates {
+		switch {
+		case it.Next():
+			h = append(h, postingsWithIndex{index: idx, p: it})
+		case it.Err() != nil:
+			return nil, it.Err()
+		}
+	}
+	if h.empty() {
+		return nil, nil
+	}
+	heap.Init(&h)
+
+	for !h.empty() {
+		// Find the first posting >= h.at()
+		if !p.Seek(h.at()) && p.Err() != nil {
+			return nil, p.Err()
+		}
+
+		// If p.At() != h.at(), we can keep h.at(), otherwise we skip past it
+		if p.At() != h.at() {
 			indexes = append(indexes, h.popIndex())
 		} else if err := h.next(); err != nil {
 			return nil, err

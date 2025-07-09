@@ -23,8 +23,6 @@ import (
 
 	proto "github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
-
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type MetricStreamingDecoder struct {
@@ -42,6 +40,19 @@ type MetricStreamingDecoder struct {
 
 	mData  []byte
 	labels []pos
+
+	validationScheme model.ValidationScheme
+}
+
+// Option for the MetricStreamingDecoder.
+type Option func(*MetricStreamingDecoder)
+
+// WithValidationScheme sets the metric/label name validation scheme. Defaults to
+// UTF8Validation.
+func WithValidationScheme(scheme model.ValidationScheme) Option {
+	return func(m *MetricStreamingDecoder) {
+		m.validationScheme = scheme
+	}
 }
 
 // NewMetricStreamingDecoder returns a Go iterator that unmarshals given protobuf bytes one
@@ -53,13 +64,18 @@ type MetricStreamingDecoder struct {
 // method to use when checking the value.
 //
 // TODO(bwplotka): io.Reader approach is possible too, but textparse has access to whole scrape for now.
-func NewMetricStreamingDecoder(data []byte) *MetricStreamingDecoder {
-	return &MetricStreamingDecoder{
-		in:           data,
-		MetricFamily: &MetricFamily{},
-		Metric:       &Metric{},
-		metrics:      make([]pos, 0, 100),
+func NewMetricStreamingDecoder(data []byte, opts ...Option) *MetricStreamingDecoder {
+	msd := &MetricStreamingDecoder{
+		in:               data,
+		MetricFamily:     &MetricFamily{},
+		Metric:           &Metric{},
+		metrics:          make([]pos, 0, 100),
+		validationScheme: model.UTF8Validation,
 	}
+	for _, opt := range opts {
+		opt(msd)
+	}
+	return msd
 }
 
 var errInvalidVarint = errors.New("clientpb: invalid varint encountered")
@@ -81,7 +97,7 @@ func (m *MetricStreamingDecoder) NextMetricFamily() error {
 	m.mfData = b[varIntLength:totalLength]
 
 	m.inPos += totalLength
-	return m.MetricFamily.unmarshalWithoutMetrics(m, m.mfData)
+	return m.unmarshalWithoutMetrics(m, m.mfData)
 }
 
 // resetMetricFamily resets all the fields in m to equal the zero value, but re-using slice memory.
@@ -98,7 +114,7 @@ func (m *MetricStreamingDecoder) NextMetric() error {
 
 	m.resetMetric()
 	m.mData = m.mfData[m.metrics[m.metricIndex].start:m.metrics[m.metricIndex].end]
-	if err := m.Metric.unmarshalWithoutLabels(m, m.mData); err != nil {
+	if err := m.unmarshalWithoutLabels(m, m.mData); err != nil {
 		return err
 	}
 	m.metricIndex++
@@ -111,37 +127,37 @@ func (m *MetricStreamingDecoder) resetMetric() {
 	m.TimestampMs = 0
 
 	// TODO(bwplotka): Autogenerate reset functions.
-	if m.Metric.Counter != nil {
-		m.Metric.Counter.Value = 0
-		m.Metric.Counter.CreatedTimestamp = nil
-		m.Metric.Counter.Exemplar = nil
+	if m.Counter != nil {
+		m.Counter.Value = 0
+		m.Counter.CreatedTimestamp = nil
+		m.Counter.Exemplar = nil
 	}
-	if m.Metric.Gauge != nil {
-		m.Metric.Gauge.Value = 0
+	if m.Gauge != nil {
+		m.Gauge.Value = 0
 	}
-	if m.Metric.Histogram != nil {
-		m.Metric.Histogram.SampleCount = 0
-		m.Metric.Histogram.SampleCountFloat = 0
-		m.Metric.Histogram.SampleSum = 0
-		m.Metric.Histogram.Bucket = m.Metric.Histogram.Bucket[:0]
-		m.Metric.Histogram.CreatedTimestamp = nil
-		m.Metric.Histogram.Schema = 0
-		m.Metric.Histogram.ZeroThreshold = 0
-		m.Metric.Histogram.ZeroCount = 0
-		m.Metric.Histogram.ZeroCountFloat = 0
-		m.Metric.Histogram.NegativeSpan = m.Metric.Histogram.NegativeSpan[:0]
-		m.Metric.Histogram.NegativeDelta = m.Metric.Histogram.NegativeDelta[:0]
-		m.Metric.Histogram.NegativeCount = m.Metric.Histogram.NegativeCount[:0]
-		m.Metric.Histogram.PositiveSpan = m.Metric.Histogram.PositiveSpan[:0]
-		m.Metric.Histogram.PositiveDelta = m.Metric.Histogram.PositiveDelta[:0]
-		m.Metric.Histogram.PositiveCount = m.Metric.Histogram.PositiveCount[:0]
-		m.Metric.Histogram.Exemplars = m.Metric.Histogram.Exemplars[:0]
+	if m.Histogram != nil {
+		m.Histogram.SampleCount = 0
+		m.Histogram.SampleCountFloat = 0
+		m.Histogram.SampleSum = 0
+		m.Histogram.Bucket = m.Histogram.Bucket[:0]
+		m.Histogram.CreatedTimestamp = nil
+		m.Histogram.Schema = 0
+		m.Histogram.ZeroThreshold = 0
+		m.Histogram.ZeroCount = 0
+		m.Histogram.ZeroCountFloat = 0
+		m.Histogram.NegativeSpan = m.Histogram.NegativeSpan[:0]
+		m.Histogram.NegativeDelta = m.Histogram.NegativeDelta[:0]
+		m.Histogram.NegativeCount = m.Histogram.NegativeCount[:0]
+		m.Histogram.PositiveSpan = m.Histogram.PositiveSpan[:0]
+		m.Histogram.PositiveDelta = m.Histogram.PositiveDelta[:0]
+		m.Histogram.PositiveCount = m.Histogram.PositiveCount[:0]
+		m.Histogram.Exemplars = m.Histogram.Exemplars[:0]
 	}
-	if m.Metric.Summary != nil {
-		m.Metric.Summary.SampleCount = 0
-		m.Metric.Summary.SampleSum = 0
-		m.Metric.Summary.Quantile = m.Metric.Summary.Quantile[:0]
-		m.Metric.Summary.CreatedTimestamp = nil
+	if m.Summary != nil {
+		m.Summary.SampleCount = 0
+		m.Summary.SampleSum = 0
+		m.Summary.Quantile = m.Summary.Quantile[:0]
+		m.Summary.CreatedTimestamp = nil
 	}
 }
 
@@ -153,14 +169,18 @@ func (m *MetricStreamingDecoder) GetLabel() {
 	panic("don't use GetLabel, use Label instead")
 }
 
+type scratchBuilder interface {
+	Add(name, value string)
+}
+
 // Label parses labels into labels scratch builder. Metric name is missing
 // given the protobuf metric model and has to be deduced from the metric family name.
 // TODO: The method name intentionally hide MetricStreamingDecoder.Metric.Label
 // field to avoid direct use (it's not parsed). In future generator will generate
 // structs tailored for streaming decoding.
-func (m *MetricStreamingDecoder) Label(b *labels.ScratchBuilder) error {
+func (m *MetricStreamingDecoder) Label(b scratchBuilder) error {
 	for _, l := range m.labels {
-		if err := parseLabel(m.mData[l.start:l.end], b); err != nil {
+		if err := parseLabel(m.mData[l.start:l.end], b, m.validationScheme); err != nil {
 			return err
 		}
 	}
@@ -169,7 +189,7 @@ func (m *MetricStreamingDecoder) Label(b *labels.ScratchBuilder) error {
 
 // parseLabel is essentially LabelPair.Unmarshal but directly adding into scratch builder
 // and reusing strings.
-func parseLabel(dAtA []byte, b *labels.ScratchBuilder) error {
+func parseLabel(dAtA []byte, b scratchBuilder, validationScheme model.ValidationScheme) error {
 	var name, value string
 	l := len(dAtA)
 	iNdEx := 0
@@ -230,7 +250,7 @@ func parseLabel(dAtA []byte, b *labels.ScratchBuilder) error {
 				return io.ErrUnexpectedEOF
 			}
 			name = yoloString(dAtA[iNdEx:postIndex])
-			if !model.LabelName(name).IsValid() {
+			if !model.LabelName(name).IsValid(validationScheme) {
 				return fmt.Errorf("invalid label name: %s", name)
 			}
 			iNdEx = postIndex

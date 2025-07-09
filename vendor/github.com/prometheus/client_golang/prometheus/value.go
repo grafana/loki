@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/internal"
 
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -253,7 +254,8 @@ func newExemplar(value float64, ts time.Time, l Labels) (*dto.Exemplar, error) {
 	labelPairs := make([]*dto.LabelPair, 0, len(l))
 	var runes int
 	for name, value := range l {
-		if !checkLabelName(name) {
+		// TODO(juliusmh): hardcoded UTF8 validation
+		if !checkLabelName(name, model.UTF8Validation) {
 			return nil, fmt.Errorf("exemplar label name %q is invalid", name)
 		}
 		runes += utf8.RuneCountInString(name)

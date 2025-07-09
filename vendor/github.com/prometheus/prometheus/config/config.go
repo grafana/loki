@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,11 +68,6 @@ var (
 	}
 )
 
-const (
-	LegacyValidationConfig = "legacy"
-	UTF8ValidationConfig   = "utf8"
-)
-
 // Load parses the YAML input s into a Config.
 func Load(s string, logger *slog.Logger) (*Config, error) {
 	cfg := &Config{}
@@ -111,7 +107,7 @@ func Load(s string, logger *slog.Logger) (*Config, error) {
 	case UnderscoreEscapingWithSuffixes:
 	case "":
 	case NoTranslation, NoUTF8EscapingWithSuffixes:
-		if cfg.GlobalConfig.MetricNameValidationScheme == LegacyValidationConfig {
+		if cfg.GlobalConfig.MetricNameValidationScheme == model.LegacyValidation {
 			return nil, fmt.Errorf("OTLP translation strategy %q is not allowed when UTF8 is disabled", cfg.OTLPConfig.TranslationStrategy)
 		}
 	default:
@@ -155,9 +151,10 @@ func LoadFile(filename string, agentMode bool, logger *slog.Logger) (*Config, er
 var (
 	// DefaultConfig is the default top-level configuration.
 	DefaultConfig = Config{
-		GlobalConfig: DefaultGlobalConfig,
-		Runtime:      DefaultRuntimeConfig,
-		OTLPConfig:   DefaultOTLPConfig,
+		GlobalConfig:   DefaultGlobalConfig,
+		Runtime:        DefaultRuntimeConfig,
+		AlertingConfig: DefaultAlertingConfig,
+		OTLPConfig:     DefaultOTLPConfig,
 	}
 
 	// DefaultGlobalConfig is the default global configuration.
@@ -170,23 +167,31 @@ var (
 		// changes to DefaultNativeHistogramScrapeProtocols.
 		ScrapeProtocols:                DefaultScrapeProtocols,
 		ConvertClassicHistogramsToNHCB: false,
+		AlwaysScrapeClassicHistograms:  false,
+		MetricNameValidationScheme:     model.UTF8Validation,
+		MetricNameEscapingScheme:       model.AllowUTF8,
 	}
 
 	DefaultRuntimeConfig = RuntimeConfig{
 		// Go runtime tuning.
-		GoGC: 75,
+		GoGC: getGoGC(),
+	}
+	DefaultAlertingConfig = AlertingConfig{
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
-	// DefaultScrapeConfig is the default scrape configuration.
+	// DefaultScrapeConfig is the default scrape configuration. Users of this
+	// default MUST call Validate() on the config after creation, even if it's
+	// used unaltered, to check for parameter correctness and fill out default
+	// values that can't be set inline in this declaration.
 	DefaultScrapeConfig = ScrapeConfig{
-		// ScrapeTimeout, ScrapeInterval and ScrapeProtocols default to the configured globals.
-		AlwaysScrapeClassicHistograms: false,
-		MetricsPath:                   "/metrics",
-		Scheme:                        "http",
-		HonorLabels:                   false,
-		HonorTimestamps:               true,
-		HTTPClientConfig:              config.DefaultHTTPClientConfig,
-		EnableCompression:             true,
+		// ScrapeTimeout, ScrapeInterval, ScrapeProtocols, AlwaysScrapeClassicHistograms, and ConvertClassicHistogramsToNHCB default to the configured globals.
+		MetricsPath:       "/metrics",
+		Scheme:            "http",
+		HonorLabels:       false,
+		HonorTimestamps:   true,
+		HTTPClientConfig:  config.DefaultHTTPClientConfig,
+		EnableCompression: true,
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
@@ -204,11 +209,12 @@ var (
 
 	// DefaultRemoteWriteConfig is the default remote write configuration.
 	DefaultRemoteWriteConfig = RemoteWriteConfig{
-		RemoteTimeout:    model.Duration(30 * time.Second),
-		ProtobufMessage:  RemoteWriteProtoMsgV1,
-		QueueConfig:      DefaultQueueConfig,
-		MetadataConfig:   DefaultMetadataConfig,
-		HTTPClientConfig: DefaultRemoteWriteHTTPClientConfig,
+		RemoteTimeout:              model.Duration(30 * time.Second),
+		ProtobufMessage:            RemoteWriteProtoMsgV1,
+		QueueConfig:                DefaultQueueConfig,
+		MetadataConfig:             DefaultMetadataConfig,
+		HTTPClientConfig:           DefaultRemoteWriteHTTPClientConfig,
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
 	// DefaultQueueConfig is the default remote queue configuration.
@@ -239,10 +245,11 @@ var (
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
 	DefaultRemoteReadConfig = RemoteReadConfig{
-		RemoteTimeout:        model.Duration(1 * time.Minute),
-		ChunkedReadLimit:     DefaultChunkedReadLimit,
-		HTTPClientConfig:     config.DefaultHTTPClientConfig,
-		FilterExternalLabels: true,
+		RemoteTimeout:              model.Duration(1 * time.Minute),
+		ChunkedReadLimit:           DefaultChunkedReadLimit,
+		HTTPClientConfig:           config.DefaultHTTPClientConfig,
+		FilterExternalLabels:       true,
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
 	// DefaultStorageConfig is the default TSDB/Exemplar storage configuration.
@@ -381,12 +388,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		c.GlobalConfig = DefaultGlobalConfig
 	}
 
+	if c.GlobalConfig.MetricNameValidationScheme == model.UnsetValidation {
+		c.GlobalConfig.MetricNameValidationScheme = model.UTF8Validation
+	}
+
 	// If a runtime block was open but empty the default runtime config is overwritten.
 	// We have to restore it here.
 	if c.Runtime.isZero() {
 		c.Runtime = DefaultRuntimeConfig
-		// Use the GOGC env var value if the runtime section is empty.
-		c.Runtime.GoGC = getGoGCEnv()
 	}
 
 	for _, rf := range c.RuleFiles {
@@ -418,6 +427,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if rwcfg == nil {
 			return errors.New("empty or null remote write config section")
 		}
+		rwcfg.MetricNameValidationScheme = c.GlobalConfig.MetricNameValidationScheme
+		if err := rwcfg.Validate(); err != nil {
+			return err
+		}
 		// Skip empty names, we fill their name with their config hash in remote write code.
 		if _, ok := rwNames[rwcfg.Name]; ok && rwcfg.Name != "" {
 			return fmt.Errorf("found multiple remote write configs with job name %q", rwcfg.Name)
@@ -434,6 +447,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return fmt.Errorf("found multiple remote read configs with job name %q", rrcfg.Name)
 		}
 		rrNames[rrcfg.Name] = struct{}{}
+	}
+	c.AlertingConfig.MetricNameValidationScheme = c.GlobalConfig.MetricNameValidationScheme
+	if err := c.AlertingConfig.Validate(); err != nil {
+		return errors.New("invalid alerting config: " + err.Error())
 	}
 	return nil
 }
@@ -482,14 +499,16 @@ type GlobalConfig struct {
 	// 0 means no limit.
 	KeepDroppedTargets uint `yaml:"keep_dropped_targets,omitempty"`
 	// Allow UTF8 Metric and Label Names. Can be blank in config files but must
-	// have a value if a ScrepeConfig is created programmatically.
-	MetricNameValidationScheme string `yaml:"metric_name_validation_scheme,omitempty"`
+	// have a value if a GlobalConfig is created programmatically.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"metric_name_validation_scheme,omitempty"`
 	// Metric name escaping mode to request through content negotiation. Can be
-	// blank in config files but must have a value if a ScrepeConfig is created
+	// blank in config files but must have a value if a ScrapeConfig is created
 	// programmatically.
 	MetricNameEscapingScheme string `yaml:"metric_name_escaping_scheme,omitempty"`
 	// Whether to convert all scraped classic histograms into native histograms with custom buckets.
 	ConvertClassicHistogramsToNHCB bool `yaml:"convert_classic_histograms_to_nhcb,omitempty"`
+	// Whether to scrape a classic histogram, even if it is also exposed as a native histogram.
+	AlwaysScrapeClassicHistograms bool `yaml:"always_scrape_classic_histograms,omitempty"`
 }
 
 // ScrapeProtocol represents supported protocol for scraping metrics.
@@ -595,7 +614,7 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if err := gc.ExternalLabels.Validate(func(l labels.Label) error {
-		if !model.LabelName(l.Name).IsValid() {
+		if !model.LabelName(l.Name).IsValid(c.MetricNameValidationScheme) {
 			return fmt.Errorf("%q is not a valid label name", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
@@ -646,13 +665,31 @@ func (c *GlobalConfig) isZero() bool {
 		c.QueryLogFile == "" &&
 		c.ScrapeFailureLogFile == "" &&
 		c.ScrapeProtocols == nil &&
-		!c.ConvertClassicHistogramsToNHCB
+		!c.ConvertClassicHistogramsToNHCB &&
+		!c.AlwaysScrapeClassicHistograms
 }
+
+const DefaultGoGCPercentage = 75
 
 // RuntimeConfig configures the values for the process behavior.
 type RuntimeConfig struct {
 	// The Go garbage collection target percentage.
 	GoGC int `yaml:"gogc,omitempty"`
+
+	// Below are guidelines for adding a new field:
+	//
+	// For config that shouldn't change after startup, you might want to use
+	// flags https://prometheus.io/docs/prometheus/latest/command-line/prometheus/.
+	//
+	// Consider when the new field is first applied: at the very beginning of instance
+	// startup, after the TSDB is loaded etc. See https://github.com/prometheus/prometheus/pull/16491
+	// for an example.
+	//
+	// Provide a test covering various scenarios: empty config file, empty or incomplete runtime
+	// config block, precedence over other inputs (e.g., env vars, if applicable) etc.
+	// See TestRuntimeGOGCConfig (or https://github.com/prometheus/prometheus/pull/15238).
+	// The test should also verify behavior on reloads, since this config should be
+	// adjustable at runtime.
 }
 
 // isZero returns true iff the global config is the zero value.
@@ -691,7 +728,7 @@ type ScrapeConfig struct {
 	// OpenMetricsText1.0.0, PrometheusText1.0.0, PrometheusText0.0.4.
 	ScrapeFallbackProtocol ScrapeProtocol `yaml:"fallback_scrape_protocol,omitempty"`
 	// Whether to scrape a classic histogram, even if it is also exposed as a native histogram.
-	AlwaysScrapeClassicHistograms bool `yaml:"always_scrape_classic_histograms,omitempty"`
+	AlwaysScrapeClassicHistograms *bool `yaml:"always_scrape_classic_histograms,omitempty"`
 	// Whether to convert all scraped classic histograms into a native histogram with custom buckets.
 	ConvertClassicHistogramsToNHCB *bool `yaml:"convert_classic_histograms_to_nhcb,omitempty"`
 	// File to which scrape failures are logged.
@@ -730,10 +767,10 @@ type ScrapeConfig struct {
 	// 0 means no limit.
 	KeepDroppedTargets uint `yaml:"keep_dropped_targets,omitempty"`
 	// Allow UTF8 Metric and Label Names. Can be blank in config files but must
-	// have a value if a ScrepeConfig is created programmatically.
-	MetricNameValidationScheme string `yaml:"metric_name_validation_scheme,omitempty"`
+	// have a value if a ScrapeConfig is created programmatically.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"metric_name_validation_scheme,omitempty"`
 	// Metric name escaping mode to request through content negotiation. Can be
-	// blank in config files but must have a value if a ScrepeConfig is created
+	// blank in config files but must have a value if a ScrapeConfig is created
 	// programmatically.
 	MetricNameEscapingScheme string `yaml:"metric_name_escaping_scheme,omitempty"`
 
@@ -771,24 +808,6 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Thus we just do its validation here.
 	if err := c.HTTPClientConfig.Validate(); err != nil {
 		return err
-	}
-
-	// Check for users putting URLs in target groups.
-	if len(c.RelabelConfigs) == 0 {
-		if err := checkStaticTargets(c.ServiceDiscoveryConfigs); err != nil {
-			return err
-		}
-	}
-
-	for _, rlcfg := range c.RelabelConfigs {
-		if rlcfg == nil {
-			return errors.New("empty or null target relabeling rule in scrape config")
-		}
-	}
-	for _, rlcfg := range c.MetricRelabelConfigs {
-		if rlcfg == nil {
-			return errors.New("empty or null metric relabeling rule in scrape config")
-		}
 	}
 
 	return nil
@@ -852,38 +871,33 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 		}
 	}
 
-	//nolint:staticcheck
-	if model.NameValidationScheme != model.UTF8Validation {
-		return errors.New("model.NameValidationScheme must be set to UTF8")
-	}
-
 	switch globalConfig.MetricNameValidationScheme {
-	case "":
-		globalConfig.MetricNameValidationScheme = UTF8ValidationConfig
-	case LegacyValidationConfig, UTF8ValidationConfig:
+	case model.UnsetValidation:
+		globalConfig.MetricNameValidationScheme = model.UTF8Validation
+	case model.LegacyValidation, model.UTF8Validation:
 	default:
-		return fmt.Errorf("unknown global name validation method specified, must be either 'legacy' or 'utf8', got %s", globalConfig.MetricNameValidationScheme)
+		return fmt.Errorf("unknown global name validation method specified, must be either '', 'legacy' or 'utf8', got %s", globalConfig.MetricNameValidationScheme)
 	}
 	// Scrapeconfig validation scheme matches global if left blank.
 	switch c.MetricNameValidationScheme {
-	case "":
+	case model.UnsetValidation:
 		c.MetricNameValidationScheme = globalConfig.MetricNameValidationScheme
-	case LegacyValidationConfig, UTF8ValidationConfig:
+	case model.LegacyValidation, model.UTF8Validation:
 	default:
-		return fmt.Errorf("unknown scrape config name validation method specified, must be either 'legacy' or 'utf8', got %s", c.MetricNameValidationScheme)
+		return fmt.Errorf("unknown scrape config name validation method specified, must be either '', 'legacy' or 'utf8', got %s", c.MetricNameValidationScheme)
 	}
 
 	// Escaping scheme is based on the validation scheme if left blank.
 	switch globalConfig.MetricNameEscapingScheme {
 	case "":
-		if globalConfig.MetricNameValidationScheme == LegacyValidationConfig {
+		if globalConfig.MetricNameValidationScheme == model.LegacyValidation {
 			globalConfig.MetricNameEscapingScheme = model.EscapeUnderscores
 		} else {
 			globalConfig.MetricNameEscapingScheme = model.AllowUTF8
 		}
 	case model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
 	default:
-		return fmt.Errorf("unknown global name escaping method specified, must be one of '%s', '%s', '%s', or '%s', got %s", model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues, globalConfig.MetricNameValidationScheme)
+		return fmt.Errorf("unknown global name escaping method specified, must be one of '%s', '%s', '%s', or '%s', got %q", model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues, globalConfig.MetricNameEscapingScheme)
 	}
 
 	if c.MetricNameEscapingScheme == "" {
@@ -892,17 +906,48 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 
 	switch c.MetricNameEscapingScheme {
 	case model.AllowUTF8:
-		if c.MetricNameValidationScheme != UTF8ValidationConfig {
+		if c.MetricNameValidationScheme != model.UTF8Validation {
 			return errors.New("utf8 metric names requested but validation scheme is not set to UTF8")
 		}
 	case model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
 	default:
-		return fmt.Errorf("unknown scrape config name escaping method specified, must be one of '%s', '%s', '%s', or '%s', got %s", model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues, c.MetricNameValidationScheme)
+		return fmt.Errorf("unknown scrape config name escaping method specified, must be one of '%s', '%s', '%s', or '%s', got %q", model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues, c.MetricNameEscapingScheme)
 	}
 
 	if c.ConvertClassicHistogramsToNHCB == nil {
 		global := globalConfig.ConvertClassicHistogramsToNHCB
 		c.ConvertClassicHistogramsToNHCB = &global
+	}
+
+	if c.AlwaysScrapeClassicHistograms == nil {
+		global := globalConfig.AlwaysScrapeClassicHistograms
+		c.AlwaysScrapeClassicHistograms = &global
+	}
+
+	// Check for users putting URLs in target groups.
+	if len(c.RelabelConfigs) == 0 {
+		if err := checkStaticTargets(c.ServiceDiscoveryConfigs); err != nil {
+			return err
+		}
+	}
+
+	for _, rlcfg := range c.RelabelConfigs {
+		if rlcfg == nil {
+			return errors.New("empty or null target relabeling rule in scrape config")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return errors.New("invalid relabel config: " + err.Error())
+		}
+	}
+	for _, rlcfg := range c.MetricRelabelConfigs {
+		if rlcfg == nil {
+			return errors.New("empty or null metric relabeling rule in scrape config")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return errors.New("invalid metric relabel config: " + err.Error())
+		}
 	}
 
 	return nil
@@ -913,23 +958,33 @@ func (c *ScrapeConfig) MarshalYAML() (interface{}, error) {
 	return discovery.MarshalYAMLWithInlineConfigs(c)
 }
 
-// ToValidationScheme returns the validation scheme for the given string config value.
-func ToValidationScheme(s string) (validationScheme model.ValidationScheme, err error) {
-	switch s {
-	case UTF8ValidationConfig:
-		validationScheme = model.UTF8Validation
-	case LegacyValidationConfig:
-		validationScheme = model.LegacyValidation
-	default:
-		return model.UTF8Validation, fmt.Errorf("invalid metric name validation scheme, %s", s)
+// ToEscapingScheme wraps the equivalent common library function with the
+// desired default behavior based on the given validation scheme. This is a
+// workaround for third party exporters that don't set the escaping scheme.
+func ToEscapingScheme(s string, v model.ValidationScheme) (model.EscapingScheme, error) {
+	if s == "" {
+		switch v {
+		case model.UTF8Validation:
+			return model.NoEscaping, nil
+		case model.LegacyValidation:
+			return model.UnderscoreEscaping, nil
+		case model.UnsetValidation:
+			return model.NoEscaping, fmt.Errorf("v is unset: %s", v)
+		default:
+			panic(fmt.Errorf("unhandled validation scheme: %s", v))
+		}
 	}
-
-	return validationScheme, nil
+	return model.ToEscapingScheme(s)
 }
 
 // ConvertClassicHistogramsToNHCBEnabled returns whether to convert classic histograms to NHCB.
 func (c *ScrapeConfig) ConvertClassicHistogramsToNHCBEnabled() bool {
 	return c.ConvertClassicHistogramsToNHCB != nil && *c.ConvertClassicHistogramsToNHCB
+}
+
+// AlwaysScrapeClassicHistogramsEnabled returns whether to always scrape classic histograms.
+func (c *ScrapeConfig) AlwaysScrapeClassicHistogramsEnabled() bool {
+	return c.AlwaysScrapeClassicHistograms != nil && *c.AlwaysScrapeClassicHistograms
 }
 
 // StorageConfig configures runtime reloadable configuration options.
@@ -1043,8 +1098,9 @@ type ExemplarsConfig struct {
 
 // AlertingConfig configures alerting and alertmanager related configs.
 type AlertingConfig struct {
-	AlertRelabelConfigs []*relabel.Config   `yaml:"alert_relabel_configs,omitempty"`
-	AlertmanagerConfigs AlertmanagerConfigs `yaml:"alertmanagers,omitempty"`
+	AlertRelabelConfigs        []*relabel.Config      `yaml:"alert_relabel_configs,omitempty"`
+	AlertmanagerConfigs        AlertmanagerConfigs    `yaml:"alertmanagers,omitempty"`
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1063,10 +1119,26 @@ func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (c *AlertingConfig) Validate() error {
+	for _, amcfg := range c.AlertmanagerConfigs {
+		if amcfg == nil {
+			return errors.New("empty or null alert manager config")
+		}
+		amcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := amcfg.Validate(); err != nil {
+			return err
+		}
+	}
 	for _, rlcfg := range c.AlertRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null alert relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1097,13 +1169,11 @@ func (v *AlertmanagerAPIVersion) UnmarshalYAML(unmarshal func(interface{}) error
 		return err
 	}
 
-	for _, supportedVersion := range SupportedAlertmanagerAPIVersions {
-		if *v == supportedVersion {
-			return nil
-		}
+	if !slices.Contains(SupportedAlertmanagerAPIVersions, *v) {
+		return fmt.Errorf("expected Alertmanager api version to be one of %v but got %v", SupportedAlertmanagerAPIVersions, *v)
 	}
 
-	return fmt.Errorf("expected Alertmanager api version to be one of %v but got %v", SupportedAlertmanagerAPIVersions, *v)
+	return nil
 }
 
 const (
@@ -1142,6 +1212,9 @@ type AlertmanagerConfig struct {
 	RelabelConfigs []*relabel.Config `yaml:"relabel_configs,omitempty"`
 	// Relabel alerts before sending to the specific alertmanager.
 	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty"`
+
+	// MetricNameValidationScheme configures the metric/label name validation scheme.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1156,7 +1229,10 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	if err := discovery.UnmarshalYAMLWithInlineConfigs(c, unmarshal); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (c *AlertmanagerConfig) Validate() error {
 	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
 	// Thus we just do its validation here.
@@ -1178,15 +1254,27 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 		}
 	}
 
+	if c.MetricNameValidationScheme == model.UnsetValidation {
+		return errors.New("MetricNameValidationScheme must be set in Alertmanager configuration")
+	}
+
 	for _, rlcfg := range c.RelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null Alertmanager target relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid relabel config: %w", err)
 		}
 	}
 
 	for _, rlcfg := range c.AlertRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null Alertmanager alert relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid alert relabel config: %w", err)
 		}
 	}
 
@@ -1290,6 +1378,8 @@ type RemoteWriteConfig struct {
 	SigV4Config      *sigv4.SigV4Config      `yaml:"sigv4,omitempty"`
 	AzureADConfig    *azuread.AzureADConfig  `yaml:"azuread,omitempty"`
 	GoogleIAMConfig  *googleiam.Config       `yaml:"google_iam,omitempty"`
+
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1304,14 +1394,26 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *RemoteWriteConfig) Validate() error {
 	if c.URL == nil {
 		return errors.New("url for remote_write is empty")
+	}
+	if c.MetricNameValidationScheme == model.UnsetValidation {
+		return errors.New("MetricNameValidationScheme must be set in remote write configuration")
 	}
 	for _, rlcfg := range c.WriteRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null relabeling rule in remote write config")
 		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid relabel config: %w", err)
+		}
 	}
+
 	if err := validateHeaders(c.Headers); err != nil {
 		return err
 	}
@@ -1322,7 +1424,7 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 
 	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
-	// Thus we just do its validation here.
+	// Thus, we just do its validation here.
 	if err := c.HTTPClientConfig.Validate(); err != nil {
 		return err
 	}
@@ -1445,6 +1547,9 @@ type RemoteReadConfig struct {
 
 	// Whether to use the external labels as selectors for the remote read endpoint.
 	FilterExternalLabels bool `yaml:"filter_external_labels,omitempty"`
+
+	// MetricNameValidationScheme configures the metric and label name validation scheme.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1483,7 +1588,7 @@ func fileErr(filename string, err error) error {
 	return fmt.Errorf("%q: %w", filePath(filename), err)
 }
 
-func getGoGCEnv() int {
+func getGoGC() int {
 	goGCEnv := os.Getenv("GOGC")
 	// If the GOGC env var is set, use the same logic as upstream Go.
 	if goGCEnv != "" {
@@ -1496,7 +1601,7 @@ func getGoGCEnv() int {
 			return i
 		}
 	}
-	return DefaultRuntimeConfig.GoGC
+	return DefaultGoGCPercentage
 }
 
 type translationStrategyOption string
@@ -1529,10 +1634,15 @@ var (
 
 // OTLPConfig is the configuration for writing to the OTLP endpoint.
 type OTLPConfig struct {
+	PromoteAllResourceAttributes      bool                      `yaml:"promote_all_resource_attributes,omitempty"`
 	PromoteResourceAttributes         []string                  `yaml:"promote_resource_attributes,omitempty"`
+	IgnoreResourceAttributes          []string                  `yaml:"ignore_resource_attributes,omitempty"`
 	TranslationStrategy               translationStrategyOption `yaml:"translation_strategy,omitempty"`
 	KeepIdentifyingResourceAttributes bool                      `yaml:"keep_identifying_resource_attributes,omitempty"`
 	ConvertHistogramsToNHCB           bool                      `yaml:"convert_histograms_to_nhcb,omitempty"`
+	// PromoteScopeMetadata controls whether to promote OTel scope metadata (i.e. name, version, schema URL, and attributes) to metric labels.
+	// As per OTel spec, the aforementioned scope metadata should be identifying, i.e. made into metric labels.
+	PromoteScopeMetadata bool `yaml:"promote_scope_metadata,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -1543,21 +1653,41 @@ func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
+	if c.PromoteAllResourceAttributes {
+		if len(c.PromoteResourceAttributes) > 0 {
+			return errors.New("'promote_all_resource_attributes' and 'promote_resource_attributes' cannot be configured simultaneously")
+		}
+		if err := sanitizeAttributes(c.IgnoreResourceAttributes, "ignored"); err != nil {
+			return fmt.Errorf("invalid 'ignore_resource_attributes': %w", err)
+		}
+	} else {
+		if len(c.IgnoreResourceAttributes) > 0 {
+			return errors.New("'ignore_resource_attributes' cannot be configured unless 'promote_all_resource_attributes' is true")
+		}
+		if err := sanitizeAttributes(c.PromoteResourceAttributes, "promoted"); err != nil {
+			return fmt.Errorf("invalid 'promote_resource_attributes': %w", err)
+		}
+	}
+
+	return nil
+}
+
+func sanitizeAttributes(attributes []string, adjective string) error {
 	seen := map[string]struct{}{}
 	var err error
-	for i, attr := range c.PromoteResourceAttributes {
+	for i, attr := range attributes {
 		attr = strings.TrimSpace(attr)
 		if attr == "" {
-			err = errors.Join(err, errors.New("empty promoted OTel resource attribute"))
+			err = errors.Join(err, fmt.Errorf("empty %s OTel resource attribute", adjective))
 			continue
 		}
 		if _, exists := seen[attr]; exists {
-			err = errors.Join(err, fmt.Errorf("duplicated promoted OTel resource attribute %q", attr))
+			err = errors.Join(err, fmt.Errorf("duplicated %s OTel resource attribute %q", adjective, attr))
 			continue
 		}
 
 		seen[attr] = struct{}{}
-		c.PromoteResourceAttributes[i] = attr
+		attributes[i] = attr
 	}
 	return err
 }

@@ -4,9 +4,18 @@
 package globalsignal // import "go.opentelemetry.io/collector/pipeline/internal/globalsignal"
 
 import (
-	"errors"
+	"encoding"
 	"fmt"
-	"regexp"
+)
+
+var (
+	SignalProfiles = Signal{name: "profiles"}
+	SignalTraces   = Signal{name: "traces"}
+	SignalMetrics  = Signal{name: "metrics"}
+	SignalLogs     = Signal{name: "logs"}
+
+	_ encoding.TextMarshaler   = (*Signal)(nil)
+	_ encoding.TextUnmarshaler = (*Signal)(nil)
 )
 
 // Signal represents the signals supported by the collector.
@@ -20,32 +29,23 @@ func (s Signal) String() string {
 }
 
 // MarshalText marshals the Signal.
-func (s Signal) MarshalText() (text []byte, err error) {
+func (s Signal) MarshalText() ([]byte, error) {
 	return []byte(s.name), nil
 }
 
-// signalRegex is used to validate the signal.
-// A signal must consist of 1 to 62 lowercase ASCII alphabetic characters.
-var signalRegex = regexp.MustCompile(`^[a-z]{1,62}$`)
-
-// NewSignal creates a Signal. It returns an error if the Signal is invalid.
-// A Signal must consist of 1 to 62 lowercase ASCII alphabetic characters.
-func NewSignal(signal string) (Signal, error) {
-	if len(signal) == 0 {
-		return Signal{}, errors.New("signal must not be empty")
+// UnmarshalText marshals the Signal.
+func (s *Signal) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case SignalProfiles.name:
+		*s = SignalProfiles
+	case SignalTraces.name:
+		*s = SignalTraces
+	case SignalMetrics.name:
+		*s = SignalMetrics
+	case SignalLogs.name:
+		*s = SignalLogs
+	default:
+		return fmt.Errorf("unknown pipeline signal: %q", string(text))
 	}
-	if !signalRegex.MatchString(signal) {
-		return Signal{}, fmt.Errorf("invalid character(s) in type %q", signal)
-	}
-	return Signal{name: signal}, nil
-}
-
-// MustNewSignal creates a Signal. It panics if the Signal is invalid.
-// A signal must consist of 1 to 62 lowercase ASCII alphabetic characters.
-func MustNewSignal(signal string) Signal {
-	s, err := NewSignal(signal)
-	if err != nil {
-		panic(err)
-	}
-	return s
+	return nil
 }

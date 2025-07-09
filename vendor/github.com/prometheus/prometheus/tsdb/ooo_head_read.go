@@ -168,6 +168,12 @@ func getOOOSeriesChunks(s *memSeries, mint, maxt int64, lastGarbageCollectedMmap
 	return nil
 }
 
+// PostingsForMatchers needs to be overridden so that the right IndexReader
+// implementation gets passed down to the PostingsForMatchers call.
+func (oh *HeadAndOOOIndexReader) PostingsForMatchers(ctx context.Context, concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
+	return oh.head.pfmc.PostingsForMatchers(ctx, oh, concurrent, ms...)
+}
+
 // Fake Chunk object to pass a set of Metas inside Meta.Chunk.
 type multiMeta struct {
 	chunkenc.Chunk // We don't expect any of the methods to be called.
@@ -176,16 +182,16 @@ type multiMeta struct {
 
 // LabelValues needs to be overridden from the headIndexReader implementation
 // so we can return labels within either in-order range or ooo range.
-func (oh *HeadAndOOOIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (oh *HeadAndOOOIndexReader) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	if oh.maxt < oh.head.MinTime() && oh.maxt < oh.head.MinOOOTime() || oh.mint > oh.head.MaxTime() && oh.mint > oh.head.MaxOOOTime() {
 		return []string{}, nil
 	}
 
 	if len(matchers) == 0 {
-		return oh.head.postings.LabelValues(ctx, name), nil
+		return oh.head.postings.LabelValues(ctx, name, hints), nil
 	}
 
-	return labelValuesWithMatchers(ctx, oh, name, matchers...)
+	return labelValuesWithMatchers(ctx, oh, name, hints, matchers...)
 }
 
 func lessByMinTimeAndMinRef(a, b chunks.Meta) int {
@@ -464,6 +470,16 @@ func (ir *OOOCompactionHeadIndexReader) ShardedPostings(p index.Postings, shardI
 	return hr.ShardedPostings(p, shardIndex, shardCount)
 }
 
+func (ir *OOOCompactionHeadIndexReader) LabelValuesFor(postings index.Postings, name string) storage.LabelValues {
+	hr := headIndexReader{head: ir.ch.head, mint: ir.ch.mint, maxt: ir.ch.maxt}
+	return hr.LabelValuesFor(postings, name)
+}
+
+func (ir *OOOCompactionHeadIndexReader) LabelValuesExcluding(postings index.Postings, name string) storage.LabelValues {
+	hr := headIndexReader{head: ir.ch.head, mint: ir.ch.mint, maxt: ir.ch.maxt}
+	return hr.LabelValuesExcluding(postings, name)
+}
+
 func (ir *OOOCompactionHeadIndexReader) Series(ref storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {
 	s := ir.ch.head.series.getByID(chunks.HeadSeriesRef(ref))
 
@@ -484,11 +500,11 @@ func (ir *OOOCompactionHeadIndexReader) Series(ref storage.SeriesRef, builder *l
 	return getOOOSeriesChunks(s, ir.ch.mint, ir.ch.maxt, 0, ir.ch.lastMmapRef, false, 0, chks)
 }
 
-func (ir *OOOCompactionHeadIndexReader) SortedLabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) SortedLabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 

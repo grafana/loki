@@ -272,10 +272,17 @@ type OpenSearchACL struct {
 	Index      string `json:"index,omitempty"`
 }
 
+// MongoUserSettings represents additional settings for MongoDB users.
+type MongoUserSettings struct {
+	Databases []string `json:"databases,omitempty"`
+	Role      string   `json:"role,omitempty"`
+}
+
 // DatabaseUserSettings contains user settings
 type DatabaseUserSettings struct {
-	ACL           []*KafkaACL      `json:"acl,omitempty"`
-	OpenSearchACL []*OpenSearchACL `json:"opensearch_acl,omitempty"`
+	ACL               []*KafkaACL        `json:"acl,omitempty"`
+	OpenSearchACL     []*OpenSearchACL   `json:"opensearch_acl,omitempty"`
+	MongoUserSettings *MongoUserSettings `json:"mongo_user_settings,omitempty"`
 }
 
 // DatabaseMySQLUserSettings contains MySQL-specific user settings
