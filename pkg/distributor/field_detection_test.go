@@ -222,6 +222,62 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
+			name: "non otlp with debug keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a DEBUG message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with debug: prefix in log line",
+			entry: logproto.Entry{
+				Line: "debug: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG: prefix in log line",
+			entry: logproto.Entry{
+				Line: "DEBUG: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with critical keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a CRITICAL message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with critical: prefix in log line",
+			entry: logproto.Entry{
+				Line: "critical: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL: prefix in log line",
+			entry: logproto.Entry{
+				Line: "CRITICAL: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","level":"critical"}`,
@@ -399,6 +455,62 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 				Line: "this is a warning log",
 			},
 			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with debug keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a DEBUG message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with debug: prefix in log line",
+			entry: logproto.Entry{
+				Line: "debug: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG: prefix in log line",
+			entry: logproto.Entry{
+				Line: "DEBUG: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with critical keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a CRITICAL message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with critical: prefix in log line",
+			entry: logproto.Entry{
+				Line: "critical: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL: prefix in log line",
+			entry: logproto.Entry{
+				Line: "CRITICAL: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an error",
