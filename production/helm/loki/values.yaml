@@ -3479,7 +3479,8 @@ chunksCache:
     # -- Append to the name of the resources to make names different for l1 and l2
     suffix: "l2"
     # -- The age of chunks should be transfered from l1 cache to l2
-    l2ChunkCacheHandoff: 345600s # 4 days
+    # 4 days
+    l2ChunkCacheHandoff: 345600s
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
     enabled: false
     # -- Comma separated addresses list in DNS Service Discovery format
