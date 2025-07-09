@@ -41,6 +41,7 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 	// Default EngineOpts. Adjust if specific configurations are needed.
 	engineOpts := logql.EngineOpts{
 		EnableV2Engine: true,
+		BatchSize:      512,
 	}
 
 	// Instantiate the new engine
