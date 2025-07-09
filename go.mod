@@ -112,6 +112,7 @@ require (
 
 require (
 	github.com/Azure/go-autorest/autorest v0.11.30
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/DataDog/sketches-go v1.4.7
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.20.1
@@ -128,12 +129,12 @@ require (
 	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
 	github.com/heroku/x v0.4.3
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
-	github.com/lib/pq v1.10.9
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.4
 	github.com/parquet-go/parquet-go v0.25.1
@@ -171,7 +172,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.1 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/DATA-DOG/go-sqlmock v1.5.2 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.27.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.51.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.51.0 // indirect
@@ -199,7 +199,6 @@ require (
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
-	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/gophercloud/gophercloud/v2 v2.7.0 // indirect
