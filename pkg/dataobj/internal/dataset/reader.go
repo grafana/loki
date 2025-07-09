@@ -113,6 +113,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	// possible on each call.
 
 	row, err := r.alignRow()
+	fmt.Printf("alignRow: row %d, err %v\n", row, err)
 	if err != nil {
 		return n, err
 	} else if _, err := r.inner.Seek(int64(row), io.SeekStart); err != nil {
@@ -291,7 +292,7 @@ func (r *Reader) alignRow() (uint64, error) {
 
 	nextRow, ok := r.ranges.Next(uint64(r.row))
 	if !ok {
-		fmt.Printf("ranges are nil\n")
+		fmt.Printf("r.ranges.Next: %+v\n", r.ranges)
 		return 0, io.EOF
 	}
 	r.row = int64(nextRow)
@@ -451,6 +452,7 @@ func (r *Reader) init(ctx context.Context) error {
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
+	fmt.Printf("initDownloader: r.ranges %+v\n", r.ranges)
 
 	if r.inner == nil {
 		r.inner = newBasicReader(r.dl.AllColumns())
@@ -679,8 +681,10 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		// will cache metadata.
 		var rowsCount uint64
 		for _, column := range r.dl.AllColumns() {
+			fmt.Printf("buildPredicateRanges, %s(%s): found %d rows\n", column.ColumnInfo().Type, column.ColumnInfo().Name, column.ColumnInfo().RowsCount)
 			rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
 		}
+		fmt.Printf("buildPredicateRanges: rowsCount %d\n", rowsCount)
 		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
 
 	default:
