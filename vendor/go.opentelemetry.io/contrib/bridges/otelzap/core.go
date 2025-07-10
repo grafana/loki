@@ -39,15 +39,17 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 type config struct {
-	provider  log.LoggerProvider
-	version   string
-	schemaURL string
+	provider   log.LoggerProvider
+	version    string
+	schemaURL  string
+	attributes []attribute.KeyValue
 }
 
 func newConfig(options []Option) config {
@@ -92,6 +94,15 @@ func WithSchemaURL(schemaURL string) Option {
 	})
 }
 
+// WithAttributes returns an [Option] that configures the instrumentation scope
+// attributes of the [log.Logger] used by a [Core].
+func WithAttributes(attributes ...attribute.KeyValue) Option {
+	return optFunc(func(c config) config {
+		c.attributes = attributes
+		return c
+	})
+}
+
 // WithLoggerProvider returns an [Option] that configures [log.LoggerProvider]
 // used by a [Core] to create its [log.Logger].
 //
@@ -128,6 +139,9 @@ func NewCore(name string, opts ...Option) *Core {
 	}
 	if cfg.schemaURL != "" {
 		loggerOpts = append(loggerOpts, log.WithSchemaURL(cfg.schemaURL))
+	}
+	if cfg.attributes != nil {
+		loggerOpts = append(loggerOpts, log.WithInstrumentationAttributes(cfg.attributes...))
 	}
 
 	logger := cfg.provider.Logger(name, loggerOpts...)

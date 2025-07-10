@@ -533,7 +533,9 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-	keyWithPrefix = otlptranslator.NormalizeLabel(keyWithPrefix)
+
+	labelNamer := otlptranslator.LabelNamer{}
+	keyWithPrefix = labelNamer.Build(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

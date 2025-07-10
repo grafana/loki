@@ -26,6 +26,9 @@ const (
 	// complicated values in the future. It is 2 rather than 1 to make
 	// it easier to distinguish from the NormalNaN by a human when debugging.
 	StaleNaN uint64 = 0x7ff0000000000002
+
+	// QuietZeroNaN signals TSDB to add a zero, but do nothing if there is already a value at that timestamp.
+	QuietZeroNaN uint64 = 0x7ff0000000000003
 )
 
 // IsStaleNaN returns true when the provided NaN value is a stale marker.

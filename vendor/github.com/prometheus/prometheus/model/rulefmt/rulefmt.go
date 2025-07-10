@@ -150,12 +150,18 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 
 // RuleGroup is a list of sequentially evaluated recording and alerting rules.
 type RuleGroup struct {
-	Name        string            `yaml:"name"`
-	Interval    model.Duration    `yaml:"interval,omitempty"`
-	QueryOffset *model.Duration   `yaml:"query_offset,omitempty"`
-	Limit       int               `yaml:"limit,omitempty"`
-	Rules       []Rule            `yaml:"rules"`
-	Labels      map[string]string `yaml:"labels,omitempty"`
+	Name     string         `yaml:"name"`
+	Interval model.Duration `yaml:"interval,omitempty"`
+
+	// Deprecated: Use QueryOffset instead.
+	EvaluationDelay *model.Duration `yaml:"evaluation_delay,omitempty"`
+	QueryOffset     *model.Duration `yaml:"query_offset,omitempty"`
+
+	Limit                         int               `yaml:"limit,omitempty"`
+	Rules                         []Rule            `yaml:"rules"`
+	Labels                        map[string]string `yaml:"labels,omitempty"`
+	SourceTenants                 []string          `yaml:"source_tenants,omitempty"`
+	AlignEvaluationTimeOnInterval bool              `yaml:"align_evaluation_time_on_interval,omitempty"`
 }
 
 // RuleGroupNode adds yaml.v3 layer to support line and columns outputs for invalid rule groups.

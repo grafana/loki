@@ -111,6 +111,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 	}
 	buf.Reset()
 
+	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
 		s.mtx.RLock()
@@ -123,7 +124,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized := otlptranslator.NormalizeLabel(name)
+			normalized := labelNamer.Build(name)
 			s.mtx.Lock()
 			s.normalizedNames[symbol.Name] = normalized
 			s.mtx.Unlock()

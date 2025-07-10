@@ -61,8 +61,8 @@ func (h *headIndexReader) Symbols() index.StringIter {
 // specific label name that are within the time range mint to maxt.
 // If matchers are specified the returned result set is reduced
 // to label values of metrics matching the matchers.
-func (h *headIndexReader) SortedLabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
-	values, err := h.LabelValues(ctx, name, matchers...)
+func (h *headIndexReader) SortedLabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
+	values, err := h.LabelValues(ctx, name, hints, matchers...)
 	if err == nil {
 		slices.Sort(values)
 	}
@@ -73,16 +73,16 @@ func (h *headIndexReader) SortedLabelValues(ctx context.Context, name string, ma
 // specific label name that are within the time range mint to maxt.
 // If matchers are specified the returned result set is reduced
 // to label values of metrics matching the matchers.
-func (h *headIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (h *headIndexReader) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
 		return []string{}, nil
 	}
 
 	if len(matchers) == 0 {
-		return h.head.postings.LabelValues(ctx, name), nil
+		return h.head.postings.LabelValues(ctx, name, hints), nil
 	}
 
-	return labelValuesWithMatchers(ctx, h, name, matchers...)
+	return labelValuesWithMatchers(ctx, h, name, hints, matchers...)
 }
 
 // LabelNames returns all the unique label names present in the head
@@ -112,6 +112,10 @@ func (h *headIndexReader) PostingsForLabelMatching(ctx context.Context, name str
 
 func (h *headIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
 	return h.head.postings.PostingsForAllLabelValues(ctx, name)
+}
+
+func (h *headIndexReader) PostingsForMatchers(ctx context.Context, concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
+	return h.head.pfmc.PostingsForMatchers(ctx, h, concurrent, ms...)
 }
 
 func (h *headIndexReader) SortedPostings(p index.Postings) index.Postings {
@@ -175,6 +179,17 @@ func (h *headIndexReader) ShardedPostings(p index.Postings, shardIndex, shardCou
 	}
 
 	return index.NewListPostings(out)
+}
+
+// LabelValuesFor returns LabelValues for the given label name in the series referred to by postings.
+func (h *headIndexReader) LabelValuesFor(postings index.Postings, name string) storage.LabelValues {
+	return h.head.postings.LabelValuesFor(postings, name)
+}
+
+// LabelValuesExcluding returns LabelValues for the given label name in all other series than those referred to by postings.
+// This is useful for obtaining label values for other postings than the ones you wish to exclude.
+func (h *headIndexReader) LabelValuesExcluding(postings index.Postings, name string) storage.LabelValues {
+	return h.head.postings.LabelValuesExcluding(postings, name)
 }
 
 // Series returns the series for the given reference.
@@ -568,10 +583,8 @@ func (s *memSeries) iterator(id chunks.HeadChunkID, c chunkenc.Chunk, isoState *
 					continue
 				}
 			}
-			stopAfter = numSamples - (appendIDsToConsider - index)
-			if stopAfter < 0 {
-				stopAfter = 0 // Stopped in a previous chunk.
-			}
+			// Stopped in a previous chunk.
+			stopAfter = max(numSamples-(appendIDsToConsider-index), 0)
 			break
 		}
 	}
