@@ -37,8 +37,8 @@ func (c *LogCluster) merge(samples []*logproto.PatternSample) {
 	c.Chunks.merge(samples)
 }
 
-func (c *LogCluster) Iterator(lvl string, from, through, step model.Time) iter.Iterator {
-	return c.Chunks.Iterator(c.String(), lvl, from, through, step)
+func (c *LogCluster) Iterator(lvl string, from, through, step, sampleInterval model.Time) iter.Iterator {
+	return c.Chunks.Iterator(c.String(), lvl, from, through, step, sampleInterval)
 }
 
 func (c *LogCluster) Samples() []*logproto.PatternSample {

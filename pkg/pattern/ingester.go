@@ -186,6 +186,7 @@ type Limits interface {
 	drain.Limits
 	MetricAggregationEnabled(userID string) bool
 	PatternPersistenceEnabled(userID string) bool
+	PersistenceGranularity(userID string) time.Duration
 }
 
 type Ingester struct {
@@ -254,6 +255,14 @@ func New(
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	return i, nil
+}
+
+func (i *Ingester) getEffectivePersistenceGranularity(userID string) time.Duration {
+	tenantGranularity := i.limits.PersistenceGranularity(userID)
+	if tenantGranularity > 0 {
+		return tenantGranularity
+	}
+	return i.cfg.ChunkDuration
 }
 
 // ServeHTTP implements the pattern ring status page.

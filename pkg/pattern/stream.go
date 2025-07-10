@@ -30,7 +30,9 @@ type stream struct {
 	logger        log.Logger
 	patternWriter aggregation.EntryWriter
 
-	lastTs int64
+	lastTs                 int64
+	persistenceGranularity time.Duration
+	sampleInterval         time.Duration
 }
 
 func newStream(
@@ -43,6 +45,7 @@ func newStream(
 	drainCfg *drain.Config,
 	drainLimits drain.Limits,
 	patternWriter aggregation.EntryWriter,
+	persistenceGranularity time.Duration,
 ) (*stream, error) {
 	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
 	if err != nil {
@@ -62,13 +65,15 @@ func newStream(
 	}
 
 	return &stream{
-		fp:            fp,
-		labels:        labels,
-		labelsString:  labels.String(),
-		labelHash:     labels.Hash(),
-		logger:        logger,
-		patterns:      patterns,
-		patternWriter: patternWriter,
+		fp:                     fp,
+		labels:                 labels,
+		labelsString:           labels.String(),
+		labelHash:              labels.Hash(),
+		logger:                 logger,
+		patterns:               patterns,
+		patternWriter:          patternWriter,
+		persistenceGranularity: persistenceGranularity,
+		sampleInterval:         drainCfg.SampleInterval,
 	}, nil
 }
 
@@ -115,7 +120,7 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 			if cluster.String() == "" {
 				continue
 			}
-			iters = append(iters, cluster.Iterator(lvl, from, through, step))
+			iters = append(iters, cluster.Iterator(lvl, from, through, step, model.Time(s.sampleInterval.Nanoseconds()/1e6)))
 		}
 	}
 
@@ -131,17 +136,9 @@ func (s *stream) prune(olderThan time.Duration) bool {
 		clusters := pattern.Clusters()
 		for _, cluster := range clusters {
 			prunedSamples := cluster.Prune(olderThan)
-			// Write patterns for pruned chunks
+			// Write patterns for pruned chunks with bucketed aggregation
 			if len(prunedSamples) > 0 {
-				var totalValue int64
-				var latestTimestamp model.Time
-				for _, sample := range prunedSamples {
-					totalValue += sample.Value
-					if sample.Timestamp > latestTimestamp {
-						latestTimestamp = sample.Timestamp
-					}
-				}
-				s.writePattern(latestTimestamp, s.labels, cluster.String(), totalValue, lvl)
+				s.writePatternsBucketed(prunedSamples, s.labels, cluster.String(), lvl)
 			}
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
@@ -187,5 +184,35 @@ func (s *stream) writePattern(
 			newLbls,
 			newStructuredMetadata,
 		)
+	}
+}
+
+func (s *stream) writePatternsBucketed(
+	prunedSamples []*logproto.PatternSample,
+	streamLbls labels.Labels,
+	pattern string,
+	lvl string,
+) {
+	if len(prunedSamples) == 0 {
+		return
+	}
+
+	// Calculate bucket size
+	bucketSize := s.persistenceGranularity
+
+	// Process samples into buckets
+	buckets := make(map[model.Time]int64)
+
+	for _, sample := range prunedSamples {
+		// Calculate which bucket this sample belongs to
+		sampleBucket := model.Time(sample.Timestamp.UnixNano() / bucketSize.Nanoseconds() * bucketSize.Nanoseconds() / 1e6)
+		buckets[sampleBucket] += sample.Value
+	}
+
+	// Write pattern entries for each bucket
+	for bucketTime, totalValue := range buckets {
+		if totalValue > 0 {
+			s.writePattern(bucketTime, streamLbls, pattern, totalValue, lvl)
+		}
 	}
 }

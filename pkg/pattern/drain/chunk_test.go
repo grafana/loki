@@ -33,6 +33,10 @@ func TestAdd(t *testing.T) {
 	require.Equalf(t, 1, len(cks[1].Samples), "Older samples should not be added if they arrive out of order")
 }
 
+var (
+	defaultTimeResolution = model.Time(int64(time.Second*10) / 1e6)
+)
+
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
 
@@ -41,7 +45,14 @@ func TestIterator(t *testing.T) {
 	cks.Add(2*TimeResolution+1, chunkDuration, sampleInterval)
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())+TimeResolution+1, chunkDuration, sampleInterval)
 
-	it := cks.Iterator("test", constants.LogLevelInfo, model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
+	it := cks.Iterator(
+		"test",
+		constants.LogLevelInfo,
+		model.Time(0),
+		model.Time(time.Hour.Nanoseconds()),
+		defaultTimeResolution,
+		defaultTimeResolution,
+	)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample
@@ -55,6 +66,128 @@ func TestIterator(t *testing.T) {
 		{Timestamp: 20000, Value: 1},
 		{Timestamp: 3610000, Value: 1},
 	}, samples)
+}
+
+func TestForRange_ConfigurableSampleInterval(t *testing.T) {
+	testCases := []struct {
+		name           string
+		c              *Chunk
+		start          model.Time
+		end            model.Time
+		step           model.Time
+		sampleInterval time.Duration
+		expected       []logproto.PatternSample
+	}{
+		{
+			name:           "Custom 5s sample interval returns direct samples",
+			c:              &Chunk{Samples: []logproto.PatternSample{{Timestamp: 5000, Value: 2}, {Timestamp: 10000, Value: 4}}},
+			start:          0,
+			end:            15000,
+			step:           model.Time(5000),
+			sampleInterval: 5 * time.Second,
+			expected:       []logproto.PatternSample{{Timestamp: 5000, Value: 2}, {Timestamp: 10000, Value: 4}},
+		},
+		{
+			name:           "Custom 30s sample interval returns direct samples",
+			c:              &Chunk{Samples: []logproto.PatternSample{{Timestamp: 30000, Value: 10}, {Timestamp: 60000, Value: 20}}},
+			start:          0,
+			end:            90000,
+			step:           model.Time(30000),
+			sampleInterval: 30 * time.Second,
+			expected:       []logproto.PatternSample{{Timestamp: 30000, Value: 10}, {Timestamp: 60000, Value: 20}},
+		},
+		{
+			name: "Step aggregation: 20s step aggregates samples into buckets",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 5000, Value: 2},  // 5s
+				{Timestamp: 10000, Value: 3}, // 10s
+				{Timestamp: 15000, Value: 1}, // 15s
+				{Timestamp: 25000, Value: 4}, // 25s
+				{Timestamp: 30000, Value: 2}, // 30s
+			}},
+			start:          0,
+			end:            40000,
+			step:           model.Time(20000),
+			sampleInterval: 5 * time.Second, // Different from step to test aggregation
+			expected: []logproto.PatternSample{
+				{Timestamp: 0, Value: 6},     // Bucket 0-20s: samples at 5s(2) + 10s(3) + 15s(1) = 6
+				{Timestamp: 20000, Value: 6}, // Bucket 20-40s: samples at 25s(4) + 30s(2) = 6
+			},
+		},
+		{
+			name: "Step aggregation: 30s step with uneven distribution",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 10000, Value: 1}, // 10s
+				{Timestamp: 20000, Value: 2}, // 20s
+				{Timestamp: 40000, Value: 3}, // 40s
+				{Timestamp: 50000, Value: 4}, // 50s
+				{Timestamp: 70000, Value: 5}, // 70s
+			}},
+			start:          0,
+			end:            80000,
+			step:           model.Time(30000),
+			sampleInterval: 10 * time.Second, // Different from step to test aggregation
+			expected: []logproto.PatternSample{
+				{Timestamp: 0, Value: 3},     // Bucket 0-30s: samples at 10s(1) + 20s(2) = 3
+				{Timestamp: 30000, Value: 7}, // Bucket 30-60s: samples at 40s(3) + 50s(4) = 7
+				{Timestamp: 60000, Value: 5}, // Bucket 60-90s: sample at 70s(5) = 5
+			},
+		},
+		{
+			name: "Step smaller than sample interval: creates fine-grained buckets",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 10000, Value: 5}, // 10s
+				{Timestamp: 30000, Value: 3}, // 30s
+			}},
+			start:          8000,
+			end:            35000,
+			step:           model.Time(2000), // 2s step
+			sampleInterval: 10 * time.Second, // 10s sample interval (larger than step)
+			expected: []logproto.PatternSample{
+				// Starts from first sample's truncated timestamp: TruncateTimestamp(10000, 2000) = 10000
+				{Timestamp: 10000, Value: 5}, // 10s - sample falls exactly in this bucket
+				{Timestamp: 12000, Value: 0}, // 12s - no sample in this bucket
+				{Timestamp: 14000, Value: 0}, // 14s - no sample in this bucket
+				{Timestamp: 16000, Value: 0}, // 16s - no sample in this bucket
+				{Timestamp: 18000, Value: 0}, // 18s - no sample in this bucket
+				{Timestamp: 20000, Value: 0}, // 20s - no sample in this bucket
+				{Timestamp: 22000, Value: 0}, // 22s - no sample in this bucket
+				{Timestamp: 24000, Value: 0}, // 24s - no sample in this bucket
+				{Timestamp: 26000, Value: 0}, // 26s - no sample in this bucket
+				{Timestamp: 28000, Value: 0}, // 28s - no sample in this bucket
+				{Timestamp: 30000, Value: 3}, // 30s - sample falls exactly in this bucket
+				// Ends at last sample, no further empty buckets
+			},
+		},
+		{
+			name: "Step misaligned with samples: aggregates by step boundaries",
+			c: &Chunk{Samples: []logproto.PatternSample{
+				{Timestamp: 10000, Value: 2}, // 10s
+				{Timestamp: 20000, Value: 3}, // 20s
+				{Timestamp: 30000, Value: 1}, // 30s
+				{Timestamp: 40000, Value: 4}, // 40s
+			}},
+			start:          0,
+			end:            50000,
+			step:           model.Time(15000), // 15s step
+			sampleInterval: 10 * time.Second,  // 10s sample interval
+			expected: []logproto.PatternSample{
+				// Starts from first sample's truncated timestamp: TruncateTimestamp(10000, 15000) = 0
+				{Timestamp: 0, Value: 2},     // Bucket 0-15s: sample at 10s(2)
+				{Timestamp: 15000, Value: 3}, // Bucket 15-30s: sample at 20s(3)
+				{Timestamp: 30000, Value: 5}, // Bucket 30-45s: samples at 30s(1) + 40s(4)
+				// Ends at last sample, no further empty buckets
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sampleIntervalMs := model.Time(tc.sampleInterval.Nanoseconds() / 1e6)
+			result := tc.c.ForRange(tc.start, tc.end, tc.step, sampleIntervalMs)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
 
 func TestForRange(t *testing.T) {
@@ -218,7 +351,7 @@ func TestForRange(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := tc.c.ForRange(tc.start, tc.end, model.Time(2))
+			result := tc.c.ForRange(tc.start, tc.end, model.Time(2), defaultTimeResolution)
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
 			}

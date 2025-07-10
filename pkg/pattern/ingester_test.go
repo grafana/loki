@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
@@ -395,6 +394,7 @@ func (m *mockEntryWriter) Stop() {
 type fakeLimits struct {
 	metricAggregationEnabled  bool
 	patternPersistenceEnabled bool
+	persistenceGranularity    time.Duration
 }
 
 var _ drain.Limits = &fakeLimits{}
@@ -410,6 +410,10 @@ func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
 
 func (f *fakeLimits) PatternPersistenceEnabled(_ string) bool {
 	return f.patternPersistenceEnabled
+}
+
+func (f *fakeLimits) PersistenceGranularity(_ string) time.Duration {
+	return f.persistenceGranularity
 }
 
 func TestIngesterShutdownFlush(t *testing.T) {
@@ -450,18 +454,19 @@ func TestIngesterShutdownFlush(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Push some log entries to create patterns
+	// Push some log entries to create patterns (use older timestamps)
+	oldTime := now.Add(-2 * time.Hour)
 	err = inst.Push(context.Background(), &push.PushRequest{
 		Streams: []push.Stream{
 			{
 				Labels: lbs.String(),
 				Entries: []push.Entry{
 					{
-						Timestamp: now.Time(),
+						Timestamp: oldTime.Time(),
 						Line:      "info: user logged in",
 					},
 					{
-						Timestamp: now.Add(time.Second).Time(),
+						Timestamp: oldTime.Add(time.Second).Time(),
 						Line:      "info: user logged out",
 					},
 				},
@@ -634,6 +639,63 @@ func TestConfigurationPropagation(t *testing.T) {
 		// Verify that the drain config has the correct values
 		require.Equal(t, 30*time.Minute, ingester.drainCfg.ChunkDuration, "ChunkDuration should be propagated to drain config")
 		require.Equal(t, 5*time.Second, ingester.drainCfg.SampleInterval, "PatternSampleInterval should be propagated to drain config")
+	})
+}
+
+func TestPerTenantPersistenceGranularity(t *testing.T) {
+	t.Run("should use per-tenant persistence granularity override", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Create limits with per-tenant override
+		limits := &fakeLimits{
+			persistenceGranularity: 15 * time.Minute, // Override for this tenant
+		}
+
+		// Create ingester
+		ingester, err := New(
+			cfg,
+			limits,
+			&fakeRingClient{},
+			"test",
+			prometheus.NewRegistry(),
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		// Test per-tenant override is used when creating instances
+		tenantID := "test-tenant"
+		granularity := ingester.getEffectivePersistenceGranularity(tenantID)
+		require.Equal(t, 15*time.Minute, granularity, "should use per-tenant override")
+	})
+
+	t.Run("should fall back to chunk duration when no per-tenant override", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set custom chunk duration
+		cfg.ChunkDuration = 45 * time.Minute
+
+		// Create limits without per-tenant override
+		limits := &fakeLimits{
+			persistenceGranularity: 0, // No override
+		}
+
+		// Create ingester
+		ingester, err := New(
+			cfg,
+			limits,
+			&fakeRingClient{},
+			"test",
+			prometheus.NewRegistry(),
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		// Test chunk duration is used when no override
+		tenantID := "test-tenant"
+		granularity := ingester.getEffectivePersistenceGranularity(tenantID)
+		require.Equal(t, 45*time.Minute, granularity, "should use chunk duration when no override")
 	})
 }
 
