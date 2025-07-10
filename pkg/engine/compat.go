@@ -176,6 +176,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
+			// [promql.Sample] expects milliseconds as timestamp unit
 			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
 		case types.ColumnNameGeneratedValue:
 			if col.IsNull(i) {
