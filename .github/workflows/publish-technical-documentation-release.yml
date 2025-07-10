@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: grafana/writers-toolkit/publish-technical-documentation-release@publish-technical-documentation-release/v1
+      - uses: grafana/writers-toolkit/publish-technical-documentation-release@publish-technical-documentation-release/v1 # zizmor: ignore[unpinned-uses]
         with:
           release_tag_regexp: "^v(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
           release_branch_regexp: "^release-(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x$"
