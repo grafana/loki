@@ -319,7 +319,9 @@ func BenchmarkLogQL(b *testing.B) {
 
 				q := engine.Query(params)
 
+				b.ReportAllocs()
 				b.ResetTimer()
+
 				for i := 0; i < b.N; i++ {
 					r, err := q.Exec(ctx)
 					require.NoError(b, err)

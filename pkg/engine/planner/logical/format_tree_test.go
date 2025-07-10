@@ -33,7 +33,7 @@ func TestFormatSimpleQuery(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral(21),
+			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
 	)
@@ -76,7 +76,7 @@ func TestFormatSortQuery(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral(21),
+			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
 	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
@@ -120,7 +120,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral(21),
+			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
 	).RangeAggregation(

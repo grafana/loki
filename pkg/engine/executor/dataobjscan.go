@@ -205,7 +205,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for {
 		buf := make([]logs.Record, 1024) // do not re-use buffer
-		n, err := s.reader.Read(context.Background(), buf)
+		n, err := s.reader.Read(s.ctx, buf)
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil && !errors.Is(err, io.EOF) {
@@ -456,15 +456,15 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			// so we don't always explode out to the full set of columns.
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     datatype.Arrow.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String),
 			})
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     datatype.Arrow.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String),
 			})
 
 		case types.ColumnTypeParsed, types.ColumnTypeGenerated:
@@ -487,7 +487,7 @@ func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata
 		}
 	}
 
-	return arrow.BinaryTypes.String, datatype.ColumnMetadata(ref.Type, datatype.String)
+	return datatype.Arrow.String, datatype.ColumnMetadata(ref.Type, datatype.Loki.String)
 }
 
 // appendToBuilder appends a the provided field from record into the given
