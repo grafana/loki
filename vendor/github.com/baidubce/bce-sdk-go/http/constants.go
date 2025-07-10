@@ -90,4 +90,6 @@ const (
 	BCE_OBJECT_TAGGING                  = "x-bce-tagging"
 	BCE_FETCH_CALLBACK_ADDRESS          = "x-bce-callback-address"
 	BCE_VERSION_ID                      = "x-bce-version-id"
+	BCE_OBJECT_EXPIRES                  = "x-bce-object-expires"
+	BCE_EXPIRATION_DATE                 = "x-bce-expiration-date"
 )

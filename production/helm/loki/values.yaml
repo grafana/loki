@@ -179,6 +179,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.block_builder }}
+    block_builder:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- if .Values.loki.commonConfig}}
     common:
     {{- toYaml .Values.loki.commonConfig | nindent 2}}
@@ -207,7 +212,7 @@ loki:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
         memcached_client:
-          addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+          addresses: {{ .addresses }}
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
@@ -255,8 +260,8 @@ loki:
             writeback_buffer: {{ .writebackBuffer }}
             writeback_size_limit: {{ .writebackSizeLimit }}
           memcached_client:
+            addresses: {{ .addresses }}
             consistent_hash: true
-            addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
             timeout: {{ .timeout }}
             update_interval: 1m
       {{- end }}
@@ -457,21 +462,6 @@ loki:
         # Optional storage account key
         account_key: null
 
-  # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
-  # must enable and specify a host for each cache you would like to use.
-  memcached:
-    chunk_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      batch_size: 256
-      parallelism: 10
-    results_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      timeout: "500ms"
-      default_validity: "12h"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
   # -- a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around
@@ -528,6 +518,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional block builder configuration
+  block_builder: {}
   # --  Optional index gateway configuration
   index_gateway:
     mode: simple
@@ -754,6 +746,8 @@ test:
 # that it's working correctly
 lokiCanary:
   enabled: true
+  # -- The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.
+  kind: DaemonSet
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
@@ -1198,7 +1192,7 @@ gateway:
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
-      {{- include "loki.nginxFile" . | indent 2 -}}
+      {{- include "loki.nginxFile" . -}}
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
@@ -1328,6 +1322,12 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+    # -- Paths that are exposed by Loki Compactor.
+    # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`.
+    # If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`.
+    # If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`
+    compactor:
+      - /loki/api/v1/delete
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
     - loki.example.com
@@ -2095,6 +2095,8 @@ distributor:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for distributor service
+  trafficDistribution: ""
 # --  Configuration for the querier
 querier:
   # -- Number of replicas for the querier
@@ -3190,7 +3192,10 @@ overridesExporter:
   appProtocol:
     grpc: ""
 
+# You can use a self hosted memcached by setting enabled to false and providing addresses.
 memcached:
+  # -- Enable the built in memcached server provided by the chart
+  enabled: true
   image:
     # -- Memcached Docker image repository
     repository: memcached
@@ -3249,6 +3254,8 @@ memcachedExporter:
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3347,6 +3354,8 @@ resultsCache:
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache

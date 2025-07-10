@@ -619,6 +619,8 @@ Ingress service paths for distributed deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $compactorServiceName "paths" .Values.ingress.paths.compactor)}}
 {{- end -}}
 
 {{/*
@@ -631,6 +633,7 @@ Ingress service paths for legacy simple scalable deployment when backend compone
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $backendServiceName := include "loki.backendFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -640,6 +643,7 @@ Ingress service paths for legacy simple scalable deployment
 {{- $readServiceName := include "loki.readFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- $writeServiceName := include "loki.writeFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
@@ -652,6 +656,7 @@ Ingress service paths for single binary deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -742,7 +747,7 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
-{{- define "loki.nginxFile" }}
+{{- define "loki.nginxFile" -}}
 worker_processes  5;  ## Default: 1
 error_log  /dev/stderr;
 pid        /tmp/nginx.pid;
@@ -1184,31 +1189,13 @@ the thanos_storage_config model*/}}
 {{- with .ctx.Values.loki.storage.object_store }}
 {{- if eq .type "s3" }}
 s3:
-  {{- with .s3 }}
-  bucket_name: {{ $bucketName }}
-  endpoint: {{ .endpoint }}
-  access_key_id: {{ .access_key_id }}
-  secret_access_key: {{ .secret_access_key }}
-  region: {{ .region }}
-  insecure: {{ .insecure }}
-  http:
-    {{ toYaml .http | nindent 4 }}
-  sse:
-    {{ toYaml .sse | nindent 4 }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
 {{- else if eq .type "gcs" }}
 gcs:
-  {{- with .gcs }}
-  bucket_name: {{ $bucketName }}
-  service_account: {{ .service_account }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
 {{- else if eq .type "azure" }}
 azure:
-  {{- with .azure }}
-  container_name: {{ $bucketName }}
-  account_name: {{ .account_name }}
-  account_key: {{ .account_key }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
 {{- end }}
 storage_prefix: {{ .storage_prefix }}
 {{- end }}
