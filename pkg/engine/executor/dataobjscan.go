@@ -205,7 +205,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 
 	for {
 		buf := make([]logs.Record, 1024) // do not re-use buffer
-		n, err := s.reader.Read(context.Background(), buf)
+		n, err := s.reader.Read(s.ctx, buf)
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil && !errors.Is(err, io.EOF) {
