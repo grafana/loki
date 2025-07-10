@@ -200,22 +200,19 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 		err error // error yielded by the dataobj reader
 	)
 
-	// Reset buffer
-	s.records = s.records[:0]
-
 	// Read from the dataobj until it yields at least one row, to avoid these function calls from the parent.
 	for n == 0 {
-		// TODO(chaudum): Can we re-use this buffer or at least use a pool?
-		// In theory it should be possible to avoid this allocation completely.
-		buf := make([]logs.Record, s.opts.batchSize)
+		// Reset buffer
+		s.records = s.records[:s.opts.batchSize]
 
-		n, err = s.reader.Read(s.ctx, buf)
+		n, err = s.reader.Read(s.ctx, s.records)
 		if n == 0 && errors.Is(err, io.EOF) {
 			return nil, EOF
 		} else if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
-		s.records = append(s.records, buf[:n]...)
+
+		s.records = s.records[:n]
 	}
 
 	projections, err := s.effectiveProjections(s.records)
