@@ -188,7 +188,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 			sample.F = float64(col.Value(i))
 		default:
 			// allow any string columns
-			if colDataType == datatype.String.String() {
+			if colDataType == datatype.Loki.String.String() {
 				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
 			}
 		}

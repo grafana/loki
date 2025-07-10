@@ -125,7 +125,7 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 					return nil, err
 				}
 
-				if vec.Type() != datatype.String {
+				if vec.Type() != datatype.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
 				}
 
@@ -163,15 +163,15 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 	fields = append(fields,
 		arrow.Field{
 			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     arrow.FixedWidthTypes.Timestamp_ns,
+			Type:     datatype.Arrow.Timestamp,
 			Nullable: false,
 			Metadata: datatype.ColumnMetadataBuiltinTimestamp,
 		},
 		arrow.Field{
 			Name:     types.ColumnNameGeneratedValue,
-			Type:     arrow.PrimitiveTypes.Int64,
+			Type:     datatype.Arrow.Integer,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer), // needs a new ColumnType, ColumnTypeComputed or Generated?
+			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer),
 		},
 	)
 
@@ -183,9 +183,9 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 
 		fields = append(fields, arrow.Field{
 			Name:     columnExpr.Ref.Column,
-			Type:     arrow.BinaryTypes.String,
+			Type:     datatype.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(columnExpr.Ref.Type, datatype.String),
+			Metadata: datatype.ColumnMetadata(columnExpr.Ref.Type, datatype.Loki.String),
 		})
 	}
 
