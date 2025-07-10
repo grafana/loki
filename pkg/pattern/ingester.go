@@ -33,19 +33,21 @@ import (
 const readBatchSize = 1024
 
 type Config struct {
-	Enabled              bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig     ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig         clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	ConcurrentFlushes    int                   `yaml:"concurrent_flushes"`
-	FlushCheckPeriod     time.Duration         `yaml:"flush_check_period"`
-	MaxClusters          int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
-	MaxEvictionRatio     float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
-	MetricAggregation    aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
-	PatternPersistence   PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
-	TeeConfig            TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
-	ConnectionTimeout    time.Duration         `yaml:"connection_timeout"`
-	MaxAllowedLineLength int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
-	RetainFor            time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
+	Enabled               bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig      ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig          clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes     int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod      time.Duration         `yaml:"flush_check_period"`
+	MaxClusters           int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio      float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
+	MetricAggregation     aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	PatternPersistence    PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
+	TeeConfig             TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout     time.Duration         `yaml:"connection_timeout"`
+	MaxAllowedLineLength  int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
+	ChunkDuration         time.Duration         `yaml:"chunk_duration,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
+	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -107,6 +109,18 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		3*time.Hour,
 		"How long to retain patterns in the pattern ingester after they are pushed.",
 	)
+	fs.DurationVar(
+		&cfg.ChunkDuration,
+		"pattern-ingester.chunk-duration",
+		1*time.Hour,
+		"The maximum time span for a single pattern chunk.",
+	)
+	fs.DurationVar(
+		&cfg.PatternSampleInterval,
+		"pattern-ingester.sample-interval",
+		10*time.Second,
+		"The time resolution for pattern samples within chunks.",
+	)
 }
 
 type TeeConfig struct {
@@ -154,6 +168,17 @@ func (cfg *Config) Validate() error {
 	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
 		return errors.New("pattern ingester replication factor must be 1")
 	}
+
+	// Validate retain-for >= chunk-duration
+	if cfg.RetainFor < cfg.ChunkDuration {
+		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.ChunkDuration)
+	}
+
+	// Validate chunk-duration >= sample-interval
+	if cfg.ChunkDuration < cfg.PatternSampleInterval {
+		return fmt.Errorf("chunk-duration (%v) must be greater than or equal to sample-interval (%v)", cfg.ChunkDuration, cfg.PatternSampleInterval)
+	}
+
 	return cfg.LifecyclerConfig.Validate()
 }
 
@@ -203,6 +228,8 @@ func New(
 	drainCfg := drain.DefaultConfig()
 	drainCfg.MaxClusters = cfg.MaxClusters
 	drainCfg.MaxEvictionRatio = cfg.MaxEvictionRatio
+	drainCfg.ChunkDuration = cfg.ChunkDuration
+	drainCfg.SampleInterval = cfg.PatternSampleInterval
 
 	i := &Ingester{
 		cfg:         cfg,
