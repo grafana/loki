@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
@@ -621,7 +620,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 }
 
 func repairWAL(walErr error, walPath string, logger log.Logger) error {
-	wl, err := wlog.New(util_log.SlogFromGoKit(logger), nil, walPath, wlog.CompressionNone)
+	wl, err := wlog.New(logger, nil, walPath, wlog.CompressionNone)
 	if err != nil {
 		return fmt.Errorf("creating wlog for repair: %w", err)
 	}
