@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -175,7 +176,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
-			sample.T = int64(col.(*array.Timestamp).Value(i))
+			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
 		case types.ColumnNameGeneratedValue:
 			if col.IsNull(i) {
 				return promql.Sample{}, false
@@ -199,6 +200,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 }
 
 func (b *vectorResultBuilder) Build() logqlmodel.Result {
+	sort.Slice(b.data, func(i, j int) bool { return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0 })
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: b.stats,
