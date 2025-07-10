@@ -184,14 +184,15 @@ func (s *Generator) running(ctx context.Context) error {
 	}
 
 	// Wait for context cancellation, subservice failure, or tenant error
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-s.subservicesWatcher.Chan():
-		return errors.Wrap(err, "stream-generator subservice failed")
-	case err := <-errCh:
-		level.Error(s.logger).Log("msg", "stream-generator error", "err", err)
-		return err
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-s.subservicesWatcher.Chan():
+			return errors.Wrap(err, "stream-generator subservice failed")
+		case err := <-errCh:
+			level.Error(s.logger).Log("msg", "stream-generator error", "err", err)
+		}
 	}
 }
 
