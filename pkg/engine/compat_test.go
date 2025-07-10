@@ -216,17 +216,17 @@ func TestVectorResultBuilder(t *testing.T) {
 		require.Equal(t, 3, len(vector))
 
 		// Check first sample
-		require.Equal(t, int64(1620000000000000000), vector[0].T)
+		require.Equal(t, int64(1620000000000), vector[0].T)
 		require.Equal(t, 42.0, vector[0].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9090", "job", "prometheus"), vector[0].Metric)
 
 		// Check second sample
-		require.Equal(t, int64(1620000000000000000), vector[1].T)
+		require.Equal(t, int64(1620000000000), vector[1].T)
 		require.Equal(t, 23.0, vector[1].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"), vector[1].Metric)
 
 		// Check third sample
-		require.Equal(t, int64(1620000000000000000), vector[2].T)
+		require.Equal(t, int64(1620000000000), vector[2].T)
 		require.Equal(t, 15.0, vector[2].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "prometheus"), vector[2].Metric)
 	})
