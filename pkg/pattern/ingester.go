@@ -259,7 +259,7 @@ func New(
 
 func (i *Ingester) getEffectivePersistenceGranularity(userID string) time.Duration {
 	tenantGranularity := i.limits.PersistenceGranularity(userID)
-	if tenantGranularity > 0 {
+	if tenantGranularity > 0 && tenantGranularity <= i.cfg.ChunkDuration {
 		return tenantGranularity
 	}
 	return i.cfg.ChunkDuration
