@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -236,7 +237,17 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter)
+
+	// Get per-tenant persistence granularity (requires casting drainLimits to Limits interface)
+	var persistenceGranularity time.Duration
+	if limits, ok := i.drainLimits.(Limits); ok {
+		persistenceGranularity = limits.PersistenceGranularity(i.instanceID)
+	}
+	if persistenceGranularity == 0 {
+		persistenceGranularity = i.drainCfg.ChunkDuration
+	}
+
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter, persistenceGranularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

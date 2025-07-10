@@ -14,8 +14,6 @@ const (
 	TimeResolution = model.Time(int64(time.Second*10) / 1e6)
 
 	defaultVolumeSize = 500
-
-	maxChunkTime = 1 * time.Hour
 )
 
 type Chunks []Chunk
@@ -45,7 +43,8 @@ func (c Chunk) spaceFor(ts model.Time, chunkDuration time.Duration) bool {
 // ForRange returns samples with only the values
 // in the given range [start:end) and aggregates them by step duration.
 // start and end are in milliseconds since epoch. step is a duration in milliseconds.
-func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
+// sampleInterval is the configured sample interval for this chunk.
+func (c Chunk) ForRange(start, end, step, sampleInterval model.Time) []logproto.PatternSample {
 	if len(c.Samples) == 0 {
 		return nil
 	}
@@ -71,7 +70,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 		return nil
 	}
 
-	if step == TimeResolution {
+	if step == sampleInterval {
 		return c.Samples[lo:hi]
 	}
 
@@ -128,10 +127,10 @@ func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval 
 	return &last.Samples[len(last.Samples)-2]
 }
 
-func (c Chunks) Iterator(pattern, lvl string, from, through, step model.Time) iter.Iterator {
+func (c Chunks) Iterator(pattern, lvl string, from, through, step, sampleInterval model.Time) iter.Iterator {
 	iters := make([]iter.Iterator, 0, len(c))
 	for _, chunk := range c {
-		samples := chunk.ForRange(from, through, step)
+		samples := chunk.ForRange(from, through, step, sampleInterval)
 		if len(samples) == 0 {
 			continue
 		}
