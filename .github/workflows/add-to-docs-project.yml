@@ -12,4 +12,4 @@ jobs:
       id-token: write
     runs-on: ubuntu-latest
     steps:
-      - uses: grafana/writers-toolkit/add-to-docs-project@add-to-docs-project/v1
+      - uses: grafana/writers-toolkit/add-to-docs-project@add-to-docs-project/v1  # zizmor: ignore[unpinned-uses]
