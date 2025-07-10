@@ -363,6 +363,29 @@ func Test_GetAttributes(t *testing.T) {
 	require.EqualValues(t, 128, attrs.Size)
 }
 
+func Test_TrimmedBucketNames(t *testing.T) {
+	cfg := S3Config{
+		BucketNames:     "bucket-one, bucket-two ,  bucket-three",
+		AccessKeyID:     "test",
+		SecretAccessKey: flagext.SecretWithValue("test"),
+		Inject: func(next http.RoundTripper) http.RoundTripper {
+			return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				// Return dummy 200 OK response to bypass real AWS
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader("")),
+				}, nil
+			})
+		},
+	}
+
+	client, err := NewS3ObjectClient(cfg, hedging.Config{})
+	require.NoError(t, err)
+
+	expected := []string{"bucket-one", "bucket-two", "bucket-three"}
+	assert.Equal(t, expected, client.bucketNames)
+}
+
 func Test_RetryLogic(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

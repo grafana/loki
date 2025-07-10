@@ -291,15 +291,25 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	return s3Client, nil
 }
 
+// buckets returns a list of S3 bucket names parsed from either cfg.S3.URL.Path or cfg.BucketNames.
+// If cfg.BucketNames is set, it takes precedence. Bucket names are split on commas, trimmed of
+// whitespace, and empty entries are ignored.
 func buckets(cfg S3Config) ([]string, error) {
-	// bucketnames
 	var bucketNames []string
+
 	if cfg.S3.URL != nil {
 		bucketNames = []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
 	}
 
 	if cfg.BucketNames != "" {
-		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
+		rawBuckets := strings.Split(cfg.BucketNames, ",")
+		bucketNames = make([]string, 0, len(rawBuckets))
+		for _, b := range rawBuckets {
+			trimmed := strings.TrimSpace(b)
+			if trimmed != "" {
+				bucketNames = append(bucketNames, trimmed)
+			}
+		}
 	}
 
 	if len(bucketNames) == 0 {
