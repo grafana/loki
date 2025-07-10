@@ -2,7 +2,6 @@ package topk_test
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"testing"
 
@@ -24,8 +23,6 @@ func ExampleHeap_greatest() {
 	}
 
 	actual := heap.PopAll()
-	slices.Reverse(actual) // Reverse to get in greatest-descending order.
-
 	fmt.Println(actual)
 	// Output: [9 8 7]
 }
@@ -43,10 +40,38 @@ func ExampleHeap_least() {
 	}
 
 	actual := heap.PopAll()
-	slices.Reverse(actual) // Reverse to get in least-ascending order.
-
 	fmt.Println(actual)
 	// Output: [0 1 2]
+}
+
+func TestHeap_PopAll_smallest_ascending(t *testing.T) {
+	heap := &topk.Heap[int]{
+		Limit: 3,
+		Less:  func(a, b int) bool { return a > b },
+	}
+
+	for i := range 10 {
+		heap.Push(i)
+	}
+
+	actual := heap.PopAll()
+	expected := []int{0, 1, 2}
+	require.Equal(t, expected, actual)
+}
+
+func TestHeap_PopAll_greatest_descending(t *testing.T) {
+	heap := &topk.Heap[int]{
+		Limit: 3,
+		Less:  func(a, b int) bool { return a < b },
+	}
+
+	for i := range 10 {
+		heap.Push(i)
+	}
+
+	actual := heap.PopAll()
+	expected := []int{9, 8, 7}
+	require.Equal(t, expected, actual)
 }
 
 func TestHeap_Range(t *testing.T) {
