@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -622,7 +621,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 }
 
 func repairWAL(walErr error, walPath string, logger log.Logger) error {
-	wl, err := wlog.New(util_log.SlogFromGoKit(logger), nil, walPath, compression.None)
+	wl, err := wlog.New(util_log.SlogFromGoKit(logger), nil, walPath, wlog.CompressionNone)
 	if err != nil {
 		return fmt.Errorf("creating wlog for repair: %w", err)
 	}
