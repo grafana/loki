@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -26,10 +27,15 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
 
+	// TODO(chaudum): Pass context from execution engine
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &KWayMerge{
 		inputs:     inputs,
 		columnEval: evaluator.newFunc(column),
 		compare:    lessFunc,
+		ctx:        ctx,
+		cancel:     cancel,
 	}, nil
 }
 
@@ -44,8 +50,11 @@ type KWayMerge struct {
 	batches     []arrow.Record
 	exhausted   []bool
 	offsets     []int64
+	fetchers    []chan state
 	columnEval  evalFunc
 	compare     compareFunc[int64]
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 var _ Pipeline = (*KWayMerge)(nil)
@@ -56,6 +65,14 @@ func (p *KWayMerge) Close() {
 	if p.state.batch != nil {
 		p.state.batch.Release()
 	}
+	// Stop pending prefetchers
+	p.cancel()
+	for _, fetcher := range p.fetchers {
+		for range fetcher {
+			// pull remaining items from channel so the goroutine can exit
+		}
+	}
+	// Close child operators
 	for _, input := range p.inputs {
 		input.Close()
 	}
@@ -93,9 +110,37 @@ func (p *KWayMerge) init() {
 	p.batches = make([]arrow.Record, n)
 	p.exhausted = make([]bool, n)
 	p.offsets = make([]int64, n)
+	p.fetchers = make([]chan state, n)
+
+	for i := range n {
+		p.fetchers[i] = make(chan state, 1)
+		go p.prefetch(p.ctx, i) // nolint:errcheck
+	}
 
 	if p.compare == nil {
 		p.compare = func(a, b int64) bool { return a <= b }
+	}
+}
+
+func (p *KWayMerge) prefetch(ctx context.Context, i int) error {
+	// Close channel on exit
+	defer close(p.fetchers[i])
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			var s state
+			s.err = p.inputs[i].Read()
+			if s.err != nil {
+				p.fetchers[i] <- s
+				return s.err
+			}
+			s.batch, _ = p.inputs[i].Value()
+			s.batch.Retain()
+			p.fetchers[i] <- s
+		}
 	}
 }
 
@@ -113,33 +158,38 @@ start:
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
 
-loop:
 	for i := range len(p.inputs) {
 		// Skip exhausted inputs
 		if p.exhausted[i] {
-			continue loop
+			continue
 		}
 
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		// Read another batch as long as the input yields zero-length batches.
-		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
 			// Reset offset
 			p.offsets[i] = 0
 
+			// Release previous batch
+			if p.batches[i] != nil {
+				p.batches[i].Release()
+			}
+
 			// Read from input
-			err := p.inputs[i].Read()
-			if err != nil {
-				if errors.Is(err, EOF) {
+			s := <-p.fetchers[i]
+
+			if s.err != nil {
+				if errors.Is(s.err, EOF) {
 					p.exhausted[i] = true
 					p.batches[i] = nil // remove reference to arrow.Record from slice
-					continue loop
+					continue
 				}
-				return err
+				return s.err
 			}
 
 			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
 			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
-			p.batches[i], _ = p.inputs[i].Value()
+			p.batches[i] = s.batch
 		}
 
 		// Fetch timestamp value at current offset
