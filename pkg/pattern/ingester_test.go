@@ -697,6 +697,35 @@ func TestPerTenantPersistenceGranularity(t *testing.T) {
 		granularity := ingester.getEffectivePersistenceGranularity(tenantID)
 		require.Equal(t, 45*time.Minute, granularity, "should use chunk duration when no override")
 	})
+
+	t.Run("should fall back to chunk duration if per-tenant override is greater than chunk duration", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set custom chunk duration
+		cfg.ChunkDuration = 45 * time.Minute
+
+		// Create limits without per-tenant override
+		limits := &fakeLimits{
+			persistenceGranularity: time.Hour,
+		}
+
+		// Create ingester
+		ingester, err := New(
+			cfg,
+			limits,
+			&fakeRingClient{},
+			"test",
+			prometheus.NewRegistry(),
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		// Test chunk duration is used when no override
+		tenantID := "test-tenant"
+		granularity := ingester.getEffectivePersistenceGranularity(tenantID)
+		require.Equal(t, 45*time.Minute, granularity, "should use chunk duration when override is greater than chunk duration")
+	})
 }
 
 func TestConfigurationValidation(t *testing.T) {
