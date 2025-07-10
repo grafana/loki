@@ -2212,6 +2212,10 @@ type Object struct {
 	// ContentType: Content-Type of the object data. If an object is stored without
 	// a Content-Type, it is served as application/octet-stream.
 	ContentType string `json:"contentType,omitempty"`
+	// Contexts: User-defined or system-defined object contexts. Each object
+	// context is a key-payload pair, where the key provides the identification and
+	// the payload holds the associated value and additional metadata.
+	Contexts *ObjectContexts `json:"contexts,omitempty"`
 	// Crc32c: CRC32c checksum, as described in RFC 4960, Appendix B; encoded using
 	// base64 in big-endian byte order. For more information about using the CRC32c
 	// checksum, see Data Validation and Change Detection
@@ -2337,6 +2341,30 @@ type Object struct {
 
 func (s Object) MarshalJSON() ([]byte, error) {
 	type NoMethod Object
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ObjectContexts: User-defined or system-defined object contexts. Each object
+// context is a key-payload pair, where the key provides the identification and
+// the payload holds the associated value and additional metadata.
+type ObjectContexts struct {
+	// Custom: User-defined object contexts.
+	Custom map[string]ObjectCustomContextPayload `json:"custom,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Custom") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Custom") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectContexts) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectContexts
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2528,6 +2556,35 @@ type ObjectAccessControls struct {
 
 func (s ObjectAccessControls) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectAccessControls
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ObjectCustomContextPayload: The payload of a single user-defined object
+// context.
+type ObjectCustomContextPayload struct {
+	// CreateTime: The time at which the object context was created in RFC 3339
+	// format.
+	CreateTime string `json:"createTime,omitempty"`
+	// UpdateTime: The time at which the object context was last updated in RFC
+	// 3339 format.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// Value: The value of the object context.
+	Value string `json:"value,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectCustomContextPayload) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectCustomContextPayload
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -10913,6 +10970,14 @@ func (c *ObjectsListCall) Delimiter(delimiter string) *ObjectsListCall {
 // endOffset (exclusive).
 func (c *ObjectsListCall) EndOffset(endOffset string) *ObjectsListCall {
 	c.urlParams_.Set("endOffset", endOffset)
+	return c
+}
+
+// Filter sets the optional parameter "filter": Filter the returned objects.
+// Currently only supported for the contexts field. If delimiter is set, the
+// returned prefixes are exempt from this filter.
+func (c *ObjectsListCall) Filter(filter string) *ObjectsListCall {
+	c.urlParams_.Set("filter", filter)
 	return c
 }
 

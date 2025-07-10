@@ -177,15 +177,7 @@ func (p *KWayMerge) read() error {
 		return nil
 	}
 
-	// Sort inputs based on timestamps
-	sort.Slice(batchIndexes, func(i, j int) bool {
-		return p.compare(timestamps[i], timestamps[j])
-	})
-
-	// Sort timestamps based on timestamps
-	sort.Slice(timestamps, func(i, j int) bool {
-		return p.compare(timestamps[i], timestamps[j])
-	})
+	sortIndexesByTimestamps(batchIndexes, timestamps, p.compare)
 
 	// Return the slice of the current record
 	j := batchIndexes[0]
@@ -203,11 +195,10 @@ func (p *KWayMerge) read() error {
 
 	// Calculate start/end of the sub-slice of the record
 	start := p.offsets[j]
-	end := start
-	for end < p.batches[j].NumRows() {
+	end := start + 1
+	for ; end < p.batches[j].NumRows(); end++ {
 		ts := tsCol.Value(int(end))
-		end++
-		if p.compare(int64(ts), timestamps[1]) {
+		if !p.compare(int64(ts), timestamps[1]) {
 			break
 		}
 	}
@@ -222,4 +213,31 @@ func (p *KWayMerge) read() error {
 	p.state = successState(p.batches[j].NewSlice(start, end))
 	p.offsets[j] = end
 	return nil
+}
+
+func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn func(a, b int64) bool) {
+	if len(indexes) != len(timestamps) {
+		panic("lengths of indexes and timestamps must match")
+	}
+
+	pairs := make([]inputTimestampPair, len(indexes))
+	for i := range indexes {
+		pairs[i] = inputTimestampPair{indexes[i], timestamps[i]}
+	}
+
+	// Sort pairs by timestamp
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return lessFn(pairs[i].timestamp, pairs[j].timestamp)
+	})
+
+	// Unpack the sorted pairs back into the original slices
+	for i := range pairs {
+		indexes[i] = pairs[i].index
+		timestamps[i] = pairs[i].timestamp
+	}
+}
+
+type inputTimestampPair struct {
+	index     int
+	timestamp int64
 }

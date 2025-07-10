@@ -86,12 +86,16 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 
 	size := len(object.Bytes())
 
+	logger := log.With(d.logger, "key", objectPath, "size", size)
+
 	var err error
 	for backoff.Ongoing() {
+		level.Debug(logger).Log("msg", "attempting to upload dataobj to object storage", "attempt", backoff.NumRetries())
 		err = d.bucket.Upload(ctx, objectPath, bytes.NewReader(object.Bytes()))
 		if err == nil {
 			break
 		}
+		level.Warn(logger).Log("msg", "failed to upload dataobj to object storage; will retry", "err", err, "attempt", backoff.NumRetries())
 		backoff.Wait()
 	}
 
@@ -104,6 +108,6 @@ func (d *Uploader) Upload(ctx context.Context, object *bytes.Buffer) (string, er
 	}
 
 	d.metrics.uploadSize.WithLabelValues(statusSuccess).Observe(float64(size))
-	level.Debug(d.logger).Log("msg", "uploaded dataobj to object storage", "key", objectPath, "size", size, "duration", time.Since(start))
+	level.Info(logger).Log("msg", "uploaded dataobj to object storage", "duration", time.Since(start))
 	return objectPath, nil
 }

@@ -16,22 +16,23 @@ import (
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
+			{Name: "id", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
 		}, nil),
 
-		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer builder.Release()
 
-			for i := int64(0); i < sz; i++ {
-				builder.Append(offset + i)
+			rows := int64(0)
+			for ; rows < batchSize && offset+rows < maxRows; rows++ {
+				builder.Append(offset + rows)
 			}
 
 			data := builder.NewArray()
 			defer data.Release()
 
 			columns := []arrow.Array{data}
-			return array.NewRecord(schema, columns, sz)
+			return array.NewRecord(schema, columns, rows)
 		},
 	)
 )
@@ -52,20 +53,21 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
+			{Name: "id", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
+			{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp)},
 		}, nil),
 
-		func(offset, sz int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			defer idColBuilder.Release()
 
 			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 			defer tsColBuilder.Release()
 
-			for i := int64(0); i < sz; i++ {
-				idColBuilder.Append(offset + i)
-				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(i)*time.Millisecond)).UnixNano()))
+			rows := int64(0)
+			for ; rows < batchSize && offset+rows < maxRows; rows++ {
+				idColBuilder.Append(offset + rows)
+				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(rows)*time.Millisecond)).UnixNano()))
 			}
 
 			idData := idColBuilder.NewArray()
@@ -75,17 +77,19 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			defer tsData.Release()
 
 			columns := []arrow.Array{idData, tsData}
-			return array.NewRecord(schema, columns, sz)
+			return array.NewRecord(schema, columns, rows)
 		},
 	)
 }
 
+type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record
+
 type recordGenerator struct {
 	schema *arrow.Schema
-	batch  func(offset, sz int64, schema *arrow.Schema) arrow.Record
+	batch  batchFunc
 }
 
-func newRecordGenerator(schema *arrow.Schema, batch func(offset, sz int64, schema *arrow.Schema) arrow.Record) *recordGenerator {
+func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator {
 	return &recordGenerator{
 		schema: schema,
 		batch:  batch,
@@ -100,7 +104,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 			if pos >= rows {
 				return Exhausted
 			}
-			batch := p.batch(pos, batchSize, p.schema)
+			batch := p.batch(pos, rows, batchSize, p.schema)
 			pos += batch.NumRows()
 			return successState(batch)
 		},

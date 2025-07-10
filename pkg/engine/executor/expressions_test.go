@@ -16,10 +16,10 @@ import (
 
 var (
 	fields = []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Timestamp)},
-		{Name: "value", Type: arrow.PrimitiveTypes.Float64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Float)},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Bool)},
+		{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+		{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp)},
+		{Name: "value", Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Float)},
+		{Name: "valid", Type: datatype.Arrow.Bool, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Bool)},
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -37,6 +37,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		value     any
+		want      any
 		arrowType arrow.Type
 	}{
 		{
@@ -66,17 +67,17 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		},
 		{
 			name:      "timestamp",
-			value:     time.Unix(3600, 0).UTC(),
+			value:     datatype.Timestamp(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "duration",
-			value:     time.Hour,
+			value:     datatype.Duration(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "bytes",
-			value:     int64(1024),
+			value:     datatype.Bytes(1024),
 			arrowType: arrow.INT64,
 		},
 	} {
@@ -92,7 +93,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			for i := range n {
 				val := colVec.Value(i)
-				require.Equal(t, tt.value, val)
+				if tt.want != nil {
+					require.Equal(t, tt.want, val)
+				} else {
+					require.Equal(t, tt.value, val)
+				}
 			}
 		})
 	}
@@ -226,8 +231,8 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
-			{Name: "timestamp", Type: arrow.PrimitiveTypes.Uint64, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+			{Name: "message", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
+			{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
 		},
 		nil, // No metadata
 	)
@@ -236,16 +241,16 @@ func batch(n int, now time.Time) arrow.Record {
 	logBuilder := array.NewStringBuilder(mem)
 	defer logBuilder.Release()
 
-	tsBuilder := array.NewUint64Builder(mem)
+	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 	defer tsBuilder.Release()
 
 	// 4. Append data to the builders
 	logs := make([]string, n)
-	ts := make([]uint64, n)
+	ts := make([]arrow.Timestamp, n)
 
 	for i := range n {
 		logs[i] = words[i%len(words)]
-		ts[i] = uint64(now.Add(time.Duration(i) * time.Second).UnixNano())
+		ts[i] = arrow.Timestamp(now.Add(time.Duration(i) * time.Second).UnixNano())
 	}
 
 	tsBuilder.AppendValues(ts, nil)
@@ -263,4 +268,119 @@ func batch(n int, now time.Time) arrow.Record {
 	record := array.NewRecord(schema, columns, int64(n))
 
 	return record
+}
+
+func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
+	// Test precedence between generated, metadata, and label columns
+	fields := []arrow.Field{
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.String)},
+	}
+
+	// CSV data where:
+	// Row 0: All columns have values - should pick generated (highest precedence)
+	// Row 1: Generated is null, others have values - should pick metadata
+	// Row 2: Generated and metadata are null - should pick label
+	// Row 3: All are null - should return null
+	data := `label_0,metadata_0,generated_0
+label_1,metadata_1,null
+label_2,null,null
+null,null,null`
+
+	record, err := CSVToArrow(fields, data)
+	require.NoError(t, err)
+	defer record.Release()
+
+	e := expressionEvaluator{}
+
+	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "test",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		require.Equal(t, types.ColumnTypeAmbiguous, colVec.ColumnType())
+
+		// Test per-row precedence resolution
+		require.Equal(t, "generated_0", colVec.Value(0)) // Generated has highest precedence
+		require.Equal(t, "metadata_1", colVec.Value(1))  // Generated is null, metadata has next precedence
+		require.Equal(t, "label_2", colVec.Value(2))     // Generated and metadata are null, label has next precedence
+		require.Equal(t, nil, colVec.Value(3))           // All are null
+	})
+
+	t.Run("ToArray method should return correct Arrow array", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "test",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &CoalesceVector{}, colVec)
+
+		arr := colVec.ToArray()
+		require.IsType(t, &array.String{}, arr)
+		stringArr := arr.(*array.String)
+
+		require.Equal(t, 4, stringArr.Len())
+		require.Equal(t, "generated_0", stringArr.Value(0))
+		require.Equal(t, "metadata_1", stringArr.Value(1))
+		require.Equal(t, "label_2", stringArr.Value(2))
+		require.True(t, stringArr.IsNull(3)) // Row 3 should be null
+	})
+
+	t.Run("look-up matching single column should return Array", func(t *testing.T) {
+		// Create a record with only one column type
+		fields := []arrow.Field{
+			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
+		}
+		data := `label_0
+label_1
+label_2
+`
+
+		singleRecord, err := CSVToArrow(fields, data)
+		require.NoError(t, err)
+		defer singleRecord.Release()
+
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "single",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, singleRecord)
+		require.NoError(t, err)
+		require.IsType(t, &Array{}, colVec)
+		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		require.Equal(t, types.ColumnTypeLabel, colVec.ColumnType())
+
+		// Test single column behavior
+		require.Equal(t, "label_0", colVec.Value(0))
+		require.Equal(t, "label_1", colVec.Value(1))
+		require.Equal(t, "label_2", colVec.Value(2))
+	})
+
+	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
+		colExpr := &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "nonexistent",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		}
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		require.IsType(t, &Scalar{}, colVec)
+	})
 }
