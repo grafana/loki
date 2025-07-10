@@ -200,7 +200,9 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 }
 
 func (b *vectorResultBuilder) Build() logqlmodel.Result {
-	sort.Slice(b.data, func(i, j int) bool { return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0 })
+	sort.Slice(b.data, func(i, j int) bool {
+		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
+	})
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: b.stats,
