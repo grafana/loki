@@ -17,8 +17,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arrow.Record {
