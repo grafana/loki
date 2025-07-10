@@ -12,27 +12,34 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
+var (
+	chunkDuration  = time.Hour
+	sampleInterval = 10 * time.Second
+)
+
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
+
+	cks.Add(TimeResolution+1, chunkDuration, sampleInterval)
+	cks.Add(TimeResolution+2, chunkDuration, sampleInterval)
+	cks.Add(2*TimeResolution+1, chunkDuration, sampleInterval)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())+TimeResolution+1, chunkDuration, sampleInterval)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - TimeResolution)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())-TimeResolution, chunkDuration, sampleInterval)
 	require.Equal(t, 2, len(cks))
 	require.Equalf(t, 1, len(cks[1].Samples), "Older samples should not be added if they arrive out of order")
 }
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(TimeResolution + 1)
-	cks.Add(TimeResolution + 2)
-	cks.Add(2*TimeResolution + 1)
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
+
+	cks.Add(TimeResolution+1, chunkDuration, sampleInterval)
+	cks.Add(TimeResolution+2, chunkDuration, sampleInterval)
+	cks.Add(2*TimeResolution+1, chunkDuration, sampleInterval)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds())+TimeResolution+1, chunkDuration, sampleInterval)
 
 	it := cks.Iterator("test", constants.LogLevelInfo, model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
 	require.NotNil(t, it)
@@ -353,5 +360,82 @@ func TestPrune(t *testing.T) {
 			{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (1 * time.Minute).Nanoseconds())},
 			{Timestamp: model.TimeFromUnixNano(now.UnixNano() - (olderThan.Nanoseconds()) + (2 * time.Minute).Nanoseconds())},
 		}, cks[0].Samples)
+	})
+}
+
+func TestConfigurableChunkDuration(t *testing.T) {
+	t.Run("should respect configurable chunk duration for spaceFor", func(t *testing.T) {
+		customDuration := 30 * time.Minute
+
+		// Create a chunk with first sample at time 0
+		chunk := Chunk{
+			Samples: []logproto.PatternSample{
+				{Timestamp: 0, Value: 1},
+			},
+		}
+
+		// Test that a timestamp within custom duration returns true
+		withinDuration := model.Time((customDuration - time.Minute).Nanoseconds() / 1e6)
+		result := chunk.spaceFor(withinDuration, customDuration)
+		require.True(t, result, "timestamp within custom duration should return true")
+
+		// Test that a timestamp beyond custom duration returns false
+		beyondDuration := model.Time((customDuration + time.Minute).Nanoseconds() / 1e6)
+		result = chunk.spaceFor(beyondDuration, customDuration)
+		require.False(t, result, "timestamp beyond custom duration should return false")
+	})
+}
+
+func TestConfigurableChunkCreation(t *testing.T) {
+	t.Run("should use configurable sample interval for chunk sizing", func(t *testing.T) {
+		customChunkDuration := 30 * time.Minute
+		customSampleInterval := 5 * time.Second
+
+		ts := model.Time(1000)
+		chunk := newChunk(ts, customChunkDuration, customSampleInterval)
+
+		// Calculate expected capacity based on custom parameters
+		expectedCapacity := 12*30 + 1 // 5 second samples, 12 per minute, 30 minutes, plus 1
+
+		require.Equal(t, expectedCapacity, cap(chunk.Samples), "chunk capacity should be calculated using configurable parameters")
+		require.Equal(t, 1, len(chunk.Samples), "chunk should have one initial sample")
+		require.Equal(t, ts, chunk.Samples[0].Timestamp, "first sample should have correct timestamp")
+		require.Equal(t, int64(1), chunk.Samples[0].Value, "first sample should have value 1")
+	})
+}
+
+func TestConfigurableChunksAdd(t *testing.T) {
+	t.Run("should create new chunks based on configurable duration", func(t *testing.T) {
+		customChunkDuration := 15 * time.Minute
+		customSampleInterval := 5 * time.Second
+
+		cks := Chunks{}
+
+		// Add first sample
+		firstTimestamp := model.Time(5000) // 5 seconds in milliseconds
+		result := cks.Add(firstTimestamp, customChunkDuration, customSampleInterval)
+		require.Nil(t, result, "first add should return nil")
+		require.Equal(t, 1, len(cks), "should have one chunk")
+
+		// Add sample at same truncated time - should increment existing sample
+		sameTime := firstTimestamp + model.Time(1000) // Still truncates to same 5-second interval
+		result = cks.Add(sameTime, customChunkDuration, customSampleInterval)
+		require.Nil(t, result, "add at same truncated time should return nil")
+		require.Equal(t, 1, len(cks), "should still have one chunk")
+		require.Equal(t, 1, len(cks[0].Samples), "should still have one sample")
+		require.Equal(t, int64(2), cks[0].Samples[0].Value, "sample value should be incremented")
+
+		// Add sample at different time within chunk duration - should create new sample
+		differentTime := firstTimestamp + model.Time(10000) // 10 seconds later
+		result = cks.Add(differentTime, customChunkDuration, customSampleInterval)
+		require.NotNil(t, result, "add at different time should return previous sample")
+		require.Equal(t, 1, len(cks), "should still have one chunk")
+		require.Equal(t, 2, len(cks[0].Samples), "should have two samples in chunk")
+
+		// Add sample beyond duration - should create new chunk
+		beyondDuration := firstTimestamp + model.Time(customChunkDuration.Nanoseconds()/1e6) + model.Time(5000)
+		result = cks.Add(beyondDuration, customChunkDuration, customSampleInterval)
+		require.NotNil(t, result, "add beyond duration should return previous sample")
+		require.Equal(t, 2, len(cks), "should have two chunks")
 	})
 }

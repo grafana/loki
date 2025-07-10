@@ -26,6 +26,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unsafe"
 
@@ -44,6 +45,8 @@ type Config struct {
 	ParamString          string
 	MaxEvictionRatio     float64
 	MaxAllowedLineLength int
+	ChunkDuration        time.Duration
+	SampleInterval       time.Duration
 }
 
 type Limits interface {
@@ -135,6 +138,8 @@ func DefaultConfig() *Config {
 		MaxClusters:          300,
 		MaxEvictionRatio:     0.25,
 		MaxAllowedLineLength: 3000,
+		ChunkDuration:        time.Hour,
+		SampleInterval:       10 * time.Second,
 	}
 }
 
@@ -256,7 +261,7 @@ func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 			Chunks:     Chunks{},
 		}
 		modeTs := model.TimeFromUnixNano(ts)
-		matchCluster.append(modeTs)
+		matchCluster.append(modeTs, d.config.ChunkDuration, d.config.SampleInterval)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -264,7 +269,7 @@ func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.append(model.TimeFromUnixNano(ts))
+		matchCluster.append(model.TimeFromUnixNano(ts), d.config.ChunkDuration, d.config.SampleInterval)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}

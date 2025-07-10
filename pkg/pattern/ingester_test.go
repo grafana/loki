@@ -2,18 +2,22 @@ package pattern
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -563,4 +567,124 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		require.Contains(t, entry, "detected_pattern=", "should contain detected_pattern field")
 		require.Contains(t, entry, "info", "should contain pattern info")
 	}
+}
+
+func TestConfigChunkDuration(t *testing.T) {
+	t.Run("should have default value of 1 hour", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		require.Equal(t, time.Hour, cfg.ChunkDuration, "ChunkDuration should default to 1 hour")
+	})
+
+	t.Run("should register chunk-duration flag", func(t *testing.T) {
+		cfg := Config{}
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+
+		cfg.RegisterFlags(fs)
+
+		// Verify the flag was registered
+		chunkDurationFlag := fs.Lookup("pattern-ingester.chunk-duration")
+		require.NotNil(t, chunkDurationFlag, "pattern-ingester.chunk-duration flag should be registered")
+		require.Equal(t, "1h0m0s", chunkDurationFlag.DefValue, "flag should have default value of 1h0m0s")
+	})
+}
+
+func TestConfigPatternSampleInterval(t *testing.T) {
+	t.Run("should have default value of 10 seconds", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		require.Equal(t, 10*time.Second, cfg.PatternSampleInterval, "PatternSampleInterval should default to 10 seconds")
+	})
+
+	t.Run("should register sample-interval flag", func(t *testing.T) {
+		cfg := Config{}
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+
+		cfg.RegisterFlags(fs)
+
+		// Verify the flag was registered
+		sampleIntervalFlag := fs.Lookup("pattern-ingester.sample-interval")
+		require.NotNil(t, sampleIntervalFlag, "pattern-ingester.sample-interval flag should be registered")
+		require.Equal(t, "10s", sampleIntervalFlag.DefValue, "flag should have default value of 10s")
+	})
+}
+
+func TestConfigurationPropagation(t *testing.T) {
+	t.Run("should propagate ChunkDuration and PatternSampleInterval to drain config", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set custom values
+		cfg.ChunkDuration = 30 * time.Minute
+		cfg.PatternSampleInterval = 5 * time.Second
+
+		// Create ingester
+		ingester, err := New(
+			cfg,
+			&fakeLimits{},
+			&fakeRingClient{},
+			"test",
+			prometheus.NewRegistry(),
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		// Verify that the drain config has the correct values
+		require.Equal(t, 30*time.Minute, ingester.drainCfg.ChunkDuration, "ChunkDuration should be propagated to drain config")
+		require.Equal(t, 5*time.Second, ingester.drainCfg.SampleInterval, "PatternSampleInterval should be propagated to drain config")
+	})
+}
+
+func TestConfigurationValidation(t *testing.T) {
+	t.Run("should validate retain-for >= chunk-duration", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set replication factor to 1 to pass basic validation
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+
+		// Set invalid values: retain-for < chunk-duration
+		cfg.RetainFor = 1 * time.Hour
+		cfg.ChunkDuration = 2 * time.Hour
+
+		err := cfg.Validate()
+		require.Error(t, err, "should fail validation when retain-for < chunk-duration")
+		require.Contains(t, err.Error(), "retain-for", "error message should mention retain-for")
+		require.Contains(t, err.Error(), "chunk-duration", "error message should mention chunk-duration")
+	})
+
+	t.Run("should validate chunk-duration >= sample-interval", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set replication factor to 1 to pass basic validation
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+
+		// Set invalid values: chunk-duration < sample-interval
+		cfg.ChunkDuration = 5 * time.Second
+		cfg.PatternSampleInterval = 10 * time.Second
+
+		err := cfg.Validate()
+		require.Error(t, err, "should fail validation when chunk-duration < sample-interval")
+		require.Contains(t, err.Error(), "chunk-duration", "error message should mention chunk-duration")
+		require.Contains(t, err.Error(), "sample-interval", "error message should mention sample-interval")
+	})
+
+	t.Run("should pass validation with valid configuration", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+
+		// Set replication factor to 1 to pass basic validation
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+
+		// Set valid values
+		cfg.RetainFor = 3 * time.Hour
+		cfg.ChunkDuration = 1 * time.Hour
+		cfg.PatternSampleInterval = 10 * time.Second
+
+		err := cfg.Validate()
+		require.NoError(t, err, "should pass validation with valid configuration")
+	})
 }

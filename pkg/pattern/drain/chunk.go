@@ -24,8 +24,8 @@ type Chunk struct {
 	Samples []logproto.PatternSample
 }
 
-func newChunk(ts model.Time) Chunk {
-	maxSize := int(maxChunkTime.Nanoseconds()/TimeResolution.UnixNano()) + 1
+func newChunk(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) Chunk {
+	maxSize := int(chunkDuration.Nanoseconds()/sampleInterval.Nanoseconds()) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
@@ -34,12 +34,12 @@ func newChunk(ts model.Time) Chunk {
 	return v
 }
 
-func (c Chunk) spaceFor(ts model.Time) bool {
+func (c Chunk) spaceFor(ts model.Time, chunkDuration time.Duration) bool {
 	if len(c.Samples) == 0 {
 		return true
 	}
 
-	return ts.Sub(c.Samples[0].Timestamp) < maxChunkTime
+	return ts.Sub(c.Samples[0].Timestamp) < time.Duration(chunkDuration.Nanoseconds())
 }
 
 // ForRange returns samples with only the values
@@ -102,11 +102,11 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 // Add records the sample by incrementing the value of the current sample
 // or creating a new sample if past the time resolution of the current one.
 // Returns the previous sample if a new sample was created, nil otherwise.
-func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
-	t := TruncateTimestamp(ts, TimeResolution)
+func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
+	t := TruncateTimestamp(ts, model.Time(sampleInterval.Nanoseconds()/1e6))
 
 	if len(*c) == 0 {
-		*c = append(*c, newChunk(t))
+		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
 		return nil
 	}
 	last := &(*c)[len(*c)-1]
@@ -114,8 +114,8 @@ func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
 		last.Samples[len(last.Samples)-1].Value++
 		return nil
 	}
-	if !last.spaceFor(t) {
-		*c = append(*c, newChunk(t))
+	if !last.spaceFor(t, chunkDuration) {
+		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
 		return &last.Samples[len(last.Samples)-1]
 	}
 	if ts.Before(last.Samples[len(last.Samples)-1].Timestamp) {
