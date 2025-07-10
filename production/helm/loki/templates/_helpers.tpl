@@ -879,8 +879,6 @@ http {
     {{- $rulerUrl = $backendUrl }}
     {{- $compactorUrl = $backendUrl }}
     {{- $schedulerUrl = $backendUrl }}
-    {{- else if and (eq (include "loki.deployment.isDistributed" .) "true") .Values.ingester.zoneAwareReplication.enabled }}
-    {{- $ingesterUrl = printf "%s://ingester" $httpSchema }}
     {{- end -}}
 
     {{- if .Values.loki.ui.gateway.enabled }}
@@ -1019,18 +1017,6 @@ http {
     {{ . | nindent 4 }}
     {{- end }}
   }
-
-  {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-  {{- if and $isDistributed .Values.ingester.zoneAwareReplication.enabled }}
-  upstream ingester {
-    {{- $ingesterZoneAURL    := printf "%s-zone-a-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneAURL }};
-    {{- $ingesterZoneBURL    := printf "%s-zone-b-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneBURL }};
-    {{- $ingesterZoneCURL    := printf "%s-zone-c-headless.%s.svc.%s:%s" $ingesterHost .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
-    server {{ $ingesterZoneCURL }};
-  }
-  {{- end }}
 }
 {{- end }}
 
