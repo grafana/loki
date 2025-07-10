@@ -16,11 +16,11 @@ type DataObjScan struct {
 	// Location is the unique name of the data object that is used as source for
 	// reading streams.
 	Location DataObjLocation
+	// Section is the section index inside the data object to scan.
+	Section int
 	// StreamIDs is a set of stream IDs inside the data object. These IDs are
 	// only unique in the context of a single data object.
 	StreamIDs []int64
-	// Sections is a set of section indexes inside the data object.
-	Sections []int
 	// Projections are used to limit the columns that are read to the ones
 	// provided in the column expressions to reduce the amount of data that needs
 	// to be processed.

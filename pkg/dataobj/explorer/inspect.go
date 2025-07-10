@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -145,10 +146,71 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 				}
 			}
 			result.Sections = append(result.Sections, meta)
+		case pointers.CheckSection(section):
+			pointersSection, err := pointers.Open(ctx, section)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to open pointers section: %v", err),
+				}
+			}
+			meta, err := inspectPointersSection(ctx, section.Type, pointersSection)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to inspect pointers section: %v", err),
+				}
+			}
+			result.Sections = append(result.Sections, meta)
 		}
 	}
 
 	return result
+}
+
+func inspectPointersSection(ctx context.Context, ty dataobj.SectionType, sec *pointers.Section) (SectionMetadata, error) {
+	stats, err := pointers.ReadStats(ctx, sec)
+	if err != nil {
+		return SectionMetadata{}, err
+	}
+
+	meta := SectionMetadata{
+		Type:                  ty.String(),
+		TotalCompressedSize:   stats.CompressedSize,
+		TotalUncompressedSize: stats.UncompressedSize,
+		ColumnCount:           len(stats.Columns),
+	}
+
+	for _, col := range stats.Columns {
+		colMeta := ColumnWithPages{
+			Name:             col.Name,
+			Type:             col.Type,
+			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			RowsCount:        col.RowsCount,
+			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
+			UncompressedSize: col.UncompressedSize,
+			CompressedSize:   col.CompressedSize,
+			MetadataOffset:   col.MetadataOffset,
+			MetadataSize:     col.MetadataSize,
+			ValuesCount:      col.ValuesCount,
+			Statistics:       Statistics{CardinalityCount: col.Cardinality},
+		}
+
+		for _, page := range col.Pages {
+			colMeta.Pages = append(colMeta.Pages, PageInfo{
+				UncompressedSize: page.UncompressedSize,
+				CompressedSize:   page.CompressedSize,
+				CRC32:            page.CRC32,
+				RowsCount:        page.RowsCount,
+				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
+				DataOffset:       page.DataOffset,
+				DataSize:         page.DataSize,
+				ValuesCount:      page.ValuesCount,
+			})
+		}
+
+		meta.Columns = append(meta.Columns, colMeta)
+	}
+
+	return meta, nil
 }
 
 func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.Section) (SectionMetadata, error) {

@@ -61,22 +61,24 @@ type Client struct {
 
 // BosClientConfiguration defines the config components structure by user.
 type BosClientConfiguration struct {
-	Ak               string
-	Sk               string
-	Endpoint         string
-	RedirectDisabled bool
-	PathStyleEnable  bool
+	Ak                string
+	Sk                string
+	Endpoint          string
+	RedirectDisabled  bool
+	PathStyleEnable   bool
+	DisableKeepAlives bool
 }
 
 // NewClient make the BOS service client with default configuration.
 // Use `cli.Config.xxx` to access the config or change it to non-default value.
 func NewClient(ak, sk, endpoint string) (*Client, error) {
 	return NewClientWithConfig(&BosClientConfiguration{
-		Ak:               ak,
-		Sk:               sk,
-		Endpoint:         endpoint,
-		RedirectDisabled: false,
-		PathStyleEnable:  false,
+		Ak:                ak,
+		Sk:                sk,
+		Endpoint:          endpoint,
+		RedirectDisabled:  false,
+		PathStyleEnable:   false,
+		DisableKeepAlives: true,
 	})
 }
 
@@ -136,7 +138,9 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		SignOption:                defaultSignOptions,
 		Retry:                     bce.DEFAULT_RETRY_POLICY,
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
-		RedirectDisabled:          config.RedirectDisabled}
+		RedirectDisabled:          config.RedirectDisabled,
+		DisableKeepAlives:         config.DisableKeepAlives,
+	}
 	v1Signer := &auth.BceV1Signer{}
 	defaultContext := &api.BosContext{
 		PathStyleEnable: config.PathStyleEnable,
