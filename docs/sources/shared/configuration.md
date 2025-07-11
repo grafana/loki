@@ -2323,6 +2323,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # CLI flag: -<prefix>.gcs.bucketname
 [bucket_name: <string> | default = ""]
 
+# Custom GCS endpoint URL.
+# CLI flag: -<prefix>.gcs.endpoint
+[endpoint: <string> | default = ""]
+
 # Service account key content in JSON format, refer to
 # https://cloud.google.com/iam/docs/creating-managing-service-account-keys for
 # creation.
