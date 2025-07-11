@@ -96,7 +96,7 @@ func TestCatalog_ConvertColumnRef(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := convertColumnRef(tt.expr)
+			got, err := convertColumnRef(tt.expr, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				t.Log(err)
@@ -154,7 +154,7 @@ func TestCatalog_ExpressionToMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := expressionToMatchers(tt.expr)
+			got, err := expressionToMatchers(tt.expr, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				t.Log(err)

@@ -43,21 +43,22 @@ type Catalog interface {
 	// a list of stream IDs for each data data object,
 	// and a list of sections for each data object
 	ResolveDataObj(Expression, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
-	ResolveDataObjWithShard(Expression, ShardInfo, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
-	ResolveSections(Expression, Expression) ([]metastore.DataobjSectionDescriptor, error)
+	ResolveDataObjWithShard(Expression, []Expression, ShardInfo, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
 }
 
 // MetastoreCatalog is the default implementation of [Catalog].
 type MetastoreCatalog struct {
-	ctx       context.Context
-	metastore metastore.Metastore
+	ctx           context.Context
+	metastore     metastore.Metastore
+	catalogueType string
 }
 
 // NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
-func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *MetastoreCatalog {
+func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore, catalogueType string) *MetastoreCatalog {
 	return &MetastoreCatalog{
-		ctx:       ctx,
-		metastore: ms,
+		ctx:           ctx,
+		metastore:     ms,
+		catalogueType: catalogueType,
 	}
 }
 
@@ -65,50 +66,36 @@ func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *Metastore
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
 func (c *MetastoreCatalog) ResolveDataObj(selector Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(selector, noShard, from, through)
+	return c.ResolveDataObjWithShard(selector, nil, noShard, from, through)
 }
 
-func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	if c.metastore == nil {
 		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
 
-	matchers, err := expressionToMatchers(selector)
+	switch c.catalogueType {
+	case "direct":
+		return c.resolveDataObj(selector, shard, from, through)
+	case "index":
+		return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
+	default:
+		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %s", c.catalogueType)
+	}
+}
+
+func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-<<<<<<< HEAD:pkg/engine/planner/physical/catalog.go
 	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
-=======
-	sections, err := c.metastore.StreamIDsBySections(c.ctx, c.from, c.through, matchers...)
->>>>>>> 98d7d9dc9d (WIP):pkg/engine/planner/physical/context.go
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
-	fmt.Printf("sections=%d\n", len(sections))
 
-	return filterDescriptorsForShard(shard, sections)
-
-	/*
-		 	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, c.from, c.through, matchers...)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
-			}
-
-			locations, streams, objectSections, err := filterForShard(shard, paths, streamIDs, numSections)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("failed to filter for shard: %w", err)
-			}
-
-			sectionsCount := 0
-			for _, section := range objectSections {
-				sectionsCount += len(section)
-			}
-			fmt.Printf("StreamIDs: sectionsCount=%d\n", sectionsCount)
-
-			return locations, streams, objectSections, nil
-	*/
+	return filterForShard(shard, paths, streamIDs, numSections)
 }
 
 func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {
@@ -137,28 +124,30 @@ func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSec
 	return locations, streams, sections, nil
 }
 
-// ResolveDataObj resolves DataObj locations and streams IDs based on a given
-// [Expression]. The expression is required to be a (tree of) [BinaryExpression]
-// with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
-func (c *Context) ResolveSections(selector Expression, shard ShardInfo) ([]DataObjLocation, [][]int64, [][]int, error) {
+// resolveDataobjWithIndex expects the metastore to initially point to index objects, not the log objects directly.
+func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	if c.metastore == nil {
 		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
 
-	matchers, err := expressionToMatchers(selector)
+	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	/* 	// TODO(benclive): Handle these ambiguous column cases in a less hacky way
-	   	tableHintMatchers, err := expressionToMatchers(tableHint)
-	   	if err != nil {
-	   		return nil, nil, fmt.Errorf("failed to convert table hint expression into matchers: %w", err)
-	   	} */
+	predicateMatchers := make([]*labels.Matcher, 0, len(predicates))
+	for _, predicate := range predicates {
+		matchers, err := expressionToMatchers(predicate, true)
+		if err != nil {
+			// Not all predicates are supported by the metastore, so some will be skipped
+			continue
+		}
+		predicateMatchers = append(predicateMatchers, matchers...)
+	}
 
-	sectionDescriptors, err := c.metastore.StreamIDsBySections(c.ctx, c.from, c.through, matchers...)
+	sectionDescriptors, err := c.metastore.Sections(c.ctx, from, through, matchers, predicateMatchers)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to resolve data object sections: %w", err)
 	}
 
 	return filterDescriptorsForShard(shard, sectionDescriptors)
@@ -166,8 +155,8 @@ func (c *Context) ResolveSections(selector Expression, shard ShardInfo) ([]DataO
 
 // filterDescriptorsForShard filters the section descriptors for a given shard.
 // It returns the locations, streams, and sections for the shard.
-// It loses information because it doesn't map streamIDs to sections.
-func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []metastore.DataobjSectionDescriptor) ([]DataObjLocation, [][]int64, [][]int, error) {
+// TODO: Improve filtering: this method could be improved because it doesn't resolve the stream IDs to sections, even though this information is available. Instead, it resolves streamIDs to the whole object.
+func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.DataobjSectionDescriptor) ([]DataObjLocation, [][]int64, [][]int, error) {
 	index := make(map[DataObjLocation]int)
 
 	locations := make([]DataObjLocation, 0, len(sectionDescriptors))
@@ -175,11 +164,12 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []metastore.D
 	sections := make([][]int, 0, len(sectionDescriptors))
 
 	for _, desc := range sectionDescriptors {
-		idx, ok := index[DataObjLocation(desc.ObjectPath)]
+		location := DataObjLocation(desc.ObjectPath)
+		idx, ok := index[location]
 		if !ok {
 			idx = len(index)
-			index[DataObjLocation(desc.ObjectPath)] = idx
-			locations = append(locations, DataObjLocation(desc.ObjectPath))
+			index[location] = idx
+			locations = append(locations, location)
 			streams = append(streams, []int64{})
 			sections = append(sections, []int{})
 		}
@@ -193,14 +183,14 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []metastore.D
 	for i := range streams {
 		sort.Slice(streams[i], func(j, k int) bool { return streams[i][j] < streams[i][k] })
 		sort.Slice(sections[i], func(j, k int) bool { return sections[i][j] < sections[i][k] })
-		streams[i] = uniquelong(streams[i])
-		sections[i] = uniqueint(sections[i])
+		streams[i] = unique(streams[i])
+		sections[i] = unique(sections[i])
 	}
 
 	return locations, streams, sections, nil
 }
 
-func uniqueint(s []int) []int {
+func unique[T comparable](s []T) []T {
 	next := 0
 	for i := range s {
 		if s[i] != s[next] {
@@ -211,18 +201,11 @@ func uniqueint(s []int) []int {
 	return s[:next+1]
 }
 
-func uniquelong(s []int64) []int64 {
-	next := 0
-	for i := range s {
-		if s[i] != s[next] {
-			next++
-			s[next] = s[i]
-		}
-	}
-	return s[:next+1]
-}
-
-func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
+// expressionToMatchers converts a selector expression to a list of matchers.
+// The selector expression is required to be a (tree of) [BinaryExpression]
+// with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
+// It optionally supports ambiguous column references. Non-ambiguous column references are label matchers.
+func expressionToMatchers(selector Expression, allowAmbiguousColumnRefs bool) ([]*labels.Matcher, error) {
 	if selector == nil {
 		return nil, nil
 	}
@@ -231,11 +214,11 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 	case *BinaryExpr:
 		switch expr.Op {
 		case types.BinaryOpAnd:
-			lhs, err := expressionToMatchers(expr.Left)
+			lhs, err := expressionToMatchers(expr.Left, allowAmbiguousColumnRefs)
 			if err != nil {
 				return nil, err
 			}
-			rhs, err := expressionToMatchers(expr.Right)
+			rhs, err := expressionToMatchers(expr.Right, allowAmbiguousColumnRefs)
 			if err != nil {
 				return nil, err
 			}
@@ -245,7 +228,7 @@ func expressionToMatchers(selector Expression) ([]*labels.Matcher, error) {
 			if err != nil {
 				return nil, err
 			}
-			name, err := convertColumnRef(expr.Left)
+			name, err := convertColumnRef(expr.Left, allowAmbiguousColumnRefs)
 			if err != nil {
 				return nil, err
 			}
@@ -277,12 +260,12 @@ func convertLiteralToString(expr Expression) (string, error) {
 	return l.Any().(string), nil
 }
 
-func convertColumnRef(expr Expression) (string, error) {
+func convertColumnRef(expr Expression, allowAmbiguousColumnRefs bool) (string, error) {
 	ref, ok := expr.(*ColumnExpr)
 	if !ok {
 		return "", fmt.Errorf("expected column expression, got %T", expr)
 	}
-	if ref.Ref.Type != types.ColumnTypeLabel {
+	if !allowAmbiguousColumnRefs && ref.Ref.Type != types.ColumnTypeLabel {
 		return "", fmt.Errorf("column type is not a label, got %v", ref.Ref.Type)
 	}
 	return ref.Ref.Column, nil
