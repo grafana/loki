@@ -19,7 +19,7 @@ func newDecoder(reader dataobj.SectionReader) *decoder {
 	return &decoder{sr: reader}
 }
 
-// decoder supports decoding the raw underlying data for a streams section.
+// decoder supports decoding the raw underlying data for a pointers section.
 type decoder struct {
 	sr dataobj.SectionReader
 }
@@ -28,7 +28,7 @@ type decoder struct {
 func (rd *decoder) Columns(ctx context.Context) ([]*pointersmd.ColumnDesc, error) {
 	rc, err := rd.sr.Metadata(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("reading streams section metadata: %w", err)
+		return nil, fmt.Errorf("reading pointers section metadata: %w", err)
 	}
 	defer rc.Close()
 

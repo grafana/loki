@@ -20,6 +20,17 @@ const (
 	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
 )
 
+// Column type precedence for ambiguous column resolution (highest to lowest):
+// Generated > Parsed > Metadata > Label > Builtin
+const (
+	PrecedenceGenerated = iota // 0 - highest precedence
+
+	PrecedenceParsed   // 1
+	PrecedenceMetadata // 2
+	PrecedenceLabel    // 3
+	PrecedenceBuiltin  // 4 - lowest precedence
+)
+
 // Names of the builtin columns.
 const (
 	ColumnNameBuiltinTimestamp = "timestamp"
@@ -54,6 +65,22 @@ func ColumnTypeFromString(ct string) ColumnType {
 		return ColumnTypeGenerated
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
+}
+
+// ColumnTypePrecedence returns the precedence of the given [ColumnType].
+func ColumnTypePrecedence(ct ColumnType) int {
+	switch ct {
+	case ColumnTypeGenerated:
+		return PrecedenceGenerated
+	case ColumnTypeParsed:
+		return PrecedenceParsed
+	case ColumnTypeMetadata:
+		return PrecedenceMetadata
+	case ColumnTypeLabel:
+		return PrecedenceLabel
+	default:
+		return PrecedenceBuiltin // Default to lowest precedence
 	}
 }
 

@@ -323,9 +323,21 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 			vals[i] = arrowconv.FromScalar(p.Values[i], mustConvertType(p.Values[i].DataType()))
 		}
 
+		var valueSet dataset.ValueSet
+		switch col.ColumnInfo().Type {
+		case datasetmd.VALUE_TYPE_INT64:
+			valueSet = dataset.NewInt64ValueSet(vals)
+		case datasetmd.VALUE_TYPE_UINT64:
+			valueSet = dataset.NewUint64ValueSet(vals)
+		case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+			valueSet = dataset.NewByteArrayValueSet(vals)
+		default:
+			panic("InPredicate not implemented for datatype")
+		}
+
 		return dataset.InPredicate{
 			Column: col,
-			Values: vals,
+			Values: valueSet,
 		}
 
 	case GreaterThanPredicate:

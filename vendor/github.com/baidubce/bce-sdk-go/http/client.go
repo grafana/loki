@@ -68,7 +68,8 @@ func (c *timeoutConn) SetReadDeadline(t time.Time) error  { return c.conn.SetRea
 func (c *timeoutConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 type ClientConfig struct {
-	RedirectDisabled bool
+	RedirectDisabled  bool
+	DisableKeepAlives bool
 }
 
 var customizeInit sync.Once
@@ -76,9 +77,14 @@ var customizeInit sync.Once
 func InitClient(config ClientConfig) {
 	customizeInit.Do(func() {
 		httpClient = &http.Client{}
+		maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
+		if config.DisableKeepAlives {
+			maxIdleConnsPerHost = -1
+		}
 		transport = &http.Transport{
-			MaxIdleConnsPerHost:   defaultMaxIdleConnsPerHost,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
+			DisableKeepAlives:     config.DisableKeepAlives,
 			Dial: func(network, address string) (net.Conn, error) {
 				conn, err := net.DialTimeout(network, address, defaultDialTimeout)
 				if err != nil {

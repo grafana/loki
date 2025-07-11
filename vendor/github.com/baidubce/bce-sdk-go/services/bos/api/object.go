@@ -68,6 +68,7 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body,
 			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
 			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_OBJECT_EXPIRES:      strconv.FormatInt(int64(args.ObjectExpires), 10),
 		})
 		if args.ContentLength > 0 {
 			// User specified Content-Length can be smaller than the body size, so the body should
@@ -209,6 +210,7 @@ func CopyObject(cli bce.Client, bucket, object, source string,
 			http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE: args.IfUnmodifiedSince,
 			http.BCE_CONTENT_CRC32C:                  args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG:             strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_OBJECT_EXPIRES:                  strconv.FormatInt(int64(args.ObjectExpires), 10),
 		})
 		if validMetadataDirective(args.MetadataDirective) {
 			req.SetHeader(http.BCE_COPY_METADATA_DIRECTIVE, args.MetadataDirective)
@@ -286,7 +288,7 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	ranges ...int64) (*GetObjectResult, error) {
 
 	if object == "" {
-		err := fmt.Errorf("Get Object don't accept \"\" as a parameter")
+		err := fmt.Errorf("get object don't accept \"\" as a parameter")
 		return nil, err
 	}
 	req := &BosRequest{}
@@ -389,6 +391,9 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
 		result.ContentCrc32c = val
 	}
+	if val, ok := headers[toHttpHeaderKey(http.BCE_EXPIRATION_DATE)]; ok {
+		result.ExpirationDate = val
+	}
 	result.Body = resp.Body()
 	return result, nil
 }
@@ -485,6 +490,9 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext) (*Get
 	}
 	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
 		result.ContentCrc32c = val
+	}
+	if val, ok := headers[toHttpHeaderKey(http.BCE_EXPIRATION_DATE)]; ok {
+		result.ExpirationDate = val
 	}
 	defer func() { resp.Body().Close() }()
 	return result, nil

@@ -1,6 +1,10 @@
 package dataset
 
-import "fmt"
+import (
+	"fmt"
+	"iter"
+	"unsafe"
+)
 
 // Predicate is an expression used to filter rows in a [Reader].
 type Predicate interface{ isPredicate() }
@@ -32,8 +36,8 @@ type (
 	// An InPredicate is a [Predicate] which asserts that a row may only be
 	// included if the Value of the Column is present in the provided Values.
 	InPredicate struct {
-		Column Column  // Column to check.
-		Values []Value // Values to check for inclusion.
+		Column Column   // Column to check.
+		Values ValueSet // Set of values to check.
 	}
 
 	// A GreaterThanPredicate is a [Predicate] which asserts that a row may only
@@ -110,4 +114,116 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	}
 
 	fn(nil)
+}
+
+type ValueSet interface {
+	Contains(value Value) bool
+	Iter() iter.Seq[Value]
+	Size() int
+}
+
+type Int64Set struct {
+	values map[int64]Value
+}
+
+func NewInt64ValueSet(values []Value) Int64Set {
+	valuesMap := make(map[int64]Value, len(values))
+	for _, v := range values {
+		valuesMap[v.Int64()] = v
+	}
+	return Int64Set{
+		values: valuesMap,
+	}
+}
+
+func (s Int64Set) Contains(value Value) bool {
+	_, ok := s.values[value.Int64()]
+	return ok
+}
+
+func (s Int64Set) Iter() iter.Seq[Value] {
+	return func(yield func(v Value) bool) {
+		for _, v := range s.values {
+			ok := yield(v)
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func (s Int64Set) Size() int {
+	return len(s.values)
+}
+
+type Uint64ValueSet struct {
+	values map[uint64]Value
+}
+
+func NewUint64ValueSet(values []Value) Uint64ValueSet {
+	valuesMap := make(map[uint64]Value, len(values))
+	for _, v := range values {
+		valuesMap[v.Uint64()] = v
+	}
+	return Uint64ValueSet{
+		values: valuesMap,
+	}
+}
+
+func (s Uint64ValueSet) Contains(value Value) bool {
+	_, ok := s.values[value.Uint64()]
+	return ok
+}
+
+func (s Uint64ValueSet) Iter() iter.Seq[Value] {
+	return func(yield func(v Value) bool) {
+		for _, v := range s.values {
+			ok := yield(v)
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func (s Uint64ValueSet) Size() int {
+	return len(s.values)
+}
+
+type ByteArrayValueSet struct {
+	values map[string]Value
+}
+
+func NewByteArrayValueSet(values []Value) ByteArrayValueSet {
+	valuesMap := make(map[string]Value, len(values))
+	for _, v := range values {
+		valuesMap[unsafeString(v.ByteArray())] = v
+	}
+	return ByteArrayValueSet{
+		values: valuesMap,
+	}
+}
+
+func (s ByteArrayValueSet) Contains(value Value) bool {
+	_, ok := s.values[unsafeString(value.ByteArray())]
+	return ok
+}
+
+func (s ByteArrayValueSet) Iter() iter.Seq[Value] {
+	return func(yield func(v Value) bool) {
+		for _, v := range s.values {
+			ok := yield(v)
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func (s ByteArrayValueSet) Size() int {
+	return len(s.values)
+}
+
+func unsafeString(in []byte) string {
+	return unsafe.String(unsafe.SliceData(in), len(in))
 }

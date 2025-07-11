@@ -17,8 +17,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/prometheus/promql"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arrow.Record {
@@ -56,8 +57,8 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 }
 
 func TestStreamsResultBuilder(t *testing.T) {
-	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
-	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
+	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
+	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
 
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
@@ -179,13 +180,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 }
 
 func TestVectorResultBuilder(t *testing.T) {
-	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.String)
+	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
 
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
 				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
@@ -215,17 +216,17 @@ func TestVectorResultBuilder(t *testing.T) {
 		require.Equal(t, 3, len(vector))
 
 		// Check first sample
-		require.Equal(t, int64(1620000000000000000), vector[0].T)
+		require.Equal(t, int64(1620000000000), vector[0].T)
 		require.Equal(t, 42.0, vector[0].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9090", "job", "prometheus"), vector[0].Metric)
 
 		// Check second sample
-		require.Equal(t, int64(1620000000000000000), vector[1].T)
+		require.Equal(t, int64(1620000000000), vector[1].T)
 		require.Equal(t, 23.0, vector[1].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"), vector[1].Metric)
 
 		// Check third sample
-		require.Equal(t, int64(1620000000000000000), vector[2].T)
+		require.Equal(t, int64(1620000000000), vector[2].T)
 		require.Equal(t, 15.0, vector[2].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "prometheus"), vector[2].Metric)
 	})
@@ -235,7 +236,7 @@ func TestVectorResultBuilder(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
 				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
 			nil,

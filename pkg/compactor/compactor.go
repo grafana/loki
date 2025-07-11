@@ -580,6 +580,10 @@ func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor Inde
 	c.indexCompactors[indexType] = indexCompactor
 }
 
+func (c *Compactor) TablesManager() TablesManager {
+	return c.tablesManager
+}
+
 type expirationChecker struct {
 	retentionExpiryChecker retention.ExpirationChecker
 	deletionExpiryChecker  retention.ExpirationChecker

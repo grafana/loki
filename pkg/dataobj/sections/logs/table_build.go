@@ -48,9 +48,9 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 // sortRecords sorts the set of records by stream ID and timestamp.
 func sortRecords(records []Record) {
 	slices.SortFunc(records, func(a, b Record) int {
-		if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
+		if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
 			return res
 		}
-		return a.Timestamp.Compare(b.Timestamp)
+		return cmp.Compare(a.StreamID, b.StreamID)
 	})
 }

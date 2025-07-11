@@ -62,7 +62,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
 			var minValue, maxValue dataset.Value
 			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-				if dataset.CompareValues(p.Value, minValue) < 0 || dataset.CompareValues(p.Value, maxValue) > 0 {
+				if dataset.CompareValues(&p.Value, &minValue) < 0 || dataset.CompareValues(&p.Value, &maxValue) > 0 {
 					// no rows will match
 					return noMatchSelectivity
 				}
@@ -80,14 +80,14 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 			return getBaseSelectivity(p)
 		}
 
-		valuesInRange := len(p.Values)
+		valuesInRange := p.Values.Size()
 		if info.Statistics.MinValue != nil && info.Statistics.MaxValue != nil {
 			var minValue, maxValue dataset.Value
 			if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
 				valuesInRange = 0
 
-				for _, v := range p.Values {
-					if dataset.CompareValues(v, minValue) >= 0 && dataset.CompareValues(v, maxValue) <= 0 {
+				for v := range p.Values.Iter() {
+					if dataset.CompareValues(&v, &minValue) >= 0 && dataset.CompareValues(&v, &maxValue) <= 0 {
 						valuesInRange++
 					}
 				}
@@ -115,10 +115,10 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			if dataset.CompareValues(p.Value, minValue) < 0 {
+			if dataset.CompareValues(&p.Value, &minValue) < 0 {
 				return selectivityScore(1.0)
 			}
-			if dataset.CompareValues(p.Value, maxValue) > 0 {
+			if dataset.CompareValues(&p.Value, &maxValue) > 0 {
 				return selectivityScore(0.0)
 			}
 
@@ -140,10 +140,10 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		}
 
 		if e1, e2 := minValue.UnmarshalBinary(info.Statistics.MinValue), maxValue.UnmarshalBinary(info.Statistics.MaxValue); e1 == nil && e2 == nil {
-			if dataset.CompareValues(p.Value, minValue) < 0 {
+			if dataset.CompareValues(&p.Value, &minValue) < 0 {
 				return selectivityScore(0.0)
 			}
-			if dataset.CompareValues(p.Value, maxValue) > 0 {
+			if dataset.CompareValues(&p.Value, &maxValue) > 0 {
 				return selectivityScore(1.0)
 			}
 

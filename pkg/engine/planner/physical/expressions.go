@@ -2,7 +2,6 @@ package physical
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -133,30 +132,11 @@ func (e *LiteralExpr) ValueType() datatype.DataType {
 	return e.Literal.Type()
 }
 
-func NewLiteral(value any) *LiteralExpr {
+func NewLiteral(value datatype.LiteralType) *LiteralExpr {
 	if value == nil {
 		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
 	}
-
-	switch casted := value.(type) {
-	case bool:
-		return &LiteralExpr{Literal: datatype.NewBoolLiteral(casted)}
-	case string:
-		// TODO(chaudum): Try parsing bytes/timestamp/duration
-		return &LiteralExpr{Literal: datatype.NewStringLiteral(casted)}
-	case int:
-		return &LiteralExpr{Literal: datatype.NewIntegerLiteral(int64(casted))}
-	case int64:
-		return &LiteralExpr{Literal: datatype.NewIntegerLiteral(casted)}
-	case float64:
-		return &LiteralExpr{Literal: datatype.NewFloatLiteral(casted)}
-	case time.Time:
-		return &LiteralExpr{Literal: datatype.NewTimestampLiteral(casted)}
-	case time.Duration:
-		return &LiteralExpr{Literal: datatype.NewDurationLiteral(casted)}
-	default:
-		panic(fmt.Sprintf("invalid literal value type %T", value))
-	}
+	return &LiteralExpr{Literal: datatype.NewLiteral(value)}
 }
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.

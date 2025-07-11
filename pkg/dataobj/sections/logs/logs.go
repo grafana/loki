@@ -118,6 +118,10 @@ func convertColumnType(protoType logsmd.ColumnType) (ColumnType, bool) {
 	return ColumnTypeInvalid, false
 }
 
+func IsMetadataColumn(colType string) bool {
+	return colType == logsmd.COLUMN_TYPE_METADATA.String()
+}
+
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:   "invalid",
 	ColumnTypeStreamID:  "stream_id",

@@ -91,12 +91,14 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	return newDataobjScanPipeline(ctx, dataobjScanOptions{
 		Object:      obj,
 		StreamIDs:   node.StreamIDs,
-		Sections:    node.Sections,
+		Section:     node.Section,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
 		Direction: node.Direction,
 		Limit:     node.Limit,
+
+		batchSize: c.batchSize,
 	})
 }
 

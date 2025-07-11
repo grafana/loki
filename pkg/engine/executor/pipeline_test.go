@@ -9,6 +9,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/csv"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 )
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
@@ -47,8 +49,8 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 func TestCSVPipeline(t *testing.T) {
 	// Define test schema
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "age", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "name", Type: datatype.Arrow.String},
+		{Name: "age", Type: datatype.Arrow.Integer},
 	}
 	schema := arrow.NewSchema(fields, nil)
 

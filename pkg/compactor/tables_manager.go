@@ -16,6 +16,12 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+type TablesManager interface {
+	CompactTable(ctx context.Context, tableName string, applyRetention bool) error
+	ApplyStorageUpdates(ctx context.Context, iterator deletion.StorageUpdatesIterator) error
+	IterateTables(ctx context.Context, callback func(string, deletion.Table) error) (err error)
+}
+
 type tablesManager struct {
 	cfg               Config
 	expirationChecker retention.ExpirationChecker
@@ -273,7 +279,7 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 					}
 
 					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
-					err = c.compactTable(ctx, tableName, applyRetention)
+					err = c.CompactTable(ctx, tableName, applyRetention)
 					if err != nil {
 						return
 					}
@@ -313,7 +319,7 @@ func (c *tablesManager) runCompaction(ctx context.Context, applyRetention bool) 
 	return ctx.Err()
 }
 
-func (c *tablesManager) compactTable(ctx context.Context, tableName string, applyRetention bool) error {
+func (c *tablesManager) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
 	schemaCfg, ok := SchemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
 		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)

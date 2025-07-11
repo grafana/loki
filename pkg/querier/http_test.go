@@ -418,7 +418,7 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(Config{}, querier, limits, nil, nil, log.NewNopLogger())
+	api := NewQuerierAPI(mockQuerierConfig(), querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
 

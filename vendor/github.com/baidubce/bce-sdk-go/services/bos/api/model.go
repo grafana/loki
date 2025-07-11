@@ -282,6 +282,7 @@ type PutObjectArgs struct {
 	TrafficLimit       int64
 	ContentCrc32c      string
 	ContentCrc32cFlag  bool
+	ObjectExpires      int
 }
 
 // CopyObjectArgs defines the optional args structure for the copy object api.
@@ -298,6 +299,7 @@ type CopyObjectArgs struct {
 	ObjectTagging     string
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
+	ObjectExpires     int
 }
 
 type MultiCopyObjectArgs struct {
@@ -344,6 +346,7 @@ type ObjectMeta struct {
 	BceObjectType      string
 	VersionId          string
 	ContentCrc32c      string
+	ExpirationDate     string
 }
 
 // GetObjectResult defines the result data of the get object api.
