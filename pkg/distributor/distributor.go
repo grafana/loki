@@ -108,7 +108,8 @@ type Config struct {
 	KafkaConfig kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
-	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
+	TenantTopic      TenantTopicConfig      `yaml:"tenant_topic" category:"experimental"`
+	MultiTenantTopic MultiTenantTopicConfig `yaml:"multi_tenant_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -118,6 +119,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.TenantTopic.RegisterFlags(fs)
+	cfg.MultiTenantTopic.RegisterFlags(fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -296,6 +298,14 @@ func New(
 				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
 			}
 
+			tee = WrapTee(tee, w)
+		}
+
+		if cfg.MultiTenantTopic.Enabled {
+			w, err := NewMultiTenantTopicWriter(cfg.MultiTenantTopic, kafkaClient, registerer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to start multi-tenant topic tee: %w", err)
+			}
 			tee = WrapTee(tee, w)
 		}
 	}
