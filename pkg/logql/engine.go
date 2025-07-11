@@ -166,6 +166,11 @@ type EngineOpts struct {
 
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
+
+	// CataloguePath is the path to the catalogue in the object store.
+	CataloguePath string `yaml:"catalogue_path"`
+	// CatalogueType is the type of catalogue files at the catalogue path. Possible values are: direct, index
+	CatalogueType string `yaml:"catalogue_type"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -173,6 +178,8 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.StringVar(&opts.CataloguePath, prefix+"catalogue-path", "index/v0/", "The path to the catalogue in the object store.")
+	f.StringVar(&opts.CatalogueType, prefix+"catalogue-type", "direct", "The type of the catalogue at the path. Possible values are: direct, index")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }

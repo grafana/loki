@@ -18,8 +18,8 @@ type Metastore interface {
 	// StreamsIDs returns object store paths and stream IDs for all matching objects for the given matchers between [start,end]
 	StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error)
 
-	// StreamIDsBySections returns a list of dataobj sections & their stream IDs for all matching objects for the given matchers between [start,end]
-	StreamIDsBySections(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]DataobjSectionDescriptor, error)
+	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end]
+	Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error)
 
 	// Labels returns all possible labels from matching streams between [start,end]
 	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream

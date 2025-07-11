@@ -38,8 +38,7 @@ func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg
 
 	var ms metastore.Metastore
 	if bucket != nil {
-		// TODO(benclive): Grab this from config instead of hardcoding it
-		metastoreBucket := objstore.NewPrefixedBucket(bucket, "indexing-v0/")
+		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
 		ms = metastore.NewObjectMetastore(metastoreBucket, logger)
 	}
 
@@ -103,7 +102,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for physical planning
 	statsCtx, ctx := stats.NewContext(ctx)
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, e.opts.CatalogueType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
