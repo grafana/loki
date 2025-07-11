@@ -863,6 +863,14 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.retain-for
   [retain_for: <duration> | default = 3h]
 
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.chunk-duration
+  [chunk_duration: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -4356,6 +4364,12 @@ otlp_config:
 # pushed streams will be written back into Loki as a special __pattern__ stream.
 # CLI flag: -limits.pattern-persistence-enabled
 [pattern_persistence_enabled: <boolean> | default = false]
+
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

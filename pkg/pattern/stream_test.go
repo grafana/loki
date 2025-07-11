@@ -232,12 +232,13 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push entries across a 1-hour span that will be pruned
-	now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
-	baseTime := now.Add(-2 * time.Hour)
+	// Use current time but make old data clearly older than 1 hour prune threshold
+	now := time.Now()
+	baseTime := now.Add(-2 * time.Hour) // 2 hours old - clearly older than 1-hour prune threshold
 
 	// Push 12 entries across 60 minutes (5 minutes apart)
 	entries := []push.Entry{}
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		entries = append(entries, push.Entry{
 			Timestamp: baseTime.Add(time.Duration(i*5) * time.Minute),
 			Line:      "ts=1 msg=hello",
@@ -250,7 +251,7 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 	// Push a newer entry to ensure the stream isn't completely pruned
 	err = stream.Push(context.Background(), []push.Entry{
 		{
-			Timestamp: now,
+			Timestamp: time.Now(), // Use actual current time to keep stream alive
 			Line:      "ts=2 msg=hello",
 		},
 	})
