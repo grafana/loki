@@ -169,6 +169,10 @@ func (d *DeleteRequestsManager) loop(ctx context.Context) {
 }
 
 func (d *DeleteRequestsManager) buildDeletionManifestLoop(ctx context.Context) {
+	if err := cleanupInvalidManifests(ctx, d.deletionStoreClient); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to cleanup invalid delete manifests", "err", err)
+	}
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 

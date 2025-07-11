@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -449,11 +450,30 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 
 	// verify we got the expected storage updates
 	require.Equal(t, len(expectedStorageUpdates.ChunksToIndex), len(result.ChunksToIndex))
+
+	slices.SortFunc(result.ChunksToIndex, func(a, b chunk) int {
+		if a.From < b.From {
+			return -1
+		} else if a.From > b.From {
+			return 1
+		}
+
+		return 0
+	})
 	for i := range expectedStorageUpdates.ChunksToIndex {
 		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].From, result.ChunksToIndex[i].From)
 		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].Through, result.ChunksToIndex[i].Through)
 		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].Fingerprint, result.ChunksToIndex[i].Fingerprint)
 	}
+	slices.SortFunc(result.ChunksToDelete, func(a, b string) int {
+		if a < b {
+			return -1
+		} else if a > b {
+			return 1
+		}
+
+		return 0
+	})
 	require.Equal(t, expectedStorageUpdates.ChunksToDelete, result.ChunksToDelete)
 	require.Equal(t, expectedStorageUpdates.ChunksToDeIndex, result.ChunksToDeIndex)
 }

@@ -10,8 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var ErrNoChunksSelectedForDeletion = fmt.Errorf("no chunks selected for deletion")
@@ -274,4 +277,52 @@ func storageHasValidManifest(ctx context.Context, deletionStoreClient client.Obj
 	}
 
 	return false, nil
+}
+
+func cleanupInvalidManifests(ctx context.Context, deletionStoreClient client.ObjectClient) error {
+	// List all directories in the deletion store
+	_, commonPrefixes, err := deletionStoreClient.List(ctx, "", "/")
+	if err != nil {
+		return err
+	}
+
+	var firstErr error
+
+	for _, commonPrefix := range commonPrefixes {
+		// Check if the directory name is a valid timestamp
+		if _, err := strconv.ParseInt(path.Base(string(commonPrefix)), 10, 64); err != nil {
+			continue
+		}
+
+		// manifest without manifest.json is considered invalid
+		manifestPath := path.Join(string(commonPrefix), manifestFileName)
+		exists, err := deletionStoreClient.ObjectExists(ctx, manifestPath)
+		if err != nil {
+			return err
+		}
+
+		if exists {
+			// Skip directories with manifest.json
+			continue
+		}
+
+		// delete all the contents of the manifest to clean it up
+		objects, _, err := deletionStoreClient.List(ctx, string(commonPrefix), "/")
+		if err != nil {
+			return err
+		}
+
+		// delete all the remaining objects
+		for _, object := range objects {
+			if err := deletionStoreClient.DeleteObject(ctx, object.Key); err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to delete object", "object", object.Key)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+
+	}
+
+	return firstErr
 }
