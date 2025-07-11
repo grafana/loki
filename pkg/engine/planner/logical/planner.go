@@ -103,6 +103,9 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	if !isMetricQuery {
 		// SORT -> SortMerge
 		direction := params.Direction()
+		if direction == logproto.FORWARD {
+			return nil, fmt.Errorf("forward search log queries are not supported: %w", errUnimplemented)
+		}
 		ascending := direction == logproto.FORWARD
 		builder = builder.Sort(*timestampColumnRef(), ascending, false)
 	}

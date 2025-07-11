@@ -34,6 +34,7 @@ type Service struct {
 	client *consumer.Client
 
 	eventsProducerClient *kgo.Client
+	eventConsumerClient  *kgo.Client
 
 	cfg    Config
 	bucket objstore.Bucket
@@ -82,14 +83,15 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 
 	eventsKafkaCfg := kafkaCfg
 	eventsKafkaCfg.Topic = "loki.metastore-events"
+	eventsKafkaCfg.AutoCreateTopicDefaultPartitions = 1
 	eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create producer", "err", err)
 		return nil
 	}
-
 	s.client = consumerClient
 	s.eventsProducerClient = eventsProducerClient
+
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }

@@ -109,26 +109,30 @@ func TestMockCatalog(t *testing.T) {
 
 }
 
-func locations(t *testing.T, nodes []Node) []string {
+func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+		for _, scan := range plan.Children(n) {
+			obj, ok := scan.(*DataObjScan)
+			if !ok {
+				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+			}
+			res = append(res, string(obj.Location))
 		}
-		res = append(res, string(obj.Location))
 	}
 	return res
 }
 
-func sections(t *testing.T, nodes []Node) [][]int {
+func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+		for _, scan := range plan.Children(n) {
+			obj, ok := scan.(*DataObjScan)
+			if !ok {
+				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
+			}
+			res = append(res, []int{obj.Section})
 		}
-		res = append(res, []int{obj.Section})
 	}
 	return res
 }
@@ -204,9 +208,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
-
-			require.Equal(t, tt.expPaths, locations(t, nodes))
-			require.Equal(t, tt.expSections, sections(t, nodes))
+			require.Equal(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.Equal(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }

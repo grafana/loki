@@ -297,13 +297,13 @@ func BenchmarkLogQL(b *testing.B) {
 	// Run benchmarks for both storage types
 	for _, storeType := range allStores {
 		engine, config := setupBenchmarkWithStore(b, storeType)
-		ctx := user.InjectOrgID(context.Background(), testTenant)
 
 		// Generate test cases using the loaded config
 		cases := config.GenerateTestCases()
 
 		for _, c := range cases {
 			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
+				ctx := user.InjectOrgID(context.Background(), testTenant)
 				params, err := logql.NewLiteralParams(
 					c.Query,
 					c.Start,
@@ -323,6 +323,8 @@ func BenchmarkLogQL(b *testing.B) {
 				b.ResetTimer()
 
 				for i := 0; i < b.N; i++ {
+					ctx, cancel := context.WithTimeout(ctx, time.Minute)
+					defer cancel()
 					r, err := q.Exec(ctx)
 					require.NoError(b, err)
 					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
