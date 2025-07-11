@@ -378,7 +378,7 @@ else
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled,slicelabels
-	faillint -paths \
+	GOFLAGS="-tags=linux,promtail_journal_enabled,slicelabels" faillint -paths \
 		"sync/atomic=go.uber.org/atomic" \
 		./...
 
