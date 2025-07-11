@@ -13,7 +13,7 @@ require (
 	github.com/grafana/dskit v0.0.0-20250617101305-c93a1bb09ecb
 	github.com/grafana/loki/v3 v3.5.1
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
-	github.com/prometheus/common v0.65.0
+	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
 	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/stretchr/testify v1.10.0
 )
@@ -94,7 +94,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
-	github.com/miekg/dns v1.1.65 // indirect
+	github.com/miekg/dns v1.1.66 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4 // indirect
@@ -168,7 +168,7 @@ require (
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.33.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
