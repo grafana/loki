@@ -211,9 +211,8 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 		} else if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
-
-		s.records = s.records[:n]
 	}
+	s.records = s.records[:n]
 
 	projections, err := s.effectiveProjections(s.records)
 	if err != nil {
