@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
@@ -165,16 +166,27 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
+
+		node := &SortMerge{
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:  ctx.direction, // apply direction from previously visited Sort node
+		}
+		p.plan.addNode(node)
+
 		for _, section := range sections[i] {
-			node := &DataObjScan{
+			scan := &DataObjScan{
 				Location:  objects[i],
 				StreamIDs: streams[i],
 				Section:   section,
 				Direction: ctx.direction, // apply direction from previously visited Sort node
 			}
-			p.plan.addNode(node)
-			nodes = append(nodes, node)
+			p.plan.addNode(scan)
+			if err := p.plan.addEdge(Edge{Parent: node, Child: scan}); err != nil {
+				return nil, err
+			}
 		}
+
+		nodes = append(nodes, node)
 	}
 	return nodes, nil
 }

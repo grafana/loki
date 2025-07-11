@@ -36,6 +36,10 @@ func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg
 		ms = metastore.NewObjectMetastore(bucket, logger)
 	}
 
+	if opts.BatchSize <= 0 {
+		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
+	}
+
 	return &QueryEngine{
 		logger:    logger,
 		metrics:   newMetrics(reg),
