@@ -33,7 +33,7 @@ Docker image name for loki-canary
 canary priority class name
 */}}
 {{- define "loki-canary.priorityClassName" -}}
-{{- $pcn := coalesce .Values.global.priorityClassName .Values.lokiCanary.priorityClassName .Values.read.priorityClassName -}}
+{{- $pcn := coalesce .Values.lokiCanary.priorityClassName .Values.global.priorityClassName .Values.read.priorityClassName -}}
 {{- if $pcn }}
 priorityClassName: {{ $pcn }}
 {{- end }}
