@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -69,6 +70,7 @@ type deletionManifestBuilder struct {
 	creationTime       time.Time
 	segmentsCount      int
 	overallChunksCount int
+	logger             log.Logger
 }
 
 func newDeletionManifestBuilder(deletionStoreClient client.ObjectClient, deleteRequestBatch *deleteRequestBatch) (*deletionManifestBuilder, error) {
@@ -83,11 +85,14 @@ func newDeletionManifestBuilder(deletionStoreClient client.ObjectClient, deleteR
 		return nil, fmt.Errorf("only upto 64 delete requests allowed, current count: %d", requestCount)
 	}
 
+	now := time.Now()
+
 	builder := &deletionManifestBuilder{
 		deletionStoreClient: deletionStoreClient,
 		deleteRequestBatch:  deleteRequestBatch,
 		currentSegment:      make(map[uint64]ChunksGroup),
-		creationTime:        time.Now(),
+		creationTime:        now,
+		logger:              log.With(util_log.Logger, "manifest", now.UnixNano()),
 	}
 
 	return builder, nil
@@ -184,6 +189,12 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return ErrNoChunksSelectedForDeletion
 	}
 
+	level.Debug(d.logger).Log("msg", "uploading manifest file after finishing building deletion manifest",
+		"total_segments", d.segmentsCount,
+		"total_chunks", d.overallChunksCount,
+		"total_requests", d.deleteRequestBatch.requestCount(),
+	)
+
 	var requests []DeleteRequest
 	for userID := range d.deleteRequestBatch.deleteRequestsToProcess {
 		for i := range d.deleteRequestBatch.deleteRequestsToProcess[userID].requests {
@@ -205,6 +216,12 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
+	level.Debug(d.logger).Log("msg", "flushing segment",
+		"segment_num", d.segmentsCount-1,
+		"chunks_count", d.currentSegmentChunksCount,
+		"user_id", d.currentUserID,
+	)
+
 	b := segment{
 		UserID:      d.currentUserID,
 		TableName:   d.currentTableName,
@@ -237,6 +254,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.segmentsCount++
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
+
 	return d.deletionStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
 }
 
@@ -305,6 +323,8 @@ func cleanupInvalidManifests(ctx context.Context, deletionStoreClient client.Obj
 			// Skip directories with manifest.json
 			continue
 		}
+
+		level.Info(util_log.Logger).Log("msg", "cleaning up invalid manifest", "manifest", commonPrefix)
 
 		// delete all the contents of the manifest to clean it up
 		objects, _, err := deletionStoreClient.List(ctx, string(commonPrefix), "/")

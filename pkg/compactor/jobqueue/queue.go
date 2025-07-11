@@ -3,6 +3,7 @@ package jobqueue
 import (
 	"context"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type Queue struct {
 	wg                        sync.WaitGroup
 	stop                      chan struct{}
 	checkTimedOutJobsInterval time.Duration
+	metrics                   *queueMetrics
 
 	// Track jobs that are being processed
 	processingJobs    map[string]*processingJob
@@ -56,18 +58,19 @@ type builder struct {
 }
 
 // NewQueue creates a new job queue
-func NewQueue() *Queue {
-	return newQueue(time.Minute)
+func NewQueue(r prometheus.Registerer) *Queue {
+	return newQueue(time.Minute, r)
 }
 
 // newQueue creates a new job queue with a configurable timed out jobs check ticker interval (for testing)
-func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
+func newQueue(checkTimedOutJobsInterval time.Duration, r prometheus.Registerer) *Queue {
 	q := &Queue{
 		queue:                     make(chan *grpc.Job),
 		builders:                  make(map[grpc.JobType]builder),
 		stop:                      make(chan struct{}),
 		checkTimedOutJobsInterval: checkTimedOutJobsInterval,
 		processingJobs:            make(map[string]*processingJob),
+		metrics:                   newQueueMetrics(r),
 	}
 
 	// Start the job timeout checker
@@ -142,6 +145,9 @@ func (q *Queue) retryFailedJobs() {
 			now := time.Now()
 			for jobID, pj := range q.processingJobs {
 				if pj.attemptsLeft <= 0 {
+					level.Error(util_log.Logger).Log("msg", "job ran out of attempts, dropping it", "jobID", jobID)
+					q.metrics.jobsDropped.Inc()
+
 					delete(q.processingJobs, jobID)
 					continue
 				}
@@ -156,6 +162,7 @@ func (q *Queue) retryFailedJobs() {
 						if pj.lastAttemptFailed {
 							reason = "failed"
 						}
+						q.metrics.jobRetries.WithLabelValues(reason).Inc()
 						level.Warn(util_log.Logger).Log(
 							"msg", "requeued job",
 							"job_id", jobID,
@@ -206,6 +213,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 		if err := s.Send(job); err != nil {
 			return err
 		}
+		q.metrics.jobsSent.Inc()
 
 		// Wait for the worker to finish the current job before we give it the next job.
 		// Worker signals completion of job by sending us back the execution result of the job we sent.
@@ -263,6 +271,8 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 			"job_type", result.JobType,
 		)
 	} else {
+		q.metrics.jobsProcessed.Inc()
+
 		level.Debug(util_log.Logger).Log(
 			"msg", "job execution succeeded",
 			"job_id", result.JobId,

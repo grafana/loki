@@ -83,7 +83,7 @@ func setupGRPC(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 }
 
 func TestQueue_RegisterBuilder(t *testing.T) {
-	q := NewQueue()
+	q := NewQueue(nil)
 	builder := &mockBuilder{}
 
 	// Register builder successfully
@@ -96,7 +96,7 @@ func TestQueue_RegisterBuilder(t *testing.T) {
 }
 
 func TestQueue_Loop(t *testing.T) {
-	q := NewQueue()
+	q := NewQueue(nil)
 
 	conn, closer := setupGRPC(t, q)
 	defer closer()
@@ -184,7 +184,7 @@ func TestQueue_Loop(t *testing.T) {
 }
 
 func TestQueue_ReportJobResult(t *testing.T) {
-	q := newQueue(time.Second)
+	q := newQueue(time.Second, nil)
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
 
 	// Create a test job
@@ -249,7 +249,7 @@ func TestQueue_ReportJobResult(t *testing.T) {
 }
 
 func TestQueue_JobTimeout(t *testing.T) {
-	q := newQueue(50 * time.Millisecond)
+	q := newQueue(50*time.Millisecond, nil)
 	// Short job timeout for testing
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, 100*time.Millisecond, jobRetries))
 
@@ -288,7 +288,7 @@ func TestQueue_JobTimeout(t *testing.T) {
 }
 
 func TestQueue_Close(t *testing.T) {
-	q := NewQueue()
+	q := NewQueue(nil)
 
 	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
 

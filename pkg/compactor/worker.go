@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/dskit/services"
 
@@ -13,11 +14,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
-func NewWorkerManager(cfg Config, grpcClient jobqueue.CompactorClient, schemaConfig config.SchemaConfig, objectStoreClients map[config.DayTime]client.ObjectClient) (services.Service, error) {
-	wm := jobqueue.NewWorkerManager(cfg.WorkerConfig, grpcClient)
+func NewWorkerManager(
+	cfg Config,
+	grpcClient jobqueue.CompactorClient,
+	schemaConfig config.SchemaConfig,
+	objectStoreClients map[config.DayTime]client.ObjectClient,
+	r prometheus.Registerer,
+) (services.Service, error) {
+	wm := jobqueue.NewWorkerManager(cfg.WorkerConfig, grpcClient, r)
 
 	if cfg.RetentionEnabled {
-		deletionJobRunner := initDeletionJobRunner(cfg.JobsConfig.Deletion.ChunkProcessingConcurrency, schemaConfig, objectStoreClients)
+		deletionJobRunner := initDeletionJobRunner(cfg.JobsConfig.Deletion.ChunkProcessingConcurrency, schemaConfig, objectStoreClients, r)
 		err := wm.RegisterJobRunner(grpc.JOB_TYPE_DELETION, deletionJobRunner)
 		if err != nil {
 			return nil, err
@@ -27,7 +34,12 @@ func NewWorkerManager(cfg Config, grpcClient jobqueue.CompactorClient, schemaCon
 	return services.NewBasicService(nil, wm.Start, nil), nil
 }
 
-func initDeletionJobRunner(chunkProcessingConcurrency int, schemaConfig config.SchemaConfig, objectStoreClients map[config.DayTime]client.ObjectClient) jobqueue.JobRunner {
+func initDeletionJobRunner(
+	chunkProcessingConcurrency int,
+	schemaConfig config.SchemaConfig,
+	objectStoreClients map[config.DayTime]client.ObjectClient,
+	r prometheus.Registerer,
+) jobqueue.JobRunner {
 	chunkClients := make(map[config.DayTime]client.Client, len(objectStoreClients))
 	for from, objectClient := range objectStoreClients {
 		var (
@@ -53,5 +65,5 @@ func initDeletionJobRunner(chunkProcessingConcurrency int, schemaConfig config.S
 		}
 
 		return chunkClients[schemaCfg.From], nil
-	})
+	}, r)
 }

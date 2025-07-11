@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
 
@@ -20,6 +21,11 @@ var (
 		MinBackoff: 500 * time.Millisecond,
 		MaxBackoff: 5 * time.Second,
 	}
+)
+
+const (
+	statusSuccess = "success"
+	statusFailure = "failure"
 )
 
 type CompactorClient interface {
@@ -46,15 +52,17 @@ type WorkerManager struct {
 	cfg        WorkerConfig
 	grpcClient CompactorClient
 	jobRunners map[grpc.JobType]JobRunner
+	metrics    *workerMetrics
 
 	wg sync.WaitGroup
 }
 
-func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient) *WorkerManager {
+func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient, r prometheus.Registerer) *WorkerManager {
 	wm := &WorkerManager{
 		cfg:        cfg,
 		grpcClient: grpcClient,
 		jobRunners: make(map[grpc.JobType]JobRunner),
+		metrics:    newWorkerMetrics(r),
 	}
 
 	return wm
@@ -80,7 +88,7 @@ func (w *WorkerManager) Start(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			NewWorker(w.grpcClient, w.jobRunners).Start(ctx)
+			newWorker(w.grpcClient, w.jobRunners, w.metrics).Start(ctx)
 		}()
 	}
 
@@ -91,12 +99,14 @@ func (w *WorkerManager) Start(ctx context.Context) error {
 type worker struct {
 	grpcClient CompactorClient
 	jobRunners map[grpc.JobType]JobRunner
+	metrics    *workerMetrics
 }
 
-func NewWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner) *worker {
+func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner, metrics *workerMetrics) *worker {
 	return &worker{
 		grpcClient: grpcClient,
 		jobRunners: jobRunners,
+		metrics:    metrics,
 	}
 }
 
@@ -140,6 +150,16 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 		// here, as we're running in a lock-step with the server - each Recv is
 		// paired with a Send.
 		go func() {
+			jobFailed := true
+			defer func() {
+				status := statusSuccess
+				if jobFailed {
+					status = statusFailure
+				}
+
+				w.metrics.jobsProcessed.WithLabelValues(status).Inc()
+			}()
+
 			jobResult := &grpc.JobResult{
 				JobId:   job.Id,
 				JobType: job.Type,
@@ -157,19 +177,21 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 
 			jobResponse, err := jobRunner.Run(ctx, job)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error running job", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error running job", "job_id", job.Id, "err", err)
 				jobResult.Error = err.Error()
 				if err := c.Send(jobResult); err != nil {
-					level.Error(util_log.Logger).Log("msg", "error sending job result", "err", err)
+					level.Error(util_log.Logger).Log("msg", "error sending job result", "job_id", job.Id, "err", err)
 				}
 				return
 			}
 
 			jobResult.Result = jobResponse
 			if err := c.Send(jobResult); err != nil {
-				level.Error(util_log.Logger).Log("msg", "error sending job result", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error sending job result", "job_id", job.Id, "err", err)
 				return
 			}
+
+			jobFailed = false
 		}()
 	}
 }

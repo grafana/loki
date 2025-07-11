@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"sync"
 	"time"
@@ -25,11 +26,6 @@ import (
 )
 
 type GetChunkClientForTableFunc func(ctx context.Context, table string) (client.Client, error)
-
-type JobRunner struct {
-	chunkProcessingConcurrency int
-	getChunkClientForTableFunc GetChunkClientForTableFunc
-}
 
 type Chunk interface {
 	GetFrom() model.Time
@@ -71,10 +67,17 @@ func (c chunk) GetEntriesCount() uint32 {
 	return c.Entries
 }
 
-func NewJobRunner(chunkProcessingConcurrency int, getStorageClientForTableFunc GetChunkClientForTableFunc) *JobRunner {
+type JobRunner struct {
+	chunkProcessingConcurrency int
+	getChunkClientForTableFunc GetChunkClientForTableFunc
+	metrics                    *deletionJobRunnerMetrics
+}
+
+func NewJobRunner(chunkProcessingConcurrency int, getStorageClientForTableFunc GetChunkClientForTableFunc, r prometheus.Registerer) *JobRunner {
 	return &JobRunner{
 		chunkProcessingConcurrency: chunkProcessingConcurrency,
 		getChunkClientForTableFunc: getStorageClientForTableFunc,
+		metrics:                    newDeletionJobRunnerMetrics(r),
 	}
 }
 

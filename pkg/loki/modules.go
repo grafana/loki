@@ -1692,7 +1692,7 @@ func (t *Loki) initCompactorWorkerMode() (services.Service, error) {
 		objectClients[periodConfig.From] = objectClient
 	}
 
-	return compactor.NewWorkerManager(t.Cfg.CompactorConfig, compactorClient, t.Cfg.SchemaConfig, objectClients)
+	return compactor.NewWorkerManager(t.Cfg.CompactorConfig, compactorClient, t.Cfg.SchemaConfig, objectClients, prometheus.DefaultRegisterer)
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {

@@ -38,7 +38,7 @@ func (m *mockJobRunner) Run(ctx context.Context, job *compactor_grpc.Job) ([]byt
 
 func TestWorkerManager(t *testing.T) {
 	// create a new job queue
-	q := NewQueue()
+	q := NewQueue(nil)
 	conn, closer := setupGRPC(t, q)
 	defer closer()
 
@@ -66,7 +66,7 @@ func TestWorkerManager(t *testing.T) {
 	workerCfg.NumWorkers = 2
 
 	// create a new worker manager and register the mock job runner
-	wm := NewWorkerManager(workerCfg, mockCompactorClient{conn})
+	wm := NewWorkerManager(workerCfg, mockCompactorClient{conn}, nil)
 	require.NoError(t, wm.RegisterJobRunner(compactor_grpc.JOB_TYPE_DELETION, jobRunner))
 
 	// trying to register job runner for same job type should throw an error
@@ -99,7 +99,7 @@ func TestWorkerManager(t *testing.T) {
 
 func TestWorker_ProcessJob(t *testing.T) {
 	// create a new job queue
-	q := newQueue(50 * time.Millisecond)
+	q := newQueue(50*time.Millisecond, nil)
 	conn, closer := setupGRPC(t, q)
 	defer closer()
 
@@ -134,9 +134,9 @@ func TestWorker_ProcessJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go NewWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
+	go newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: jobRunner,
-	}).Start(ctx)
+	}, newWorkerMetrics(nil)).Start(ctx)
 
 	// verify that the job builder got to send all 3 jobs and that both the valid jobs got processed
 	require.Eventually(t, func() bool {
@@ -157,7 +157,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 
 func TestWorker_StreamClosure(t *testing.T) {
 	// build a queue
-	q := NewQueue()
+	q := NewQueue(nil)
 	conn, closer := setupGRPC(t, q)
 	defer closer()
 
@@ -167,9 +167,9 @@ func TestWorker_StreamClosure(t *testing.T) {
 	go q.Start(ctx)
 
 	// build a worker
-	worker := NewWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
+	worker := newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: &mockJobRunner{},
-	})
+	}, newWorkerMetrics(nil))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

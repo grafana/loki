@@ -181,9 +181,12 @@ func (d *DeleteRequestsManager) buildDeletionManifestLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			status := statusSuccess
 			if err := d.buildDeletionManifest(ctx); err != nil {
+				status = statusFail
 				level.Error(util_log.Logger).Log("msg", "failed to build deletion manifest", "err", err)
 			}
+			d.metrics.manifestBuildAttemptsTotal.WithLabelValues(status).Inc()
 		case <-ctx.Done():
 			return
 		}
@@ -208,6 +211,7 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 	}
 
 	if manifestExists {
+		level.Info(util_log.Logger).Log("msg", "skipping building deletion manifest because a valid manifest already exists")
 		return nil
 	}
 
@@ -236,7 +240,13 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return err
 	}
 
-	return deletionManifestBuilder.Finish(ctx)
+	err = deletionManifestBuilder.Finish(ctx)
+	if err != nil {
+		return err
+	}
+	d.metrics.chunksSelectedTotal.Add(float64(deletionManifestBuilder.overallChunksCount))
+
+	return nil
 }
 
 func (d *DeleteRequestsManager) storeSeriesProgress() error {
