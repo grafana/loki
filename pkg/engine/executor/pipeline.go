@@ -39,6 +39,7 @@ var (
 
 	EOF       = errors.New("pipeline exhausted") // nolint:revive
 	Exhausted = failureState(EOF)
+	Canceled  = failureState(context.Canceled)
 )
 
 type state struct {
@@ -208,6 +209,11 @@ func (p *prefetchWrapper) read() error {
 		p.state.batch.Release()
 	}
 	p.state = <-p.ch
+	// Reading from a channel that is closed while waiting yields a zero-value.
+	// In that case, the pipeline should produce an error state.
+	if p.state.err == nil && p.state.batch == nil {
+		p.state = Canceled
+	}
 	return p.state.err
 }
 
