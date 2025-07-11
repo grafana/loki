@@ -93,7 +93,7 @@ func TestConvertAST_Success(t *testing.T) {
 	expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
-%4 = MAKETABLE [selector=%3, shard=0_of_1]
+%4 = MAKETABLE [selector=%3, predicates=[%12, %18], shard=0_of_1]
 %5 = SORT %4 [column=builtin.timestamp, asc=false, nulls_first=false]
 %6 = GTE builtin.timestamp 1970-01-01T01:00:00Z
 %7 = SELECT %5 [predicate=%6]
@@ -136,7 +136,7 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 	expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
-%4 = MAKETABLE [selector=%3, shard=0_of_1]
+%4 = MAKETABLE [selector=%3, predicates=[%10], shard=0_of_1]
 %5 = SORT %4 [column=builtin.timestamp, asc=false, nulls_first=false]
 %6 = GTE builtin.timestamp 1970-01-01T00:55:00Z
 %7 = SELECT %5 [predicate=%6]

@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/cachingbucket"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/executor"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
@@ -25,21 +24,14 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-var (
-	ErrNotSupported = errors.New("feature not supported in new query engine")
-)
+var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
 func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
-
-	// nocommit
-	// just testing
-	bucket = cachingbucket.New(bucket, "dataobj-dev")
-
 	var ms metastore.Metastore
 	if bucket != nil {
 		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
-		ms = metastore.NewObjectMetastore(metastoreBucket, logger)
+		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -81,6 +73,7 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 //  3. Evaluate the physical plan with the executor.
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	start := time.Now()
+
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 

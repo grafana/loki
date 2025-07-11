@@ -549,7 +549,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger, prometheus.DefaultRegisterer)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
