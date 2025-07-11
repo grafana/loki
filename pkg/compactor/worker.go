@@ -1,10 +1,8 @@
 package compactor
 
 import (
-	"context"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -58,7 +56,7 @@ func initDeletionJobRunner(
 		chunkClients[from] = client.NewClient(objectClient, encoder, schemaConfig)
 	}
 
-	return deletion.NewJobRunner(chunkProcessingConcurrency, func(ctx context.Context, table string) (client.Client, error) {
+	return deletion.NewJobRunner(chunkProcessingConcurrency, func(table string) (client.Client, error) {
 		schemaCfg, ok := SchemaPeriodForTable(schemaConfig, table)
 		if !ok {
 			return nil, errSchemaForTableNotFound

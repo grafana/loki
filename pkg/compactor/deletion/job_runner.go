@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -25,7 +25,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-type GetChunkClientForTableFunc func(ctx context.Context, table string) (client.Client, error)
+type GetChunkClientForTableFunc func(table string) (client.Client, error)
 
 type Chunk interface {
 	GetFrom() model.Time
@@ -89,7 +89,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		return nil, err
 	}
 
-	chunkClient, err := jr.getChunkClientForTableFunc(ctx, deletionJob.TableName)
+	chunkClient, err := jr.getChunkClientForTableFunc(deletionJob.TableName)
 	if err != nil {
 		return nil, err
 	}

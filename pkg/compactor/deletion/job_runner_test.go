@@ -276,7 +276,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Create job runner
-			runner := NewJobRunner(1, func(_ context.Context, _ string) (client.Client, error) {
+			runner := NewJobRunner(1, func(_ string) (client.Client, error) {
 				return mockClient, nil
 			}, nil)
 
@@ -425,7 +425,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	}
 
 	// Create job runner with chunk processing concurrency of 2
-	runner := NewJobRunner(2, func(_ context.Context, _ string) (client.Client, error) {
+	runner := NewJobRunner(2, func(_ string) (client.Client, error) {
 		return mockClient, nil
 	}, nil)
 

@@ -3,11 +3,11 @@ package jobqueue
 import (
 	"context"
 	"errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
