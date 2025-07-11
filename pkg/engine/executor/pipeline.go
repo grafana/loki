@@ -189,10 +189,15 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 				p.ch <- s
 				return s.err
 			}
-			s.batch, _ = p.Pipeline.Value()
+			s.batch, s.err = p.Pipeline.Value()
 			s.batch.Retain()
-			// sending to channel will block until the batch is read by the parent pipeline
-			p.ch <- s
+			// Sending to channel will block until the batch is read by the parent pipeline.
+			// If the context is cancelled while waiting to send, we return.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case p.ch <- s:
+			}
 		}
 	}
 }
