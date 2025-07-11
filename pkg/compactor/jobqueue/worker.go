@@ -2,6 +2,7 @@ package jobqueue
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -29,18 +30,34 @@ type JobRunner interface {
 	Run(ctx context.Context, job *grpc.Job) ([]byte, error)
 }
 
-type WorkerManager struct {
-	grpcClient CompactorClient
-	jobRunners map[grpc.JobType]JobRunner
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+type WorkerConfig struct {
+	NumWorkers int `yaml:"num_workers"`
 }
 
-func NewWorkerManager(grpcClient CompactorClient) *WorkerManager {
-	return &WorkerManager{
+func (c *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.IntVar(&c.NumWorkers, prefix+"num-workers", 4, "Number of workers to run for concurrent processing of jobs.")
+}
+
+func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+type WorkerManager struct {
+	cfg        WorkerConfig
+	grpcClient CompactorClient
+	jobRunners map[grpc.JobType]JobRunner
+
+	wg sync.WaitGroup
+}
+
+func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient) *WorkerManager {
+	wm := &WorkerManager{
+		cfg:        cfg,
 		grpcClient: grpcClient,
 		jobRunners: make(map[grpc.JobType]JobRunner),
 	}
+
+	return wm
 }
 
 func (w *WorkerManager) RegisterJobRunner(jobType grpc.JobType, jobRunner JobRunner) error {
@@ -52,24 +69,23 @@ func (w *WorkerManager) RegisterJobRunner(jobType grpc.JobType, jobRunner JobRun
 	return nil
 }
 
-func (w *WorkerManager) Start(ctx context.Context, numWorkers int) {
-	ctx, cancel := context.WithCancel(ctx)
-	w.cancel = cancel
+func (w *WorkerManager) Start(ctx context.Context) error {
+	if len(w.jobRunners) == 0 {
+		return errors.New("no job runners registered")
+	}
 
-	for i := 0; i < numWorkers; i++ {
-		w.wg.Add(1)
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < w.cfg.NumWorkers; i++ {
+		wg.Add(1)
 		go func() {
-			defer w.wg.Done()
-			newWorker(w.grpcClient, w.jobRunners).start(ctx)
+			defer wg.Done()
+			NewWorker(w.grpcClient, w.jobRunners).Start(ctx)
 		}()
 	}
-}
 
-func (w *WorkerManager) Stop() {
-	if w.cancel != nil {
-		w.cancel()
-	}
-	w.wg.Wait()
+	wg.Wait()
+	return nil
 }
 
 type worker struct {
@@ -77,14 +93,14 @@ type worker struct {
 	jobRunners map[grpc.JobType]JobRunner
 }
 
-func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner) *worker {
+func NewWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner) *worker {
 	return &worker{
 		grpcClient: grpcClient,
 		jobRunners: jobRunners,
 	}
 }
 
-func (w *worker) start(ctx context.Context) {
+func (w *worker) Start(ctx context.Context) {
 	client := w.grpcClient.JobQueueClient()
 
 	backoff := backoff.New(ctx, connBackoffConfig)

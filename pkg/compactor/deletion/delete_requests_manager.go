@@ -142,6 +142,10 @@ func (d *DeleteRequestsManager) Start(ctx context.Context) {
 	}
 }
 
+func (d *DeleteRequestsManager) JobBuilder() *JobBuilder {
+	return d.jobBuilder
+}
+
 func (d *DeleteRequestsManager) loop(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

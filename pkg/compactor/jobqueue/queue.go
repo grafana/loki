@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -33,8 +32,7 @@ type Builder interface {
 // Queue implements the job queue service
 type Queue struct {
 	queue                     chan *grpc.Job
-	closed                    atomic.Bool
-	builders                  map[grpc.JobType]Builder
+	builders                  map[grpc.JobType]builder
 	wg                        sync.WaitGroup
 	stop                      chan struct{}
 	checkTimedOutJobsInterval time.Duration
@@ -42,8 +40,6 @@ type Queue struct {
 	// Track jobs that are being processed
 	processingJobs    map[string]*processingJob
 	processingJobsMtx sync.RWMutex
-	jobTimeout        time.Duration
-	maxAttempts       int
 }
 
 type processingJob struct {
@@ -51,6 +47,12 @@ type processingJob struct {
 	dequeued          time.Time
 	attemptsLeft      int
 	lastAttemptFailed bool
+}
+
+type builder struct {
+	Builder
+	jobTimeout time.Duration
+	maxRetries int
 }
 
 // NewQueue creates a new job queue
@@ -62,13 +64,10 @@ func NewQueue() *Queue {
 func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 	q := &Queue{
 		queue:                     make(chan *grpc.Job),
-		builders:                  make(map[grpc.JobType]Builder),
+		builders:                  make(map[grpc.JobType]builder),
 		stop:                      make(chan struct{}),
 		checkTimedOutJobsInterval: checkTimedOutJobsInterval,
 		processingJobs:            make(map[string]*processingJob),
-		// ToDo(Sandeep): make jobTimeout and maxAttempts configurable(possibly job specific)
-		jobTimeout:  15 * time.Minute,
-		maxAttempts: 3,
 	}
 
 	// Start the job timeout checker
@@ -79,27 +78,37 @@ func newQueue(checkTimedOutJobsInterval time.Duration) *Queue {
 }
 
 // RegisterBuilder registers a builder for a specific job type
-func (q *Queue) RegisterBuilder(jobType grpc.JobType, builder Builder) error {
+func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time.Duration, maxRetries int) error {
 	if _, exists := q.builders[jobType]; exists {
 		return ErrJobTypeAlreadyRegistered
 	}
 
-	q.builders[jobType] = builder
-	return nil
-}
-
-// Start starts all registered builders
-func (q *Queue) Start(ctx context.Context) error {
-	for _, builder := range q.builders {
-		q.wg.Add(1)
-		go q.startBuilder(ctx, builder)
+	q.builders[jobType] = builder{
+		Builder:    b,
+		jobTimeout: jobTimeout,
+		maxRetries: maxRetries,
 	}
 	return nil
 }
 
-func (q *Queue) startBuilder(ctx context.Context, builder Builder) {
-	defer q.wg.Done()
+// Start starts all registered builders
+func (q *Queue) Start(ctx context.Context) {
+	buildersWg := sync.WaitGroup{}
+	for _, builder := range q.builders {
+		buildersWg.Add(1)
+		go func() {
+			defer buildersWg.Done()
+			q.startBuilder(ctx, builder)
+		}()
+	}
 
+	buildersWg.Wait()
+	close(q.stop)
+	q.wg.Wait()
+	close(q.queue)
+}
+
+func (q *Queue) startBuilder(ctx context.Context, builder Builder) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -136,7 +145,8 @@ func (q *Queue) retryFailedJobs() {
 					delete(q.processingJobs, jobID)
 					continue
 				}
-				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > q.jobTimeout {
+				timeout := q.builders[pj.job.Type].jobTimeout
+				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
 					// Requeue the job
 					select {
 					case <-q.stop:
@@ -150,7 +160,7 @@ func (q *Queue) retryFailedJobs() {
 							"msg", "requeued job",
 							"job_id", jobID,
 							"job_type", pj.job.Type,
-							"timeout", q.jobTimeout,
+							"timeout", timeout,
 							"reason", reason,
 						)
 						// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
@@ -188,7 +198,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 			q.processingJobs[job.Id] = &processingJob{
 				job:          job,
 				dequeued:     time.Now(),
-				attemptsLeft: q.maxAttempts - 1,
+				attemptsLeft: q.builders[job.Type].maxRetries,
 			}
 		}
 		q.processingJobsMtx.Unlock()
@@ -273,14 +283,4 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 	delete(q.processingJobs, result.JobId)
 
 	return nil
-}
-
-// Close closes the queue and releases all resources
-func (q *Queue) Close() {
-	if !q.closed.Load() {
-		q.closed.Store(true)
-		close(q.stop)
-		q.wg.Wait()
-		close(q.queue)
-	}
 }

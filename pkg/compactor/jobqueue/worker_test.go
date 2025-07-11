@@ -3,9 +3,11 @@ package jobqueue
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -51,22 +53,33 @@ func TestWorkerManager(t *testing.T) {
 	}
 
 	// register the job builder with the queue and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder))
-	require.NoError(t, q.Start(context.Background()))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries))
+	go q.Start(context.Background())
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	jobRunner := &mockJobRunner{}
 	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, nil)
 
+	workerCfg := WorkerConfig{}
+	flagext.DefaultValues(&workerCfg)
+	// run two workers so only one of them would get a job
+	workerCfg.NumWorkers = 2
+
 	// create a new worker manager and register the mock job runner
-	wm := NewWorkerManager(mockCompactorClient{conn})
+	wm := NewWorkerManager(workerCfg, mockCompactorClient{conn})
 	require.NoError(t, wm.RegisterJobRunner(compactor_grpc.JOB_TYPE_DELETION, jobRunner))
 
 	// trying to register job runner for same job type should throw an error
 	require.Error(t, wm.RegisterJobRunner(compactor_grpc.JOB_TYPE_DELETION, &mockJobRunner{}))
 
 	// start two workers so only one of them would get a job
-	wm.Start(context.Background(), 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		require.NoError(t, wm.Start(ctx))
+	}()
 
 	// verify that the job builder got to send the job and that it got processed successfully
 	require.Eventually(t, func() bool {
@@ -80,7 +93,8 @@ func TestWorkerManager(t *testing.T) {
 	}, time.Second, time.Millisecond*100)
 
 	// stop the worker manager
-	wm.Stop()
+	cancel()
+	wg.Wait()
 }
 
 func TestWorker_ProcessJob(t *testing.T) {
@@ -109,20 +123,20 @@ func TestWorker_ProcessJob(t *testing.T) {
 
 	jobRunner := &mockJobRunner{}
 	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, nil).Once()
-	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("fail")).Times(3)
+	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("fail")).Times(jobRetries + 1)
 
 	// register the job builder with the queue and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder))
-	require.NoError(t, q.Start(context.Background()))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries))
+	go q.Start(context.Background())
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	// build a worker and start it
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
+	go NewWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: jobRunner,
-	}).start(ctx)
+	}).Start(ctx)
 
 	// verify that the job builder got to send all 3 jobs and that both the valid jobs got processed
 	require.Eventually(t, func() bool {
@@ -148,11 +162,12 @@ func TestWorker_StreamClosure(t *testing.T) {
 	defer closer()
 
 	// register a builder and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}))
-	require.NoError(t, q.Start(context.Background()))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
+	ctx, cancelQueueCtx := context.WithCancel(context.Background())
+	go q.Start(ctx)
 
 	// build a worker
-	worker := newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
+	worker := NewWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: &mockJobRunner{},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -164,15 +179,15 @@ func TestWorker_StreamClosure(t *testing.T) {
 		running.Store(true)
 		defer running.Store(false)
 
-		worker.start(ctx)
+		worker.Start(ctx)
 	}()
 
 	require.Eventually(t, func() bool {
 		return running.Load()
 	}, time.Second, time.Millisecond*100)
 
-	// close the queue so that it closes the stream
-	q.Close()
+	// stop the queue by cancelling its context so that it closes the stream
+	cancelQueueCtx()
 
 	// sleep for a while and ensure that the worker is still running
 	time.Sleep(100 * time.Millisecond)
