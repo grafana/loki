@@ -45,17 +45,17 @@ GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-  GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo -tags slicelabels
+  GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
 else
-  GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo -tags slicelabels
+  GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
 endif
-DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo -tags slicelabels
+DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo -tags slicelabels
-DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo -tags slicelabels
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo,slicelabels
+DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo,slicelabels
 
 # Image names
 IMAGE_PREFIX           ?= grafana
@@ -403,7 +403,7 @@ test: all ## run the unit tests
 
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
+	$(GOTEST) -count=1 -v -tags=integration,slicelabels -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -769,7 +769,7 @@ doc: ## Generates the config file documentation
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
-	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+	go run $(GO_FLAGS) ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
 endif
 
 docs: doc
