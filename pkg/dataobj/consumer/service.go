@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -153,60 +152,54 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 }
 
 func (s *Service) run(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		for {
-			fetches := s.client.PollRecords(ctx, -1)
-			if fetches.IsClientClosed() || ctx.Err() != nil {
-				return nil
-			}
-			if errs := fetches.Errors(); len(errs) > 0 {
-				var multiErr error
-				for _, err := range errs {
-					multiErr = errors.Join(multiErr, err.Err)
-				}
-				level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
-				continue
-			}
-			if fetches.Empty() {
-				continue
-			}
-
-			fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
-				s.partitionMtx.RLock()
-				handlers, ok := s.partitionHandlers[ftp.Topic]
-				if !ok {
-					s.partitionMtx.RUnlock()
-					return
-				}
-				processor, ok := handlers[ftp.Partition]
-				s.partitionMtx.RUnlock()
-				if !ok {
-					return
-				}
-
-				// Collect all records for this partition
-				records := ftp.Records
-				if len(records) == 0 {
-					return
-				}
-
-				// Calculate total bytes in this batch
-				var totalBytes int64
-				for _, record := range records {
-					totalBytes += int64(len(record.Value))
-				}
-
-				// Update metrics
-				processor.metrics.addBytesProcessed(totalBytes)
-
-				_ = processor.Append(records)
-			})
+	for {
+		fetches := s.client.PollRecords(ctx, -1)
+		if fetches.IsClientClosed() || ctx.Err() != nil {
+			return nil
 		}
-	})
+		if errs := fetches.Errors(); len(errs) > 0 {
+			var multiErr error
+			for _, err := range errs {
+				multiErr = errors.Join(multiErr, err.Err)
+			}
+			level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
+			continue
+		}
+		if fetches.Empty() {
+			continue
+		}
 
-	return g.Wait()
+		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
+			s.partitionMtx.RLock()
+			handlers, ok := s.partitionHandlers[ftp.Topic]
+			if !ok {
+				s.partitionMtx.RUnlock()
+				return
+			}
+			processor, ok := handlers[ftp.Partition]
+			s.partitionMtx.RUnlock()
+			if !ok {
+				return
+			}
+
+			// Collect all records for this partition
+			records := ftp.Records
+			if len(records) == 0 {
+				return
+			}
+
+			// Calculate total bytes in this batch
+			var totalBytes int64
+			for _, record := range records {
+				totalBytes += int64(len(record.Value))
+			}
+
+			// Update metrics
+			processor.metrics.addBytesProcessed(totalBytes)
+
+			_ = processor.Append(records)
+		})
+	}
 }
 
 func (s *Service) stopping(failureCase error) error {

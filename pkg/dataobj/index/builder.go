@@ -9,10 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -23,8 +25,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/bits-and-blooms/bloom/v3"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -59,8 +59,10 @@ type downloadedObject struct {
 	err         error
 }
 
-const indexEventTopic = "loki.metastore-events"
-const indexConsumerGroup = "metastore-event-reader"
+const (
+	indexEventTopic    = "loki.metastore-events"
+	indexConsumerGroup = "metastore-event-reader"
+)
 
 type Builder struct {
 	services.Service
@@ -88,7 +90,7 @@ type Builder struct {
 
 	// Control and coordination
 	ctx        context.Context
-	cancel     context.CancelFunc
+	cancel     context.CancelCauseFunc
 	wg         sync.WaitGroup
 	logger     log.Logger
 	builderMtx sync.Mutex
@@ -132,11 +134,11 @@ func NewIndexBuilder(
 
 	builder, err := indexobj.NewBuilder(cfg.BuilderConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create builder: %w", err)
+		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
 
 	if err := builder.RegisterMetrics(reg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for builder: %w", err)
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
 	// Allocate a single buffer
@@ -168,9 +170,7 @@ func NewIndexBuilder(
 }
 
 func (p *Builder) run(ctx context.Context) error {
-	ctx, cancel := context.WithCancel(ctx)
-	p.ctx = ctx
-	p.cancel = cancel
+	p.ctx, p.cancel = context.WithCancelCause(ctx)
 
 	p.wg.Add(1)
 	go func() {
@@ -230,11 +230,11 @@ func (p *Builder) run(ctx context.Context) error {
 
 func (p *Builder) stopping(failureCase error) error {
 	close(p.downloadQueue)
-	p.cancel()
+	p.cancel(failureCase)
 	p.wg.Wait()
 	close(p.downloadedObjects)
 	p.client.Close()
-	return failureCase
+	return nil
 }
 
 func (p *Builder) processRecord(record *kgo.Record) {
@@ -312,8 +312,9 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 			}
 		}
 
-		// Logs Section: these can be processed in parallel once we have the stream IDs.
+		// Logs Section: these can be processed in parallel once we have the stream IDs. This work is heavily CPU bound so is limited to GOMAXPROCS parallelism.
 		g, ctx := errgroup.WithContext(p.ctx)
+		g.SetLimit(runtime.GOMAXPROCS(0))
 		for i, section := range reader.Sections().Filter(logs.CheckSection) {
 			g.Go(func() error {
 				sectionLogger := log.With(objLogger, "section", i)
