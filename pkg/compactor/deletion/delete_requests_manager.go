@@ -196,6 +196,17 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return nil
 	}
 
+	// Do not build another manifest if one already exists since we do not know which requests are already added to it for processing.
+	// There is anyway no benefit in building multiple manifests since we process one manifest at a time.
+	manifestExists, err := storageHasValidManifest(ctx, d.deletionStoreClient)
+	if err != nil {
+		return err
+	}
+
+	if manifestExists {
+		return nil
+	}
+
 	deletionManifestBuilder, err := newDeletionManifestBuilder(d.deletionStoreClient, deleteRequestsBatch)
 	if err != nil {
 		return err

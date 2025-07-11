@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -242,4 +243,35 @@ func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 
 func (d *deletionManifestBuilder) path() string {
 	return fmt.Sprint(d.creationTime.UnixNano())
+}
+
+func storageHasValidManifest(ctx context.Context, deletionStoreClient client.ObjectClient) (bool, error) {
+	// List all directories in the deletion store
+	_, commonPrefixes, err := deletionStoreClient.List(ctx, "", "/")
+	if err != nil {
+		return false, err
+	}
+
+	for _, commonPrefix := range commonPrefixes {
+		// Check if the directory name is a valid timestamp
+		if _, err := strconv.ParseInt(path.Base(string(commonPrefix)), 10, 64); err != nil {
+			continue
+		}
+
+		// Check if manifest.json exists in this directory
+		manifestPath := path.Join(string(commonPrefix), manifestFileName)
+		exists, err := deletionStoreClient.ObjectExists(ctx, manifestPath)
+		if err != nil {
+			return false, err
+		}
+
+		if !exists {
+			// Skip directories without manifest.json
+			continue
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }
