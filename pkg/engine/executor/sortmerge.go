@@ -102,6 +102,14 @@ func (p *KWayMerge) init() {
 	p.exhausted = make([]bool, n)
 	p.offsets = make([]int64, n)
 
+	// Initialize pre-fetching on inputs
+	for i := range p.inputs {
+		inp, ok := p.inputs[i].(*prefetchWrapper)
+		if ok {
+			inp.init()
+		}
+	}
+
 	if p.compare == nil {
 		p.compare = func(a, b int64) bool { return a <= b }
 	}
