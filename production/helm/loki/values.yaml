@@ -269,7 +269,10 @@ loki:
 
     {{- with .Values.loki.storage_config }}
     storage_config:
-      {{- tpl (. | toYaml) $ | nindent 4 }}
+        {{- if not (hasKey $.Values.loki.storage_config "use_thanos_objstore") }}
+        use_thanos_objstore: {{ $.Values.loki.storage.use_thanos_objstore }}
+        {{- end }}
+        {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
     {{- with .Values.loki.query_scheduler }}
