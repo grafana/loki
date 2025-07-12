@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
@@ -20,15 +21,18 @@ import (
 )
 
 type stream struct {
-	fp           model.Fingerprint
-	labels       labels.Labels
-	labelsString string
-	labelHash    uint64
-	patterns     map[string]*drain.Drain
-	mtx          sync.Mutex
-	logger       log.Logger
+	fp            model.Fingerprint
+	labels        labels.Labels
+	labelsString  string
+	labelHash     uint64
+	patterns      map[string]*drain.Drain
+	mtx           sync.Mutex
+	logger        log.Logger
+	patternWriter aggregation.EntryWriter
 
-	lastTs int64
+	lastTs                 int64
+	persistenceGranularity time.Duration
+	sampleInterval         time.Duration
 }
 
 func newStream(
@@ -41,6 +45,7 @@ func newStream(
 	drainCfg *drain.Config,
 	drainLimits drain.Limits,
 	patternWriter aggregation.EntryWriter,
+	persistenceGranularity time.Duration,
 ) (*stream, error) {
 	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
 	if err != nil {
@@ -49,7 +54,7 @@ func newStream(
 
 	patterns := make(map[string]*drain.Drain, len(constants.LogLevels))
 	for _, lvl := range constants.LogLevels {
-		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, patternWriter, &drain.Metrics{
+		patterns[lvl] = drain.New(instanceID, drainCfg, drainLimits, guessedFormat, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
@@ -60,12 +65,15 @@ func newStream(
 	}
 
 	return &stream{
-		fp:           fp,
-		labels:       labels,
-		labelsString: labels.String(),
-		labelHash:    labels.Hash(),
-		logger:       logger,
-		patterns:     patterns,
+		fp:                     fp,
+		labels:                 labels,
+		labelsString:           labels.String(),
+		labelHash:              labels.Hash(),
+		logger:                 logger,
+		patterns:               patterns,
+		patternWriter:          patternWriter,
+		persistenceGranularity: persistenceGranularity,
+		sampleInterval:         drainCfg.SampleInterval,
 	}, nil
 }
 
@@ -90,10 +98,10 @@ func (s *stream) Push(
 
 		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
 		if pattern, ok := s.patterns[lvl]; ok {
-			pattern.Train(lvl, entry.Line, entry.Timestamp.UnixNano(), s.labels)
+			pattern.Train(entry.Line, entry.Timestamp.UnixNano())
 		} else {
 			// since we're defaulting the level to unknown above, we should never get here.
-			s.patterns[constants.LogLevelUnknown].Train(constants.LogLevelUnknown, entry.Line, entry.Timestamp.UnixNano(), s.labels)
+			s.patterns[constants.LogLevelUnknown].Train(entry.Line, entry.Timestamp.UnixNano())
 		}
 	}
 	return nil
@@ -112,7 +120,7 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 			if cluster.String() == "" {
 				continue
 			}
-			iters = append(iters, cluster.Iterator(lvl, from, through, step))
+			iters = append(iters, cluster.Iterator(lvl, from, through, step, model.Time(s.sampleInterval.Nanoseconds()/1e6)))
 		}
 	}
 
@@ -124,10 +132,14 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	defer s.mtx.Unlock()
 
 	totalClusters := 0
-	for _, pattern := range s.patterns {
+	for lvl, pattern := range s.patterns {
 		clusters := pattern.Clusters()
 		for _, cluster := range clusters {
-			cluster.Prune(olderThan)
+			prunedSamples := cluster.Prune(olderThan)
+			// Write patterns for pruned chunks with bucketed aggregation
+			if len(prunedSamples) > 0 {
+				s.writePatternsBucketed(prunedSamples, s.labels, cluster.String(), lvl)
+			}
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
 			}
@@ -138,4 +150,69 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	}
 
 	return totalClusters == 0
+}
+
+func (s *stream) flush() {
+	// Flush all patterns by pruning everything older than 0 (i.e., everything)
+	s.prune(0)
+}
+
+func (s *stream) writePattern(
+	ts model.Time,
+	streamLbls labels.Labels,
+	pattern string,
+	count int64,
+	lvl string,
+) {
+	service := streamLbls.Get(push.LabelServiceName)
+	if service == "" {
+		service = push.ServiceUnknown
+	}
+
+	newLbls := labels.Labels{
+		labels.Label{Name: constants.PatternLabel, Value: service},
+	}
+
+	newStructuredMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: lvl},
+	}
+
+	if s.patternWriter != nil {
+		s.patternWriter.WriteEntry(
+			ts.Time(),
+			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
+			newLbls,
+			newStructuredMetadata,
+		)
+	}
+}
+
+func (s *stream) writePatternsBucketed(
+	prunedSamples []*logproto.PatternSample,
+	streamLbls labels.Labels,
+	pattern string,
+	lvl string,
+) {
+	if len(prunedSamples) == 0 {
+		return
+	}
+
+	// Calculate bucket size
+	bucketSize := s.persistenceGranularity
+
+	// Process samples into buckets
+	buckets := make(map[model.Time]int64)
+
+	for _, sample := range prunedSamples {
+		// Calculate which bucket this sample belongs to
+		sampleBucket := model.Time(sample.Timestamp.UnixNano() / bucketSize.Nanoseconds() * bucketSize.Nanoseconds() / 1e6)
+		buckets[sampleBucket] += sample.Value
+	}
+
+	// Write pattern entries for each bucket
+	for bucketTime, totalValue := range buckets {
+		if totalValue > 0 {
+			s.writePattern(bucketTime, streamLbls, pattern, totalValue, lvl)
+		}
+	}
 }

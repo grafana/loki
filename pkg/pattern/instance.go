@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -236,7 +237,17 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter)
+
+	// Get per-tenant persistence granularity (requires casting drainLimits to Limits interface)
+	var persistenceGranularity time.Duration
+	if limits, ok := i.drainLimits.(Limits); ok {
+		persistenceGranularity = limits.PersistenceGranularity(i.instanceID)
+	}
+	if persistenceGranularity == 0 {
+		persistenceGranularity = i.drainCfg.ChunkDuration
+	}
+
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter, persistenceGranularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -263,6 +274,14 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 	}
+}
+
+// flushPatterns flushes all patterns from all streams in this instance.
+func (i *instance) flushPatterns() {
+	_ = i.streams.ForEach(func(s *stream) (bool, error) {
+		s.flush()
+		return true, nil
+	})
 }
 
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {

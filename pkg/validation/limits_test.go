@@ -511,3 +511,43 @@ pattern_persistence_enabled: false
 		})
 	}
 }
+
+func Test_PersistenceGranularity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected time.Duration
+	}{
+		{
+			name: "when set to 5 minutes",
+			yaml: `
+pattern_persistence_granularity: 5m
+`,
+			expected: 5 * time.Minute,
+		},
+		{
+			name: "when set to 1 hour",
+			yaml: `
+pattern_persistence_granularity: 1h
+`,
+			expected: 1 * time.Hour,
+		},
+		{
+			name: "when set to zero",
+			yaml: `
+pattern_persistence_granularity: 0s
+`,
+			expected: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PersistenceGranularity("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
