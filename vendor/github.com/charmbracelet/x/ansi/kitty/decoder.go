@@ -68,8 +68,8 @@ func (d *Decoder) decodeRGBA(r io.Reader, alpha bool) (image.Image, error) {
 		buf = make([]byte, 3)
 	}
 
-	for y := 0; y < d.Height; y++ {
-		for x := 0; x < d.Width; x++ {
+	for y := range d.Height {
+		for x := range d.Width {
 			if _, err := io.ReadFull(r, buf[:]); err != nil {
 				return nil, fmt.Errorf("failed to read pixel data: %w", err)
 			}
