@@ -7214,6 +7214,27 @@ bos:
   # CLI flag: -<prefix>.bos.secret-key
   [secret_key: <string> | default = ""]
 
+oci:
+  # Name of OCI bucket.
+  # CLI flag: -<prefix>.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # Name of OCI credential provider.
+  # CLI flag: -<prefix>.oci.provider
+  [provider: <string> | default = "default"]
+
+  # OCID of target compartment.
+  # CLI flag: -<prefix>.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # Name of OCI region.
+  # CLI flag: -<prefix>.oci.region
+  [region: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -<prefix>.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
 # Prefix for all objects stored in the backend storage. For simplicity, it may
 # only contain digits, English alphabet letters and dashes.
 # CLI flag: -<prefix>.storage-prefix
