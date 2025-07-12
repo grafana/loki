@@ -36,3 +36,5 @@ queryFrontend:
   replicas: 1
 queryScheduler:
   replicas: 1
+lokiCanary:
+  kind: Deployment

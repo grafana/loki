@@ -3102,7 +3102,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.1"
+    "tag": "3.5.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3279,7 +3279,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -4266,7 +4266,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.28-alpine"
+"1.29-alpine"
 </pre>
 </td>
 		</tr>
@@ -6244,7 +6244,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -6759,6 +6759,15 @@ null
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.kind</td>
+			<td>string</td>
+			<td>The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.</td>
+			<td><pre lang="json">
+"DaemonSet"
 </pre>
 </td>
 		</tr>
@@ -11061,7 +11070,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.6"
+"1.30.7"
 </pre>
 </td>
 		</tr>

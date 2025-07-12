@@ -2,7 +2,6 @@ package physical
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -60,7 +59,7 @@ func TestLiteralExpr(t *testing.T) {
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.Bool, literal.ValueType())
+		require.Equal(t, datatype.Loki.Bool, literal.ValueType())
 	})
 
 	t.Run("float", func(t *testing.T) {
@@ -68,7 +67,7 @@ func TestLiteralExpr(t *testing.T) {
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.Float, literal.ValueType())
+		require.Equal(t, datatype.Loki.Float, literal.ValueType())
 	})
 
 	t.Run("integer", func(t *testing.T) {
@@ -76,23 +75,31 @@ func TestLiteralExpr(t *testing.T) {
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.Integer, literal.ValueType())
+		require.Equal(t, datatype.Loki.Integer, literal.ValueType())
 	})
 
 	t.Run("timestamp", func(t *testing.T) {
-		var expr Expression = NewLiteral(time.Unix(0, 1741882435000000000))
+		var expr Expression = NewLiteral(datatype.Timestamp(1741882435000000000))
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.Timestamp, literal.ValueType())
+		require.Equal(t, datatype.Loki.Timestamp, literal.ValueType())
 	})
 
 	t.Run("duration", func(t *testing.T) {
-		var expr Expression = NewLiteral(time.Hour)
+		var expr Expression = NewLiteral(datatype.Duration(3600))
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.Duration, literal.ValueType())
+		require.Equal(t, datatype.Loki.Duration, literal.ValueType())
+	})
+
+	t.Run("bytes", func(t *testing.T) {
+		var expr Expression = NewLiteral(datatype.Bytes(1024))
+		require.Equal(t, ExprTypeLiteral, expr.Type())
+		literal, ok := expr.(LiteralExpression)
+		require.True(t, ok)
+		require.Equal(t, datatype.Loki.Bytes, literal.ValueType())
 	})
 
 	t.Run("string", func(t *testing.T) {
@@ -100,6 +107,6 @@ func TestLiteralExpr(t *testing.T) {
 		require.Equal(t, ExprTypeLiteral, expr.Type())
 		literal, ok := expr.(LiteralExpression)
 		require.True(t, ok)
-		require.Equal(t, datatype.String, literal.ValueType())
+		require.Equal(t, datatype.Loki.String, literal.ValueType())
 	})
 }
