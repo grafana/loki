@@ -1660,7 +1660,48 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	return t.MemberlistKV, nil
 }
 
+func (t *Loki) initCompactorWorkerMode() (services.Service, error) {
+	err := t.Cfg.SchemaConfig.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		return nil, errors.New("for running the compactor in worker mode, the schema must have a tsdb or boltdb-shipper index type")
+	}
+
+	if t.Cfg.Common.CompactorGRPCAddress == "" {
+		return nil, errors.New("for running compactor in worker mode, compactor_grpc_address must be configured to grpc address of the main compactor")
+	}
+
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "job_queue", "client_type": "compactor_worker"}, prometheus.DefaultRegisterer)
+	compactorClient, err := compactorclient.NewGRPCClient(t.Cfg.Common.CompactorGRPCAddress, t.Cfg.CompactorGRPCClient, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	objectClients := make(map[config.DayTime]client.ObjectClient)
+	for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
+		if !config.IsObjectStorageIndex(periodConfig.IndexType) {
+			continue
+		}
+
+		objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, "compactor", t.Cfg.StorageConfig, t.ClientMetrics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create object client: %w", err)
+		}
+
+		objectClients[periodConfig.From] = objectClient
+	}
+
+	return compactor.NewWorkerManager(t.Cfg.CompactorConfig, compactorClient, t.Cfg.SchemaConfig, objectClients, prometheus.DefaultRegisterer)
+}
+
 func (t *Loki) initCompactor() (services.Service, error) {
+	if t.Cfg.CompactorConfig.HorizontalScalingMode == compactor.HorizontalScalingModeWorker {
+		return t.initCompactorWorkerMode()
+	}
+
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.CompactorConfig.CompactorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
@@ -1730,6 +1771,10 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path("/loki/api/v1/delete").Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
 		t.Server.HTTP.Path("/loki/api/v1/cache/generation_numbers").Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler))
 		grpc.RegisterCompactorServer(t.Server.GRPC, t.compactor.DeleteRequestsGRPCHandler)
+	}
+
+	if t.Cfg.CompactorConfig.HorizontalScalingMode == compactor.HorizontalScalingModeMain {
+		grpc.RegisterJobQueueServer(t.Server.GRPC, t.compactor.JobQueue)
 	}
 
 	return t.compactor, nil

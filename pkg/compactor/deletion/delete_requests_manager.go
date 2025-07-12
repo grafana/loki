@@ -142,6 +142,10 @@ func (d *DeleteRequestsManager) Start(ctx context.Context) {
 	}
 }
 
+func (d *DeleteRequestsManager) JobBuilder() *JobBuilder {
+	return d.jobBuilder
+}
+
 func (d *DeleteRequestsManager) loop(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -165,6 +169,10 @@ func (d *DeleteRequestsManager) loop(ctx context.Context) {
 }
 
 func (d *DeleteRequestsManager) buildDeletionManifestLoop(ctx context.Context) {
+	if err := cleanupInvalidManifests(ctx, d.deletionStoreClient); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to cleanup invalid delete manifests", "err", err)
+	}
+
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
@@ -173,9 +181,12 @@ func (d *DeleteRequestsManager) buildDeletionManifestLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			status := statusSuccess
 			if err := d.buildDeletionManifest(ctx); err != nil {
+				status = statusFail
 				level.Error(util_log.Logger).Log("msg", "failed to build deletion manifest", "err", err)
 			}
+			d.metrics.manifestBuildAttemptsTotal.WithLabelValues(status).Inc()
 		case <-ctx.Done():
 			return
 		}
@@ -189,6 +200,18 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 	}
 
 	if deleteRequestsBatch.requestCount() == 0 {
+		return nil
+	}
+
+	// Do not build another manifest if one already exists since we do not know which requests are already added to it for processing.
+	// There is anyway no benefit in building multiple manifests since we process one manifest at a time.
+	manifestExists, err := storageHasValidManifest(ctx, d.deletionStoreClient)
+	if err != nil {
+		return err
+	}
+
+	if manifestExists {
+		level.Info(util_log.Logger).Log("msg", "skipping building deletion manifest because a valid manifest already exists")
 		return nil
 	}
 
@@ -217,7 +240,13 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return err
 	}
 
-	return deletionManifestBuilder.Finish(ctx)
+	err = deletionManifestBuilder.Finish(ctx)
+	if err != nil {
+		return err
+	}
+	d.metrics.chunksSelectedTotal.Add(float64(deletionManifestBuilder.overallChunksCount))
+
+	return nil
 }
 
 func (d *DeleteRequestsManager) storeSeriesProgress() error {
