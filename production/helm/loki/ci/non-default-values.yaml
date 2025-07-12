@@ -38,3 +38,13 @@ queryScheduler:
   replicas: 1
 lokiCanary:
   kind: Deployment
+resultsCache:
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
+chunksCache:
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
