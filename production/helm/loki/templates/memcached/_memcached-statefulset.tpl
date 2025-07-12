@@ -169,8 +169,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .persistence.labels }}
         labels:
-          {{- toYaml .persistence.labels | nindent 10 }}
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- with .persistence.storageClass }}
