@@ -541,7 +541,7 @@ github.com/bits-and-blooms/bitset
 # github.com/bits-and-blooms/bloom/v3 v3.7.0
 ## explicit; go 1.16
 github.com/bits-and-blooms/bloom/v3
-# github.com/bmatcuk/doublestar/v4 v4.8.1
+# github.com/bmatcuk/doublestar/v4 v4.9.0
 ## explicit; go 1.16
 github.com/bmatcuk/doublestar/v4
 # github.com/buger/jsonparser v1.1.1

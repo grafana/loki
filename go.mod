@@ -22,7 +22,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
 	github.com/baidubce/bce-sdk-go v0.9.234
-	github.com/bmatcuk/doublestar/v4 v4.8.1
+	github.com/bmatcuk/doublestar/v4 v4.9.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
