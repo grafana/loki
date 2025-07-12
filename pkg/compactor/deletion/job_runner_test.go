@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -20,6 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 type mockChunkClient struct {

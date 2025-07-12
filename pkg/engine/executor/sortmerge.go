@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -24,6 +25,13 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		lessFunc = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
+	}
+
+	// TODO(chaudum): Pass context from execution context
+	ctx := context.Background()
+
+	for i := range inputs {
+		inputs[i] = newPrefetchingPipeline(ctx, inputs[i])
 	}
 
 	return &KWayMerge{
@@ -93,6 +101,14 @@ func (p *KWayMerge) init() {
 	p.batches = make([]arrow.Record, n)
 	p.exhausted = make([]bool, n)
 	p.offsets = make([]int64, n)
+
+	// Initialize pre-fetching on inputs
+	for i := range p.inputs {
+		inp, ok := p.inputs[i].(*prefetchWrapper)
+		if ok {
+			inp.init()
+		}
+	}
 
 	if p.compare == nil {
 		p.compare = func(a, b int64) bool { return a <= b }
