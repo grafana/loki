@@ -11,6 +11,8 @@ backend common labels
 {{- define "loki.backendLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: backend
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*

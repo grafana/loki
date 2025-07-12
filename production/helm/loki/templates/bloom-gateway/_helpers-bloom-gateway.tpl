@@ -11,6 +11,8 @@ bloom gateway common labels
 {{- define "loki.bloomGatewayLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: bloom-gateway
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
