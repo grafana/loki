@@ -1,0 +1,124 @@
+apiVersion: console.openshift.io/v1
+kind: ConsoleQuickStart
+metadata:
+  annotations:
+    capability.openshift.io/name: Console
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+  name: cluster-logging
+spec:
+  conclusion: 'Logging is now deployed and configured to collect and store logs.'
+  description: Install and configure cluster logging.
+  displayName: Get started with Logging.
+  durationMinutes: 10
+  icon:
+  - base64data: PHN2ZyBpZD0iYWZiNDE1NDktYzU3MC00OWI3LTg1Y2QtNjU3NjAwZWRmMmUxIiBkYXRhLW5hbWU9IkxheWVyIDEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDcyMS4xNSA3MjEuMTUiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuYTQ0OGZkZWEtNGE0Yy00Njc4LTk3NmEtYzM3ODUzMDhhZTA2IHsKICAgICAgICBmaWxsOiAjZGIzOTI3OwogICAgICB9CgogICAgICAuZTEzMzA4YjgtNzQ4NS00Y2IwLTk3NjUtOGE1N2I5M2Y5MWE2IHsKICAgICAgICBmaWxsOiAjY2IzNzI4OwogICAgICB9CgogICAgICAuZTc3Mjg2ZjEtMjJkYS00NGQxLThlZmItMWQxNGIwY2NhZTYyIHsKICAgICAgICBmaWxsOiAjZmZmOwogICAgICB9CgogICAgICAuYTA0MjBjYWMtZWJlNi00YzE4LWI5ODEtYWJiYTBiYTliMzY1IHsKICAgICAgICBmaWxsOiAjZTVlNWU0OwogICAgICB9CiAgICA8L3N0eWxlPgogIDwvZGVmcz4KICA8Y2lyY2xlIGNsYXNzPSJhNDQ4ZmRlYS00YTRjLTQ2NzgtOTc2YS1jMzc4NTMwOGFlMDYiIGN4PSIzNjAuNTgiIGN5PSIzNjAuNTgiIHI9IjM1OC4yOCIvPgogIDxwYXRoIGNsYXNzPSJlMTMzMDhiOC03NDg1LTRjYjAtOTc2NS04YTU3YjkzZjkxYTYiIGQ9Ik02MTMuNTQsMTA3LjMsMTA2Ljg4LDYxNGMxNDAsMTM4LjUxLDM2NS44MiwxMzguMDYsNTA1LjI2LTEuMzlTNzUyLDI0Ny4zMyw2MTMuNTQsMTA3LjNaIi8+CiAgPGc+CiAgICA8Y2lyY2xlIGNsYXNzPSJlNzcyODZmMS0yMmRhLTQ0ZDEtOGVmYi0xZDE0YjBjY2FlNjIiIGN4PSIyMzQuNyIgY3k9IjM1Ny4zIiByPSI0Ny43MiIvPgogICAgPGNpcmNsZSBjbGFzcz0iZTc3Mjg2ZjEtMjJkYS00NGQxLThlZmItMWQxNGIwY2NhZTYyIiBjeD0iMjM0LjciIGN5PSIxODIuOTQiIHI9IjQ3LjcyIi8+CiAgICA8Y2lyY2xlIGNsYXNzPSJlNzcyODZmMS0yMmRhLTQ0ZDEtOGVmYi0xZDE0YjBjY2FlNjIiIGN4PSIyMzQuNyIgY3k9IjUzOC4yMSIgcj0iNDcuNzIiLz4KICA8L2c+CiAgPHBvbHlnb24gY2xhc3M9ImU3NzI4NmYxLTIyZGEtNDRkMS04ZWZiLTFkMTRiMGNjYWU2MiIgcG9pbnRzPSI0MzUuMTkgMzQ3LjMgMzkwLjU0IDM0Ny4zIDM5MC41NCAxNzIuOTQgMzE2LjE2IDE3Mi45NCAzMTYuMTYgMTkyLjk0IDM3MC41NCAxOTIuOTQgMzcwLjU0IDM0Ny4zIDMxNi4xNiAzNDcuMyAzMTYuMTYgMzY3LjMgMzcwLjU0IDM2Ny4zIDM3MC41NCA1MjEuNjcgMzE2LjE2IDUyMS42NyAzMTYuMTYgNTQxLjY3IDM5MC41NCA1NDEuNjcgMzkwLjU0IDM2Ny4zIDQzNS4xOSAzNjcuMyA0MzUuMTkgMzQ3LjMiLz4KICA8cG9seWdvbiBjbGFzcz0iZTc3Mjg2ZjEtMjJkYS00NGQxLThlZmItMWQxNGIwY2NhZTYyIiBwb2ludHM9IjU5OS43NCAzMTcuMDMgNTU3Ljk3IDMxNy4wMyA1NTAuOTcgMzE3LjAzIDU1MC45NyAzMTAuMDMgNTUwLjk3IDI2OC4yNiA1NTAuOTcgMjY4LjI2IDQ2NC4zNiAyNjguMjYgNDY0LjM2IDQ0Ni4zNCA1OTkuNzQgNDQ2LjM0IDU5OS43NCAzMTcuMDMgNTk5Ljc0IDMxNy4wMyIvPgogIDxwb2x5Z29uIGNsYXNzPSJhMDQyMGNhYy1lYmU2LTRjMTgtYjk4MS1hYmJhMGJhOWIzNjUiIHBvaW50cz0iNTk5Ljc0IDMxMC4wMyA1NTcuOTcgMjY4LjI2IDU1Ny45NyAzMTAuMDMgNTk5Ljc0IDMxMC4wMyIvPgo8L3N2Zz4K
+    mediatype: image/svg+xml
+  introduction: "**Cluster Logging** is the recommened logging solution for
+  OpenShift. It is comprised of three operators: **Red Hat OpenShift
+  Logging**(collection), **Loki Operator**(storage), and **Observability
+  Operator**(ui).
+    \n- **Red Hat OpenShift Logging** also known as CLO (Cluster Logging
+    Operator) provides the ClusterLogForwarder API to control collection and
+    forwarding of logs from pods and nodes in a cluster. This includes
+    application logs (from regular pods), infrastructure logs (from system pods
+    and node logs), and audit logs (special node logs with legal/security
+    implications). CLO acomplishes this by deploying and configuring Vector.
+    \n- **Loki Operator** helps users run Loki on Kubernetes
+    through a single API which is the LokiStack CRD. Loki is a
+    horizontally-scalable, highly-available, multi-tenant log aggregation system
+    inspired by Prometheus. It is designed to be very cost effective and easy to
+    operate. It does not index the contents of the logs, but rather a set of
+    labels for each log stream.
+    \n- **Observability Operator** is a multi signal observability operator that
+    in the case of logging provides a UI to query and visualize logs stored in
+    Loki."
+  tasks:
+  - description: "To install operators: \n1. In the navigation menu, click
+      on [Operators]{{highlight qs-nav-operators}}, then select OperatorHub."
+    review:
+      failedTaskHelp: This task isn’t verified yet. Try the task again.
+      instructions: |-
+        1. In the filter box, type **Red Hat OpenShift Logging**.
+        2. By pressing **Install** you will be taken to the **Install Operator** page
+        3. In the **Install Operator** page select most recent update channel and press **Install**.
+        4. Once the operator is installed successfuly you should see a green check mark.
+        5. Now repeat the process for both **Loki Operator** and **Observability Operator**.
+
+    summary:
+      failed: Try the steps again.
+      success: All operators have been installed successfuly.
+    title: Install the operators
+  - description: "The resource ClusterLogForwarders requests that users provide
+  a service account that will be used by the Vector collectors to access the
+  logs of the cluster, so this is the first step to configure log collection.
+  \n1. Create a service account in the `openshift-logging` namespace. This tutorial will use the name `cluster-logging`
+  \n  1. Create the service account: `oc -n openshift-logging create sa cluster-logging`
+  \n1. Assign the necessary RBAC permissions to the service account:
+  \n  1. Application logs access: `oc adm policy add-cluster-role-to-user collect-application-logs system:serviceaccount:openshift-logging:cluster-logging`
+  \n  1. Infrastructure logs access: `oc adm policy add-cluster-role-to-user collect-infrastructure-logs system:serviceaccount:openshift-logging:cluster-logging`
+  \n  1. Audit logs access: `oc adm policy add-cluster-role-to-user collect-audit-logs system:serviceaccount:openshift-logging:cluster-logging`
+  \n1. Finally give the service account the ability to write logs to Loki:
+  \n  1. Write access for all tenants: `oc adm policy add-cluster-role-to-user logging-collector-logs-writer system:serviceaccount:openshift-logging:cluster-logging`"
+    review:
+      failedTaskHelp: This task isn’t verified yet. Try the task again.
+      instructions: |-
+        Once the commands have been executed successfully there should now exist four ClusterRoleBinding resources granting the necessary permisions to the service account.
+        1. Click on the [prespective switcher]{{highlight qs-perspective-switcher}} at the top of the navigation, and select Administrator.
+        2. Click the **Project** dropdown menu and select **openshift-logging**.
+        4. Do you see the **ClusterRoleBindings you just created**?
+    summary:
+      failed: Try the steps again.
+      success: A service account with the necessary RBAC for cluster log collection and forwarding has been created in the `openshift-logging` namespace.
+    title: Configure the service account for log collection and forwarding.
+  - description: "Loki uses an S3 bucket to store the logs it receives. The Loki
+    Operator supports AWS S3, as well as other S3 compatible object stores such as
+    Minio and OpenShift Data Foundation. Azure, GCS, and Swift are also
+    supported. Loki Operator needs a secret with the credentials to the S3 bucket to access it.\n1. Select your desired S3 provider and create an S3 bucket.\n1. Depending on the S3 provider different fields on the secret will be required, check the [OpenShift documentation to see the fields](https://docs.openshift.com/container-platform/latest/observability/logging/log_storage/installing-log-storage.html#logging-loki-storage_installing-log-storage).\n1. You can create the secret using the CLI as described by the documentation or use the [Import]{{highlight qs-masthead-import}} button to write/paste the Secret Yaml."
+    review:
+      failedTaskHelp: This task isn’t verified yet. Try the task again.
+      instructions: |-
+        Once the secret with the S3 credentials is created it should be present in the `openshift-logging` namespace:
+        1. Click on the [prespective switcher]{{highlight qs-perspective-switcher}} at the top of the navigation, and select Developer.
+        2. Click the **Project** dropdown menu and select **openshift-logging**.
+        3. In the navigation menu select **Secrets**.
+        4. Do you see the **secret you just created**?
+    summary:
+      failed: Try the steps again.
+      success: A secret with the credentials for S3 has been created in the `openshift-logging` namespace.
+    title: Create an S3 bucket
+  - description: "Loki operator uses a T-Shirt size approach to deployment
+  sizing. On the official OpenShift documentation there is a table with the
+  different supported sizes and their characteristics. The data on this table
+  was compiled through a set of synthetic benchmarks.\n1. Determine the amount of
+  data transfers that you will expect Loki will receive. Will it only consume logs from the platform or
+  will it also consume logs from user applications?\n 1. Determine the
+  amount of queries that will be done to Loki.\n1. Provision enough
+  resources to accomodate the Loki components."
+    review:
+      failedTaskHelp: This task isn’t verified yet. Try the task again.
+      instructions: |-
+        To help you pick the best deployment size make sure to:
+        1. Take into consideration the different log types that will be ingested by Loki.
+        2. The amount of queries that will be done to Loki.
+    summary:
+      failed: Try the steps again.
+      success: A deployment size has been identified
+    title: Determine the best deployment size
+  - description: "TODO"
+    review:
+      failedTaskHelp: This task isn’t verified yet. Try the task again.
+      instructions: |-
+        Once a LokiStack CR is created the Loki Operator will reconcile it should eventually have in it **Status** a condition type **Ready** with reason **ReadyComponents**. To check this:
+        1. Click on the [prespective switcher]{{highlight qs-perspective-switcher}} at the top of the navigation, and select **Administrator**.
+        2. In the navigation menu, click on [Operators]{{highlight qs-nav-operators}}, then select **Installed Operators**.
+        3. Select **Loki Operator**
+        4. On the Loki Operator page you can press the **LokiStack** tab to see the instances that exist.
+        5. Select the instance you created
+        6. At the bottom of the page you should see the **Conditions**
+        7. Does LokiStack have the condition type **Ready** with reason **ReadyComponents** in it's status?
+    summary:
+      failed: Try the steps again.
+      success: A LokiStack CR was created and all Loki components are running.
+    title: Create a LokiStack CR
