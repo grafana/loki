@@ -243,6 +243,21 @@ const (
 	RequestInsertReplaceMode = "\x1b[4$p"
 )
 
+// BiDirectional Support Mode (BDSM) is a mode that determines whether the
+// terminal supports bidirectional text. When enabled, the terminal supports
+// bidirectional text and is set to implicit bidirectional mode. When disabled,
+// the terminal does not support bidirectional text.
+//
+// See ECMA-48 7.2.1.
+const (
+	BiDirectionalSupportMode = ANSIMode(8)
+	BDSM                     = BiDirectionalSupportMode
+
+	SetBiDirectionalSupportMode     = "\x1b[8h"
+	ResetBiDirectionalSupportMode   = "\x1b[8l"
+	RequestBiDirectionalSupportMode = "\x1b[8$p"
+)
+
 // Send Receive Mode (SRM) or Local Echo Mode is a mode that determines whether
 // the terminal echoes characters back to the host. When enabled, the terminal
 // sends characters to the host as they are typed.
