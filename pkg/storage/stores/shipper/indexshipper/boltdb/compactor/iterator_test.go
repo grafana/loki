@@ -31,8 +31,8 @@ func Test_ChunkIterator(t *testing.T) {
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
-			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
-			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
+			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.FromStrings("foo", "bar"), tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.FromStrings("foo", "buzz", "bar", "foo"), tt.from, tt.from.Add(1*time.Hour))
 
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 				c1, c2,
@@ -84,8 +84,8 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	chunkfmt, headfmt, err := schemaCfg.Configs[0].ChunkFormat()
 	require.NoError(t, err)
 
-	c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, from, from.Add(1*time.Hour))
-	c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, from, from.Add(1*time.Hour))
+	c1 := createChunk(t, chunkfmt, headfmt, "1", labels.FromStrings("foo", "bar"), from, from.Add(1*time.Hour))
+	c2 := createChunk(t, chunkfmt, headfmt, "2", labels.FromStrings("foo", "buzz", "bar", "foo"), from, from.Add(1*time.Hour))
 
 	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c1, c2}))
 	store.Stop()
@@ -118,9 +118,9 @@ func Test_SeriesCleaner(t *testing.T) {
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
-			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
-			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
-			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
+			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.FromStrings("foo", "bar"), tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.FromStrings("foo", "buzz", "bar", "foo"), tt.from, tt.from.Add(1*time.Hour))
+			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.FromStrings("foo", "buzz", "bar", "buzz"), tt.from, tt.from.Add(1*time.Hour))
 
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 				c1, c2, c3,
@@ -196,7 +196,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
 	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && len(ls) == 1 {
+	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
 	var b strings.Builder
@@ -205,9 +205,9 @@ func labelsString(ls labels.Labels) string {
 	b.WriteString(metricName)
 	b.WriteByte('{')
 	i := 0
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			continue
+			return
 		}
 		if i > 0 {
 			b.WriteByte(',')
@@ -218,7 +218,7 @@ func labelsString(ls labels.Labels) string {
 		var buf [1000]byte
 		b.Write(strconv.AppendQuote(buf[:0], l.Value))
 		i++
-	}
+	})
 	b.WriteByte('}')
 
 	return b.String()
@@ -242,7 +242,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 		require.NoError(b, store.Put(context.TODO(),
 			[]chunk.Chunk{
 				createChunk(b, chunkfmt, headfmt, "1",
-					labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "i", Value: fmt.Sprintf("%d", i)}},
+					labels.FromStrings("foo", "bar", "i", fmt.Sprintf("%d", i)),
 					allSchemas[0].from, allSchemas[0].from.Add(1*time.Hour)),
 			},
 		))

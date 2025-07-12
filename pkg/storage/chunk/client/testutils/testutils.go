@@ -76,10 +76,10 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 	keys := []string{}
 	chunks := []chunk.Chunk{}
 	for j := 0; j < batchSize; j++ {
-		chunk := DummyChunkFor(from, through, labels.Labels{
-			{Name: model.MetricNameLabel, Value: "foo"},
-			{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},
-		})
+		chunk := DummyChunkFor(from, through, labels.FromStrings(
+			model.MetricNameLabel, "foo",
+			"index", strconv.Itoa(startIndex*batchSize+j),
+		))
 		chunks = append(chunks, chunk)
 		keys = append(keys, scfg.ExternalKey(chunk.ChunkRef))
 	}
