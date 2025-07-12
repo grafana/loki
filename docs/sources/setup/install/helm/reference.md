@@ -2302,6 +2302,7 @@ null
   },
   "initContainers": [],
   "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -2474,6 +2475,15 @@ null
 			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
