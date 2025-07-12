@@ -925,7 +925,7 @@ github.com/go-playground/validator/v10
 github.com/go-redsync/redsync/v4
 github.com/go-redsync/redsync/v4/redis
 github.com/go-redsync/redsync/v4/redis/goredis/v9
-# github.com/go-viper/mapstructure/v2 v2.2.1
+# github.com/go-viper/mapstructure/v2 v2.3.0
 ## explicit; go 1.18
 github.com/go-viper/mapstructure/v2
 github.com/go-viper/mapstructure/v2/internal/errors
