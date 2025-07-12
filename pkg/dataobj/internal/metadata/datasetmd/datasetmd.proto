@@ -75,6 +75,9 @@ enum CompressionType {
 
   // Zstd compression.
   COMPRESSION_TYPE_ZSTD = 3;
+
+  // S2 compression.
+  COMPRESSION_TYPE_S2 = 4;
 }
 
 // Statistics about a column or a page. All statistics are optional and are
