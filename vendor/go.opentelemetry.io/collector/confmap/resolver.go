@@ -65,6 +65,9 @@ type ResolverSettings struct {
 	// ConverterSettings contains settings that will be passed to Converter
 	// factories when instantiating Converters.
 	ConverterSettings ConverterSettings
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // NewResolver returns a new Resolver that resolves configuration from multiple URIs.
@@ -180,13 +183,8 @@ func (mr *Resolver) Resolve(ctx context.Context) (*Conf, error) {
 		if err != nil {
 			return nil, err
 		}
-		if enableMergeAppendOption.IsEnabled() {
-			// only use MergeAppend when enableMergeAppendOption featuregate is enabled.
-			err = retMap.mergeAppend(retCfgMap)
-		} else {
-			err = retMap.Merge(retCfgMap)
-		}
-		if err != nil {
+
+		if err := retMap.Merge(retCfgMap); err != nil {
 			return nil, err
 		}
 	}

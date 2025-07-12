@@ -28,4 +28,4 @@ jobs:
       - name: Display Go version
         run: go version
       - name: Run promtail tests
-        run: go test .\clients\pkg\promtail\targets\windows\... -v
+        run: go test -tags slicelabels .\clients\pkg\promtail\targets\windows\... -v

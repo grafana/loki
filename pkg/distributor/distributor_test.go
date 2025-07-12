@@ -16,8 +16,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/otlptranslator"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -31,6 +29,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2083,6 +2082,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 		time.Sleep(i.succeedAfter)
 	}
 
+	labelNamer := otlptranslator.LabelNamer{}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, s := range in.Streams {
@@ -2091,7 +2091,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 				if strings.ContainsRune(sm.Value, utf8.RuneError) {
 					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
 				}
-				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+				if sm.Name != labelNamer.Build(sm.Name) {
 					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
 
 				}

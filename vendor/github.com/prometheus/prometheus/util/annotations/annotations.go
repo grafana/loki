@@ -125,12 +125,13 @@ func (a Annotations) CountWarningsAndInfo() (countWarnings, countInfo int) {
 	return
 }
 
-//nolint:revive // error-naming.
+//nolint:staticcheck,revive // error-naming.
 var (
 	// Currently there are only 2 types, warnings and info.
 	// For now, info are visually identical with warnings as we have not updated
 	// the API spec or the frontend to show a different kind of warning. But we
 	// make the distinction here to prepare for adding them in future.
+
 	PromQLInfo    = errors.New("PromQL info")
 	PromQLWarning = errors.New("PromQL warning")
 
@@ -146,10 +147,14 @@ var (
 	IncompatibleBucketLayoutInBinOpWarning     = fmt.Errorf("%w: incompatible bucket layout encountered for binary operator", PromQLWarning)
 
 	PossibleNonCounterInfo                  = fmt.Errorf("%w: metric might not be a counter, name does not end in _total/_sum/_count/_bucket:", PromQLInfo)
+	PossibleNonCounterLabelInfo             = fmt.Errorf("%w: metric might not be a counter, __type__ label is not set to %q", PromQLInfo, model.MetricTypeCounter)
 	HistogramQuantileForcedMonotonicityInfo = fmt.Errorf("%w: input to histogram_quantile needed to be fixed for monotonicity (see https://prometheus.io/docs/prometheus/latest/querying/functions/#histogram_quantile) for metric name", PromQLInfo)
 	IncompatibleTypesInBinOpInfo            = fmt.Errorf("%w: incompatible sample types encountered for binary operator", PromQLInfo)
 	HistogramIgnoredInAggregationInfo       = fmt.Errorf("%w: ignored histogram in", PromQLInfo)
 	HistogramIgnoredInMixedRangeInfo        = fmt.Errorf("%w: ignored histograms in a range containing both floats and histograms for metric name", PromQLInfo)
+	NativeHistogramQuantileNaNResultInfo    = fmt.Errorf("%w: input to histogram_quantile has NaN observations, result is NaN for metric name", PromQLInfo)
+	NativeHistogramQuantileNaNSkewInfo      = fmt.Errorf("%w: input to histogram_quantile has NaN observations, result is skewed higher for metric name", PromQLInfo)
+	NativeHistogramFractionNaNsInfo         = fmt.Errorf("%w: input to histogram_fraction has NaN observations, which are excluded from all fractions for metric name", PromQLInfo)
 )
 
 type annoErr struct {
@@ -269,6 +274,15 @@ func NewPossibleNonCounterInfo(metricName string, pos posrange.PositionRange) er
 	}
 }
 
+// NewPossibleNonCounterLabelInfo is used when a named counter metric with only float samples does not
+// have the __type__ label set to "counter".
+func NewPossibleNonCounterLabelInfo(metricName, typeLabel string, pos posrange.PositionRange) error {
+	return annoErr{
+		PositionRange: pos,
+		Err:           fmt.Errorf("%w, got %q: %q", PossibleNonCounterLabelInfo, typeLabel, metricName),
+	}
+}
+
 // NewHistogramQuantileForcedMonotonicityInfo is used when the input (classic histograms) to
 // histogram_quantile needs to be forced to be monotonic.
 func NewHistogramQuantileForcedMonotonicityInfo(metricName string, pos posrange.PositionRange) error {
@@ -311,5 +325,26 @@ func NewIncompatibleBucketLayoutInBinOpWarning(operator string, pos posrange.Pos
 	return annoErr{
 		PositionRange: pos,
 		Err:           fmt.Errorf("%w %s", IncompatibleBucketLayoutInBinOpWarning, operator),
+	}
+}
+
+func NewNativeHistogramQuantileNaNResultInfo(metricName string, pos posrange.PositionRange) error {
+	return annoErr{
+		PositionRange: pos,
+		Err:           fmt.Errorf("%w %q", NativeHistogramQuantileNaNResultInfo, metricName),
+	}
+}
+
+func NewNativeHistogramQuantileNaNSkewInfo(metricName string, pos posrange.PositionRange) error {
+	return annoErr{
+		PositionRange: pos,
+		Err:           fmt.Errorf("%w %q", NativeHistogramQuantileNaNSkewInfo, metricName),
+	}
+}
+
+func NewNativeHistogramFractionNaNsInfo(metricName string, pos posrange.PositionRange) error {
+	return annoErr{
+		PositionRange: pos,
+		Err:           fmt.Errorf("%w %q", NativeHistogramFractionNaNsInfo, metricName),
 	}
 }
