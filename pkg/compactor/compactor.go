@@ -343,8 +343,8 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		c.cfg.DeleteRequestCancelPeriod,
 		c.cfg.DeleteBatchSize,
 		limits,
-		false,
-		objectClient,
+		c.cfg.HorizontalScalingMode == HorizontalScalingModeMain,
+		client.NewPrefixedObjectClient(objectClient, c.cfg.JobsConfig.Deletion.DeletionManifestStorePrefix),
 		r,
 	)
 	if err != nil {

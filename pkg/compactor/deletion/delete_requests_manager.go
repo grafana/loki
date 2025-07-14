@@ -58,10 +58,10 @@ type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
-	HSModeEnabled       bool
-	deletionStoreClient client.ObjectClient
-	jobBuilder          *JobBuilder
-	tablesManager       TablesManager
+	HSModeEnabled               bool
+	deletionManifestStoreClient client.ObjectClient
+	jobBuilder                  *JobBuilder
+	tablesManager               TablesManager
 
 	metrics            *deleteRequestsManagerMetrics
 	wg                 sync.WaitGroup
@@ -79,7 +79,7 @@ func NewDeleteRequestsManager(
 	batchSize int,
 	limits Limits,
 	HSModeEnabled bool,
-	deletionStoreClient client.ObjectClient,
+	deletionManifestStoreClient client.ObjectClient,
 	registerer prometheus.Registerer,
 ) (*DeleteRequestsManager, error) {
 	metrics := newDeleteRequestsManagerMetrics(registerer)
@@ -88,8 +88,8 @@ func NewDeleteRequestsManager(
 		deleteRequestsStore:       store,
 		deleteRequestCancelPeriod: deleteRequestCancelPeriod,
 
-		HSModeEnabled:       HSModeEnabled,
-		deletionStoreClient: deletionStoreClient,
+		HSModeEnabled:               HSModeEnabled,
+		deletionManifestStoreClient: deletionManifestStoreClient,
 
 		metrics:         metrics,
 		batchSize:       batchSize,
@@ -105,7 +105,7 @@ func (d *DeleteRequestsManager) Init(tablesManager TablesManager) error {
 	d.tablesManager = tablesManager
 
 	if d.HSModeEnabled {
-		d.jobBuilder = NewJobBuilder(d.deletionStoreClient, tablesManager.ApplyStorageUpdates, func(requests []DeleteRequest) {
+		d.jobBuilder = NewJobBuilder(d.deletionManifestStoreClient, tablesManager.ApplyStorageUpdates, func(requests []DeleteRequest) {
 			for _, req := range requests {
 				d.markRequestAsProcessed(req)
 			}
@@ -169,7 +169,7 @@ func (d *DeleteRequestsManager) loop(ctx context.Context) {
 }
 
 func (d *DeleteRequestsManager) buildDeletionManifestLoop(ctx context.Context) {
-	if err := cleanupInvalidManifests(ctx, d.deletionStoreClient); err != nil {
+	if err := cleanupInvalidManifests(ctx, d.deletionManifestStoreClient); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to cleanup invalid delete manifests", "err", err)
 	}
 
@@ -205,7 +205,7 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 
 	// Do not build another manifest if one already exists since we do not know which requests are already added to it for processing.
 	// There is anyway no benefit in building multiple manifests since we process one manifest at a time.
-	manifestExists, err := storageHasValidManifest(ctx, d.deletionStoreClient)
+	manifestExists, err := storageHasValidManifest(ctx, d.deletionManifestStoreClient)
 	if err != nil {
 		return err
 	}
@@ -215,7 +215,7 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return nil
 	}
 
-	deletionManifestBuilder, err := newDeletionManifestBuilder(d.deletionStoreClient, deleteRequestsBatch)
+	deletionManifestBuilder, err := newDeletionManifestBuilder(d.deletionManifestStoreClient, deleteRequestsBatch)
 	if err != nil {
 		return err
 	}

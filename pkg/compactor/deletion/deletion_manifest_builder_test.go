@@ -611,7 +611,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest.SegmentsCount, builder.segmentsCount)
 			require.Equal(t, tc.expectedManifest.ChunksCount, builder.overallChunksCount)
 
-			reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
+			reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
 			require.NoError(t, err)
 
 			manifestJSON, err := io.ReadAll(reader)
@@ -627,7 +627,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest, manifest)
 
 			for i := 0; i < tc.expectedManifest.SegmentsCount; i++ {
-				reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
+				reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
 				require.NoError(t, err)
 
 				segmentJSON, err := io.ReadAll(reader)
@@ -735,7 +735,7 @@ func TestCleanupInvalidManifest(t *testing.T) {
 	require.True(t, manifestExists)
 
 	// ensure that manifest has the expected number of files
-	reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
+	reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
 	require.NoError(t, err)
 
 	manifestJSON, err := io.ReadAll(reader)
@@ -750,7 +750,7 @@ func TestCleanupInvalidManifest(t *testing.T) {
 	require.Len(t, objects, manifest.SegmentsCount+1)
 
 	// remove the manifest.json file to make the manifest invalid
-	require.NoError(t, builder.deletionStoreClient.DeleteObject(ctx, builder.buildObjectKey(manifestFileName)))
+	require.NoError(t, builder.deletionManifestStoreClient.DeleteObject(ctx, builder.buildObjectKey(manifestFileName)))
 
 	// ensure that storageHasValidManifest returns true since we just deliberately made the manifest invalid
 	manifestExists, err = storageHasValidManifest(ctx, objectClient)
