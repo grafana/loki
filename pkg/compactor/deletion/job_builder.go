@@ -303,12 +303,20 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 			}
 
 			job := &grpc.Job{
-				Id:      fmt.Sprintf("%s_%d", groupID, i/maxChunksPerJob),
 				Type:    grpc.JOB_TYPE_DELETION,
 				Payload: payload,
 			}
 
 			b.currentManifestMtx.Lock()
+			var jobID string
+			for {
+				jobID = fmt.Sprintf("%d-%d", grpc.JOB_TYPE_DELETION, time.Now().UnixNano())
+				if _, ok := b.currentManifest.jobsInProgress[jobID]; !ok {
+					break
+				}
+				time.Sleep(time.Nanosecond)
+			}
+			job.Id = jobID
 			b.currentManifest.jobsInProgress[job.Id] = jobDetails{labels: labels}
 			b.currentManifestMtx.Unlock()
 

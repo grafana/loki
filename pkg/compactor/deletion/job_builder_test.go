@@ -96,7 +96,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -154,7 +153,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -172,7 +170,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "0_1",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -237,7 +234,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -255,7 +251,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "1_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -325,7 +320,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -343,7 +337,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table2,
@@ -402,12 +395,23 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			jobsChan := make(chan *grpc.Job)
 
 			var jobsBuilt []grpc.Job
+			seenJobIDs := map[string]struct{}{}
 			go func() {
 				cnt := 0
 				for job := range jobsChan {
+					// ensure that we get unique job IDs
+					jobID := job.Id
+					if _, ok := seenJobIDs[jobID]; ok {
+						t.Errorf("job id %s already seen", jobID)
+						return
+					}
+					seenJobIDs[jobID] = struct{}{}
+
+					// while comparing jobs built vs expected, do not compare the job IDs
+					job.Id = ""
 					jobsBuilt = append(jobsBuilt, *job)
 					err := builder.OnJobResponse(&grpc.JobResult{
-						JobId:   job.Id,
+						JobId:   jobID,
 						JobType: job.Type,
 						Result:  mustMarshal(t, buildStorageUpdates(cnt, 1)),
 					})
