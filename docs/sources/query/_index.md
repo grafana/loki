@@ -127,9 +127,17 @@ to this much more readable line in the results:
 
 There are two types of LogQL queries:
 
-- [Log queries]({{< relref "./log_queries" >}}) return the contents of log lines.
-- [Metric queries]({{< relref "./metric_queries" >}}) let you create metrics from logs.
+- [Log queries]({{< relref "./log_queries" >}}) return the contents of log lines (log streams).
+- [Metric queries]({{< relref "./metric_queries" >}}) let you create metrics from logs and return numerical values.
 
 Log queries are queries whose output remains strings, structured or otherwise. They use the log stream selector and log pipeline construction and can be chained together to create longer log queries.
 
 Metric queries calculate values based on the log results returned.
+
+## Results of a LogQL query
+
+The results of a LogQL query can be one of the following data types:
+
+- A **log stream** is a set of raw log lines that include a timestamp and a unique combination of [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/). Only log queries can return log streams. Log streams are not suitable for [time series panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/time-series/); they're used in [log panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/logs/) or for debugging.
+- A **scalar** is a single simple numeric floating point value (ex: `42`) and can only be returned by metric queries.
+- An **instant vector** is a single numerical values (per time series) that represent a sample of one or more log lines containing the same timestamp. They are snapshots of log information at a particular moment of time. Instant vectors can only be returned by metric queries.
