@@ -3169,7 +3169,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.4.0"
+  "version": "3.5.2"
 }
 </pre>
 </td>
