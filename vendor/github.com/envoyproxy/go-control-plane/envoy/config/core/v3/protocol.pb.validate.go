@@ -160,34 +160,32 @@ func (m *QuicKeepAliveSettings) validate(all bool) error {
 
 	var errors []error
 
-	if d := m.GetMaxInterval(); d != nil {
-		dur, err := d.AsDuration(), d.CheckValid()
-		if err != nil {
-			err = QuicKeepAliveSettingsValidationError{
+	if all {
+		switch v := interface{}(m.GetMaxInterval()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, QuicKeepAliveSettingsValidationError{
+					field:  "MaxInterval",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, QuicKeepAliveSettingsValidationError{
+					field:  "MaxInterval",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxInterval()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return QuicKeepAliveSettingsValidationError{
 				field:  "MaxInterval",
-				reason: "value is not a valid duration",
+				reason: "embedded message failed validation",
 				cause:  err,
 			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		} else {
-
-			lte := time.Duration(0*time.Second + 0*time.Nanosecond)
-			gte := time.Duration(1*time.Second + 0*time.Nanosecond)
-
-			if dur > lte && dur < gte {
-				err := QuicKeepAliveSettingsValidationError{
-					field:  "MaxInterval",
-					reason: "value must be outside range (0s, 1s)",
-				}
-				if !all {
-					return err
-				}
-				errors = append(errors, err)
-			}
-
 		}
 	}
 
@@ -206,12 +204,12 @@ func (m *QuicKeepAliveSettings) validate(all bool) error {
 		} else {
 
 			lte := time.Duration(0*time.Second + 0*time.Nanosecond)
-			gte := time.Duration(1*time.Second + 0*time.Nanosecond)
+			gte := time.Duration(0*time.Second + 1000000*time.Nanosecond)
 
 			if dur > lte && dur < gte {
 				err := QuicKeepAliveSettingsValidationError{
 					field:  "InitialInterval",
-					reason: "value must be outside range (0s, 1s)",
+					reason: "value must be outside range (0s, 1ms)",
 				}
 				if !all {
 					return err
@@ -445,6 +443,35 @@ func (m *QuicProtocolOptions) validate(all bool) error {
 				errors = append(errors, err)
 			}
 
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetMaxPacketLength()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, QuicProtocolOptionsValidationError{
+					field:  "MaxPacketLength",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, QuicProtocolOptionsValidationError{
+					field:  "MaxPacketLength",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxPacketLength()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return QuicProtocolOptionsValidationError{
+				field:  "MaxPacketLength",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
 		}
 	}
 
@@ -930,6 +957,21 @@ func (m *HttpProtocolOptions) validate(all bool) error {
 			err := HttpProtocolOptionsValidationError{
 				field:  "MaxHeadersCount",
 				reason: "value must be greater than or equal to 1",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if wrapper := m.GetMaxResponseHeadersKb(); wrapper != nil {
+
+		if val := wrapper.GetValue(); val <= 0 || val > 8192 {
+			err := HttpProtocolOptionsValidationError{
+				field:  "MaxResponseHeadersKb",
+				reason: "value must be inside range (0, 8192]",
 			}
 			if !all {
 				return err
@@ -1861,6 +1903,35 @@ func (m *Http2ProtocolOptions) validate(all bool) error {
 		if err := v.Validate(); err != nil {
 			return Http2ProtocolOptionsValidationError{
 				field:  "UseOghttp2Codec",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetMaxMetadataSize()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Http2ProtocolOptionsValidationError{
+					field:  "MaxMetadataSize",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Http2ProtocolOptionsValidationError{
+					field:  "MaxMetadataSize",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxMetadataSize()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Http2ProtocolOptionsValidationError{
+				field:  "MaxMetadataSize",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}

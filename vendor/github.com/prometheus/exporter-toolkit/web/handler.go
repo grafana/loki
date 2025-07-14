@@ -18,11 +18,11 @@ package web
 import (
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 
-	"github.com/go-kit/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -78,7 +78,7 @@ HeadersLoop:
 type webHandler struct {
 	tlsConfigPath string
 	handler       http.Handler
-	logger        log.Logger
+	logger        *slog.Logger
 	cache         *cache
 	// bcryptMtx is there to ensure that bcrypt.CompareHashAndPassword is run
 	// only once in parallel as this is CPU intensive.
@@ -88,7 +88,7 @@ type webHandler struct {
 func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c, err := getConfig(u.tlsConfigPath)
 	if err != nil {
-		u.logger.Log("msg", "Unable to parse configuration", "err", err)
+		u.logger.Error("Unable to parse configuration", "err", err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

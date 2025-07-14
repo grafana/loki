@@ -1,8 +1,10 @@
 package otgrpc
 
 import (
-	opentracing "github.com/opentracing/opentracing-go"
 	"context"
+	"fmt"
+
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/opentracing/opentracing-go/log"
 	"google.golang.org/grpc"
@@ -14,9 +16,9 @@ import (
 //
 // For example:
 //
-//     s := grpc.NewServer(
-//         ...,  // (existing ServerOptions)
-//         grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(tracer)))
+//	s := grpc.NewServer(
+//	    ...,  // (existing ServerOptions)
+//	    grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(tracer)))
 //
 // All gRPC server spans will look for an OpenTracing SpanContext in the gRPC
 // metadata; if found, the server span will act as the ChildOf that RPC
@@ -33,12 +35,12 @@ func OpenTracingServerInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (resp interface{}, err error) {
-		spanContext, err := extractSpanContext(ctx, tracer)
-		if err != nil && err != opentracing.ErrSpanContextNotFound {
-			// TODO: establish some sort of error reporting mechanism here. We
-			// don't know where to put such an error and must rely on Tracer
-			// implementations to do something appropriate for the time being.
-		}
+		spanContext, _ := extractSpanContext(ctx, tracer)
+		// if err != nil && !errors.Is(err, opentracing.ErrSpanContextNotFound) {
+		// 	// TODO: establish some sort of error reporting mechanism here. We
+		// 	// don't know where to put such an error and must rely on Tracer
+		// 	// implementations to do something appropriate for the time being.
+		// }
 		if otgrpcOpts.inclusionFunc != nil &&
 			!otgrpcOpts.inclusionFunc(spanContext, info.FullMethod, req, nil) {
 			return handler(ctx, req)
@@ -76,9 +78,9 @@ func OpenTracingServerInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 //
 // For example:
 //
-//     s := grpc.NewServer(
-//         ...,  // (existing ServerOptions)
-//         grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(tracer)))
+//	s := grpc.NewServer(
+//	    ...,  // (existing ServerOptions)
+//	    grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(tracer)))
 //
 // All gRPC server spans will look for an OpenTracing SpanContext in the gRPC
 // metadata; if found, the server span will act as the ChildOf that RPC
@@ -90,12 +92,12 @@ func OpenTracingStreamServerInterceptor(tracer opentracing.Tracer, optFuncs ...O
 	otgrpcOpts := newOptions()
 	otgrpcOpts.apply(optFuncs...)
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		spanContext, err := extractSpanContext(ss.Context(), tracer)
-		if err != nil && err != opentracing.ErrSpanContextNotFound {
-			// TODO: establish some sort of error reporting mechanism here. We
-			// don't know where to put such an error and must rely on Tracer
-			// implementations to do something appropriate for the time being.
-		}
+		spanContext, _ := extractSpanContext(ss.Context(), tracer)
+		// if err != nil && !errors.Is(err, opentracing.ErrSpanContextNotFound) {
+		// 	// TODO: establish some sort of error reporting mechanism here. We
+		// 	// don't know where to put such an error and must rely on Tracer
+		// 	// implementations to do something appropriate for the time being.
+		// }
 		if otgrpcOpts.inclusionFunc != nil &&
 			!otgrpcOpts.inclusionFunc(spanContext, info.FullMethod, nil, nil) {
 			return handler(srv, ss)
@@ -111,7 +113,7 @@ func OpenTracingStreamServerInterceptor(tracer opentracing.Tracer, optFuncs ...O
 			ServerStream: ss,
 			ctx:          opentracing.ContextWithSpan(ss.Context(), serverSpan),
 		}
-		err = handler(srv, ss)
+		err := handler(srv, ss)
 		if err != nil {
 			SetSpanTags(serverSpan, err, false)
 			serverSpan.LogFields(log.String("event", "error"), log.String("message", err.Error()))
@@ -137,5 +139,9 @@ func extractSpanContext(ctx context.Context, tracer opentracing.Tracer) (opentra
 	if !ok {
 		md = metadata.New(nil)
 	}
-	return tracer.Extract(opentracing.HTTPHeaders, metadataReaderWriter{md})
+	spanContext, err := tracer.Extract(opentracing.HTTPHeaders, metadataReaderWriter{md})
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract span context: %w", err)
+	}
+	return spanContext, nil
 }

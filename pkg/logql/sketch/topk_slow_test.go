@@ -135,7 +135,6 @@ func TestCMSTopk(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(fmt.Sprintf("num_streams/%d_k/%d_iterations/%d", tc.numStreams, tc.k, tc.iterations), func(t *testing.T) {
 			t.Parallel()
 			missing := 0
@@ -171,7 +170,6 @@ func TestCMSTopk(t *testing.T) {
 					oTotal += int(n)
 				}
 
-				rand.Seed(time.Now().UnixNano())
 				rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 
 				for _, e := range events {
@@ -254,7 +252,6 @@ func BenchmarkCMSTopk(b *testing.B) {
 			oTotal += int(n)
 		}
 
-		rand.Seed(time.Now().UnixNano())
 		rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 		b.StartTimer()
 
@@ -304,7 +301,6 @@ func TestBFTopK(t *testing.T) {
 		}
 	}
 
-	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 
 	topk, _ := NewSketchBF(100, 27189, 7)

@@ -390,6 +390,14 @@ func (r *Reader) run() {
 		// or times out based on the above SetReadDeadline call.
 		err := unmarshal.ReadTailResponseJSON(tailResponse, r.conn)
 		if err != nil {
+			var e *websocket.CloseError
+			if errors.As(err, &e) && e.Text == "reached tail max duration limit" {
+				fmt.Fprintf(r.w, "tail max duration limit exceeded, will retry immediately: %s\n", err)
+
+				r.closeAndReconnect()
+				continue
+			}
+
 			reason := "error reading websocket"
 			if e, ok := err.(net.Error); ok && e.Timeout() {
 				reason = fmt.Sprintf("timeout tailing new logs (timeout period: %.2fs)", timeoutInterval.Seconds())

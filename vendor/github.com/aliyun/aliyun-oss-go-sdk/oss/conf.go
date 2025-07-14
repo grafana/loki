@@ -37,16 +37,21 @@ type HTTPMaxConns struct {
 	MaxConnsPerHost     int
 }
 
-// CredentialInf is interface for get AccessKeyID,AccessKeySecret,SecurityToken
+// Credentials is interface for get AccessKeyID,AccessKeySecret,SecurityToken
 type Credentials interface {
 	GetAccessKeyID() string
 	GetAccessKeySecret() string
 	GetSecurityToken() string
 }
 
-// CredentialInfBuild is interface for get CredentialInf
+// CredentialsProvider is interface for get Credential Info
 type CredentialsProvider interface {
 	GetCredentials() Credentials
+}
+
+type CredentialsProviderE interface {
+	CredentialsProvider
+	GetCredentialsE() (Credentials, error)
 }
 
 type defaultCredentials struct {
@@ -173,6 +178,7 @@ type Config struct {
 	Region              string              //  such as cn-hangzhou
 	CloudBoxId          string              //
 	Product             string              //  oss or oss-cloudbox, default is oss
+	VerifyObjectStrict  bool                //  a flag of verifying object name strictly. Default is enable.
 }
 
 // LimitUploadSpeed uploadSpeed:KB/s, 0 is unlimited,default is 0
@@ -288,6 +294,8 @@ func getDefaultOssConfig() *Config {
 	config.InsecureSkipVerify = false
 
 	config.Product = "oss"
+
+	config.VerifyObjectStrict = true
 
 	return &config
 }

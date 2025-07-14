@@ -7,10 +7,7 @@ import (
 	"io/fs"
 	"os"
 
-	ot "github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // DoSingleQuery is the interface for indexes that don't support batching yet.
@@ -32,12 +29,12 @@ func DoParallelQueries(
 
 	queue := make(chan index.Query)
 	incomingErrors := make(chan error)
-	n := math.Min(len(queries), QueryParallelism)
+	n := min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {
-			sp, ctx := ot.StartSpanFromContext(ctx, "DoParallelQueries-worker")
-			defer sp.Finish()
+			ctx, sp := tracer.Start(ctx, "DoParallelQueries-worker")
+			defer sp.End()
 			for {
 				query, ok := <-queue
 				if !ok {

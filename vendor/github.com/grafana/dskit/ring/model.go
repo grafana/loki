@@ -146,6 +146,16 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
+// GetLastHeartbeatAt returns the timestamp of the last heartbeat sent by the instance
+// or a zero value if unknown.
+func (i *InstanceDesc) GetLastHeartbeatAt() time.Time {
+	if i == nil || i.Timestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.Timestamp, 0)
+}
+
 // GetReadOnlyState returns the read-only state and timestamp of last read-only state update.
 func (i *InstanceDesc) GetReadOnlyState() (bool, time.Time) {
 	if i == nil {
@@ -592,6 +602,29 @@ func (d *Desc) writableInstancesWithTokensCountPerZone() map[string]int {
 		}
 	}
 	return instancesCountPerZone
+}
+
+func (d *Desc) readOnlyInstancesAndOldestReadOnlyUpdatedTimestamp() (int, int64) {
+	readOnlyInstances := 0
+	oldestReadOnlyUpdatedTimestamp := int64(0)
+	first := true
+
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if !ingester.ReadOnly {
+				continue
+			}
+
+			readOnlyInstances++
+			if first {
+				oldestReadOnlyUpdatedTimestamp = ingester.ReadOnlyUpdatedTimestamp
+			} else {
+				oldestReadOnlyUpdatedTimestamp = min(oldestReadOnlyUpdatedTimestamp, ingester.ReadOnlyUpdatedTimestamp)
+			}
+			first = false
+		}
+	}
+	return readOnlyInstances, oldestReadOnlyUpdatedTimestamp
 }
 
 type CompareResult int

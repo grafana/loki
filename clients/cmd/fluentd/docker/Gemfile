@@ -2,5 +2,5 @@
 
 source 'https://rubygems.org'
 
-gem 'fluentd', '1.15.3'
-gem 'fluent-plugin-multi-format-parser', '~>1.0.0'
+gem 'fluentd', '1.18.0'
+gem 'fluent-plugin-multi-format-parser', '~>1.1.0'

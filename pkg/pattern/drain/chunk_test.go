@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func TestAdd(t *testing.T) {
@@ -33,7 +34,7 @@ func TestIterator(t *testing.T) {
 	cks.Add(2*TimeResolution + 1)
 	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
 
-	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
+	it := cks.Iterator("test", constants.LogLevelInfo, model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample

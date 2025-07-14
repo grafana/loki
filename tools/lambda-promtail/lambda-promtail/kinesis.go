@@ -69,7 +69,7 @@ func isGzipped(data []byte) bool {
 	return len(data) >= 2 && data[0] == 0x1F && data[1] == 0x8B
 }
 
-// unzipData decompress the gzipped data
+// ungzipData decompress the gzipped data
 func ungzipData(data []byte) ([]byte, error) {
 	reader, err := gzip.NewReader(bytes.NewBuffer(data))
 	if err != nil {

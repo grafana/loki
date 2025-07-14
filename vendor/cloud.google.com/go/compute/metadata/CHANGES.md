@@ -1,5 +1,33 @@
 # Changes
 
+## [0.7.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.6.0...compute/metadata/v0.7.0) (2025-05-13)
+
+
+### Features
+
+* **compute/metadata:** Allow canceling GCE detection ([#11786](https://github.com/googleapis/google-cloud-go/issues/11786)) ([78100fe](https://github.com/googleapis/google-cloud-go/commit/78100fe7e28cd30f1e10b47191ac3c9839663b64))
+
+## [0.6.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.5.2...compute/metadata/v0.6.0) (2024-12-13)
+
+
+### Features
+
+* **compute/metadata:** Add debug logging ([#11078](https://github.com/googleapis/google-cloud-go/issues/11078)) ([a816814](https://github.com/googleapis/google-cloud-go/commit/a81681463906e4473570a2f426eb0dc2de64e53f))
+
+## [0.5.2](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.5.1...compute/metadata/v0.5.2) (2024-09-20)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Close Response Body for failed request ([#10891](https://github.com/googleapis/google-cloud-go/issues/10891)) ([e91d45e](https://github.com/googleapis/google-cloud-go/commit/e91d45e4757a9e354114509ba9800085d9e0ff1f))
+
+## [0.5.1](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.5.0...compute/metadata/v0.5.1) (2024-09-12)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Check error chain for retryable error ([#10840](https://github.com/googleapis/google-cloud-go/issues/10840)) ([2bdedef](https://github.com/googleapis/google-cloud-go/commit/2bdedeff621b223d63cebc4355fcf83bc68412cd))
+
 ## [0.5.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.4.0...compute/metadata/v0.5.0) (2024-07-10)
 
 

@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
+	"reflect"
 	"time"
 
 	"cloud.google.com/go/bigtable/internal"
@@ -51,25 +51,32 @@ const (
 	metricLabelKeyAppProfile         = "app_profile"
 	metricLabelKeyMethod             = "method"
 	metricLabelKeyStatus             = "status"
+	metricLabelKeyTag                = "tag"
 	metricLabelKeyStreamingOperation = "streaming"
 	metricLabelKeyClientName         = "client_name"
 	metricLabelKeyClientUID          = "client_uid"
 
 	// Metric names
-	metricNameOperationLatencies = "operation_latencies"
-	metricNameAttemptLatencies   = "attempt_latencies"
-	metricNameServerLatencies    = "server_latencies"
-	metricNameRetryCount         = "retry_count"
+	metricNameOperationLatencies   = "operation_latencies"
+	metricNameAttemptLatencies     = "attempt_latencies"
+	metricNameServerLatencies      = "server_latencies"
+	metricNameAppBlockingLatencies = "application_latencies"
+	metricNameRetryCount           = "retry_count"
+	metricNameDebugTags            = "debug_tags"
+	metricNameConnErrCount         = "connectivity_error_count"
 
 	// Metric units
 	metricUnitMS    = "ms"
 	metricUnitCount = "1"
+	maxAttrsLen     = 12 // Monitored resource labels +  Metric labels
 )
 
-// These are effectively const, but for testing purposes they are mutable
+// These are effectively constant, but for testing purposes they are mutable
 var (
 	// duration between two metric exports
-	defaultSamplePeriod = 5 * time.Minute
+	defaultSamplePeriod = time.Minute
+
+	metricsErrorPrefix = "bigtable-metrics: "
 
 	clientName = fmt.Sprintf("go-bigtable/%v", internal.Version)
 
@@ -78,7 +85,7 @@ var (
 		800.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0, 100000.0, 200000.0,
 		400000.0, 800000.0, 1600000.0, 3200000.0}
 
-	// All the built-in metrics have same attributes except 'status' and 'streaming'
+	// All the built-in metrics have same attributes except 'tag', 'status' and 'streaming'
 	// These attributes need to be added to only few of the metrics
 	metricsDetails = map[string]metricInfo{
 		metricNameOperationLatencies: {
@@ -102,7 +109,14 @@ var (
 			},
 			recordedPerAttempt: true,
 		},
+		metricNameAppBlockingLatencies: {},
 		metricNameRetryCount: {
+			additionalAttrs: []string{
+				metricLabelKeyStatus,
+			},
+			recordedPerAttempt: true,
+		},
+		metricNameConnErrCount: {
 			additionalAttrs: []string{
 				metricLabelKeyStatus,
 			},
@@ -120,7 +134,21 @@ var (
 		return "go-" + uuid.NewString() + "@" + hostname, nil
 	}
 
-	exporterOpts = []option.ClientOption{}
+	endpointOptionType = reflect.TypeOf(option.WithEndpoint(""))
+
+	// GCM exporter should use the same options as Bigtable client
+	// createExporterOptions takes Bigtable client options and returns exporter options,
+	// filtering out any WithEndpoint option to ensure the metrics exporter uses its default endpoint.
+	// Overwritten in tests
+	createExporterOptions = func(btOpts ...option.ClientOption) []option.ClientOption {
+		filteredOptions := []option.ClientOption{}
+		for _, opt := range btOpts {
+			if reflect.TypeOf(opt) != endpointOptionType {
+				filteredOptions = append(filteredOptions, opt)
+			}
+		}
+		return filteredOptions
+	}
 )
 
 type metricInfo struct {
@@ -138,16 +166,19 @@ type builtinMetricsTracerFactory struct {
 	// do not change across different function calls on client
 	clientAttributes []attribute.KeyValue
 
-	operationLatencies metric.Float64Histogram
-	serverLatencies    metric.Float64Histogram
-	attemptLatencies   metric.Float64Histogram
-	retryCount         metric.Int64Counter
+	operationLatencies   metric.Float64Histogram
+	serverLatencies      metric.Float64Histogram
+	attemptLatencies     metric.Float64Histogram
+	appBlockingLatencies metric.Float64Histogram
+	retryCount           metric.Int64Counter
+	connErrCount         metric.Int64Counter
+	debugTags            metric.Int64Counter
 }
 
-func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appProfile string, metricsProvider MetricsProvider) (*builtinMetricsTracerFactory, error) {
+func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appProfile string, metricsProvider MetricsProvider, opts ...option.ClientOption) (*builtinMetricsTracerFactory, error) {
 	clientUID, err := generateClientUID()
 	if err != nil {
-		log.Printf("built-in metrics: generateClientUID failed: %v. Using empty string in the %v metric atteribute", err, metricLabelKeyClientUID)
+		return nil, err
 	}
 
 	tracerFactory := &builtinMetricsTracerFactory{
@@ -165,7 +196,7 @@ func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appP
 	var meterProvider *sdkmetric.MeterProvider
 	if metricsProvider == nil {
 		// Create default meter provider
-		mpOptions, err := builtInMeterProviderOptions(project)
+		mpOptions, err := builtInMeterProviderOptions(project, opts...)
 		if err != nil {
 			return tracerFactory, err
 		}
@@ -190,8 +221,9 @@ func newBuiltinMetricsTracerFactory(ctx context.Context, project, instance, appP
 	return tracerFactory, err
 }
 
-func builtInMeterProviderOptions(project string) ([]sdkmetric.Option, error) {
-	defaultExporter, err := newMonitoringExporter(context.Background(), project, exporterOpts...)
+func builtInMeterProviderOptions(project string, opts ...option.ClientOption) ([]sdkmetric.Option, error) {
+	allOpts := createExporterOptions(opts...)
+	defaultExporter, err := newMonitoringExporter(context.Background(), project, allOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -240,10 +272,38 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 		return err
 	}
 
+	// Create application_latencies
+	tf.appBlockingLatencies, err = meter.Float64Histogram(
+		metricNameAppBlockingLatencies,
+		metric.WithDescription("The latency of the client application consuming available response data."),
+		metric.WithUnit(metricUnitMS),
+		metric.WithExplicitBucketBoundaries(bucketBounds...),
+	)
+	if err != nil {
+		return err
+	}
+
 	// Create retry_count
 	tf.retryCount, err = meter.Int64Counter(
 		metricNameRetryCount,
 		metric.WithDescription("The number of additional RPCs sent after the initial attempt."),
+		metric.WithUnit(metricUnitCount),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Create connectivity_error_count
+	tf.connErrCount, err = meter.Int64Counter(
+		metricNameConnErrCount,
+		metric.WithDescription("Number of requests that failed to reach the Google datacenter. (Requests without google response headers"),
+		metric.WithUnit(metricUnitCount),
+	)
+
+	// Create debug_tags
+	tf.debugTags, err = meter.Int64Counter(
+		metricNameDebugTags,
+		metric.WithDescription("A counter of internal client events used for debugging."),
 		metric.WithUnit(metricUnitCount),
 	)
 	return err
@@ -260,16 +320,23 @@ type builtinMetricsTracer struct {
 	// do not change across different operations on client
 	clientAttributes []attribute.KeyValue
 
-	instrumentOperationLatencies metric.Float64Histogram
-	instrumentServerLatencies    metric.Float64Histogram
-	instrumentAttemptLatencies   metric.Float64Histogram
-	instrumentRetryCount         metric.Int64Counter
+	instrumentOperationLatencies   metric.Float64Histogram
+	instrumentServerLatencies      metric.Float64Histogram
+	instrumentAttemptLatencies     metric.Float64Histogram
+	instrumentAppBlockingLatencies metric.Float64Histogram
+	instrumentRetryCount           metric.Int64Counter
+	instrumentConnErrCount         metric.Int64Counter
+	instrumentDebugTags            metric.Int64Counter
 
 	tableName   string
 	method      string
 	isStreaming bool
 
 	currOp opTracer
+}
+
+func (b *builtinMetricsTracer) setMethod(m string) {
+	b.method = "Bigtable." + m
 }
 
 // opTracer is used to record metrics for the entire operation, including retries.
@@ -284,6 +351,8 @@ type opTracer struct {
 	status string
 
 	currAttempt attemptTracer
+
+	appBlockingLatency float64
 }
 
 func (o *opTracer) setStartTime(t time.Time) {
@@ -296,6 +365,10 @@ func (o *opTracer) setStatus(status string) {
 
 func (o *opTracer) incrementAttemptCount() {
 	o.attemptCount++
+}
+
+func (o *opTracer) incrementAppBlockingLatency(latency float64) {
+	o.appBlockingLatency += latency
 }
 
 // attemptTracer is used to record metrics for each individual attempt of the operation.
@@ -352,10 +425,13 @@ func (tf *builtinMetricsTracerFactory) createBuiltinMetricsTracer(ctx context.Co
 		currOp:           currOpTracer,
 		clientAttributes: tf.clientAttributes,
 
-		instrumentOperationLatencies: tf.operationLatencies,
-		instrumentServerLatencies:    tf.serverLatencies,
-		instrumentAttemptLatencies:   tf.attemptLatencies,
-		instrumentRetryCount:         tf.retryCount,
+		instrumentOperationLatencies:   tf.operationLatencies,
+		instrumentServerLatencies:      tf.serverLatencies,
+		instrumentAttemptLatencies:     tf.attemptLatencies,
+		instrumentAppBlockingLatencies: tf.appBlockingLatencies,
+		instrumentRetryCount:           tf.retryCount,
+		instrumentConnErrCount:         tf.connErrCount,
+		instrumentDebugTags:            tf.debugTags,
 
 		tableName:   tableName,
 		isStreaming: isStreaming,
@@ -366,9 +442,10 @@ func (tf *builtinMetricsTracerFactory) createBuiltinMetricsTracer(ctx context.Co
 // - converts metric attributes values captured throughout the operation / attempt
 // to OpenTelemetry attributes format,
 // - combines these with common client attributes and returns
-func (mt *builtinMetricsTracer) toOtelMetricAttrs(metricName string) ([]attribute.KeyValue, error) {
+func (mt *builtinMetricsTracer) toOtelMetricAttrs(metricName string) (attribute.Set, error) {
+	attrKeyValues := make([]attribute.KeyValue, 0, maxAttrsLen)
 	// Create attribute key value pairs for attributes common to all metricss
-	attrKeyValues := []attribute.KeyValue{
+	attrKeyValues = append(attrKeyValues,
 		attribute.String(metricLabelKeyMethod, mt.method),
 
 		// Add resource labels to otel metric labels.
@@ -380,13 +457,13 @@ func (mt *builtinMetricsTracer) toOtelMetricAttrs(metricName string) ([]attribut
 		// use last attempt's cluster and zone
 		attribute.String(monitoredResLabelKeyCluster, mt.currOp.currAttempt.clusterID),
 		attribute.String(monitoredResLabelKeyZone, mt.currOp.currAttempt.zoneID),
-	}
+	)
 	attrKeyValues = append(attrKeyValues, mt.clientAttributes...)
 
 	// Get metric details
 	mDetails, found := metricsDetails[metricName]
 	if !found {
-		return attrKeyValues, fmt.Errorf("unable to create attributes list for unknown metric: %v", metricName)
+		return attribute.Set{}, fmt.Errorf("unable to create attributes list for unknown metric: %v", metricName)
 	}
 
 	status := mt.currOp.status
@@ -402,9 +479,10 @@ func (mt *builtinMetricsTracer) toOtelMetricAttrs(metricName string) ([]attribut
 		case metricLabelKeyStreamingOperation:
 			attrKeyValues = append(attrKeyValues, attribute.Bool(metricLabelKeyStreamingOperation, mt.isStreaming))
 		default:
-			return attrKeyValues, fmt.Errorf("unknown additional attribute: %v", attrKey)
+			return attribute.Set{}, fmt.Errorf("unknown additional attribute: %v", attrKey)
 		}
 	}
 
-	return attrKeyValues, nil
+	attrSet := attribute.NewSet(attrKeyValues...)
+	return attrSet, nil
 }

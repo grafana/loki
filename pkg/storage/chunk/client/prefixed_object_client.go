@@ -23,6 +23,10 @@ func (p PrefixedObjectClient) ObjectExists(ctx context.Context, objectKey string
 	return p.downstreamClient.ObjectExists(ctx, p.prefix+objectKey)
 }
 
+func (p PrefixedObjectClient) GetAttributes(ctx context.Context, objectKey string) (ObjectAttributes, error) {
+	return p.downstreamClient.GetAttributes(ctx, p.prefix+objectKey)
+}
+
 func (p PrefixedObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
 }

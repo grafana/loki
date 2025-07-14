@@ -9,6 +9,8 @@ weight:  600
 
 # Pipelines
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 A detailed look at how to set up Promtail to process your log lines, including
 extracting metrics and labels.
 
@@ -31,13 +33,13 @@ stages:
    condition.
 
 Typical pipelines will start with a parsing stage (such as a
-[regex]({{< relref "./stages/regex" >}}) or [json]({{< relref "./stages/json" >}}) stage) to extract data
+[regex](../stages/regex/) or [json](../stages/json/) stage) to extract data
 from the log line. Then, a series of action stages will be present to do
 something with that extracted data. The most common action stage will be a
-[labels]({{< relref "./stages/labels" >}}) stage to turn extracted data into a label.
+[labels](../stages/labels/) stage to turn extracted data into a label.
 
-A common stage will also be the [match]({{< relref "./stages/match" >}}) stage to selectively
-apply stages or drop entries based on a [LogQL stream selector and filter expressions]({{< relref "../../query" >}}).
+A common stage will also be the [match](../stages/match/) stage to selectively
+apply stages or drop entries based on a [LogQL stream selector and filter expressions](../../../query/).
 
 Note that pipelines can not currently be used to deduplicate logs; Grafana Loki will
 receive the same log line multiple times if, for example:
@@ -203,5 +205,5 @@ given log entry.
 
 ## Stages
 
-Refer to the [Promtail Stages Configuration Reference]({{< relref "./stages/_index.md#promtail-pipeline-stages" >}}) for the
+Refer to the [Promtail Stages Configuration Reference](../stages/#promtail-pipeline-stages) for the
 schema on the various supported stages supported.

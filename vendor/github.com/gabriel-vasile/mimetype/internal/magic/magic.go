@@ -154,7 +154,7 @@ func ftyp(sigs ...[]byte) Detector {
 			return false
 		}
 		for _, s := range sigs {
-			if bytes.Equal(raw[4:12], append([]byte("ftyp"), s...)) {
+			if bytes.Equal(raw[8:12], s) {
 				return true
 			}
 		}
@@ -238,4 +238,14 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+type readBuf []byte
+
+func (b *readBuf) advance(n int) bool {
+	if n < 0 || len(*b) < n {
+		return false
+	}
+	*b = (*b)[n:]
+	return true
 }

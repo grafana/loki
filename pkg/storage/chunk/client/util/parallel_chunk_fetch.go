@@ -5,12 +5,14 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/client/util")
 
 var decodeContextPool = sync.Pool{
 	New: func() interface{} {
@@ -20,9 +22,10 @@ var decodeContextPool = sync.Pool{
 
 // GetParallelChunks fetches chunks in parallel (up to maxParallel).
 func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chunk, f func(context.Context, *chunk.DecodeContext, chunk.Chunk) (chunk.Chunk, error)) ([]chunk.Chunk, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetParallelChunks")
-	defer sp.Finish()
-	sp.LogFields(otlog.Int("requested", len(chunks)))
+	ctx, sp := tracer.Start(ctx, "GetParallelChunks")
+	defer sp.End()
+
+	sp.SetAttributes(attribute.Int("requested", len(chunks)))
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -66,18 +69,11 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 		}
 	}
 
-	sp.LogFields(otlog.Int("fetched", len(result)))
+	sp.SetAttributes(attribute.Int("fetched", len(result)))
 	if lastErr != nil {
 		level.Error(util_log.Logger).Log("msg", "error fetching chunks", "err", lastErr)
 	}
 
 	// Return any chunks we did receive: a partial result may be useful
 	return result, lastErr
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

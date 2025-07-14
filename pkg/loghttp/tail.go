@@ -83,7 +83,7 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 
 	req.Query, err = parseRegexQuery(r)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	req.Limit, err = limit(r)

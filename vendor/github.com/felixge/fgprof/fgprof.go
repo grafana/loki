@@ -81,6 +81,11 @@ type profiler struct {
 	selfFrame *runtime.Frame
 }
 
+// nullTerminationWorkaround deals with a regression in go1.23, see:
+// - https://github.com/felixge/fgprof/issues/33
+// - https://go-review.googlesource.com/c/go/+/609815
+var nullTerminationWorkaround = runtime.Version() == "go1.23.0"
+
 // GoroutineProfile returns the stacks of all goroutines currently managed by
 // the scheduler. This includes both goroutines that are currently running
 // (On-CPU), as well as waiting (Off-CPU).
@@ -107,6 +112,11 @@ func (p *profiler) GoroutineProfile() []runtime.StackRecord {
 	// p.stacks dynamically as well, but let's not over-engineer this until we
 	// understand those cases better.
 	for {
+		if nullTerminationWorkaround {
+			for i := range p.stacks {
+				p.stacks[i].Stack0 = [32]uintptr{}
+			}
+		}
 		n, ok := runtime.GoroutineProfile(p.stacks)
 		if !ok {
 			p.stacks = make([]runtime.StackRecord, int(float64(n)*1.1))

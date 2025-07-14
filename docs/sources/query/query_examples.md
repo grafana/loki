@@ -4,7 +4,7 @@ menuTitle: Query examples
 description: Provides LogQL query examples with explanations on what those queries accomplish.
 aliases: 
 - ../logql/query_examples/
-weight: 50 
+weight: 800 
 ---
 
 # Query examples

@@ -9,9 +9,7 @@ import (
 )
 
 type Config struct {
-	// TODO(twhitney): This needs to be a per-tenant config
-	Enabled          bool                    `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester metric aggregation is enabled."`
-	DownsamplePeriod time.Duration           `yaml:"downsample_period"`
+	SamplePeriod     time.Duration           `yaml:"sample_period"`
 	LokiAddr         string                  `yaml:"loki_address,omitempty" doc:"description=The address of the Loki instance to push aggregated metrics to."`
 	WriteTimeout     time.Duration           `yaml:"timeout,omitempty" doc:"description=The timeout for writing to Loki."`
 	PushPeriod       time.Duration           `yaml:"push_period,omitempty" doc:"description=How long to wait in between pushes to Loki."`
@@ -27,45 +25,39 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
-	fs.BoolVar(
-		&cfg.Enabled,
-		prefix+"metric-aggregation.enabled",
-		false,
-		"Flag to enable or disable metric aggregation.",
-	)
 	fs.DurationVar(
-		&cfg.DownsamplePeriod,
-		prefix+"metric-aggregation.downsample-period",
+		&cfg.SamplePeriod,
+		prefix+"downsample-period",
 		10*time.Second,
-		"How often to downsample metrics from raw push observations.",
+		"How often to sample metrics and patterns from raw push observations.",
 	)
 	fs.StringVar(
 		&cfg.LokiAddr,
-		prefix+"metric-aggregation.loki-address",
+		prefix+"loki-address",
 		"",
-		"Loki address to send aggregated metrics to.",
+		"Loki address to send aggregations to.",
 	)
 	fs.DurationVar(
 		&cfg.WriteTimeout,
-		prefix+"metric-aggregation.timeout",
+		prefix+"timeout",
 		10*time.Second,
 		"How long to wait write response from Loki",
 	)
 	fs.DurationVar(
 		&cfg.PushPeriod,
-		prefix+"metric-aggregation.push-period",
+		prefix+"push-period",
 		30*time.Second,
 		"How long to wait write response from Loki",
 	)
 	fs.BoolVar(
 		&cfg.UseTLS,
-		prefix+"metric-aggregation.tls",
+		prefix+"tls",
 		false,
 		"Does the loki connection use TLS?",
 	)
 
-	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+"metric-aggregation", fs)
-	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+"metric-aggregation.", fs)
+	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+".", fs)
+	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+".", fs)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -105,3 +97,8 @@ func (s *secretValue) Set(val string) error {
 func (s *secretValue) Get() any { return string(*s) }
 
 func (s *secretValue) String() string { return string(*s) }
+
+type Limits interface {
+	MetricAggregationEnabled(userID string) bool
+	PatternPersistenceEnabled(userID string) bool
+}

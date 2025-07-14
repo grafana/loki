@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -18,8 +19,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-var nilShardMetrics = NewShardMapperMetrics(nil)
-var nilRangeMetrics = NewRangeMapperMetrics(nil)
+var (
+	nilShardMetrics = NewShardMapperMetrics(nil)
+	nilRangeMetrics = NewRangeMapperMetrics(nil)
+)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -61,6 +64,7 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true, []string{ShardQuantileOverTime}},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s)`, true, []string{ShardQuantileOverTime}},
 		{
 			`
 			  (quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a) > 1)
@@ -72,8 +76,12 @@ func TestMappingEquivalence(t *testing.T) {
 		},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardLastOverTime}},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -187,13 +195,16 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	}{
 		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
 			shards,
 			streams,
 		)
 
-		opts := EngineOpts{}
+		opts := EngineOpts{
+			MaxCountMinSketchHeapSize: 10_000,
+		}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
@@ -236,8 +247,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
 				tc.query,
-				time.Unix(0, int64(rounds+1)),
-				time.Unix(0, int64(rounds+1)),
+				time.Unix(10, 0),
+				time.Unix(10, 0),
 				0,
 				0,
 				logproto.FORWARD,
@@ -246,11 +257,12 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			qry := regular.Query(params)
+			qry := regular.Query(params.Copy())
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
-			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -261,11 +273,138 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 
 			res, err := qry.Exec(ctx)
 			require.NoError(t, err)
+			require.NotEmpty(t, res.Data.(promql.Vector))
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.NoError(t, err)
 
 			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
+		})
+	}
+}
+
+func TestApproxTopkSketches(t *testing.T) {
+	var (
+		rounds = 20
+		limit  = 100
+	)
+
+	limits := &fakeLimits{
+		maxSeries: math.MaxInt64,
+		timeout:   time.Hour,
+	}
+
+	for _, tc := range []struct {
+		labelShards   int
+		totalStreams  int
+		shardedQuery  string
+		regularQuery  string
+		realtiveError float64
+		// cardinalityEstimate int
+	}{
+		// Note:our data generation results in less spread between topk things for 10k streams than for 100k streams
+		// if we have 1k streams, we can get much more accurate results for topk 10 than topk 100
+		{
+			labelShards:   3,
+			totalStreams:  100,
+			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0012,
+			// cardinalityEstimate: 3,
+		},
+		{
+			labelShards:   10,
+			totalStreams:  100,
+			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.005,
+		},
+		{
+			labelShards:   10,
+			totalStreams:  1_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0015,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  1_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.022,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  10_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.008,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  100_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0015,
+		},
+	} {
+		t.Run(fmt.Sprintf("%s/%d/%d", tc.shardedQuery, tc.labelShards, tc.totalStreams), func(t *testing.T) {
+			streams := randomStreams(tc.totalStreams, rounds+1, tc.labelShards, []string{"a", "b", "c", "d"}, true)
+
+			q := NewMockQuerier(
+				tc.labelShards,
+				streams,
+			)
+
+			opts := EngineOpts{
+				MaxCountMinSketchHeapSize: 10_000,
+			}
+			regular := NewEngine(opts, q, limits, log.NewNopLogger())
+			sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, limits, log.NewNopLogger())
+
+			// for an instant query we set the start and end to the same timestamp
+			// plus set step and interval to 0
+			params, err := NewLiteralParams(
+				tc.regularQuery,
+				time.Unix(1, 0),
+				time.Unix(1, 0),
+				0,
+				0,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			qry := regular.Query(params.Copy())
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			strategy := NewPowerOfTwoStrategy(ConstantShards(tc.labelShards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+
+			params.queryString = tc.shardedQuery
+			params.queryExpr, err = syntax.ParseExpr(params.queryString)
+			require.NoError(t, err)
+
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+			require.NotEmpty(t, res.Data.(promql.Vector))
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
+
+			// we can't check this here currently because the CMS vector step evaluators Next function translates
+			// each steps probabilistic result into just a promql.Vector
+			// require.Equal(t, tc.cardinalityEstimate, res.Data.(CountMinSketchVector).F.HyperLogLog.Estimate())
 		})
 	}
 }
@@ -591,7 +730,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			rangeQry := downstreamEngine.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: rangeExpr})
 			rangeRes, err := rangeQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			require.Equal(t, res.Data, rangeRes.Data)
 		})
@@ -661,14 +800,16 @@ func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha flo
 
 	e := make([]float64, len(expected))
 	a := make([]float64, len(expected))
+	inTopk := 0
 	for i := 0; i < len(expected); i++ {
-		require.Equal(t, expected[i].Metric, actual[i].Metric)
-
-		e[i] = expected[i].F
-		a[i] = expected[i].F
+		if labels.Equal(expected[i].Metric, actual[i].Metric) {
+			e[i] = expected[i].F
+			a[i] = actual[i].F
+			inTopk++
+		}
 	}
+	require.True(t, float64(inTopk/len(expected)) > 0.9, "not enough of the real topk elements were in the output %f", float64(inTopk/len(expected)))
 	require.InEpsilonSlice(t, e, a, alpha)
-
 }
 
 func TestFormat_ShardedExpr(t *testing.T) {
@@ -697,7 +838,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -713,7 +854,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -729,7 +870,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},

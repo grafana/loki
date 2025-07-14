@@ -2,6 +2,23 @@
 
 ## Versions
 
+### 0.34.6
+
+- Update to Go 1.24.1
+
+### 0.34.5
+
+- Update to Go 1.23.6
+
+### 0.34.4
+
+- Update to Go 1.23.5
+
+### 0.34.0
+
+- Update to Go 1.23.1
+- Update to Alpine 3.20.3
+
 ### 0.33.6
 
 - Update to go 1.22.6

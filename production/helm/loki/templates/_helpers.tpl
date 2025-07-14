@@ -134,7 +134,6 @@ helm.sh/chart: {{ include "loki.chart" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
@@ -205,6 +204,10 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
+object_store:
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- else }}
 {{- if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
@@ -284,6 +287,9 @@ azure:
   {{- with .endpointSuffix }}
   endpoint_suffix: {{ . }}
   {{- end }}
+  {{- with .chunkDelimiter }}
+  chunk_delimiter: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "alibabacloud" -}}
 {{- with .Values.loki.storage.alibabacloud }}
@@ -303,6 +309,7 @@ swift:
 filesystem:
   chunks_directory: {{ .chunks_directory }}
   rules_directory: {{ .rules_directory }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -422,10 +429,21 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Ruler Thanos Storage Config */}}
+{{- define "loki.rulerThanosStorageConfig" -}}
+{{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+  backend: {{ .Values.loki.storage.object_store.type }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- if .Values.minio.enabled }}
+  {{- if .Values.loki.storage.use_thanos_objstore }}
+  backend: {{ .Values.loki.storage.object_store.type }}
+    {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
+  {{- else if .Values.minio.enabled }}
   backend: "s3"
   s3:
     bucket_name: admin
@@ -537,11 +555,16 @@ Memcached Exporter Docker image
 {{- include "loki.image" $dict -}}
 {{- end }}
 
+{{/* Allow KubeVersion to be overridden. */}}
+{{- define "loki.kubeVersion" -}}
+  {{- default .Capabilities.KubeVersion.Version .Values.kubeVersionOverride -}}
+{{- end -}}
+
 {{/*
 Return the appropriate apiVersion for ingress.
 */}}
 {{- define "loki.ingress.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" (include "loki.kubeVersion" .)) -}}
       {{- print "networking.k8s.io/v1" -}}
   {{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
     {{- print "networking.k8s.io/v1beta1" -}}
@@ -561,14 +584,14 @@ Return if ingress is stable.
 Return if ingress supports ingressClassName.
 */}}
 {{- define "loki.ingress.supportsIngressClassName" -}}
-  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" (include "loki.kubeVersion" .))) -}}
 {{- end -}}
 
 {{/*
 Return if ingress supports pathType.
 */}}
 {{- define "loki.ingress.supportsPathType" -}}
-  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" (include "loki.kubeVersion" .))) -}}
 {{- end -}}
 
 {{/*
@@ -586,7 +609,6 @@ Generate list of ingress service paths based on deployment type
 {{- end -}}
 {{- end -}}
 
-
 {{/*
 Ingress service paths for distributed deployment
 */}}
@@ -597,6 +619,8 @@ Ingress service paths for distributed deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $compactorServiceName "paths" .Values.ingress.paths.compactor)}}
 {{- end -}}
 
 {{/*
@@ -609,6 +633,7 @@ Ingress service paths for legacy simple scalable deployment when backend compone
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $backendServiceName := include "loki.backendFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -618,6 +643,7 @@ Ingress service paths for legacy simple scalable deployment
 {{- $readServiceName := include "loki.readFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- $writeServiceName := include "loki.writeFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
@@ -630,6 +656,7 @@ Ingress service paths for single binary deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -702,7 +729,11 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
+{{- if .Values.enterprise.tokengen.adminTokenSecret }}
+{{- .Values.enterprise.tokengen.adminTokenSecret -}}
+{{- else }}
 {{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
 {{- end -}}
 
 {{/* Prefix for provisioned secrets created for each provisioned tenant */}}
@@ -716,7 +747,7 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
-{{- define "loki.nginxFile" }}
+{{- define "loki.nginxFile" -}}
 worker_processes  5;  ## Default: 1
 error_log  /dev/stderr;
 pid        /tmp/nginx.pid;
@@ -733,7 +764,7 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
-  client_max_body_size  4M;
+  client_max_body_size  {{ .Values.gateway.nginxConfig.clientMaxBodySize }};
 
   proxy_read_timeout    600; ## 10 minutes
   proxy_send_timeout    600;
@@ -766,6 +797,17 @@ http {
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
   {{- tpl . $ | nindent 2 }}
   {{- end }}
+
+  # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
+  map $http_x_query_tags $query_tags {
+    ""        "noop=";            # When header is empty, set noop=
+    default   $http_x_query_tags; # Otherwise, preserve the original value
+  }
+
+  # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+  proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
 
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
@@ -854,6 +896,12 @@ http {
     {{- $compactorUrl = $backendUrl }}
     {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
+
+    {{- if .Values.loki.ui.gateway.enabled }}
+    location ^~ /ui {
+      proxy_pass       {{ $distributorUrl }}$request_uri;
+    }
+    {{- end }}
 
     # Distributor
     location = /api/prom/push {
@@ -953,13 +1001,9 @@ http {
     # QueryFrontend, Querier
     location = /api/prom/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
@@ -983,7 +1027,7 @@ http {
 
 {{/* Configure enableServiceLinks in pod */}}
 {{- define "loki.enableServiceLinks" -}}
-{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.Version -}}
+{{- if semverCompare ">=1.13-0" (include "loki.kubeVersion" .) -}}
 {{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
 enableServiceLinks: true
 {{- else -}}
@@ -1047,15 +1091,43 @@ enableServiceLinks: false
 {{- printf "%s" $idxGatewayAddress }}
 {{- end }}
 
+{{/* Determine bloom-planner address */}}
+{{- define "loki.bloomPlannerAddress" -}}
+{{- $bloomPlannerAddress := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.bloomPlannerFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- printf "%s" $bloomPlannerAddress}}
+{{- end }}
+
+{{/* Determine bloom-gateway address */}}
+{{- define "loki.bloomGatewayAddresses" -}}
+{{- $bloomGatewayAddresses := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.bloomGatewayFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $bloomGatewayAddresses}}
+{{- end }}
+
 {{- define "loki.config.checksum" -}}
-checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
 {{- end -}}
 
 {{/*
 Return the appropriate apiVersion for PodDisruptionBudget.
 */}}
 {{- define "loki.pdb.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" (include "loki.kubeVersion" .)) -}}
     {{- print "policy/v1" -}}
   {{- else -}}
     {{- print "policy/v1beta1" -}}
@@ -1077,7 +1149,7 @@ Return the object store type for use with the test schema.
 Return the appropriate apiVersion for HorizontalPodAutoscaler.
 */}}
 {{- define "loki.hpa.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" (include "loki.kubeVersion" .)) -}}
       {{- print "autoscaling/v2" -}}
   {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
     {{- print "autoscaling/v2beta2" -}}
@@ -1085,3 +1157,32 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+compute a ConfigMap or Secret checksum only based on its .data content.
+This function needs to be called with a context object containing the following keys:
+- ctx: the current Helm context (what '.' is at the call site)
+- name: the file name of the ConfigMap or Secret
+*/}}
+{{- define "loki.configMapOrSecretContentHash" -}}
+{{ get (include (print .ctx.Template.BasePath .name) .ctx | fromYaml) "data" | toYaml | sha256sum }}
+{{- end }}
+
+{{/* Thanos object storage configuration helper to build
+the thanos_storage_config model*/}}
+{{- define "loki.thanosStorageConfig" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx.Values.loki.storage.object_store }}
+{{- if eq .type "s3" }}
+s3:
+{{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
+{{- else if eq .type "gcs" }}
+gcs:
+{{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
+{{- else if eq .type "azure" }}
+azure:
+{{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
+{{- end }}
+storage_prefix: {{ .storage_prefix }}
+{{- end }}
+{{- end }}

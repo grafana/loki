@@ -56,6 +56,7 @@ const (
 	recorderFound     = "found"
 	recorderSkipped   = "skipped"
 	recorderMissed    = "missed"
+	recorderEmpty     = "empty"
 	recorderFiltered  = "filtered"
 )
 

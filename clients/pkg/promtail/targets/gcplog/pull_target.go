@@ -127,7 +127,7 @@ func (t *pullTarget) consumeSubscription() {
 	defer t.cancel()
 
 	for t.backoff.Ongoing() {
-		err := t.sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
+		err := t.sub.Receive(t.ctx, func(_ context.Context, m *pubsub.Message) {
 			t.msgs <- m
 			t.backoff.Reset()
 		})

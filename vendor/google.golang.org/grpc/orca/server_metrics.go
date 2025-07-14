@@ -108,7 +108,7 @@ type ServerMetricsRecorder interface {
 	// SetMemoryUtilization sets the memory utilization server metric.  Must be
 	// in the range [0, 1].
 	SetMemoryUtilization(float64)
-	// DeleteMemoryUtilization deletes the memory utiliztion server metric to
+	// DeleteMemoryUtilization deletes the memory utilization server metric to
 	// prevent it from being sent.
 	DeleteMemoryUtilization()
 

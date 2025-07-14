@@ -3,12 +3,15 @@ package querier
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"golang.org/x/exp/slices"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
@@ -33,6 +36,10 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+var defaultQuorumConfig = ring.DoUntilQuorumConfig{
+	// Nothing here
+}
+
 type responseFromIngesters struct {
 	addr     string
 	response interface{}
@@ -40,28 +47,32 @@ type responseFromIngesters struct {
 
 // IngesterQuerier helps with querying the ingesters.
 type IngesterQuerier struct {
-	ring            ring.ReadRing
-	pool            *ring_client.Pool
-	extraQueryDelay time.Duration
-	logger          log.Logger
+	querierConfig          Config
+	ring                   ring.ReadRing
+	partitionRing          *ring.PartitionInstanceRing
+	getShardCountForTenant func(string) int
+	pool                   *ring_client.Pool
+	logger                 log.Logger
 }
 
-func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
+func NewIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, getShardCountForTenant func(string) int, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	factory := func(addr string) (ring_client.PoolClient, error) {
 		return client.New(clientCfg, addr)
 	}
 
-	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
+	return newIngesterQuerier(querierConfig, clientCfg, ring, partitionRing, getShardCountForTenant, ring_client.PoolAddrFunc(factory), metricsNamespace, logger)
 }
 
 // newIngesterQuerier creates a new IngesterQuerier and allows to pass a custom ingester client factory
 // used for testing purposes
-func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
+func newIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring.ReadRing, partitionRing *ring.PartitionInstanceRing, getShardCountForTenant func(string) int, clientFactory ring_client.PoolFactory, metricsNamespace string, logger log.Logger) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
-		ring:            ring,
-		pool:            clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
-		extraQueryDelay: extraQueryDelay,
-		logger:          logger,
+		querierConfig:          querierConfig,
+		ring:                   ring,
+		partitionRing:          partitionRing,
+		getShardCountForTenant: getShardCountForTenant, // limits?
+		pool:                   clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger, metricsNamespace),
+		logger:                 logger,
 	}
 
 	err := services.StartAndAwaitRunning(context.Background(), iq.pool)
@@ -72,38 +83,144 @@ func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 	return &iq, nil
 }
 
+type ctxKeyType string
+
+const (
+	partitionCtxKey ctxKeyType = "partitionCtx"
+)
+
+type PartitionContext struct {
+	isPartitioned bool
+	ingestersUsed map[string]PartitionIngesterUsed
+	mtx           sync.Mutex
+}
+
+type PartitionIngesterUsed struct {
+	client logproto.QuerierClient
+	addr   string
+}
+
+func (p *PartitionContext) AddClient(client logproto.QuerierClient, addr string) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if !p.isPartitioned {
+		return
+	}
+	p.ingestersUsed[addr] = PartitionIngesterUsed{client: client, addr: addr}
+}
+
+func (p *PartitionContext) RemoveClient(addr string) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if !p.isPartitioned {
+		return
+	}
+	delete(p.ingestersUsed, addr)
+}
+
+func (p *PartitionContext) SetIsPartitioned(isPartitioned bool) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	p.isPartitioned = isPartitioned
+}
+
+func (p *PartitionContext) IsPartitioned() bool {
+	return p.isPartitioned
+}
+
+func (p *PartitionContext) forQueriedIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+
+	ingestersUsed := make([]PartitionIngesterUsed, 0, len(p.ingestersUsed))
+	for _, ingester := range p.ingestersUsed {
+		ingestersUsed = append(ingestersUsed, ingester)
+	}
+
+	return concurrency.ForEachJobMergeResults(ctx, ingestersUsed, 0, func(ctx context.Context, job PartitionIngesterUsed) ([]responseFromIngesters, error) {
+		resp, err := f(ctx, job.client)
+		if err != nil {
+			return nil, err
+		}
+		return []responseFromIngesters{{addr: job.addr, response: resp}}, nil
+	})
+}
+
+// NewPartitionContext creates a new partition context
+// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+func NewPartitionContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, partitionCtxKey, &PartitionContext{
+		ingestersUsed: make(map[string]PartitionIngesterUsed),
+	})
+}
+
+func ExtractPartitionContext(ctx context.Context) *PartitionContext {
+	v, ok := ctx.Value(partitionCtxKey).(*PartitionContext)
+	if !ok {
+		return &PartitionContext{
+			ingestersUsed: make(map[string]PartitionIngesterUsed),
+		}
+	}
+	return v
+}
+
 // forAllIngesters runs f, in parallel, for all ingesters
-// TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	if q.querierConfig.QueryPartitionIngesters {
+		ExtractPartitionContext(ctx).SetIsPartitioned(true)
+		tenantID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tenantShards := q.getShardCountForTenant(tenantID)
+		subring, err := q.partitionRing.ShuffleShardWithLookback(tenantID, tenantShards, q.querierConfig.QueryIngestersWithin, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		replicationSets, err := subring.GetReplicationSetsForOperation(ring.Read)
+		if err != nil {
+			return nil, err
+		}
+		return q.forGivenIngesterSets(ctx, replicationSets, f)
+	}
+
 	replicationSet, err := q.ring.GetReplicationSetForOperation(ring.Read)
 	if err != nil {
 		return nil, err
 	}
 
-	return q.forGivenIngesters(ctx, replicationSet, f)
+	return q.forGivenIngesters(ctx, replicationSet, defaultQuorumConfig, f)
 }
 
-// forGivenIngesters runs f, in parallel, for given ingesters
-func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	cfg := ring.DoUntilQuorumConfig{
-		// Nothing here
+// forGivenIngesterSets runs f, in parallel, for given ingester sets
+func (q *IngesterQuerier) forGivenIngesterSets(ctx context.Context, replicationSet []ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	// Enable minimize requests if we can, so we initially query a single ingester per replication set, as each replication-set is one partition.
+	// Ingesters must supply zone information for this to have an effect.
+	config := ring.DoUntilQuorumConfig{
+		MinimizeRequests: true,
 	}
-	results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
+	return concurrency.ForEachJobMergeResults[ring.ReplicationSet, responseFromIngesters](ctx, replicationSet, 0, func(ctx context.Context, set ring.ReplicationSet) ([]responseFromIngesters, error) {
+		return q.forGivenIngesters(ctx, set, config, f)
+	})
+}
+
+// forGivenIngesters runs f, in parallel, for given ingesters until a quorum of responses are received
+func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, quorumConfig ring.DoUntilQuorumConfig, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	results, err := ring.DoUntilQuorum(ctx, replicationSet, quorumConfig, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
 		}
-
 		resp, err := f(ctx, client.(logproto.QuerierClient))
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
+		ExtractPartitionContext(ctx).AddClient(client.(logproto.QuerierClient), ingester.Addr)
 		return responseFromIngesters{ingester.Addr, resp}, nil
-	}, func(responseFromIngesters) {
-		// Nothing to do
+	}, func(cleanup responseFromIngesters) {
+		ExtractPartitionContext(ctx).RemoveClient(cleanup.addr)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +329,7 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 	}
 
 	// Instance a tail client for each ingester to re(connect)
-	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+	reconnectClients, err := q.forGivenIngesters(ctx, ring.ReplicationSet{Instances: reconnectIngesters}, defaultQuorumConfig, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Tail(ctx, req)
 	})
 	if err != nil {
@@ -260,7 +377,7 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "no active ingester found")
 	}
 
-	responses, err := q.forGivenIngesters(ctx, replicationSet, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	responses, err := q.forGivenIngesters(ctx, replicationSet, defaultQuorumConfig, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		resp, err := querierClient.TailersCount(ctx, &logproto.TailersCountRequest{})
 		if err != nil {
 			return nil, err
@@ -283,13 +400,22 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+	ingesterQueryFn := q.forAllIngesters
+
+	partitionCtx := ExtractPartitionContext(ctx)
+	if partitionCtx.IsPartitioned() {
+		// We need to query the same ingesters as the previous query
+		ingesterQueryFn = partitionCtx.forQueriedIngesters
+	}
+
+	resps, err := ingesterQueryFn(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
 			End:      through.Time(),
 		})
 	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +436,6 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 			Matchers: syntax.MatchersString(matchers),
 		})
 	})
-
 	if err != nil {
 		if isUnimplementedCallError(err) {
 			// Handle communication with older ingesters gracefully
@@ -344,7 +469,6 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 			AggregateBy:  aggregateBy,
 		})
 	})
-
 	if err != nil {
 		if isUnimplementedCallError(err) {
 			// Handle communication with older ingesters gracefully
@@ -366,7 +490,6 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	ingesterResponses, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.GetDetectedLabels(ctx, req)
 	})
-
 	if err != nil {
 		level.Error(q.logger).Log("msg", "error getting detected labels", "err", err)
 		return nil, err

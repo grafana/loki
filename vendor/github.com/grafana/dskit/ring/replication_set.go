@@ -10,7 +10,6 @@ import (
 
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go/ext"
 
 	"github.com/grafana/dskit/cancellation"
 	"github.com/grafana/dskit/spanlogger"
@@ -313,10 +312,10 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 
 	terminate := func(err error, cause string) ([]T, error) {
 		if cfg.Logger != nil && !errors.Is(err, context.Canceled) { // Cancellation is not an error.
-			ext.Error.Set(cfg.Logger.Span, true)
+			cfg.Logger.SetError()
 		}
 
-		contextTracker.cancelAllContexts(cancellation.NewErrorf(cause))
+		contextTracker.cancelAllContexts(cancellation.NewError(errors.New(cause)))
 		cleanupResultsAlreadyReceived()
 		return nil, err
 	}

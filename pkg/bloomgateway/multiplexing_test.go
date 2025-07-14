@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -55,15 +55,14 @@ func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.F
 func TestTask_RequestIterator(t *testing.T) {
 	ts := mktime("2024-01-24 12:00")
 	tenant := "fake"
-	tokenizer := v1.NewNGramTokenizer(4, 0)
 
 	t.Run("empty request yields empty iterator", func(t *testing.T) {
 		swb := seriesWithInterval{
 			interval: bloomshipper.Interval{Start: 0, End: math.MaxInt64},
 			series:   []*logproto.GroupedChunkRefs{},
 		}
-		task := newTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{}, nil)
-		it := task.RequestIter(tokenizer)
+		task := newTask(context.Background(), tenant, swb, nil, nil)
+		it := task.RequestIter()
 		// nothing to iterate over
 		require.False(t, it.Next())
 	})
@@ -75,6 +74,8 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-3 * time.Hour), Through: ts.Add(-2 * time.Hour), Checksum: 100},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "100")),
 				}},
 			},
 		}
@@ -85,9 +86,13 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 200},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "100")),
 				}},
 				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 300},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "200")),
 				}},
 			},
 		}
@@ -98,6 +103,8 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 400},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "200")),
 				}},
 			},
 		}
@@ -106,11 +113,11 @@ func TestTask_RequestIterator(t *testing.T) {
 
 		iters := make([]v2.PeekIterator[v1.Request], 0, len(tasks))
 		for _, task := range tasks {
-			iters = append(iters, v2.NewPeekIter(task.RequestIter(tokenizer)))
+			iters = append(iters, v2.NewPeekIter(task.RequestIter()))
 		}
 
 		// merge the request iterators using the heap sort iterator
-		it := v1.NewHeapIterator[v1.Request](func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
+		it := v1.NewHeapIterator(func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
 
 		// first item
 		require.True(t, it.Next())

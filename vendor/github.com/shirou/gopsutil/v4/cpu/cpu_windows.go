@@ -5,17 +5,23 @@ package cpu
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"github.com/yusufpapurcu/wmi"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
-var procGetNativeSystemInfo = common.Modkernel32.NewProc("GetNativeSystemInfo")
+var (
+	procGetNativeSystemInfo              = common.Modkernel32.NewProc("GetNativeSystemInfo")
+	procGetLogicalProcessorInformationEx = common.Modkernel32.NewProc("GetLogicalProcessorInformationEx")
+)
 
-type win32_Processor struct {
+type win32_Processor struct { //nolint:revive //FIXME
 	Family                    uint16
 	Manufacturer              string
 	Name                      string
@@ -31,13 +37,13 @@ type win32_Processor struct {
 // https://docs.microsoft.com/en-us/windows/desktop/api/winternl/nf-winternl-ntquerysysteminformation#system_processor_performance_information
 // additional fields documented here
 // https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/processor_performance.htm
-type win32_SystemProcessorPerformanceInformation struct {
-	IdleTime       int64 // idle time in 100ns (this is not a filetime).
-	KernelTime     int64 // kernel time in 100ns.  kernel time includes idle time. (this is not a filetime).
-	UserTime       int64 // usertime in 100ns (this is not a filetime).
-	DpcTime        int64 // dpc time in 100ns (this is not a filetime).
-	InterruptTime  int64 // interrupt time in 100ns
-	InterruptCount uint32
+type win32_SystemProcessorPerformanceInformation struct { //nolint:revive //FIXME
+	IdleTime       int64  // idle time in 100ns (this is not a filetime).
+	KernelTime     int64  // kernel time in 100ns.  kernel time includes idle time. (this is not a filetime).
+	UserTime       int64  // usertime in 100ns (this is not a filetime).
+	DpcTime        int64  // dpc time in 100ns (this is not a filetime).
+	InterruptTime  int64  // interrupt time in 100ns
+	InterruptCount uint64 // ULONG needs to be uint64
 }
 
 const (
@@ -45,10 +51,10 @@ const (
 
 	// systemProcessorPerformanceInformationClass information class to query with NTQuerySystemInformation
 	// https://processhacker.sourceforge.io/doc/ntexapi_8h.html#ad5d815b48e8f4da1ef2eb7a2f18a54e0
-	win32_SystemProcessorPerformanceInformationClass = 8
+	win32_SystemProcessorPerformanceInformationClass = 8 //nolint:revive //FIXME
 
 	// size of systemProcessorPerformanceInfoSize in memory
-	win32_SystemProcessorPerformanceInfoSize = uint32(unsafe.Sizeof(win32_SystemProcessorPerformanceInformation{}))
+	win32_SystemProcessorPerformanceInfoSize = uint32(unsafe.Sizeof(win32_SystemProcessorPerformanceInformation{})) //nolint:revive //FIXME
 )
 
 // Times returns times stat per cpu and combined for all CPUs
@@ -56,7 +62,7 @@ func Times(percpu bool) ([]TimesStat, error) {
 	return TimesWithContext(context.Background(), percpu)
 }
 
-func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
+func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
 	if percpu {
 		return perCPUTimes()
 	}
@@ -65,12 +71,14 @@ func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
 	var lpIdleTime common.FILETIME
 	var lpKernelTime common.FILETIME
 	var lpUserTime common.FILETIME
-	r, _, _ := common.ProcGetSystemTimes.Call(
+	// GetSystemTimes returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	r, _, err := common.ProcGetSystemTimes.Call(
 		uintptr(unsafe.Pointer(&lpIdleTime)),
 		uintptr(unsafe.Pointer(&lpKernelTime)),
 		uintptr(unsafe.Pointer(&lpUserTime)))
 	if r == 0 {
-		return ret, windows.GetLastError()
+		return nil, err
 	}
 
 	LOT := float64(0.0000001)
@@ -110,7 +118,7 @@ func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
 
 		cpu := InfoStat{
 			CPU:        int32(i),
-			Family:     fmt.Sprintf("%d", l.Family),
+			Family:     strconv.FormatUint(uint64(l.Family), 10),
 			VendorID:   l.Manufacturer,
 			ModelName:  l.Name,
 			Cores:      int32(l.NumberOfLogicalProcessors),
@@ -198,13 +206,70 @@ type systemInfo struct {
 	wProcessorRevision          uint16
 }
 
-func CountsWithContext(ctx context.Context, logical bool) (int, error) {
+type groupAffinity struct {
+	mask     uintptr // https://learn.microsoft.com/it-it/windows-hardware/drivers/kernel/interrupt-affinity-and-priority#about-kaffinity
+	group    uint16
+	reserved [3]uint16
+}
+
+// https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-processor_relationship
+type processorRelationship struct {
+	flags          byte
+	efficientClass byte
+	reserved       [20]byte
+	groupCount     uint16
+	groupMask      [1]groupAffinity
+}
+
+// https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-system_logical_processor_information_ex
+type systemLogicalProcessorInformationEx struct {
+	Relationship uint32
+	Size         uint32
+	Processor    processorRelationship
+}
+
+func getPhysicalCoreCount() (int, error) {
+	var length uint32
+	const relationAll = 0xffff
+	const relationProcessorCore = 0x0
+
+	// First call to determine the required buffer size
+	_, _, err := procGetLogicalProcessorInformationEx.Call(uintptr(relationAll), 0, uintptr(unsafe.Pointer(&length)))
+	if err != nil && !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return 0, fmt.Errorf("failed to get buffer size: %w", err)
+	}
+
+	// Allocate the buffer
+	buffer := make([]byte, length)
+
+	// Second call to retrieve the processor information
+	_, _, err = procGetLogicalProcessorInformationEx.Call(uintptr(relationAll), uintptr(unsafe.Pointer(&buffer[0])), uintptr(unsafe.Pointer(&length)))
+	if err != nil && !errors.Is(err, windows.NTE_OP_OK) {
+		return 0, fmt.Errorf("failed to get logical processor information: %w", err)
+	}
+
+	// Iterate through the buffer to count physical cores
+	offset := uintptr(0)
+	ncpus := 0
+	for offset < uintptr(length) {
+		info := (*systemLogicalProcessorInformationEx)(unsafe.Pointer(uintptr(unsafe.Pointer(&buffer[0])) + offset))
+		if info.Relationship == relationProcessorCore {
+			ncpus++
+		}
+		offset += uintptr(info.Size)
+	}
+
+	return ncpus, nil
+}
+
+func CountsWithContext(_ context.Context, logical bool) (int, error) {
 	if logical {
-		// https://github.com/giampaolo/psutil/blob/d01a9eaa35a8aadf6c519839e987a49d8be2d891/psutil/_psutil_windows.c#L97
+		// Get logical processor count https://github.com/giampaolo/psutil/blob/d01a9eaa35a8aadf6c519839e987a49d8be2d891/psutil/_psutil_windows.c#L97
 		ret := windows.GetActiveProcessorCount(windows.ALL_PROCESSOR_GROUPS)
 		if ret != 0 {
 			return int(ret), nil
 		}
+
 		var systemInfo systemInfo
 		_, _, err := procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&systemInfo)))
 		if systemInfo.dwNumberOfProcessors == 0 {
@@ -212,16 +277,7 @@ func CountsWithContext(ctx context.Context, logical bool) (int, error) {
 		}
 		return int(systemInfo.dwNumberOfProcessors), nil
 	}
-	// physical cores https://github.com/giampaolo/psutil/blob/d01a9eaa35a8aadf6c519839e987a49d8be2d891/psutil/_psutil_windows.c#L499
-	// for the time being, try with unreliable and slow WMI call…
-	var dst []win32_Processor
-	q := wmi.CreateQuery(&dst, "")
-	if err := common.WMIQueryWithContext(ctx, q, &dst); err != nil {
-		return 0, err
-	}
-	var count uint32
-	for _, d := range dst {
-		count += d.NumberOfCores
-	}
-	return int(count), nil
+
+	// Get physical core count https://github.com/giampaolo/psutil/blob/d01a9eaa35a8aadf6c519839e987a49d8be2d891/psutil/_psutil_windows.c#L499
+	return getPhysicalCoreCount()
 }

@@ -55,6 +55,8 @@ type LifecyclerConfig struct {
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
+	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
+	HideTokensInStatusPage bool `yaml:"-"`
 
 	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
 	// Default value is nil, which means that RandomTokenGenerator is used.
@@ -415,6 +417,11 @@ func (i *Lifecycler) setReadOnlyState(readOnly bool, readOnlyLastUpdated time.Ti
 	defer i.stateMtx.Unlock()
 	i.readOnly = readOnly
 	i.readOnlyLastUpdated = readOnlyLastUpdated
+	if readOnly {
+		i.lifecyclerMetrics.readonly.Set(1)
+	} else {
+		i.lifecyclerMetrics.readonly.Set(0)
+	}
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
@@ -432,7 +439,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
 			if !ok || ringDesc == nil {
-				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
+				return nil, false, fmt.Errorf("cannot claim tokens in an empty ring")
 			}
 
 			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
@@ -678,8 +685,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			now := time.Now()
 			// The instance doesn't exist in the ring, so it's safe to set the registered timestamp as of now.
 			i.setRegisteredAt(now)
-			// Clear read-only state, and set last update time to "now".
-			i.setReadOnlyState(false, now)
+			// Clear read-only state, and set last update time to "zero".
+			i.setReadOnlyState(false, time.Time{})
 
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
@@ -719,8 +726,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		}
 
 		tokens := Tokens(instanceDesc.Tokens)
-		level.Info(i.logger).Log("msg", "existing instance found in ring", "state", instanceDesc.State, "tokens",
-			len(tokens), "ring", i.RingName)
+		ro, rots := instanceDesc.GetReadOnlyState()
+		level.Info(i.logger).Log("msg", "existing instance found in ring", "state", instanceDesc.State, "tokens", len(tokens), "ring", i.RingName, "readOnly", ro, "readOnlyStateUpdate", rots)
 
 		// If the ingester fails to clean its ring entry up or unregister_on_shutdown=false, it can leave behind its
 		// ring state as LEAVING. Make sure to switch to the ACTIVE state.
@@ -961,12 +968,13 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
+	//nolint:staticcheck
 	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning
 		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
 		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
+		return fmt.Errorf("changing instance state from %v -> %v is disallowed", currState, state)
 	}
 
 	level.Info(i.logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
@@ -1083,7 +1091,7 @@ func (i *Lifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (i *Lifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(i, i.cfg.HeartbeatTimeout).handle(w, req)
+	newRingPageHandler(i, i.cfg.HeartbeatTimeout, i.cfg.HideTokensInStatusPage).handle(w, req)
 }
 
 // unregister removes our entry from consul.

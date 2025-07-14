@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_test "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -149,7 +148,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 		for j := 0; j < responseSize; j += maxIndexEntriesPerResponse {
 			expectedRanges = append(expectedRanges, batchRange{
 				start: j,
-				end:   util_math.Min(j+maxIndexEntriesPerResponse, responseSize),
+				end:   min(j+maxIndexEntriesPerResponse, responseSize),
 			})
 		}
 		expectedQueryKey = index.QueryKey(query)
@@ -446,7 +445,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 	fsImpl := func(series [][]refWithSizingInfo) sharding.ForSeriesFunc {
 		return sharding.ForSeriesFunc(
 			func(
-				ctx context.Context,
+				_ context.Context,
 				_ string,
 				_ tsdb_index.FingerprintFilter,
 				_, _ model.Time,
@@ -454,7 +453,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 					_ labels.Labels,
 					fp model.Fingerprint,
 					chks []tsdb_index.ChunkMeta,
-				) (stop bool), matchers ...*labels.Matcher) error {
+				) (stop bool), _ ...*labels.Matcher) error {
 
 				for _, s := range series {
 					chks := []tsdb_index.ChunkMeta{}

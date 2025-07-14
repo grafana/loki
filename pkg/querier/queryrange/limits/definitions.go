@@ -36,4 +36,6 @@ type Limits interface {
 	MaxStatsCacheFreshness(context.Context, string) time.Duration
 	MaxMetadataCacheFreshness(context.Context, string) time.Duration
 	VolumeEnabled(string) bool
+
+	ShardAggregations(string) []string
 }

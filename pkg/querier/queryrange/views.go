@@ -123,7 +123,7 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 				return false, err
 			}
 
-			err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
+			err = molecule.MessageEach(codec.NewBuffer(entry), func(_ int32, labelOrKey molecule.Value) (bool, error) {
 				s, err := labelOrKey.AsStringUnsafe()
 				if err != nil {
 					return false, err

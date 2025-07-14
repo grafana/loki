@@ -41,6 +41,10 @@ func NewGauge() Gauge {
 func (ms Gauge) MoveTo(dest Gauge) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Gauge{}
 }
@@ -53,5 +57,9 @@ func (ms Gauge) DataPoints() NumberDataPointSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Gauge) CopyTo(dest Gauge) {
 	dest.state.AssertMutable()
-	ms.DataPoints().CopyTo(dest.DataPoints())
+	copyOrigGauge(dest.orig, ms.orig)
+}
+
+func copyOrigGauge(dest, src *otlpmetrics.Gauge) {
+	dest.DataPoints = copyOrigNumberDataPointSlice(dest.DataPoints, src.DataPoints)
 }

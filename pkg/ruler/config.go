@@ -53,10 +53,10 @@ func (c *Config) Validate() error {
 
 type RemoteWriteConfig struct {
 	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key."`
+	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
 	Enabled             bool                                `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
-	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add X-Scope-OrgID header in remote write requests."`
+	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add an X-Scope-OrgID header in remote write requests with the tenant ID of a Loki tenant that the recording rules are part of."`
 }
 
 func (c *RemoteWriteConfig) Validate() error {

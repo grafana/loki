@@ -1,6 +1,7 @@
-package container // import "github.com/docker/docker/api/types/container"
+package container
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/go-connections/nat"
-	units "github.com/docker/go-units"
+	"github.com/docker/go-units"
 )
 
 // CgroupnsMode represents the cgroup namespace mode of the container
@@ -144,7 +145,7 @@ func (n NetworkMode) IsDefault() bool {
 
 // IsPrivate indicates whether container uses its private network stack.
 func (n NetworkMode) IsPrivate() bool {
-	return !(n.IsHost() || n.IsContainer())
+	return !n.IsHost() && !n.IsContainer()
 }
 
 // IsContainer indicates whether container uses a container network stack.
@@ -229,7 +230,7 @@ type PidMode string
 
 // IsPrivate indicates whether the container uses its own new pid namespace.
 func (n PidMode) IsPrivate() bool {
-	return !(n.IsHost() || n.IsContainer())
+	return !n.IsHost() && !n.IsContainer()
 }
 
 // IsHost indicates whether the container uses the host's pid namespace.
@@ -325,12 +326,12 @@ func ValidateRestartPolicy(policy RestartPolicy) error {
 			if policy.MaximumRetryCount < 0 {
 				msg += " and cannot be negative"
 			}
-			return &errInvalidParameter{fmt.Errorf(msg)}
+			return &errInvalidParameter{errors.New(msg)}
 		}
 		return nil
 	case RestartPolicyOnFailure:
 		if policy.MaximumRetryCount < 0 {
-			return &errInvalidParameter{fmt.Errorf("invalid restart policy: maximum retry count cannot be negative")}
+			return &errInvalidParameter{errors.New("invalid restart policy: maximum retry count cannot be negative")}
 		}
 		return nil
 	case "":

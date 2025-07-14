@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/loki/v3/pkg/tool/audit"
 	util_cfg "github.com/grafana/loki/v3/pkg/util/cfg"

@@ -9,8 +9,12 @@ NOTE: As semantic versioning states all 0.y.z releases can contain breaking chan
 We use *breaking :warning:* to mark changes that are not backward compatible (relates only to v0.y.z releases.)
 
 ## Unreleased
+- [#38](https://github.com/thanos-io/objstore/pull/38) GCS: Upgrade cloud.google.com/go/storage version to `v1.43.0`.
+- [#145](https://github.com/thanos-io/objstore/pull/145) Include content length in the response of Get and GetRange.
+- [#157](https://github.com/thanos-io/objstore/pull/157) Azure: Add `az_tenant_id`, `client_id` and `client_secret` configs.
 
 ### Fixed
+- [#153](https://github.com/thanos-io/objstore/pull/153) Metrics: Fix `objstore_bucket_operation_duration_seconds_*` for `get` and `get_range` operations.
 - [#117](https://github.com/thanos-io/objstore/pull/117) Metrics: Fix `objstore_bucket_operation_failures_total` incorrectly incremented if context is cancelled while reading object contents.
 - [#115](https://github.com/thanos-io/objstore/pull/115) GCS: Fix creation of bucket with GRPC connections. Also update storage client to `v1.40.0`.
 - [#102](https://github.com/thanos-io/objstore/pull/102) Azure: bump azblob sdk to get concurrency fixes.
@@ -49,6 +53,12 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#100](https://github.com/thanos-io/objstore/pull/100) s3: add DisableMultipart option
 - [#116](https://github.com/thanos-io/objstore/pull/116) Azure: Add new storage_create_container configuration property
 - [#128](https://github.com/thanos-io/objstore/pull/128) GCS: Add support for `ChunkSize` for writer.
+- [#130](https://github.com/thanos-io/objstore/pull/130) feat: Decouple creating bucket metrics from instrumenting the bucket
+- [#147](https://github.com/thanos-io/objstore/pull/147) feat: Add MaxRetries config to cos, gcs and obs.
+- [#150](https://github.com/thanos-io/objstore/pull/150) Add support for roundtripper wrapper.
+- [#63](https://github.com/thanos-io/objstore/pull/63) Implement a `IterWithAttributes` method on the bucket client.
+- [#155](https://github.com/thanos-io/objstore/pull/155) Add a `Provider` method on `objstore.Client`.
+
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.
@@ -59,4 +69,6 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#71](https://github.com/thanos-io/objstore/pull/71) Replace method `IsCustomerManagedKeyError` for a more generic `IsAccessDeniedErr` on the bucket interface.
 - [#89](https://github.com/thanos-io/objstore/pull/89) GCS: Upgrade cloud.google.com/go/storage version to `v1.35.1`.
 - [#123](https://github.com/thanos-io/objstore/pull/123) *: Upgrade minio-go version to `v7.0.71`.
+- [#132](https://github.com/thanos-io/objstore/pull/132) s3: Upgrade aws-sdk-go-v2/config version to `v1.27.30`
+
 ### Removed

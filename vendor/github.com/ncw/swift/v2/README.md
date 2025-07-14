@@ -170,3 +170,4 @@ Contributors
 - Jos Houtman <jos@houtman.it>
 - Paul Collins <paul.collins@canonical.com>
 - Joe Cai <joe.cai@bigcommerce.com>
+- fsantagostinobietti <6057026+fsantagostinobietti@users.noreply.github.com>

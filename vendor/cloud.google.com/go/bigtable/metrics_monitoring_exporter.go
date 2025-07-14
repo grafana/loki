@@ -89,28 +89,37 @@ func newMonitoringExporter(ctx context.Context, project string, opts ...option.C
 	}, nil
 }
 
+func wrapMetricsError(err error) error {
+	if err == nil {
+		return err
+	}
+	return fmt.Errorf("%v%w", metricsErrorPrefix, err)
+}
+
 // ForceFlush does nothing, the exporter holds no state.
-func (e *monitoringExporter) ForceFlush(ctx context.Context) error { return ctx.Err() }
+func (me *monitoringExporter) ForceFlush(ctx context.Context) error {
+	return wrapMetricsError(ctx.Err())
+}
 
 // Shutdown shuts down the client connections.
-func (e *monitoringExporter) Shutdown(ctx context.Context) error {
+func (me *monitoringExporter) Shutdown(ctx context.Context) error {
 	err := errShutdown
-	e.shutdownOnce.Do(func() {
-		close(e.shutdown)
-		err = errors.Join(ctx.Err(), e.client.Close())
+	me.shutdownOnce.Do(func() {
+		close(me.shutdown)
+		err = errors.Join(ctx.Err(), me.client.Close())
 	})
-	return err
+	return wrapMetricsError(err)
 }
 
 // Export exports OpenTelemetry Metrics to Google Cloud Monitoring.
 func (me *monitoringExporter) Export(ctx context.Context, rm *otelmetricdata.ResourceMetrics) error {
 	select {
 	case <-me.shutdown:
-		return errShutdown
+		return wrapMetricsError(errShutdown)
 	default:
 	}
 
-	return me.exportTimeSeries(ctx, rm)
+	return wrapMetricsError(me.exportTimeSeries(ctx, rm))
 }
 
 // Temporality returns the Temporality to use for an instrument kind.

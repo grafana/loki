@@ -53,16 +53,17 @@ func (i *streamIterator) Close() error {
 	return nil
 }
 
-// HeapIterator iterates over a heap of iterators with ability to push new iterators and get some properties like time of entry at peek and len
-// Not safe for concurrent use
-type HeapIterator interface {
+// MergeEntryIterator exposes additional fields that are used by the Tailer only.
+// Not safe for concurrent use!
+type MergeEntryIterator interface {
 	EntryIterator
+
 	Peek() time.Time
 	IsEmpty() bool
 	Push(EntryIterator)
 }
 
-// mergeEntryIterator iterates over a heap of iterators and merge duplicate entries.
+// mergeEntryIterator implements the MergeEntryIterator interface functions.
 type mergeEntryIterator struct {
 	tree  *loser.Tree[sortFields, EntryIterator]
 	stats *stats.Context
@@ -74,11 +75,11 @@ type mergeEntryIterator struct {
 	errs      []error
 }
 
-// NewMergeEntryIterator returns a new iterator which uses a heap to merge together entries for multiple iterators and deduplicate entries if any.
+// NewMergeEntryIterator returns a new iterator which uses a looser tree to merge together entries for multiple iterators and deduplicate entries if any.
 // The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // If you don't need to deduplicate entries, use `NewSortEntryIterator` instead.
-func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) HeapIterator {
+func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) MergeEntryIterator {
 	maxVal, less := treeLess(direction)
 	result := &mergeEntryIterator{stats: stats.FromContext(ctx)}
 	result.tree = loser.New(is, maxVal, sortFieldsAt, less, result.closeEntry)

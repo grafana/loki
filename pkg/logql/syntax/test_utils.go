@@ -12,7 +12,14 @@ import (
 // AssertExpressions function removes FastRegexMatchers from all Regexp matchers to allow simple objects comparison.
 // See removeFastRegexMatcherFromExpr function for the details.
 func AssertExpressions(t *testing.T, expected, actual Expr) {
-	require.Equal(t, removeFastRegexMatcherFromExpr(expected), removeFastRegexMatcherFromExpr(actual))
+	require.EqualExportedValues(
+		t,
+		removeFastRegexMatcherFromExpr(expected),
+		removeFastRegexMatcherFromExpr(actual),
+		"%s\n!=\n%s",
+		expected,
+		actual,
+	)
 }
 
 // AssertMatchers function removes FastRegexMatchers from all Regexp matchers to allow simple objects comparison.
@@ -38,24 +45,28 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 	if expr == nil {
 		return nil
 	}
-	expr.Walk(func(e Expr) {
+	expr.Walk(func(e Expr) bool {
 		switch typed := e.(type) {
 		case *MatchersExpr:
 			typed.Mts = RemoveFastRegexMatchers(typed.Mts)
 		case *LabelFilterExpr:
 			typed.LabelFilterer = removeFastRegexMatcherFromLabelFilterer(typed.LabelFilterer)
-		case *LogRange:
+		case *LogRangeExpr:
 			if typed.Unwrap == nil {
-				return
+				return true
 			}
 			cleaned := make([]log.LabelFilterer, 0, len(typed.Unwrap.PostFilters))
 			for _, filter := range typed.Unwrap.PostFilters {
 				cleaned = append(cleaned, removeFastRegexMatcherFromLabelFilterer(filter))
 			}
 			typed.Unwrap.PostFilters = cleaned
-		default:
-			return
+		case *MultiVariantExpr:
+			typed.logRange.Left = removeFastRegexMatcherFromExpr(typed.logRange.Left).(LogSelectorExpr)
+			for i, variant := range typed.variants {
+				typed.variants[i] = removeFastRegexMatcherFromExpr(variant).(SampleExpr)
+			}
 		}
+		return true
 	})
 	return expr
 }

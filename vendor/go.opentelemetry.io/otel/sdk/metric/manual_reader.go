@@ -58,7 +58,9 @@ func (mr *ManualReader) temporality(kind InstrumentKind) metricdata.Temporality 
 }
 
 // aggregation returns what Aggregation to use for kind.
-func (mr *ManualReader) aggregation(kind InstrumentKind) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
+func (mr *ManualReader) aggregation(
+	kind InstrumentKind,
+) Aggregation { // nolint:revive  // import-shadow for method scoped by type.
 	return mr.aggregationSelector(kind)
 }
 
@@ -113,18 +115,17 @@ func (mr *ManualReader) Collect(ctx context.Context, rm *metricdata.ResourceMetr
 	if err != nil {
 		return err
 	}
-	var errs []error
 	for _, producer := range mr.externalProducers.Load().([]Producer) {
-		externalMetrics, err := producer.Produce(ctx)
-		if err != nil {
-			errs = append(errs, err)
+		externalMetrics, e := producer.Produce(ctx)
+		if e != nil {
+			err = errors.Join(err, e)
 		}
 		rm.ScopeMetrics = append(rm.ScopeMetrics, externalMetrics...)
 	}
 
 	global.Debug("ManualReader collection", "Data", rm)
 
-	return unifyErrors(errs)
+	return err
 }
 
 // MarshalLog returns logging data about the ManualReader.

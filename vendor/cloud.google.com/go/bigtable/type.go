@@ -16,12 +16,51 @@ limitations under the License.
 
 package bigtable
 
-import btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+import (
+	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
 
 // Type wraps the protobuf representation of a type. See the protobuf definition
 // for more details on types.
 type Type interface {
 	proto() *btapb.Type
+}
+
+var marshalOptions = protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
+var unmarshalOptions = protojson.UnmarshalOptions{AllowPartial: true}
+
+// MarshalJSON returns the string representation of the Type protobuf.
+func MarshalJSON(t Type) ([]byte, error) {
+	return marshalOptions.Marshal(t.proto())
+}
+
+// UnmarshalJSON returns a Type object from json bytes.
+func UnmarshalJSON(data []byte) (Type, error) {
+	result := &btapb.Type{}
+	if err := unmarshalOptions.Unmarshal(data, result); err != nil {
+		return nil, err
+	}
+	return ProtoToType(result), nil
+}
+
+// Equal compares Type objects.
+func Equal(a, b Type) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return proto.Equal(a.proto(), b.proto())
+}
+
+// TypeUnspecified represents the absence of a type.
+type TypeUnspecified struct{}
+
+func (n TypeUnspecified) proto() *btapb.Type {
+	return &btapb.Type{}
 }
 
 type unknown[T interface{}] struct {
@@ -67,13 +106,22 @@ type StringEncoding interface {
 	proto() *btapb.Type_String_Encoding
 }
 
-// StringUtf8Encoding represents a string with UTF-8 encoding.
-type StringUtf8Encoding struct {
-}
+// StringUtf8Encoding represents an UTF-8 raw encoding for a string.
+// DEPRECATED: Please use StringUtf8BytesEncoding.
+type StringUtf8Encoding struct{}
 
 func (encoding StringUtf8Encoding) proto() *btapb.Type_String_Encoding {
 	return &btapb.Type_String_Encoding{
 		Encoding: &btapb.Type_String_Encoding_Utf8Raw_{},
+	}
+}
+
+// StringUtf8BytesEncoding represents an UTF-8 bytes encoding for a string.
+type StringUtf8BytesEncoding struct{}
+
+func (encoding StringUtf8BytesEncoding) proto() *btapb.Type_String_Encoding {
+	return &btapb.Type_String_Encoding{
+		Encoding: &btapb.Type_String_Encoding_Utf8Bytes_{},
 	}
 }
 
@@ -110,6 +158,19 @@ func (beb BigEndianBytesEncoding) proto() *btapb.Type_Int64_Encoding {
 	}
 }
 
+// Int64OrderedCodeBytesEncoding represents an Int64 encoding where the value is
+// encoded to a variable length binary format of up to 10 bytes.
+type Int64OrderedCodeBytesEncoding struct {
+}
+
+func (Int64OrderedCodeBytesEncoding) proto() *btapb.Type_Int64_Encoding {
+	return &btapb.Type_Int64_Encoding{
+		Encoding: &btapb.Type_Int64_Encoding_OrderedCodeBytes_{
+			OrderedCodeBytes: &btapb.Type_Int64_Encoding_OrderedCodeBytes{},
+		},
+	}
+}
+
 // Int64Type represents an 8-byte integer.
 type Int64Type struct {
 	Encoding Int64Encoding
@@ -127,6 +188,132 @@ func (it Int64Type) proto() *btapb.Type {
 	return &btapb.Type{
 		Kind: &btapb.Type_Int64Type{
 			Int64Type: &btapb.Type_Int64{
+				Encoding: encoding,
+			},
+		},
+	}
+}
+
+// TimestampEncoding represents the encoding of the Timestamp type.
+type TimestampEncoding interface {
+	proto() *btapb.Type_Timestamp_Encoding
+}
+
+// TimestampUnixMicrosInt64Encoding represents a timestamp encoding where the
+// the number of microseconds in the timestamp value since the Unix epoch
+// is encoded by the given Int64Encoding. Values must be microsecond-aligned.
+type TimestampUnixMicrosInt64Encoding struct {
+	UnixMicrosInt64Encoding Int64Encoding
+}
+
+func (tsumi TimestampUnixMicrosInt64Encoding) proto() *btapb.Type_Timestamp_Encoding {
+	return &btapb.Type_Timestamp_Encoding{
+		Encoding: &btapb.Type_Timestamp_Encoding_UnixMicrosInt64{
+			UnixMicrosInt64: tsumi.UnixMicrosInt64Encoding.proto(),
+		},
+	}
+}
+
+// TimestampType represents the timestamp.
+type TimestampType struct {
+	Encoding TimestampEncoding
+}
+
+func (tt TimestampType) proto() *btapb.Type {
+	var encoding *btapb.Type_Timestamp_Encoding
+	if tt.Encoding != nil {
+		encoding = tt.Encoding.proto()
+	}
+
+	return &btapb.Type{
+		Kind: &btapb.Type_TimestampType{
+			TimestampType: &btapb.Type_Timestamp{
+				Encoding: encoding,
+			},
+		},
+	}
+}
+
+// StructField represents a field within a StructType.
+type StructField struct {
+	FieldName string
+	FieldType Type
+}
+
+func (sf StructField) proto() *btapb.Type_Struct_Field {
+	return &btapb.Type_Struct_Field{
+		FieldName: sf.FieldName,
+		Type:      sf.FieldType.proto(),
+	}
+}
+
+// StructEncoding represents the encoding of a struct type.
+type StructEncoding interface {
+	proto() *btapb.Type_Struct_Encoding
+}
+
+// StructSingletonEncoding represents a singleton struct encoding where this mode
+// only accepts a single field.
+type StructSingletonEncoding struct{}
+
+func (sse StructSingletonEncoding) proto() *btapb.Type_Struct_Encoding {
+	return &btapb.Type_Struct_Encoding{
+		Encoding: &btapb.Type_Struct_Encoding_Singleton_{
+			Singleton: &btapb.Type_Struct_Encoding_Singleton{},
+		},
+	}
+}
+
+// StructDelimitedBytesEncoding represents a delimited bytes struct encoding,
+// where each field will be individually encoded and concatenated by the
+// delimiter in the middle.
+type StructDelimitedBytesEncoding struct {
+	Delimiter []byte
+}
+
+func (sdbe StructDelimitedBytesEncoding) proto() *btapb.Type_Struct_Encoding {
+	return &btapb.Type_Struct_Encoding{
+		Encoding: &btapb.Type_Struct_Encoding_DelimitedBytes_{
+			DelimitedBytes: &btapb.Type_Struct_Encoding_DelimitedBytes{
+				Delimiter: sdbe.Delimiter,
+			},
+		},
+	}
+}
+
+// StructOrderedCodeBytesEncoding an encoding where each field will be
+// individually encoded. Each null byte (0x00) in the encoded fields will be
+// escaped by 0xff before concatenate together by this {0x00, 0x01} byte sequence.
+type StructOrderedCodeBytesEncoding struct{}
+
+func (socbe StructOrderedCodeBytesEncoding) proto() *btapb.Type_Struct_Encoding {
+	return &btapb.Type_Struct_Encoding{
+		Encoding: &btapb.Type_Struct_Encoding_OrderedCodeBytes_{
+			OrderedCodeBytes: &btapb.Type_Struct_Encoding_OrderedCodeBytes{},
+		},
+	}
+}
+
+// StructType represents a struct type.
+type StructType struct {
+	Fields   []StructField
+	Encoding StructEncoding
+}
+
+func (st StructType) proto() *btapb.Type {
+	var encoding *btapb.Type_Struct_Encoding
+	if st.Encoding != nil {
+		encoding = st.Encoding.proto()
+	}
+
+	var structFieldsProto []*btapb.Type_Struct_Field
+	for _, sf := range st.Fields {
+		structFieldsProto = append(structFieldsProto, sf.proto())
+	}
+	return &btapb.Type{
+		Kind: &btapb.Type_StructType{
+			StructType: &btapb.Type_Struct{
+				Fields:   structFieldsProto,
 				Encoding: encoding,
 			},
 		},
@@ -199,14 +386,22 @@ func ProtoToType(pb *btapb.Type) Type {
 	if pb == nil {
 		return unknown[btapb.Type]{wrapped: nil}
 	}
-
+	if pb.Kind == nil {
+		return TypeUnspecified{}
+	}
 	switch t := pb.Kind.(type) {
 	case *btapb.Type_Int64Type:
 		return int64ProtoToType(t.Int64Type)
 	case *btapb.Type_BytesType:
 		return bytesProtoToType(t.BytesType)
+	case *btapb.Type_StringType:
+		return stringProtoToType(t.StringType)
+	case *btapb.Type_TimestampType:
+		return timestampProtoToType(t.TimestampType)
 	case *btapb.Type_AggregateType:
 		return aggregateProtoToType(t.AggregateType)
+	case *btapb.Type_StructType:
+		return structProtoToType(t.StructType)
 	default:
 		return unknown[btapb.Type]{wrapped: pb}
 	}
@@ -229,6 +424,25 @@ func bytesProtoToType(b *btapb.Type_Bytes) BytesType {
 	return BytesType{Encoding: bytesEncodingProtoToType(b.Encoding)}
 }
 
+func stringEncodingProtoToType(se *btapb.Type_String_Encoding) StringEncoding {
+	if se == nil {
+		return unknown[btapb.Type_String_Encoding]{wrapped: se}
+	}
+
+	switch se.Encoding.(type) {
+	case *btapb.Type_String_Encoding_Utf8Raw_:
+		return StringUtf8Encoding{}
+	case *btapb.Type_String_Encoding_Utf8Bytes_:
+		return StringUtf8BytesEncoding{}
+	default:
+		return unknown[btapb.Type_String_Encoding]{wrapped: se}
+	}
+}
+
+func stringProtoToType(s *btapb.Type_String) Type {
+	return StringType{Encoding: stringEncodingProtoToType(s.Encoding)}
+}
+
 func int64EncodingProtoToEncoding(ie *btapb.Type_Int64_Encoding) Int64Encoding {
 	if ie == nil {
 		return unknown[btapb.Type_Int64_Encoding]{wrapped: ie}
@@ -237,6 +451,8 @@ func int64EncodingProtoToEncoding(ie *btapb.Type_Int64_Encoding) Int64Encoding {
 	switch ie.Encoding.(type) {
 	case *btapb.Type_Int64_Encoding_BigEndianBytes_:
 		return BigEndianBytesEncoding{}
+	case *btapb.Type_Int64_Encoding_OrderedCodeBytes_:
+		return Int64OrderedCodeBytesEncoding{}
 	default:
 		return unknown[btapb.Type_Int64_Encoding]{wrapped: ie}
 	}
@@ -246,7 +462,55 @@ func int64ProtoToType(i *btapb.Type_Int64) Type {
 	return Int64Type{Encoding: int64EncodingProtoToEncoding(i.Encoding)}
 }
 
-func aggregateProtoToType(agg *btapb.Type_Aggregate) Type {
+func timestampEncodingProtoToType(tse *btapb.Type_Timestamp_Encoding) TimestampEncoding {
+	if tse == nil {
+		return unknown[btapb.Type_Timestamp_Encoding]{wrapped: tse}
+	}
+
+	switch tse.Encoding.(type) {
+	case *btapb.Type_Timestamp_Encoding_UnixMicrosInt64:
+		return TimestampUnixMicrosInt64Encoding{
+			UnixMicrosInt64Encoding: int64EncodingProtoToEncoding(tse.GetUnixMicrosInt64()),
+		}
+	default:
+		return unknown[btapb.Type_Timestamp_Encoding]{wrapped: tse}
+	}
+}
+
+func timestampProtoToType(tsp *btapb.Type_Timestamp) Type {
+	return TimestampType{Encoding: timestampEncodingProtoToType(tsp.Encoding)}
+}
+
+func structEncodingProtoToType(se *btapb.Type_Struct_Encoding) StructEncoding {
+	if se == nil {
+		return unknown[btapb.Type_Struct_Encoding]{wrapped: se}
+	}
+
+	switch se.Encoding.(type) {
+	case *btapb.Type_Struct_Encoding_DelimitedBytes_:
+		return StructDelimitedBytesEncoding{
+			Delimiter: se.GetDelimitedBytes().Delimiter,
+		}
+	case *btapb.Type_Struct_Encoding_OrderedCodeBytes_:
+		return StructOrderedCodeBytesEncoding{}
+	case *btapb.Type_Struct_Encoding_Singleton_:
+		return StructSingletonEncoding{}
+	default:
+		return unknown[btapb.Type_Struct_Encoding]{wrapped: se}
+	}
+}
+
+func structProtoToType(sp *btapb.Type_Struct) Type {
+	var structFields []StructField
+	for _, sfp := range sp.Fields {
+		structFields = append(structFields, StructField{
+			FieldName: sfp.FieldName, FieldType: ProtoToType(sfp.Type),
+		})
+	}
+	return StructType{Fields: structFields, Encoding: structEncodingProtoToType(sp.Encoding)}
+}
+
+func aggregateProtoToType(agg *btapb.Type_Aggregate) AggregateType {
 	if agg == nil {
 		return AggregateType{Input: nil, Aggregator: unknownAggregator{wrapped: agg}}
 	}

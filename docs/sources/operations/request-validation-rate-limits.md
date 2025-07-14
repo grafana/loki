@@ -1,22 +1,21 @@
 ---
-title: Request Validation and Rate-Limit Errors
-menuTitle:  
-description: Request Validation and Rate-Limit Errors
+title: Enforce rate limits and push request validation
+menuTitle: Rate limits
+description: Decribes the different rate limits and push request validation and their error handling.
 weight: 
 ---
+# Enforce rate limits and push request validation
 
-# Request Validation and Rate-Limit Errors
-
-Loki will reject requests if they exceed a usage threshold (rate-limit error) or if they are invalid (validation error).
+Loki will reject requests if they exceed a usage threshold (rate limit error) or if they are invalid (validation error).
 
 All occurrences of these errors can be observed using the `loki_discarded_samples_total` and `loki_discarded_bytes_total` metrics. The sections below describe the various possible reasons specified in the `reason` label of these metrics.
 
-It is recommended that Loki operators set up alerts or dashboards with these metrics to detect when rate-limits or validation errors occur. 
+It is recommended that Loki operators set up alerts or dashboards with these metrics to detect when rate limits or validation errors occur. 
 
 
 ### Terminology
 
-- **sample**: a log line
+- **sample**: a log line with [structured metadata](../../get-started/labels/structured-metadata/)
 - **stream**: samples with a unique combination of labels 
 - **active stream**: streams that are present in the ingesters - these have recently received log lines within the `chunk_idle_period` period (default: 30m)
 
@@ -26,7 +25,7 @@ Rate-limits are enforced when Loki cannot handle more requests from a tenant.
 
 ### `rate_limited`
 
-This rate-limit is enforced when a tenant has exceeded their configured log ingestion rate-limit.
+This rate limit is enforced when a tenant has exceeded their configured log ingestion rate limit.
 
 One solution if you're seeing samples dropped due to `rate_limited` is simply to increase the rate limits on your Loki cluster. These limits can be modified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. The config options to use are `ingestion_rate_mb` and `ingestion_burst_size_mb`.
 
@@ -46,9 +45,9 @@ Note that you'll want to make sure your Loki cluster has sufficient resources pr
 
 ### `per_stream_rate_limit`
 
-This limit is enforced when a single stream reaches its rate-limit.
+This limit is enforced when a single stream reaches its rate limit.
 
-Each stream has a rate-limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to (the size of that set is equal to the `replication_factor` value).
+Each stream has a rate limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to (the size of that set is equal to the `replication_factor` value).
 
 This value can be modified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. The config options to adjust are `per_stream_rate_limit` and `per_stream_rate_limit_burst`.
 

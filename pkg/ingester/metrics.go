@@ -318,8 +318,8 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Namespace: constants.Loki,
 			Name:      "ingester_streams_ownership_check_duration_ms",
 			Help:      "Distribution of streams ownership check durations in milliseconds.",
-			// 100ms to 5s.
-			Buckets: []float64{100, 250, 350, 500, 750, 1000, 1500, 2000, 5000},
+			// 1ms -> 16s
+			Buckets: prometheus.ExponentialBuckets(1, 4, 8),
 		}),
 
 		duplicateLogBytesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{

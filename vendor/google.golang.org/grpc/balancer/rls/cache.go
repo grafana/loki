@@ -22,6 +22,8 @@ import (
 	"container/list"
 	"time"
 
+	"github.com/google/uuid"
+	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal/backoff"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
@@ -47,7 +49,7 @@ type cacheEntry struct {
 	// headerData is received in the RLS response and is to be sent in the
 	// X-Google-RLS-Data header for matching RPCs.
 	headerData string
-	// expiryTime is the absolute time at which this cache entry entry stops
+	// expiryTime is the absolute time at which this cache entry stops
 	// being valid. When an RLS request succeeds, this is set to the current
 	// time plus the max_age field from the LB policy config.
 	expiryTime time.Time
@@ -163,22 +165,37 @@ func (l *lru) getLeastRecentlyUsed() cacheKey {
 //
 // It is not safe for concurrent access.
 type dataCache struct {
-	maxSize     int64 // Maximum allowed size.
-	currentSize int64 // Current size.
-	keys        *lru  // Cache keys maintained in lru order.
-	entries     map[cacheKey]*cacheEntry
-	logger      *internalgrpclog.PrefixLogger
-	shutdown    *grpcsync.Event
+	maxSize         int64 // Maximum allowed size.
+	currentSize     int64 // Current size.
+	keys            *lru  // Cache keys maintained in lru order.
+	entries         map[cacheKey]*cacheEntry
+	logger          *internalgrpclog.PrefixLogger
+	shutdown        *grpcsync.Event
+	rlsServerTarget string
+
+	// Read only after initialization.
+	grpcTarget      string
+	uuid            string
+	metricsRecorder estats.MetricsRecorder
 }
 
-func newDataCache(size int64, logger *internalgrpclog.PrefixLogger) *dataCache {
+func newDataCache(size int64, logger *internalgrpclog.PrefixLogger, metricsRecorder estats.MetricsRecorder, grpcTarget string) *dataCache {
 	return &dataCache{
-		maxSize:  size,
-		keys:     newLRU(),
-		entries:  make(map[cacheKey]*cacheEntry),
-		logger:   logger,
-		shutdown: grpcsync.NewEvent(),
+		maxSize:         size,
+		keys:            newLRU(),
+		entries:         make(map[cacheKey]*cacheEntry),
+		logger:          logger,
+		shutdown:        grpcsync.NewEvent(),
+		grpcTarget:      grpcTarget,
+		uuid:            uuid.New().String(),
+		metricsRecorder: metricsRecorder,
 	}
+}
+
+// updateRLSServerTarget updates the RLS Server Target the RLS Balancer is
+// configured with.
+func (dc *dataCache) updateRLSServerTarget(rlsServerTarget string) {
+	dc.rlsServerTarget = rlsServerTarget
 }
 
 // resize changes the maximum allowed size of the data cache.
@@ -223,7 +240,7 @@ func (dc *dataCache) resize(size int64) (backoffCancelled bool) {
 				backoffCancelled = true
 			}
 		}
-		dc.deleteAndcleanup(key, entry)
+		dc.deleteAndCleanup(key, entry)
 	}
 	dc.maxSize = size
 	return backoffCancelled
@@ -249,7 +266,7 @@ func (dc *dataCache) evictExpiredEntries() bool {
 		if entry.expiryTime.After(now) || entry.backoffExpiryTime.After(now) {
 			continue
 		}
-		dc.deleteAndcleanup(key, entry)
+		dc.deleteAndCleanup(key, entry)
 		evicted = true
 	}
 	return evicted
@@ -310,6 +327,8 @@ func (dc *dataCache) addEntry(key cacheKey, entry *cacheEntry) (backoffCancelled
 	if dc.currentSize > dc.maxSize {
 		backoffCancelled = dc.resize(dc.maxSize)
 	}
+	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
+	cacheEntriesMetric.Record(dc.metricsRecorder, int64(len(dc.entries)), dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
 	return backoffCancelled, true
 }
 
@@ -319,6 +338,7 @@ func (dc *dataCache) updateEntrySize(entry *cacheEntry, newSize int64) {
 	dc.currentSize -= entry.size
 	entry.size = newSize
 	dc.currentSize += entry.size
+	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
 }
 
 func (dc *dataCache) getEntry(key cacheKey) *cacheEntry {
@@ -339,7 +359,7 @@ func (dc *dataCache) removeEntryForTesting(key cacheKey) {
 	if !ok {
 		return
 	}
-	dc.deleteAndcleanup(key, entry)
+	dc.deleteAndCleanup(key, entry)
 }
 
 // deleteAndCleanup performs actions required at the time of deleting an entry
@@ -347,15 +367,17 @@ func (dc *dataCache) removeEntryForTesting(key cacheKey) {
 // - the entry is removed from the map of entries
 // - current size of the data cache is update
 // - the key is removed from the LRU
-func (dc *dataCache) deleteAndcleanup(key cacheKey, entry *cacheEntry) {
+func (dc *dataCache) deleteAndCleanup(key cacheKey, entry *cacheEntry) {
 	delete(dc.entries, key)
 	dc.currentSize -= entry.size
 	dc.keys.removeEntry(key)
+	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
+	cacheEntriesMetric.Record(dc.metricsRecorder, int64(len(dc.entries)), dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
 }
 
 func (dc *dataCache) stop() {
 	for key, entry := range dc.entries {
-		dc.deleteAndcleanup(key, entry)
+		dc.deleteAndCleanup(key, entry)
 	}
 	dc.shutdown.Fire()
 }

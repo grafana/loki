@@ -1,13 +1,14 @@
 ---
-title: Scale Loki
-menuTitle:  Scale
-description: Describes how to scale Grafana Loki
-weight: 
+title: Manage larger production deployments
+menuTitle: Scale Loki
+description: Describes strategies how to scale a Loki deployment when log volume increases.
+weight:
 ---
-# Scale Loki
 
-When scaling Loki, operators should consider running several Loki processes
-partitioned by role (ingester, distributor, querier) rather than a single Loki
+# Manage larger production deployments
+
+When needing to scale Loki due to increased log volume, operators should consider running several Loki processes
+partitioned by role (ingester, distributor, querier, and so on) rather than a single Loki
 process. Grafana Labs' [production setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki)
 contains `.libsonnet` files that demonstrates configuring separate components
 and scaling for resource usage.
@@ -59,16 +60,16 @@ ruler:
       address: dns:///<query-frontend-service>:<grpc-port>
 ```
 
-See [`here`](/configuration/#ruler) for further configuration options.
+See [`here`](/docs/loki/<LOKI_VERSION>/configuration/#ruler) for further configuration options.
 
-When you enable remote rule evaluation, the `ruler` component becomes a gRPC client to the `query-frontend` service; 
+When you enable remote rule evaluation, the `ruler` component becomes a gRPC client to the `query-frontend` service;
 this will result in far lower `ruler` resource usage because the majority of the work has been externalized.
 The LogQL queries coming from the `ruler` will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Queries that fail to execute are _not_ retried.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Limits and Observability
 
@@ -77,8 +78,8 @@ Remote rule evaluation can be tuned with the following options:
 - `ruler_remote_evaluation_timeout`: maximum allowable execution time for rule evaluations
 - `ruler_remote_evaluation_max_response_size`: maximum allowable response size over gRPC connection from `query-frontend` to `ruler`
 
-Both of these can be specified globally in the [`limits_config`](/configuration/#limits_config) section
-or on a [per-tenant basis](/configuration/#runtime-configuration-file). 
+Both of these can be specified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) section
+or on a [per-tenant basis](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file).
 
 Remote rule evaluation exposes a number of metrics:
 

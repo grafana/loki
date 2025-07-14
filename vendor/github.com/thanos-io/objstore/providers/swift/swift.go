@@ -21,6 +21,7 @@ import (
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"gopkg.in/yaml.v2"
@@ -154,12 +155,12 @@ type Container struct {
 	segmentsContainer      string
 }
 
-func NewContainer(logger log.Logger, conf []byte) (*Container, error) {
+func NewContainer(logger log.Logger, conf []byte, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Container, error) {
 	sc, err := parseConfig(conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse config")
 	}
-	return NewContainerFromConfig(logger, sc, false)
+	return NewContainerFromConfig(logger, sc, false, wrapRoundtripper)
 }
 
 func ensureContainer(connection *swift.Connection, name string, createIfNotExist bool) error {
@@ -178,19 +179,19 @@ func ensureContainer(connection *swift.Connection, name string, createIfNotExist
 	return nil
 }
 
-func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool) (*Container, error) {
-
+func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Container, error) {
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var rt http.RoundTripper
+	rt, err := exthttp.DefaultTransport(sc.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
 	if sc.HTTPConfig.Transport != nil {
 		rt = sc.HTTPConfig.Transport
-	} else {
-		var err error
-		rt, err = exthttp.DefaultTransport(sc.HTTPConfig)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if wrapRoundtripper != nil {
+		rt = wrapRoundtripper(rt)
 	}
 
 	connection := connectionFromConfig(sc, rt)
@@ -217,14 +218,20 @@ func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool)
 	}, nil
 }
 
+func (c *Container) Provider() objstore.ObjProvider { return objstore.SWIFT }
+
 // Name returns the container name for swift.
 func (c *Container) Name() string {
 	return c.name
 }
 
+func (c *Container) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive}
+}
+
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (c *Container) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (c *Container) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, string(DirDelim)) + string(DirDelim)
 	}
@@ -242,6 +249,7 @@ func (c *Container) Iter(_ context.Context, dir string, f func(string) error, op
 		if err != nil {
 			return objects, errors.Wrap(err, "list object names")
 		}
+
 		for _, object := range objects {
 			if object == SegmentsDir {
 				continue
@@ -254,6 +262,16 @@ func (c *Container) Iter(_ context.Context, dir string, f func(string) error, op
 	})
 }
 
+func (c *Container) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(c.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
+	return c.Iter(ctx, dir, func(name string) error {
+		return f(objstore.IterObjectAttributes{Name: name})
+	}, options...)
+}
+
 func (c *Container) get(name string, headers swift.Headers, checkHash bool) (io.ReadCloser, error) {
 	if name == "" {
 		return nil, errors.New("object name cannot be empty")
@@ -262,7 +280,11 @@ func (c *Container) get(name string, headers swift.Headers, checkHash bool) (io.
 	if err != nil {
 		return nil, errors.Wrap(err, "open object")
 	}
-	return file, err
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: file,
+		Size:       file.Length,
+	}, nil
 }
 
 // Get returns a reader for the given object name.
@@ -353,6 +375,10 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 	return nil
 }
 
+func (b *Container) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: Swift.GetAndReplace")
+}
+
 // Delete removes the object with the given name.
 func (c *Container) Delete(_ context.Context, name string) error {
 	return errors.Wrap(c.connection.LargeObjectDelete(c.name, name), "delete object")
@@ -378,7 +404,7 @@ func NewTestContainer(t testing.TB) (objstore.Bucket, func(), error) {
 				"needs to be manually cleared. This means that it is only useful to run one test in a time. This is due " +
 				"to safety (accidentally pointing prod container for test) as well as swift not being fully strong consistent.")
 		}
-		c, err := NewContainerFromConfig(log.NewNopLogger(), config, false)
+		c, err := NewContainerFromConfig(log.NewNopLogger(), config, false, nil)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "initializing new container")
 		}
@@ -392,7 +418,7 @@ func NewTestContainer(t testing.TB) (objstore.Bucket, func(), error) {
 	}
 	config.ContainerName = objstore.CreateTemporaryTestBucketName(t)
 	config.SegmentContainerName = config.ContainerName
-	c, err := NewContainerFromConfig(log.NewNopLogger(), config, true)
+	c, err := NewContainerFromConfig(log.NewNopLogger(), config, true, nil)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "initializing new container")
 	}

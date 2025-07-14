@@ -2,9 +2,8 @@ package ring
 
 import (
 	"fmt"
+	"slices"
 	"time"
-
-	"golang.org/x/exp/slices"
 )
 
 type PartitionRingReader interface {
@@ -13,15 +12,25 @@ type PartitionRingReader interface {
 	PartitionRing() *PartitionRing
 }
 
+type InstanceRingReader interface {
+	// GetInstance return the InstanceDesc for the given instanceID or an error
+	// if the instance doesn't exist in the ring. The returned InstanceDesc is NOT a
+	// deep copy, so the caller should never modify it.
+	GetInstance(string) (InstanceDesc, error)
+
+	// InstancesCount returns the number of instances in the ring.
+	InstancesCount() int
+}
+
 // PartitionInstanceRing holds a partitions ring and a instances ring, and provide functions
 // to look up the intersection of the two (e.g. healthy instances by partition).
 type PartitionInstanceRing struct {
 	partitionsRingReader PartitionRingReader
-	instancesRing        *Ring
+	instancesRing        InstanceRingReader
 	heartbeatTimeout     time.Duration
 }
 
-func NewPartitionInstanceRing(partitionsRingWatcher PartitionRingReader, instancesRing *Ring, heartbeatTimeout time.Duration) *PartitionInstanceRing {
+func NewPartitionInstanceRing(partitionsRingWatcher PartitionRingReader, instancesRing InstanceRingReader, heartbeatTimeout time.Duration) *PartitionInstanceRing {
 	return &PartitionInstanceRing{
 		partitionsRingReader: partitionsRingWatcher,
 		instancesRing:        instancesRing,
@@ -33,7 +42,7 @@ func (r *PartitionInstanceRing) PartitionRing() *PartitionRing {
 	return r.partitionsRingReader.PartitionRing()
 }
 
-func (r *PartitionInstanceRing) InstanceRing() *Ring {
+func (r *PartitionInstanceRing) InstanceRing() InstanceRingReader {
 	return r.instancesRing
 }
 

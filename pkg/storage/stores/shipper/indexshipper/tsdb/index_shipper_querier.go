@@ -40,9 +40,9 @@ func (i indexIterFunc) For(_ context.Context, _ int, f func(context.Context, Ind
 func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.Time, user string) (Index, error) {
 	itr := indexIterFunc(func(f func(context.Context, Index) error) error {
 		// Ensure we query both per tenant and multitenant TSDBs
-		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
+		idxBuckets := IndexBuckets(from, through, []config.TableRange{i.tableRange})
 		for _, bkt := range idxBuckets {
-			if err := i.shipper.ForEachConcurrent(ctx, bkt.prefix, user, func(multitenant bool, idx shipperindex.Index) error {
+			if err := i.shipper.ForEachConcurrent(ctx, bkt.Prefix, user, func(multitenant bool, idx shipperindex.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)

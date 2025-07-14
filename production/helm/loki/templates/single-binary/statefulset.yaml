@@ -26,7 +26,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.singleBinaryFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
   {{/*
     Data on the singleBinary nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -41,7 +41,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -79,6 +79,75 @@ spec:
         {{- end }}
       {{- end }}
       containers:
+      {{- if .Values.sidecar.rules.enabled }}
+        - name: loki-sc-rules
+          {{- if .Values.sidecar.image.sha }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          {{- else }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          env:
+            - name: METHOD
+              value: {{ .Values.sidecar.rules.watchMethod }}
+            - name: LABEL
+              value: "{{ .Values.sidecar.rules.label }}"
+            {{- if .Values.sidecar.rules.labelValue }}
+            - name: LABEL_VALUE
+              value: {{ quote .Values.sidecar.rules.labelValue }}
+            {{- end }}
+            - name: FOLDER
+              value: "{{ .Values.sidecar.rules.folder }}"
+            - name: RESOURCE
+              value: {{ quote .Values.sidecar.rules.resource }}
+            {{- if .Values.sidecar.enableUniqueFilenames }}
+            - name: UNIQUE_FILENAMES
+              value: "{{ .Values.sidecar.enableUniqueFilenames }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.searchNamespace }}
+            - name: NAMESPACE
+              value: "{{ .Values.sidecar.rules.searchNamespace | join "," }}"
+            {{- end }}
+            {{- if .Values.sidecar.skipTlsVerify }}
+            - name: SKIP_TLS_VERIFY
+              value: "{{ .Values.sidecar.skipTlsVerify }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.script }}
+            - name: SCRIPT
+              value: "{{ .Values.sidecar.rules.script }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchServerTimeout }}
+            - name: WATCH_SERVER_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchServerTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchClientTimeout }}
+            - name: WATCH_CLIENT_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchClientTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.logLevel }}
+            - name: LOG_LEVEL
+              value: "{{ .Values.sidecar.rules.logLevel }}"
+            {{- end }}
+          {{- if .Values.sidecar.livenessProbe }}
+          livenessProbe:
+          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.readinessProbe }}
+          readinessProbe:
+          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.resources }}
+          resources:
+          {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.securityContext }}
+          securityContext:
+          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+        {{- end}}
         - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
@@ -125,6 +194,10 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
+            {{- if .Values.sidecar.rules.enabled }}
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            {{- end}}
             {{- with .Values.singleBinary.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -166,6 +239,15 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
+        {{- if .Values.sidecar.rules.enabled }}
+        - name: sc-rules-volume
+        {{- if .Values.sidecar.rules.sizeLimit }}
+          emptyDir:
+            sizeLimit: {{ .Values.sidecar.rules.sizeLimit }}
+        {{- else }}
+          emptyDir: {}
+        {{- end -}}
+        {{- end -}}
         {{- with .Values.singleBinary.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -17,8 +17,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
@@ -33,8 +33,7 @@ var (
 	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3)")
 	errSecretHashError       = errors.New("error calculating hash for secret")
 
-	errSecretUnknownCredentialMode     = errors.New("unknown credential mode")
-	errSecretUnsupportedCredentialMode = errors.New("combination of storage type and credential mode not supported")
+	errSecretUnknownCredentialMode = errors.New("unknown credential mode")
 
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
@@ -44,9 +43,11 @@ var (
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
+	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
+	errGCPInvalidCredentialsFile    = errors.New("gcp credentials file contains invalid fields")
 
 	azureValidEnvironments = map[string]bool{
 		"AzureGlobal":       true,
@@ -355,6 +356,15 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 	}
 
 	switch credentialMode {
+	case lokiv1.CredentialModeTokenCCO:
+		if _, ok := s.Data[storage.KeyGCPServiceAccountKeyFilename]; ok {
+			return nil, fmt.Errorf("%w: %s", errGCPInvalidCredentialsFile, "key.json must not be set for CredentialModeTokenCCO")
+		}
+
+		return &storage.GCSStorageConfig{
+			Bucket:           string(bucket),
+			WorkloadIdentity: true,
+		}, nil
 	case lokiv1.CredentialModeStatic:
 		return &storage.GCSStorageConfig{
 			Bucket: string(bucket),
@@ -380,12 +390,9 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 			WorkloadIdentity: true,
 			Audience:         audience,
 		}, nil
-	case lokiv1.CredentialModeTokenCCO:
-		return nil, fmt.Errorf("%w: type: %s credentialMode: %s", errSecretUnsupportedCredentialMode, lokiv1.ObjectStorageSecretGCS, credentialMode)
 	default:
+		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
-
-	return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 }
 
 func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.S3StorageConfig, error) {
@@ -404,9 +411,22 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region         = s.Data[storage.KeyAWSRegion]
-		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+		region = s.Data[storage.KeyAWSRegion]
 	)
+
+	// Determine if we should use path style URLs for S3
+	// default to false for non-AWS endpoints
+	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+	// Check if the user has specified forcepathstyle
+	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
+		strForcePathStyle := string(configForcePathStyle)
+		switch strForcePathStyle {
+		case "true", "false":
+			forcePathStyle = strForcePathStyle == "true"
+		default:
+			return nil, fmt.Errorf("%w: %s", errS3ForcePathStyleInvalid, strForcePathStyle)
+		}
+	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {

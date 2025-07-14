@@ -15,6 +15,7 @@ package core
 // limitations under the License.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -47,7 +48,7 @@ func NewBasicAuthenticator(username string, password string) (*BasicAuthenticato
 // from a map.
 func newBasicAuthenticatorFromMap(properties map[string]string) (*BasicAuthenticator, error) {
 	if properties == nil {
-		err := fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -64,8 +65,9 @@ func (BasicAuthenticator) AuthenticationType() string {
 // Basic Authorization will be added to the request's headers in the form:
 //
 //	Authorization: Basic <encoded username and password>
-func (this *BasicAuthenticator) Authenticate(request *http.Request) error {
-	request.SetBasicAuth(this.Username, this.Password)
+func (authenticator *BasicAuthenticator) Authenticate(request *http.Request) error {
+	request.SetBasicAuth(authenticator.Username, authenticator.Password)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -73,23 +75,23 @@ func (this *BasicAuthenticator) Authenticate(request *http.Request) error {
 //
 // Ensures the username and password are not Nil. Additionally, ensures
 // they do not contain invalid characters.
-func (this BasicAuthenticator) Validate() error {
-	if this.Username == "" {
+func (authenticator BasicAuthenticator) Validate() error {
+	if authenticator.Username == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "Username")
 		return SDKErrorf(err, "", "no-user", getComponentInfo())
 	}
 
-	if this.Password == "" {
+	if authenticator.Password == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "Password")
 		return SDKErrorf(err, "", "no-pass", getComponentInfo())
 	}
 
-	if HasBadFirstOrLastChar(this.Username) {
+	if HasBadFirstOrLastChar(authenticator.Username) {
 		err := fmt.Errorf(ERRORMSG_PROP_INVALID, "Username")
 		return SDKErrorf(err, "", "bad-user", getComponentInfo())
 	}
 
-	if HasBadFirstOrLastChar(this.Password) {
+	if HasBadFirstOrLastChar(authenticator.Password) {
 		err := fmt.Errorf(ERRORMSG_PROP_INVALID, "Password")
 		return SDKErrorf(err, "", "bad-pass", getComponentInfo())
 	}

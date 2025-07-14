@@ -47,7 +47,7 @@ type connWrapper struct {
 	// The specific filter chain picked for handling this connection.
 	filterChain *xdsresource.FilterChain
 
-	// A reference fo the listenerWrapper on which this connection was accepted.
+	// A reference to the listenerWrapper on which this connection was accepted.
 	parent *listenerWrapper
 
 	// The certificate providers created for this connection.
@@ -107,7 +107,7 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 		return xdsinternal.NewHandshakeInfo(nil, nil, nil, false), nil
 	}
 
-	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs
+	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs()
 	// Identity provider name is mandatory on the server-side, and this is
 	// enforced when the resource is received at the XDSClient layer.
 	secCfg := c.filterChain.SecurityCfg
@@ -161,6 +161,7 @@ func (c *connWrapper) Close() error {
 	if c.rootProvider != nil {
 		c.rootProvider.Close()
 	}
+	c.parent.removeConn(c)
 	return c.Conn.Close()
 }
 

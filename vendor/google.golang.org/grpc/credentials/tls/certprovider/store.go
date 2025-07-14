@@ -58,7 +58,7 @@ type wrappedProvider struct {
 // closedProvider always returns errProviderClosed error.
 type closedProvider struct{}
 
-func (c closedProvider) KeyMaterial(ctx context.Context) (*KeyMaterial, error) {
+func (c closedProvider) KeyMaterial(context.Context) (*KeyMaterial, error) {
 	return nil, errProviderClosed
 }
 

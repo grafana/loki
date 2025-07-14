@@ -1,6 +1,6 @@
 package core
 
-// (C) Copyright IBM Corp. 2021, 2024.
+// (C) Copyright IBM Corp. 2021, 2025.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package core
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -28,17 +29,16 @@ import (
 )
 
 // ContainerAuthenticator implements an IAM-based authentication schema whereby it
-// retrieves a "compute resource token" from the local compute resource (VM)
+// retrieves a "compute resource token" from the local compute resource (IKS pod, or Code Engine application, function, or job)
 // and uses that to obtain an IAM access token by invoking the IAM "get token" operation with grant-type=cr-token.
 // The resulting IAM access token is then added to outbound requests in an Authorization header
 // of the form:
 //
 //	Authorization: Bearer <access-token>
 type ContainerAuthenticator struct {
-
 	// [optional] The name of the file containing the injected CR token value (applies to
-	// IKS-managed compute resources).
-	// Default value: (1) "/var/run/secrets/tokens/vault-token" or (2) "/var/run/secrets/tokens/sa-token",
+	// IKS-managed compute resources, a Code Engine compute resource always uses the third default from below).
+	// Default value: (1) "/var/run/secrets/tokens/vault-token" or (2) "/var/run/secrets/tokens/sa-token" or (3) "/var/run/secrets/codeengine.cloud.ibm.com/compute-resource-token/token",
 	// whichever is found first.
 	CRTokenFilename string
 
@@ -98,9 +98,10 @@ type ContainerAuthenticator struct {
 }
 
 const (
-	defaultCRTokenFilename1 = "/var/run/secrets/tokens/vault-token"      // #nosec G101
-	defaultCRTokenFilename2 = "/var/run/secrets/tokens/sa-token"         // #nosec G101
-	iamGrantTypeCRToken     = "urn:ibm:params:oauth:grant-type:cr-token" // #nosec G101
+	defaultCRTokenFilename1 = "/var/run/secrets/tokens/vault-token"                                    // #nosec G101
+	defaultCRTokenFilename2 = "/var/run/secrets/tokens/sa-token"                                       // #nosec G101
+	defaultCRTokenFilename3 = "/var/run/secrets/codeengine.cloud.ibm.com/compute-resource-token/token" // #nosec G101
+	iamGrantTypeCRToken     = "urn:ibm:params:oauth:grant-type:cr-token"                               // #nosec G101
 )
 
 var craRequestTokenMutex sync.Mutex
@@ -173,7 +174,6 @@ func (builder *ContainerAuthenticatorBuilder) SetClient(client *http.Client) *Co
 
 // Build() returns a validated instance of the ContainerAuthenticator with the config that was set in the builder.
 func (builder *ContainerAuthenticatorBuilder) Build() (*ContainerAuthenticator, error) {
-
 	// Make sure the config is valid.
 	err := builder.ContainerAuthenticator.Validate()
 	if err != nil {
@@ -215,7 +215,7 @@ func (authenticator *ContainerAuthenticator) getUserAgent() string {
 // configuration properties.
 func newContainerAuthenticatorFromMap(properties map[string]string) (authenticator *ContainerAuthenticator, err error) {
 	if properties == nil {
-		err = fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -255,6 +255,7 @@ func (authenticator *ContainerAuthenticator) Authenticate(request *http.Request)
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -293,7 +294,6 @@ func (authenticator *ContainerAuthenticator) setTokenData(tokenData *iamTokenDat
 // Ensures that one of IAMProfileName or IAMProfileID are specified, and the ClientId and ClientSecret pair are
 // mutually inclusive.
 func (authenticator *ContainerAuthenticator) Validate() error {
-
 	// Check to make sure that one of IAMProfileName or IAMProfileID are specified.
 	if authenticator.IAMProfileName == "" && authenticator.IAMProfileID == "" {
 		err := fmt.Errorf(ERRORMSG_ATLEAST_ONE_PROP_ERROR, "IAMProfileName", "IAMProfileID")
@@ -482,8 +482,7 @@ func (authenticator *ContainerAuthenticator) RequestToken() (*IamTokenServerResp
 			iamErrorMsg = string(detailedResponse.RawResult)
 		}
 
-		authError.Summary =
-			fmt.Sprintf(ERRORMSG_IAM_GETTOKEN_ERROR, detailedResponse.StatusCode, builder.URL, iamErrorMsg)
+		authError.Summary = fmt.Sprintf(ERRORMSG_IAM_GETTOKEN_ERROR, detailedResponse.StatusCode, builder.URL, iamErrorMsg)
 
 		return nil, authError
 	}
@@ -498,7 +497,6 @@ func (authenticator *ContainerAuthenticator) RequestToken() (*IamTokenServerResp
 
 // retrieveCRToken tries to read the CR token value from the local file system.
 func (authenticator *ContainerAuthenticator) retrieveCRToken() (crToken string, err error) {
-
 	if authenticator.CRTokenFilename != "" {
 		// Use the file specified by the user.
 		crToken, err = authenticator.readFile(authenticator.CRTokenFilename)
@@ -507,6 +505,9 @@ func (authenticator *ContainerAuthenticator) retrieveCRToken() (crToken string, 
 		crToken, err = authenticator.readFile(defaultCRTokenFilename1)
 		if err != nil {
 			crToken, err = authenticator.readFile(defaultCRTokenFilename2)
+			if err != nil {
+				crToken, err = authenticator.readFile(defaultCRTokenFilename3)
+			}
 		}
 	}
 

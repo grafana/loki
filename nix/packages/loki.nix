@@ -1,77 +1,38 @@
-{ pkgs, version, imageTag }:
-let
-  lambda-promtail-gomod = pkgs.buildGoModule {
-    inherit version;
-    pname = "lambda-promtail";
-
-    src = ./../../tools/lambda-promtail;
-    vendorHash = "sha256-CKob173T0VHD5c8F26aU7p1l+QzqddNM4qQedMbLJa0=";
-
-    doCheck = false;
-
-    installPhase = ''
-      runHook preInstall
-      cp -r --reflink=auto vendor $out
-      runHook postInstall
-    '';
-  };
-in
-pkgs.stdenv.mkDerivation {
+{ pkgs, version, imageTag, lib }:
+pkgs.buildGo124Module {
   inherit version;
 
   pname = "loki";
 
   src = ./../..;
+  vendorHash = null;
 
-  buildInputs = with pkgs; [
-    bash
-    gcc
-    git
-    go
-    golangci-lint
-    nettools
-    yamllint
+  ldflags =
+    let
+      prefix = "github.com/grafana/loki/v3/pkg/util/build";
+    in
+    [
+      "-s"
+      "-w"
+      "-X ${prefix}.Branch=nix"
+      "-X ${prefix}.Version=${imageTag}"
+      "-X ${prefix}.Revision=${version}"
+      "-X ${prefix}.BuildUser=nix@nixpkgs"
+      "-X ${prefix}.BuildDate=unknown"
+    ];
 
-    (import ./faillint.nix {
-      inherit (pkgs) lib buildGoModule fetchFromGitHub;
-    })
-  ];
+  subPackages = [ "cmd/loki" ];
 
-  configurePhase = with pkgs; ''
-    patchShebangs tools
-
-    substituteInPlace Makefile \
-      --replace "SHELL = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail" \
-      --replace "IMAGE_TAG ?= \$(shell ./tools/image-tag)" "IMAGE_TAG ?= ${imageTag}" \
-      --replace "GIT_REVISION := \$(shell git rev-parse --short HEAD)" "GIT_REVISION := ${version}" \
-      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := nix"
-
-    substituteInPlace clients/cmd/fluentd/Makefile \
-      --replace "SHELL    = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail"
-  '';
-
-  buildPhase = ''
-    export GOCACHE=$TMPDIR/go-cache
-    export GOMODCACHE=$TMPDIR/gomodcache
-    export GOPROXY=off
-
-    cp -r ${lambda-promtail-gomod} tools/lambda-promtail/vendor
-    make clean loki
-  '';
+  nativeBuildInputs = with pkgs; [ makeWrapper ];
 
   doCheck = false;
-  checkPhase = ''
-    export GOCACHE=$TMPDIR/go-cache
-    export GOMODCACHE=$TMPDIR/gomodcache
-    export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
-    export GOPROXY=off
-    export BUILD_IN_CONTAINER=false
 
-    make lint test
-  '';
-
-  installPhase = ''
-    mkdir -p $out/bin
-    install -m755 cmd/loki/loki $out/bin/loki
-  '';
+  meta = with lib; {
+    description = "Like Prometheus, but for logs";
+    mainProgram = "loki";
+    license = with licenses; [ agpl3Only ];
+    homepage = "https://grafana.com/oss/loki/";
+    changelog = "https://github.com/grafana/loki/commit/${version}";
+    maintainers = with maintainers; [ trevorwhitney ];
+  };
 }

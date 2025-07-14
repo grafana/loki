@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -30,7 +30,6 @@ import (
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	pubsubpb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	gax "github.com/googleapis/gax-go/v2"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
@@ -76,6 +75,7 @@ func defaultSubscriberGRPCClientOptions() []option.ClientOption {
 		internaloption.WithDefaultAudience("https://pubsub.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
 		internaloption.EnableJwtWithScope(),
+		internaloption.EnableNewAuthLibrary(),
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(math.MaxInt32))),
 	}
@@ -768,6 +768,8 @@ type subscriberGRPCClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogHeaders []string
+
+	logger *slog.Logger
 }
 
 // NewSubscriberClient creates a new subscriber client based on gRPC.
@@ -796,6 +798,7 @@ func NewSubscriberClient(ctx context.Context, opts ...option.ClientOption) (*Sub
 		connPool:         connPool,
 		subscriberClient: pubsubpb.NewSubscriberClient(connPool),
 		CallOptions:      &client.CallOptions,
+		logger:           internaloption.GetLogger(opts),
 		iamPolicyClient:  iampb.NewIAMPolicyClient(connPool),
 	}
 	c.setGoogleClientInfo()
@@ -843,6 +846,8 @@ type subscriberRESTClient struct {
 
 	// Points back to the CallOptions field of the containing SubscriberClient
 	CallOptions **SubscriberCallOptions
+
+	logger *slog.Logger
 }
 
 // NewSubscriberRESTClient creates a new subscriber rest client.
@@ -862,6 +867,7 @@ func NewSubscriberRESTClient(ctx context.Context, opts ...option.ClientOption) (
 		endpoint:    endpoint,
 		httpClient:  httpClient,
 		CallOptions: &callOpts,
+		logger:      internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -876,6 +882,7 @@ func defaultSubscriberRESTClientOptions() []option.ClientOption {
 		internaloption.WithDefaultUniverseDomain("googleapis.com"),
 		internaloption.WithDefaultAudience("https://pubsub.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
+		internaloption.EnableNewAuthLibrary(),
 	}
 }
 
@@ -913,7 +920,7 @@ func (c *subscriberGRPCClient) CreateSubscription(ctx context.Context, req *pubs
 	var resp *pubsubpb.Subscription
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.CreateSubscription(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.CreateSubscription, req, settings.GRPC, c.logger, "CreateSubscription")
 		return err
 	}, opts...)
 	if err != nil {
@@ -931,7 +938,7 @@ func (c *subscriberGRPCClient) GetSubscription(ctx context.Context, req *pubsubp
 	var resp *pubsubpb.Subscription
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.GetSubscription(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.GetSubscription, req, settings.GRPC, c.logger, "GetSubscription")
 		return err
 	}, opts...)
 	if err != nil {
@@ -949,7 +956,7 @@ func (c *subscriberGRPCClient) UpdateSubscription(ctx context.Context, req *pubs
 	var resp *pubsubpb.Subscription
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.UpdateSubscription(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.UpdateSubscription, req, settings.GRPC, c.logger, "UpdateSubscription")
 		return err
 	}, opts...)
 	if err != nil {
@@ -978,7 +985,7 @@ func (c *subscriberGRPCClient) ListSubscriptions(ctx context.Context, req *pubsu
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.subscriberClient.ListSubscriptions(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.subscriberClient.ListSubscriptions, req, settings.GRPC, c.logger, "ListSubscriptions")
 			return err
 		}, opts...)
 		if err != nil {
@@ -1012,7 +1019,7 @@ func (c *subscriberGRPCClient) DeleteSubscription(ctx context.Context, req *pubs
 	opts = append((*c.CallOptions).DeleteSubscription[0:len((*c.CallOptions).DeleteSubscription):len((*c.CallOptions).DeleteSubscription)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.subscriberClient.DeleteSubscription(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.subscriberClient.DeleteSubscription, req, settings.GRPC, c.logger, "DeleteSubscription")
 		return err
 	}, opts...)
 	return err
@@ -1026,7 +1033,7 @@ func (c *subscriberGRPCClient) ModifyAckDeadline(ctx context.Context, req *pubsu
 	opts = append((*c.CallOptions).ModifyAckDeadline[0:len((*c.CallOptions).ModifyAckDeadline):len((*c.CallOptions).ModifyAckDeadline)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.subscriberClient.ModifyAckDeadline(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.subscriberClient.ModifyAckDeadline, req, settings.GRPC, c.logger, "ModifyAckDeadline")
 		return err
 	}, opts...)
 	return err
@@ -1040,7 +1047,7 @@ func (c *subscriberGRPCClient) Acknowledge(ctx context.Context, req *pubsubpb.Ac
 	opts = append((*c.CallOptions).Acknowledge[0:len((*c.CallOptions).Acknowledge):len((*c.CallOptions).Acknowledge)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.subscriberClient.Acknowledge(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.subscriberClient.Acknowledge, req, settings.GRPC, c.logger, "Acknowledge")
 		return err
 	}, opts...)
 	return err
@@ -1055,7 +1062,7 @@ func (c *subscriberGRPCClient) Pull(ctx context.Context, req *pubsubpb.PullReque
 	var resp *pubsubpb.PullResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.Pull(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.Pull, req, settings.GRPC, c.logger, "Pull")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1070,7 +1077,9 @@ func (c *subscriberGRPCClient) StreamingPull(ctx context.Context, opts ...gax.Ca
 	opts = append((*c.CallOptions).StreamingPull[0:len((*c.CallOptions).StreamingPull):len((*c.CallOptions).StreamingPull)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
+		c.logger.DebugContext(ctx, "api streaming client request", "serviceName", serviceName, "rpcName", "StreamingPull")
 		resp, err = c.subscriberClient.StreamingPull(ctx, settings.GRPC...)
+		c.logger.DebugContext(ctx, "api streaming client response", "serviceName", serviceName, "rpcName", "StreamingPull")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1087,7 +1096,7 @@ func (c *subscriberGRPCClient) ModifyPushConfig(ctx context.Context, req *pubsub
 	opts = append((*c.CallOptions).ModifyPushConfig[0:len((*c.CallOptions).ModifyPushConfig):len((*c.CallOptions).ModifyPushConfig)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.subscriberClient.ModifyPushConfig(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.subscriberClient.ModifyPushConfig, req, settings.GRPC, c.logger, "ModifyPushConfig")
 		return err
 	}, opts...)
 	return err
@@ -1102,7 +1111,7 @@ func (c *subscriberGRPCClient) GetSnapshot(ctx context.Context, req *pubsubpb.Ge
 	var resp *pubsubpb.Snapshot
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.GetSnapshot(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.GetSnapshot, req, settings.GRPC, c.logger, "GetSnapshot")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1131,7 +1140,7 @@ func (c *subscriberGRPCClient) ListSnapshots(ctx context.Context, req *pubsubpb.
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.subscriberClient.ListSnapshots(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.subscriberClient.ListSnapshots, req, settings.GRPC, c.logger, "ListSnapshots")
 			return err
 		}, opts...)
 		if err != nil {
@@ -1166,7 +1175,7 @@ func (c *subscriberGRPCClient) CreateSnapshot(ctx context.Context, req *pubsubpb
 	var resp *pubsubpb.Snapshot
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.CreateSnapshot(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.CreateSnapshot, req, settings.GRPC, c.logger, "CreateSnapshot")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1184,7 +1193,7 @@ func (c *subscriberGRPCClient) UpdateSnapshot(ctx context.Context, req *pubsubpb
 	var resp *pubsubpb.Snapshot
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.UpdateSnapshot(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.UpdateSnapshot, req, settings.GRPC, c.logger, "UpdateSnapshot")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1201,7 +1210,7 @@ func (c *subscriberGRPCClient) DeleteSnapshot(ctx context.Context, req *pubsubpb
 	opts = append((*c.CallOptions).DeleteSnapshot[0:len((*c.CallOptions).DeleteSnapshot):len((*c.CallOptions).DeleteSnapshot)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.subscriberClient.DeleteSnapshot(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.subscriberClient.DeleteSnapshot, req, settings.GRPC, c.logger, "DeleteSnapshot")
 		return err
 	}, opts...)
 	return err
@@ -1216,7 +1225,7 @@ func (c *subscriberGRPCClient) Seek(ctx context.Context, req *pubsubpb.SeekReque
 	var resp *pubsubpb.SeekResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.subscriberClient.Seek(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.subscriberClient.Seek, req, settings.GRPC, c.logger, "Seek")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1234,7 +1243,7 @@ func (c *subscriberGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetI
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.iamPolicyClient.GetIamPolicy(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.iamPolicyClient.GetIamPolicy, req, settings.GRPC, c.logger, "GetIamPolicy")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1252,7 +1261,7 @@ func (c *subscriberGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetI
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.iamPolicyClient.SetIamPolicy(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.iamPolicyClient.SetIamPolicy, req, settings.GRPC, c.logger, "SetIamPolicy")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1270,7 +1279,7 @@ func (c *subscriberGRPCClient) TestIamPermissions(ctx context.Context, req *iamp
 	var resp *iampb.TestIamPermissionsResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.iamPolicyClient.TestIamPermissions(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.iamPolicyClient.TestIamPermissions, req, settings.GRPC, c.logger, "TestIamPermissions")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1328,17 +1337,7 @@ func (c *subscriberRESTClient) CreateSubscription(ctx context.Context, req *pubs
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "CreateSubscription")
 		if err != nil {
 			return err
 		}
@@ -1388,17 +1387,7 @@ func (c *subscriberRESTClient) GetSubscription(ctx context.Context, req *pubsubp
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "GetSubscription")
 		if err != nil {
 			return err
 		}
@@ -1456,17 +1445,7 @@ func (c *subscriberRESTClient) UpdateSubscription(ctx context.Context, req *pubs
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "UpdateSubscription")
 		if err != nil {
 			return err
 		}
@@ -1528,21 +1507,10 @@ func (c *subscriberRESTClient) ListSubscriptions(ctx context.Context, req *pubsu
 			}
 			httpReq.Header = headers
 
-			httpRsp, err := c.httpClient.Do(httpReq)
+			buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "ListSubscriptions")
 			if err != nil {
 				return err
 			}
-			defer httpRsp.Body.Close()
-
-			if err = googleapi.CheckResponse(httpRsp); err != nil {
-				return err
-			}
-
-			buf, err := io.ReadAll(httpRsp.Body)
-			if err != nil {
-				return err
-			}
-
 			if err := unm.Unmarshal(buf, resp); err != nil {
 				return err
 			}
@@ -1606,15 +1574,8 @@ func (c *subscriberRESTClient) DeleteSubscription(ctx context.Context, req *pubs
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		// Returns nil if there is no error, otherwise wraps
-		// the response code and body into a non-nil error
-		return googleapi.CheckResponse(httpRsp)
+		_, err = executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "DeleteSubscription")
+		return err
 	}, opts...)
 }
 
@@ -1658,15 +1619,8 @@ func (c *subscriberRESTClient) ModifyAckDeadline(ctx context.Context, req *pubsu
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		// Returns nil if there is no error, otherwise wraps
-		// the response code and body into a non-nil error
-		return googleapi.CheckResponse(httpRsp)
+		_, err = executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "ModifyAckDeadline")
+		return err
 	}, opts...)
 }
 
@@ -1712,15 +1666,8 @@ func (c *subscriberRESTClient) Acknowledge(ctx context.Context, req *pubsubpb.Ac
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		// Returns nil if there is no error, otherwise wraps
-		// the response code and body into a non-nil error
-		return googleapi.CheckResponse(httpRsp)
+		_, err = executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "Acknowledge")
+		return err
 	}, opts...)
 }
 
@@ -1763,17 +1710,7 @@ func (c *subscriberRESTClient) Pull(ctx context.Context, req *pubsubpb.PullReque
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "Pull")
 		if err != nil {
 			return err
 		}
@@ -1844,15 +1781,8 @@ func (c *subscriberRESTClient) ModifyPushConfig(ctx context.Context, req *pubsub
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		// Returns nil if there is no error, otherwise wraps
-		// the response code and body into a non-nil error
-		return googleapi.CheckResponse(httpRsp)
+		_, err = executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "ModifyPushConfig")
+		return err
 	}, opts...)
 }
 
@@ -1893,17 +1823,7 @@ func (c *subscriberRESTClient) GetSnapshot(ctx context.Context, req *pubsubpb.Ge
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "GetSnapshot")
 		if err != nil {
 			return err
 		}
@@ -1968,21 +1888,10 @@ func (c *subscriberRESTClient) ListSnapshots(ctx context.Context, req *pubsubpb.
 			}
 			httpReq.Header = headers
 
-			httpRsp, err := c.httpClient.Do(httpReq)
+			buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "ListSnapshots")
 			if err != nil {
 				return err
 			}
-			defer httpRsp.Body.Close()
-
-			if err = googleapi.CheckResponse(httpRsp); err != nil {
-				return err
-			}
-
-			buf, err := io.ReadAll(httpRsp.Body)
-			if err != nil {
-				return err
-			}
-
 			if err := unm.Unmarshal(buf, resp); err != nil {
 				return err
 			}
@@ -2066,17 +1975,7 @@ func (c *subscriberRESTClient) CreateSnapshot(ctx context.Context, req *pubsubpb
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "CreateSnapshot")
 		if err != nil {
 			return err
 		}
@@ -2137,17 +2036,7 @@ func (c *subscriberRESTClient) UpdateSnapshot(ctx context.Context, req *pubsubpb
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "UpdateSnapshot")
 		if err != nil {
 			return err
 		}
@@ -2202,15 +2091,8 @@ func (c *subscriberRESTClient) DeleteSnapshot(ctx context.Context, req *pubsubpb
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		// Returns nil if there is no error, otherwise wraps
-		// the response code and body into a non-nil error
-		return googleapi.CheckResponse(httpRsp)
+		_, err = executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "DeleteSnapshot")
+		return err
 	}, opts...)
 }
 
@@ -2259,17 +2141,7 @@ func (c *subscriberRESTClient) Seek(ctx context.Context, req *pubsubpb.SeekReque
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "Seek")
 		if err != nil {
 			return err
 		}
@@ -2323,17 +2195,7 @@ func (c *subscriberRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetI
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, nil, "GetIamPolicy")
 		if err != nil {
 			return err
 		}
@@ -2393,17 +2255,7 @@ func (c *subscriberRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetI
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "SetIamPolicy")
 		if err != nil {
 			return err
 		}
@@ -2465,17 +2317,7 @@ func (c *subscriberRESTClient) TestIamPermissions(ctx context.Context, req *iamp
 		httpReq = httpReq.WithContext(ctx)
 		httpReq.Header = headers
 
-		httpRsp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			return err
-		}
-		defer httpRsp.Body.Close()
-
-		if err = googleapi.CheckResponse(httpRsp); err != nil {
-			return err
-		}
-
-		buf, err := io.ReadAll(httpRsp.Body)
+		buf, err := executeHTTPRequest(ctx, c.httpClient, httpReq, c.logger, jsonReq, "TestIamPermissions")
 		if err != nil {
 			return err
 		}

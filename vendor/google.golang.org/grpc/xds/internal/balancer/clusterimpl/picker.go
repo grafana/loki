@@ -19,6 +19,8 @@
 package clusterimpl
 
 import (
+	"context"
+
 	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
@@ -85,25 +87,23 @@ type picker struct {
 	telemetryLabels map[string]string
 }
 
-func (b *clusterImplBalancer) newPicker(config *dropConfigs) *picker {
-	return &picker{
-		drops:           config.drops,
-		s:               b.childState,
-		loadStore:       b.loadWrapper,
-		counter:         config.requestCounter,
-		countMax:        config.requestCountMax,
-		telemetryLabels: b.telemetryLabels,
+func telemetryLabels(ctx context.Context) map[string]string {
+	if ctx == nil {
+		return nil
 	}
+	labels := stats.GetLabels(ctx)
+	if labels == nil {
+		return nil
+	}
+	return labels.TelemetryLabels
 }
 
 func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Unconditionally set labels if present, even dropped or queued RPC's can
 	// use these labels.
-	if info.Ctx != nil {
-		if labels := stats.GetLabels(info.Ctx); labels != nil && labels.TelemetryLabels != nil {
-			for key, value := range d.telemetryLabels {
-				labels.TelemetryLabels[key] = value
-			}
+	if labels := telemetryLabels(info.Ctx); labels != nil {
+		for key, value := range d.telemetryLabels {
+			labels[key] = value
 		}
 	}
 
@@ -129,7 +129,7 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			if d.loadStore != nil {
 				d.loadStore.CallDropped("")
 			}
-			return balancer.PickResult{}, status.Errorf(codes.Unavailable, err.Error())
+			return balancer.PickResult{}, status.Error(codes.Unavailable, err.Error())
 		}
 	}
 
@@ -139,13 +139,9 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// This OK check also covers the case err!=nil, because SubConn will be
 		// nil.
 		pr.SubConn = scw.SubConn
-		var e error
 		// If locality ID isn't found in the wrapper, an empty locality ID will
 		// be used.
-		lIDStr, e = scw.localityID().ToString()
-		if e != nil {
-			logger.Infof("failed to marshal LocalityID: %#v, loads won't be reported", scw.localityID())
-		}
+		lIDStr = scw.localityID().ToString()
 	}
 
 	if err != nil {
@@ -154,6 +150,10 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			d.counter.EndRequest()
 		}
 		return pr, err
+	}
+
+	if labels := telemetryLabels(info.Ctx); labels != nil {
+		labels["grpc.lb.locality"] = lIDStr
 	}
 
 	if d.loadStore != nil {

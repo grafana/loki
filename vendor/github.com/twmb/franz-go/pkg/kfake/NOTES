@@ -1,0 +1,62 @@
+ORDER
+
+BASIC
+x Produce
+x Metadata
+x CreateTopics
+x InitProducerID
+x ListOffsets
+x Fetch
+x DeleteTopics
+x CreatePartitions
+
+GROUPS
+x OffsetCommit
+x OffsetFetch
+x FindCoordinator
+x JoinGroup
+x Heartbeat
+x LeaveGroup
+x SyncGroup
+x DescribeGroups
+x ListGroups
+x DeleteGroups
+
+MISC
+x OffsetForLeaderEpoch
+
+SASL
+x SaslHandshake
+x SaslAuthenticate
+x DescribeUserScramCredentials
+x AlterUserScramCredentials
+
+LOW-PRIO
+x DeleteRecords
+x DescribeConfigs
+x AlterConfigs
+x IncrementalAlterConfigs
+x OffsetDelete
+x AlterReplicaLogDirs
+x DescribeLogDirs
+
+TXNS
+* AddPartitionsToTxn
+* AddOffsetsToTxn
+* EndTxn
+* TxnOffsetCommit
+
+ACLS
+* DescribeACLs
+* CreateACLs
+* DeleteACLs
+
+LOWER-PRIO
+* DescribeProducers
+* DescribeTransactions
+* ListTransactions
+* AlterPartitionAssignments
+* ListPartitionReassignments
+* DescribeClientQuotas
+* AlterClientQuotas
+DTOKEN: ignore

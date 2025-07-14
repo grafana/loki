@@ -44,6 +44,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	fmpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -281,6 +282,10 @@ type TopicConfig struct {
 	// IngestionDataSourceSettings are settings for ingestion from a
 	// data source into this topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// MessageTransforms are the transforms to be applied to messages published to the topic.
+	// Transforms are applied in the order specified.
+	MessageTransforms []MessageTransform
 }
 
 // String returns the printable globally unique name for the topic config.
@@ -315,6 +320,7 @@ func (tc *TopicConfig) toProto() *pb.Topic {
 		SchemaSettings:              schemaSettingsToProto(tc.SchemaSettings),
 		MessageRetentionDuration:    retDur,
 		IngestionDataSourceSettings: tc.IngestionDataSourceSettings.toProto(),
+		MessageTransforms:           messageTransformsToProto(tc.MessageTransforms),
 	}
 	return pbt
 }
@@ -350,8 +356,14 @@ type TopicConfigToUpdate struct {
 	// IngestionDataSourceSettings are settings for ingestion from a
 	// data source into this topic.
 	//
+	// When changing this value, the entire data source settings object must be applied,
+	// rather than just the differences. This includes the source and logging settings.
+	//
 	// Use the zero value &IngestionDataSourceSettings{} to remove the ingestion settings from the topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// If non-nil, the entire list of message transforms is replaced with the following.
+	MessageTransforms []MessageTransform
 }
 
 func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
@@ -363,6 +375,7 @@ func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
 		SchemaSettings:              protoToSchemaSettings(pbt.SchemaSettings),
 		State:                       TopicState(pbt.State),
 		IngestionDataSourceSettings: protoToIngestionDataSourceSettings(pbt.IngestionDataSourceSettings),
+		MessageTransforms:           protoToMessageTransforms(pbt.MessageTransforms),
 	}
 	if pbt.GetMessageRetentionDuration() != nil {
 		tc.RetentionDuration = pbt.GetMessageRetentionDuration().AsDuration()
@@ -425,6 +438,8 @@ func messageStoragePolicyToProto(msp *MessageStoragePolicy) *pb.MessageStoragePo
 // IngestionDataSourceSettings enables ingestion from a data source into this topic.
 type IngestionDataSourceSettings struct {
 	Source IngestionDataSource
+
+	PlatformLogsSettings *PlatformLogsSettings
 }
 
 // IngestionDataSource is the kind of ingestion source to be used.
@@ -495,6 +510,280 @@ func (i *IngestionDataSourceAWSKinesis) isIngestionDataSource() bool {
 	return true
 }
 
+// CloudStorageIngestionState denotes the possible states for ingestion from Cloud Storage.
+type CloudStorageIngestionState int
+
+const (
+	// CloudStorageIngestionStateUnspecified is the default value. This value is unused.
+	CloudStorageIngestionStateUnspecified = iota
+
+	// CloudStorageIngestionStateActive means ingestion is active.
+	CloudStorageIngestionStateActive
+
+	// CloudStorageIngestionPermissionDenied means encountering an error while calling the Cloud Storage API.
+	// This can happen if the Pub/Sub SA has not been granted the
+	// [appropriate permissions](https://cloud.google.com/storage/docs/access-control/iam-permissions):
+	// - storage.objects.list: to list the objects in a bucket.
+	// - storage.objects.get: to read the objects in a bucket.
+	// - storage.buckets.get: to verify the bucket exists.
+	CloudStorageIngestionPermissionDenied
+
+	// CloudStorageIngestionPublishPermissionDenied means encountering an error when publishing to the topic.
+	// This can happen if the Pub/Sub SA has not been granted the [appropriate publish
+	// permissions](https://cloud.google.com/pubsub/docs/access-control#pubsub.publisher)
+	CloudStorageIngestionPublishPermissionDenied
+
+	// CloudStorageIngestionBucketNotFound means the provided bucket doesn't exist.
+	CloudStorageIngestionBucketNotFound
+
+	// CloudStorageIngestionTooManyObjects means the bucket has too many objects, ingestion will be paused.
+	CloudStorageIngestionTooManyObjects
+)
+
+// IngestionDataSourceCloudStorage are ingestion settings for Cloud Storage.
+type IngestionDataSourceCloudStorage struct {
+	// State is an output-only field indicating the state of the Cloud storage ingestion source.
+	State CloudStorageIngestionState
+
+	// Bucket is the Cloud Storage bucket. The bucket name must be without any
+	// prefix like "gs://". See the bucket naming requirements (https://cloud.google.com/storage/docs/buckets#naming).
+	Bucket string
+
+	// InputFormat is the format of objects in Cloud Storage.
+	// Defaults to TextFormat.
+	InputFormat ingestionDataSourceCloudStorageInputFormat
+
+	// MinimumObjectCreateTime means objects with a larger or equal creation timestamp will be
+	// ingested.
+	MinimumObjectCreateTime time.Time
+
+	// MatchGlob is the pattern used to match objects that will be ingested. If
+	// empty, all objects will be ingested. See the [supported
+	// patterns](https://cloud.google.com/storage/docs/json_api/v1/objects/list#list-objects-and-prefixes-using-glob).
+	MatchGlob string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceCloudStorage)(nil)
+
+func (i *IngestionDataSourceCloudStorage) isIngestionDataSource() bool {
+	return true
+}
+
+type ingestionDataSourceCloudStorageInputFormat interface {
+	isCloudStorageIngestionInputFormat() bool
+}
+
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStorageTextFormat)(nil)
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStorageAvroFormat)(nil)
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStoragePubSubAvroFormat)(nil)
+
+// IngestionDataSourceCloudStorageTextFormat means Cloud Storage data will be interpreted as text.
+type IngestionDataSourceCloudStorageTextFormat struct {
+	Delimiter string
+}
+
+func (i *IngestionDataSourceCloudStorageTextFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
+// IngestionDataSourceCloudStorageAvroFormat means Cloud Storage data will be interpreted in Avro format.
+type IngestionDataSourceCloudStorageAvroFormat struct{}
+
+func (i *IngestionDataSourceCloudStorageAvroFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
+// IngestionDataSourceCloudStoragePubSubAvroFormat is used assuming the data was written using Cloud
+// Storage subscriptions https://cloud.google.com/pubsub/docs/cloudstorage.
+type IngestionDataSourceCloudStoragePubSubAvroFormat struct{}
+
+func (i *IngestionDataSourceCloudStoragePubSubAvroFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
+// EventHubsState denotes the possible states for ingestion from Event Hubs.
+type EventHubsState int
+
+const (
+	// EventHubsStateUnspecified is the default value. This value is unused.
+	EventHubsStateUnspecified = iota
+
+	// EventHubsStateActive means the state is active.
+	EventHubsStateActive
+
+	// EventHubsStatePermissionDenied indicates encountered permission denied error
+	// while consuming data from Event Hubs.
+	// This can happen when `client_id`, or `tenant_id` are invalid. Or the
+	// right permissions haven't been granted.
+	EventHubsStatePermissionDenied
+
+	// EventHubsStatePublishPermissionDenied indicates permission denied encountered
+	// while publishing to the topic.
+	EventHubsStatePublishPermissionDenied
+
+	// EventHubsStateNamespaceNotFound indicates the provided Event Hubs namespace couldn't be found.
+	EventHubsStateNamespaceNotFound
+
+	// EventHubsStateNotFound indicates the provided Event Hub couldn't be found.
+	EventHubsStateNotFound
+
+	// EventHubsStateSubscriptionNotFound indicates the provided Event Hubs subscription couldn't be found.
+	EventHubsStateSubscriptionNotFound
+
+	// EventHubsStateResourceGroupNotFound indicates the provided Event Hubs resource group couldn't be found.
+	EventHubsStateResourceGroupNotFound
+)
+
+// IngestionDataSourceAzureEventHubs are ingestion settings for Azure Event Hubs.
+type IngestionDataSourceAzureEventHubs struct {
+	// Output only field that indicates the state of the Event Hubs ingestion source.
+	State EventHubsState
+
+	// Name of the resource group within the Azure subscription
+	ResourceGroup string
+
+	// Name of the Event Hubs namespace
+	Namespace string
+
+	// Rame of the Event Hub.
+	EventHub string
+
+	// Client ID of the Azure application that is being used to authenticate Pub/Sub.
+	ClientID string
+
+	// Tenant ID of the Azure application that is being used to authenticate Pub/Sub.
+	TenantID string
+
+	// The Azure subscription ID
+	SubscriptionID string
+
+	// GCPServiceAccount is the GCP service account to be used for Federated Identity
+	// authentication.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceAzureEventHubs)(nil)
+
+func (i *IngestionDataSourceAzureEventHubs) isIngestionDataSource() bool {
+	return true
+}
+
+// AmazonMSKState denotes the possible states for ingestion from Amazon MSK.
+type AmazonMSKState int
+
+const (
+	// AmazonMSKStateUnspecified is the default value. This value is unused.
+	AmazonMSKStateUnspecified = iota
+
+	// AmazonMSKActive indicates MSK topic is active.
+	AmazonMSKActive
+
+	// AmazonMSKPermissionDenied indicates permission denied encountered while consuming data from Amazon MSK.
+	AmazonMSKPermissionDenied
+
+	// AmazonMSKPublishPermissionDenied indicates permission denied encountered while publishing to the topic.
+	AmazonMSKPublishPermissionDenied
+
+	// AmazonMSKClusterNotFound indicates the provided Msk cluster wasn't found.
+	AmazonMSKClusterNotFound
+
+	// AmazonMSKTopicNotFound indicates the provided topic wasn't found.
+	AmazonMSKTopicNotFound
+)
+
+// IngestionDataSourceAmazonMSK are ingestion settings for Amazon MSK.
+type IngestionDataSourceAmazonMSK struct {
+	// An output-only field that indicates the state of the Amazon
+	// MSK ingestion source.
+	State AmazonMSKState
+
+	// The Amazon Resource Name (ARN) that uniquely identifies the
+	// cluster.
+	ClusterARN string
+
+	// The name of the topic in the Amazon MSK cluster that Pub/Sub
+	// will import from.
+	Topic string
+
+	// AWS role ARN to be used for Federated Identity authentication
+	// with Amazon MSK. Check the Pub/Sub docs for how to set up this role and
+	// the required permissions that need to be attached to it.
+	AWSRoleARN string
+
+	// The GCP service account to be used for Federated Identity
+	// authentication with Amazon MSK (via a `AssumeRoleWithWebIdentity` call
+	// for the provided role). The `aws_role_arn` must be set up with
+	// `accounts.google.com:sub` equals to this service account number.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceAmazonMSK)(nil)
+
+func (i *IngestionDataSourceAmazonMSK) isIngestionDataSource() bool {
+	return true
+}
+
+// ConfluentCloudState denotes state of ingestion topic with confluent cloud
+type ConfluentCloudState int
+
+const (
+	// ConfluentCloudStateUnspecified is the default value. This value is unused.
+	ConfluentCloudStateUnspecified = iota
+
+	// ConfluentCloudActive indicates the state is active.
+	ConfluentCloudActive = 1
+
+	// ConfluentCloudPermissionDenied indicates permission denied encountered
+	// while consuming data from Confluent Cloud.
+	ConfluentCloudPermissionDenied = 2
+
+	// ConfluentCloudPublishPermissionDenied indicates permission denied encountered
+	// while publishing to the topic.
+	ConfluentCloudPublishPermissionDenied = 3
+
+	// ConfluentCloudUnreachableBootstrapServer indicates the provided bootstrap
+	// server address is unreachable.
+	ConfluentCloudUnreachableBootstrapServer = 4
+
+	// ConfluentCloudClusterNotFound indicates the provided cluster wasn't found.
+	ConfluentCloudClusterNotFound = 5
+
+	// ConfluentCloudTopicNotFound indicates the provided topic wasn't found.
+	ConfluentCloudTopicNotFound = 6
+)
+
+// IngestionDataSourceConfluentCloud are ingestion settings for confluent cloud.
+type IngestionDataSourceConfluentCloud struct {
+	// An output-only field that indicates the state of the
+	// Confluent Cloud ingestion source.
+	State ConfluentCloudState
+
+	// The address of the bootstrap server. The format is url:port.
+	BootstrapServer string
+
+	// The id of the cluster.
+	ClusterID string
+
+	// The name of the topic in the Confluent Cloud cluster that
+	// Pub/Sub will import from.
+	Topic string
+
+	// The id of the identity pool to be used for Federated Identity
+	// authentication with Confluent Cloud. See
+	// https://docs.confluent.io/cloud/current/security/authenticate/workload-identities/identity-providers/oauth/identity-pools.html#add-oauth-identity-pools.
+	IdentityPoolID string
+
+	// The GCP service account to be used for Federated Identity
+	// authentication with `identity_pool_id`.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceConfluentCloud)(nil)
+
+func (i *IngestionDataSourceConfluentCloud) isIngestionDataSource() bool {
+	return true
+}
+
 func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *IngestionDataSourceSettings {
 	if pbs == nil {
 		return nil
@@ -509,7 +798,61 @@ func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *In
 			AWSRoleARN:        k.GetAwsRoleArn(),
 			GCPServiceAccount: k.GetGcpServiceAccount(),
 		}
+	} else if cs := pbs.GetCloudStorage(); cs != nil {
+		var format ingestionDataSourceCloudStorageInputFormat
+		switch t := cs.InputFormat.(type) {
+		case *pb.IngestionDataSourceSettings_CloudStorage_TextFormat_:
+			format = &IngestionDataSourceCloudStorageTextFormat{
+				Delimiter: *t.TextFormat.Delimiter,
+			}
+		case *pb.IngestionDataSourceSettings_CloudStorage_AvroFormat_:
+			format = &IngestionDataSourceCloudStorageAvroFormat{}
+		case *pb.IngestionDataSourceSettings_CloudStorage_PubsubAvroFormat:
+			format = &IngestionDataSourceCloudStoragePubSubAvroFormat{}
+		}
+		s.Source = &IngestionDataSourceCloudStorage{
+			State:                   CloudStorageIngestionState(cs.GetState()),
+			Bucket:                  cs.GetBucket(),
+			InputFormat:             format,
+			MinimumObjectCreateTime: cs.GetMinimumObjectCreateTime().AsTime(),
+			MatchGlob:               cs.GetMatchGlob(),
+		}
+	} else if e := pbs.GetAzureEventHubs(); e != nil {
+		s.Source = &IngestionDataSourceAzureEventHubs{
+			State:             EventHubsState(e.GetState()),
+			ResourceGroup:     e.GetResourceGroup(),
+			Namespace:         e.GetNamespace(),
+			EventHub:          e.GetEventHub(),
+			ClientID:          e.GetClientId(),
+			TenantID:          e.GetTenantId(),
+			SubscriptionID:    e.GetSubscriptionId(),
+			GCPServiceAccount: e.GetGcpServiceAccount(),
+		}
+	} else if m := pbs.GetAwsMsk(); m != nil {
+		s.Source = &IngestionDataSourceAmazonMSK{
+			State:             AmazonMSKState(m.GetState()),
+			ClusterARN:        m.GetClusterArn(),
+			Topic:             m.GetTopic(),
+			AWSRoleARN:        m.GetAwsRoleArn(),
+			GCPServiceAccount: m.GetGcpServiceAccount(),
+		}
+	} else if c := pbs.GetConfluentCloud(); c != nil {
+		s.Source = &IngestionDataSourceConfluentCloud{
+			State:             ConfluentCloudState(c.GetState()),
+			BootstrapServer:   c.GetBootstrapServer(),
+			ClusterID:         c.GetClusterId(),
+			Topic:             c.GetTopic(),
+			IdentityPoolID:    c.GetIdentityPoolId(),
+			GCPServiceAccount: c.GetGcpServiceAccount(),
+		}
 	}
+
+	if pbs.PlatformLogsSettings != nil {
+		s.PlatformLogsSettings = &PlatformLogsSettings{
+			Severity: PlatformLogsSeverity(pbs.PlatformLogsSettings.Severity),
+		}
+	}
+
 	return s
 }
 
@@ -522,6 +865,11 @@ func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings 
 		return nil
 	}
 	pbs := &pb.IngestionDataSourceSettings{}
+	if i.PlatformLogsSettings != nil {
+		pbs.PlatformLogsSettings = &pb.PlatformLogsSettings{
+			Severity: pb.PlatformLogsSettings_Severity(i.PlatformLogsSettings.Severity),
+		}
+	}
 	if out := i.Source; out != nil {
 		if k, ok := out.(*IngestionDataSourceAWSKinesis); ok {
 			pbs.Source = &pb.IngestionDataSourceSettings_AwsKinesis_{
@@ -534,9 +882,108 @@ func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings 
 				},
 			}
 		}
+		if cs, ok := out.(*IngestionDataSourceCloudStorage); ok {
+			switch format := cs.InputFormat.(type) {
+			case *IngestionDataSourceCloudStorageTextFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_TextFormat_{
+							TextFormat: &pb.IngestionDataSourceSettings_CloudStorage_TextFormat{
+								Delimiter: &format.Delimiter,
+							},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
+			case *IngestionDataSourceCloudStorageAvroFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat_{
+							AvroFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat{},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
+			case *IngestionDataSourceCloudStoragePubSubAvroFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_PubsubAvroFormat{
+							PubsubAvroFormat: &pb.IngestionDataSourceSettings_CloudStorage_PubSubAvroFormat{},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
+			}
+		}
+		if e, ok := out.(*IngestionDataSourceAzureEventHubs); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_AzureEventHubs_{
+				AzureEventHubs: &pb.IngestionDataSourceSettings_AzureEventHubs{
+					ResourceGroup:     e.ResourceGroup,
+					Namespace:         e.Namespace,
+					EventHub:          e.EventHub,
+					ClientId:          e.ClientID,
+					TenantId:          e.TenantID,
+					SubscriptionId:    e.SubscriptionID,
+					GcpServiceAccount: e.GCPServiceAccount,
+				},
+			}
+		}
+		if m, ok := out.(*IngestionDataSourceAmazonMSK); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_AwsMsk_{
+				AwsMsk: &pb.IngestionDataSourceSettings_AwsMsk{
+					ClusterArn:        m.ClusterARN,
+					Topic:             m.Topic,
+					AwsRoleArn:        m.AWSRoleARN,
+					GcpServiceAccount: m.GCPServiceAccount,
+				},
+			}
+		}
+		if c, ok := out.(*IngestionDataSourceConfluentCloud); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_ConfluentCloud_{
+				ConfluentCloud: &pb.IngestionDataSourceSettings_ConfluentCloud{
+					BootstrapServer:   c.BootstrapServer,
+					ClusterId:         c.ClusterID,
+					Topic:             c.Topic,
+					IdentityPoolId:    c.IdentityPoolID,
+					GcpServiceAccount: c.GCPServiceAccount,
+				},
+			}
+		}
 	}
 	return pbs
 }
+
+// PlatformLogsSettings configures logging produced by Pub/Sub.
+// Currently only valid on Cloud Storage ingestion topics.
+type PlatformLogsSettings struct {
+	Severity PlatformLogsSeverity
+}
+
+// PlatformLogsSeverity are the severity levels of Platform Logs.
+type PlatformLogsSeverity int32
+
+const (
+	// PlatformLogsSeverityUnspecified is the default value. Logs level is unspecified. Logs will be disabled.
+	PlatformLogsSeverityUnspecified PlatformLogsSeverity = iota
+	// PlatformLogsSeverityDisabled means logs will be disabled.
+	PlatformLogsSeverityDisabled
+	// PlatformLogsSeverityDebug means debug logs and higher-severity logs will be written.
+	PlatformLogsSeverityDebug
+	// PlatformLogsSeverityInfo means info logs and higher-severity logs will be written.
+	PlatformLogsSeverityInfo
+	// PlatformLogsSeverityWarning means warning logs and higher-severity logs will be written.
+	PlatformLogsSeverityWarning
+	// PlatformLogsSeverityError means only error logs will be written.
+	PlatformLogsSeverityError
+)
 
 // Config returns the TopicConfig for the topic.
 func (t *Topic) Config(ctx context.Context) (TopicConfig, error) {
@@ -614,6 +1061,10 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 	if cfg.IngestionDataSourceSettings != nil {
 		pt.IngestionDataSourceSettings = cfg.IngestionDataSourceSettings.toProto()
 		paths = append(paths, "ingestion_data_source_settings")
+	}
+	if cfg.MessageTransforms != nil {
+		pt.MessageTransforms = messageTransformsToProto(cfg.MessageTransforms)
+		paths = append(paths, "message_transforms")
 	}
 	return &pb.UpdateTopicRequest{
 		Topic:      pt,
@@ -748,8 +1199,8 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	var createSpan trace.Span
 	if t.enableTracing {
 		opts := getPublishSpanAttributes(t.c.projectID, t.ID(), msg)
+		opts = append(opts, trace.WithAttributes(semconv.CodeFunction("Publish")))
 		ctx, createSpan = startSpan(ctx, createSpanName, t.ID(), opts...)
-		createSpan.SetAttributes(semconv.CodeFunction("Publish"))
 	}
 	ctx, err := tag.New(ctx, tag.Insert(keyStatus, "OK"), tag.Upsert(keyTopic, t.name))
 	if err != nil {
@@ -799,8 +1250,6 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 		fcSpan.End()
 	}
 
-	_, batcherSpan = startSpan(ctx, batcherSpanName, "")
-
 	bmsg := &bundledMessage{
 		msg:        msg,
 		res:        r,
@@ -809,6 +1258,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	}
 
 	if t.enableTracing {
+		_, batcherSpan = startSpan(ctx, batcherSpanName, "")
 		bmsg.batcherSpan = batcherSpan
 
 		// Inject the context from the first publish span rather than from flow control / batching.
@@ -893,11 +1343,15 @@ func (t *Topic) initBundler() {
 			for _, m := range bmsgs {
 				m.batcherSpan.End()
 				m.createSpan.AddEvent(eventPublishStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(bmsgs))))
-				defer m.createSpan.End()
-				defer m.createSpan.AddEvent(eventPublishEnd)
 			}
 		}
 		t.publishMessageBundle(ctx, bmsgs)
+		if t.enableTracing {
+			for _, m := range bmsgs {
+				m.createSpan.AddEvent(eventPublishEnd)
+				m.createSpan.End()
+			}
+		}
 	})
 	t.scheduler.DelayThreshold = t.PublishSettings.DelayThreshold
 	t.scheduler.BundleCountThreshold = t.PublishSettings.CountThreshold
@@ -973,8 +1427,14 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 		opts := getCommonOptions(projectID, topicID)
 		// Add link to publish RPC span of createSpan(s).
 		opts = append(opts, trace.WithLinks(links...))
+		opts = append(
+			opts,
+			trace.WithAttributes(
+				semconv.MessagingBatchMessageCount(numMsgs),
+				semconv.CodeFunction("publishMessageBundle"),
+			),
+		)
 		ctx, pSpan = startSpan(ctx, publishRPCSpanName, topicID, opts...)
-		pSpan.SetAttributes(semconv.MessagingBatchMessageCount(numMsgs), semconv.CodeFunction("publishMessageBundle"))
 		defer pSpan.End()
 
 		// Add the reverse link to createSpan(s) of publish RPC span.

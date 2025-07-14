@@ -115,6 +115,14 @@ var testCases = []TestCase{
 			typeSplitting:   {`!@£$%^&*()`},
 		},
 	},
+	{
+		name: "line length greater than max allowed length",
+		line: `09:17:38.033366 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_counter.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_Metric.action_is_drop.reason_is_queue_full 0 1717060658 userid invalid`,
+		want: map[string][]string{
+			typePunctuation: []string(nil),
+			typeSplitting:   {`09:`, `17:`, `38.033366`, `▶`, `INFO`, ``, `route`, `ops`, `sending`, `to`, `dest`, `https:`, `//graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics:`, ``, `service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_counter.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_Metric.action_is_drop.reason_is_queue_full`, `0`, `1717060658`, `userid`, `invalid`},
+		},
+	},
 }
 
 func TestTokenizer_Tokenize(t *testing.T) {
@@ -124,7 +132,7 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	}{
 		{
 			name:      typePunctuation,
-			tokenizer: newPunctuationTokenizer(),
+			tokenizer: newPunctuationTokenizer(360),
 		},
 		{
 			name:      typeSplitting,
@@ -135,7 +143,7 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got, _ := tt.tokenizer.Tokenize(tc.line, nil, nil)
+				got, _ := tt.tokenizer.Tokenize(tc.line, nil, nil, nil)
 				require.Equal(t, tc.want[tt.name], got)
 			})
 		}
@@ -149,7 +157,7 @@ func TestTokenizer_TokenizeAndJoin(t *testing.T) {
 	}{
 		{
 			name:      typePunctuation,
-			tokenizer: newPunctuationTokenizer(),
+			tokenizer: newPunctuationTokenizer(DefaultConfig().MaxAllowedLineLength),
 		},
 		{
 			name:      typeSplitting,
@@ -160,7 +168,7 @@ func TestTokenizer_TokenizeAndJoin(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line, nil, nil))
+				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line, nil, nil, nil))
 				require.Equal(t, tc.line, got)
 			})
 		}
@@ -168,7 +176,7 @@ func TestTokenizer_TokenizeAndJoin(t *testing.T) {
 }
 
 func BenchmarkSplittingTokenizer(b *testing.B) {
-	tokenizer := newPunctuationTokenizer()
+	tokenizer := newPunctuationTokenizer(DefaultConfig().MaxAllowedLineLength)
 
 	for _, tt := range testCases {
 		tc := tt
@@ -176,7 +184,7 @@ func BenchmarkSplittingTokenizer(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				tokenizer.Tokenize(tc.line, nil, nil)
+				tokenizer.Tokenize(tc.line, nil, nil, nil)
 			}
 		})
 	}
@@ -213,13 +221,17 @@ func TestLogFmtTokenizer(t *testing.T) {
 			line: `logger=sqlstore.metrics traceID=c933fefbe893411d3be8e1648d6bcf37 t=2024-07-10T16:00:15.564896897Z level=debug msg="query finished" status=success elapsedtime=1.324305ms <REDACTED> error=null`,
 			want: []string{"logger", "sqlstore.metrics", "traceID", "<_>", "t", "<_>", "level", "debug", "msg", "query finished", "status", "success", "elapsedtime", "1.324305ms", "<REDACTED>", "", "error", "null"},
 		},
+		{
+			line: `ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095 ip=127.0.0.1 userid=1234456`,
+			want: []string(nil),
+		},
 	}
 
-	tokenizer := newLogfmtTokenizer(param)
+	tokenizer := newLogfmtTokenizer(param, 250)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := tokenizer.Tokenize(tt.line, nil, nil)
+			got, _ := tokenizer.Tokenize(tt.line, nil, nil, nil)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -268,7 +280,7 @@ func TestLogFmtTokenizerJoin(t *testing.T) {
 		},
 	}
 
-	tokenizer := newLogfmtTokenizer("")
+	tokenizer := newLogfmtTokenizer("", DefaultConfig().MaxAllowedLineLength)
 
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
@@ -306,16 +318,24 @@ func TestJsonTokenizer(t *testing.T) {
 			want:    []string{"successfully", "discovered", "15", "agent", "IP", "addresses"},
 			pattern: "<_>successfully discovered 15 agent IP addresses<_>",
 		},
+		{
+			line:    `{"msg":{"actor":{"alternateId":"foo@grafana.com","displayName":"Foo bar","id":"dq23","type":"User"},"authenticationContext":{"authenticationStep":0,"externalSessionId":"123d"},"client":{"device":"Computer","geographicalContext":{"city":"Berlin","country":"DE","state":"Land Berlin"},"ipAddress":"0.0.0.0","userAgent":{"browser":"CHROME","os":"Mac OS X","rawUserAgent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"},"zone":"null"},"debugContext":{"debugData":{"authMethodFirstEnrollment":"123","authMethodFirstType":"foo","authMethodFirstVerificationTime":"2024-07-02T11:28:03.219Z","authMethodSecondEnrollment":"var","authMethodSecondType":"ddd","authMethodSecondVerificationTime":"2024-07-03T06:59:09.151Z","authnRequestId":"1","dtHash":"1","logOnlySecurityData":"{\"risk\":{\"level\":\"LOW\"},\"behaviors\":{\"New Geo-Location\":\"NEGATIVE\",\"New Device\":\"NEGATIVE\",\"New IP\":\"NEGATIVE\",\"New State\":\"NEGATIVE\",\"New Country\":\"NEGATIVE\",\"Velocity\":\"NEGATIVE\",\"New City\":\"NEGATIVE\"}}","requestId":"1","threatSuspected":"false","url":"/foo?"}},"displayMessage":"Evaluation of sign-on policy","eventType":"policy.evaluate_sign_on","legacyEventType":"app.oauth2.token.grant.refresh_token_success","outcome":{"reason":"Sign-on policy evaluation resulted in AUTHENTICATED","result":"ALLOW"},"published":"2024-07-03T09:19:59.973Z","request":{"ipChain":[{"geographicalContext":{"city":"Berlin","country":"Germany","geolocation":{"lat":52.5363,"lon":13.4169},"postalCode":"10435","state":"Land Berlin"},"ip":"95.90.234.241","version":"V4"}]},"securityContext":{"asNumber":3209,"asOrg":"kabel deutschland breitband customer 19","domain":"kabel-deutschland.de","isProxy":false,"isp":"vodafone gmbh"},"severity":"INFO","target":[{"alternateId":"Salesforce.com","detailEntry":{"signOnModeEvaluationResult":"AUTHENTICATED","signOnModeType":"SAML_2_0"},"displayName":"Salesforce.com","id":"0oa5sfmj3hz0mTgoW357","type":"AppInstance"},{"alternateId":"unknown","detailEntry":{"policyRuleFactorMode":"2FA"},"displayName":"Catch-all Rule","id":"1","type":"Rule"}],"transaction":{"detail":{},"id":"1","type":"WEB"},"context":[{"repo":{"id":27826205,"name":"hermanwahyudi/selenium","url":"https://api.github.com/repos/hermanwahyudi/selenium"},"payload":{"push_id":536863976,"size":1,"distinct_size":0,"ref":"refs/heads/master","head":"1b58dd4c4e14ea9cf5212b981774bd448a266c3c","before":"20b10e3a605bd177efff62f1130943774ac07bf3","commits":[{"sha":"1b58dd4c4e14ea9cf5212b981774bd448a266c3c","author":{"email":"2bb20d8a71fb7adbc1d6239cc9ff4130f26819dc@gmail.com","name":"Herman"},"message":"Update README.md","distinct":false,"url":"https://api.github.com/repos/hermanwahyudi/selenium/commits/1b58dd4c4e14ea9cf5212b981774bd448a266c3c"}]}},{"repo":{"id":27826205,"name":"hermanwahyudi/selenium","url":"https://api.github.com/repos/hermanwahyudi/selenium"},"payload":{"push_id":536863976,"size":1,"distinct_size":0,"ref":"refs/heads/master","head":"1b58dd4c4e14ea9cf5212b981774bd448a266c3c","before":"20b10e3a605bd177efff62f1130943774ac07bf3","commits":[{"sha":"1b58dd4c4e14ea9cf5212b981774bd448a266c3c","author":{"email":"2bb20d8a71fb7adbc1d6239cc9ff4130f26819dc@gmail.com","name":"Herman"},"message":"Update README.md","distinct":false,"url":"https://api.github.com/repos/hermanwahyudi/selenium/commits/1b58dd4c4e14ea9cf5212b981774bd448a266c3c"}]}}],"uuid":"1","version":"0"},"level":"info","type":"received event","time":"2024-07-03T09:19:59Z"}`,
+			want:    []string(nil),
+			pattern: "",
+		},
 	}
 
-	tokenizer := newJSONTokenizer(param)
+	fieldsToTokenize := []string{"log", "message", "msg", "msg_", "_msg", "content"}
+	tokenizer := newJSONTokenizer(param, DefaultConfig().MaxAllowedLineLength, fieldsToTokenize)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, state := tokenizer.Tokenize(tt.line, nil, nil)
+			got, state := tokenizer.Tokenize(tt.line, nil, nil, nil)
 			require.Equal(t, tt.want, got)
-			pattern := tokenizer.Join(got, state)
-			require.Equal(t, tt.pattern, pattern)
+			if len(got) == len(tt.want) && len(tt.want) != 0 {
+				pattern := tokenizer.Join(got, state)
+				require.Equal(t, tt.pattern, pattern)
+			}
 		})
 	}
 }

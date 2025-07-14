@@ -41,7 +41,7 @@ func TestSweepInstance(t *testing.T) {
 		ring: fakeRing,
 	}
 
-	ing, err := New(defaultIngesterTestConfig(t), ringClient, "foo", nil, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, ringClient, "foo", nil, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	err = services.StartAndAwaitRunning(context.Background(), ing)
@@ -260,6 +260,15 @@ func (f *fakeRing) GetTokenRangesForInstance(identifier string) (ring.TokenRange
 	return args.Get(0).(ring.TokenRanges), args.Error(1)
 }
 
+func (f *fakeRing) GetWithOptions(key uint32, op ring.Operation, opts ...ring.Option) (ring.ReplicationSet, error) {
+	args := f.Called(key, op, opts)
+	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
+func (f *fakeRing) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return f
+}
+
 type mockPoolClient struct {
 	mock.Mock
 	ctx context.Context
@@ -293,6 +302,15 @@ func (m *mockPoolClient) Check(
 ) (*grpc_health_v1.HealthCheckResponse, error) {
 	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*grpc_health_v1.HealthCheckResponse), args.Error(1)
+}
+
+func (m *mockPoolClient) List(
+	ctx context.Context,
+	in *grpc_health_v1.HealthListRequest,
+	opts ...grpc.CallOption,
+) (*grpc_health_v1.HealthListResponse, error) {
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*grpc_health_v1.HealthListResponse), args.Error(1)
 }
 
 func (m *mockPoolClient) Watch(

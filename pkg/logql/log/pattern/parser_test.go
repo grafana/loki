@@ -53,7 +53,6 @@ func Test_Parse(t *testing.T) {
 			nil,
 		},
 	} {
-		tc := tc
 		actual, err := parseExpr(tc.input)
 		if tc.err != nil || err != nil {
 			require.Equal(t, tc.err, err)

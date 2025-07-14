@@ -36,7 +36,7 @@ func TestTopKMatrixProto(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, deserialized, 1)
 
-	require.Equal(t, original.sketch.counters, deserialized[0].topk.sketch.counters)
+	require.Equal(t, original.sketch.Counters, deserialized[0].topk.sketch.Counters)
 	require.Equal(t, *original.hll, *deserialized[0].topk.hll)
 	oCardinality, _ := original.Cardinality()
 	fmt.Println("ocardinality: ", oCardinality)
@@ -74,7 +74,7 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, deserialized, 1)
 
-	require.Equal(t, original.sketch.counters, deserialized[0].topk.sketch.counters)
+	require.Equal(t, original.sketch.Counters, deserialized[0].topk.sketch.Counters)
 	require.Equal(t, *original.hll, *deserialized[0].topk.hll)
 	oCardinality, _ := original.Cardinality()
 	dCardinality, _ := deserialized[0].topk.Cardinality()

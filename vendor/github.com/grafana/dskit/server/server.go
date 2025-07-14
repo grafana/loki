@@ -9,10 +9,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,9 +33,11 @@ import (
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/experimental"
 	"google.golang.org/grpc/keepalive"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
+	"github.com/grafana/dskit/clusterutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
@@ -80,15 +84,16 @@ type Config struct {
 	// for details. A generally useful value is 1.1.
 	MetricsNativeHistogramFactor float64 `yaml:"-"`
 
-	HTTPListenNetwork    string `yaml:"http_listen_network"`
-	HTTPListenAddress    string `yaml:"http_listen_address"`
-	HTTPListenPort       int    `yaml:"http_listen_port"`
-	HTTPConnLimit        int    `yaml:"http_listen_conn_limit"`
-	GRPCListenNetwork    string `yaml:"grpc_listen_network"`
-	GRPCListenAddress    string `yaml:"grpc_listen_address"`
-	GRPCListenPort       int    `yaml:"grpc_listen_port"`
-	GRPCConnLimit        int    `yaml:"grpc_listen_conn_limit"`
-	ProxyProtocolEnabled bool   `yaml:"proxy_protocol_enabled"`
+	HTTPListenNetwork           string `yaml:"http_listen_network"`
+	HTTPListenAddress           string `yaml:"http_listen_address"`
+	HTTPListenPort              int    `yaml:"http_listen_port"`
+	HTTPConnLimit               int    `yaml:"http_listen_conn_limit"`
+	GRPCListenNetwork           string `yaml:"grpc_listen_network"`
+	GRPCListenAddress           string `yaml:"grpc_listen_address"`
+	GRPCListenPort              int    `yaml:"grpc_listen_port"`
+	GRPCConnLimit               int    `yaml:"grpc_listen_conn_limit"`
+	GRPCCollectMaxStreamsByConn bool   `yaml:"grpc_collect_max_streams_by_conn"`
+	ProxyProtocolEnabled        bool   `yaml:"proxy_protocol_enabled"`
 
 	CipherSuites  string    `yaml:"tls_cipher_suites"`
 	MinVersion    string    `yaml:"tls_min_version"`
@@ -101,7 +106,7 @@ type Config struct {
 	ExcludeRequestInLog                      bool `yaml:"-"`
 	DisableRequestSuccessLog                 bool `yaml:"-"`
 
-	PerTenantDurationInstrumentation middleware.PerTenantCallback `yaml:"-"`
+	PerTenantInstrumentation middleware.PerTenantCallback `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
 	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
@@ -143,6 +148,9 @@ type Config struct {
 	LogRequestAtInfoLevel        bool             `yaml:"log_request_at_info_level_enabled"`
 	LogRequestExcludeHeadersList string           `yaml:"log_request_exclude_headers_list"`
 
+	TraceRequestHeaders            bool   `yaml:"trace_request_headers"`
+	TraceRequestExcludeHeadersList string `yaml:"trace_request_exclude_headers_list"`
+
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
 
@@ -154,6 +162,15 @@ type Config struct {
 
 	// This limiter is called for every started and finished gRPC request.
 	GrpcMethodLimiter GrpcInflightMethodLimiter `yaml:"-"`
+
+	Throughput Throughput `yaml:"-"`
+
+	ClusterValidation clusterutil.ServerClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
+}
+
+type Throughput struct {
+	LatencyCutoff time.Duration `yaml:"throughput_latency_cutoff"`
+	Unit          string        `yaml:"throughput_unit"`
 }
 
 var infinty = time.Duration(math.MaxInt64)
@@ -178,6 +195,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.GRPCListenAddress, "server.grpc-listen-address", "", "gRPC server listen address.")
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
+	f.BoolVar(&cfg.GRPCCollectMaxStreamsByConn, "server.grpc-collect-max-streams-by-conn", true, "If true, the max streams by connection gauge will be collected.")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
 	f.BoolVar(&cfg.ReportGRPCCodesInInstrumentationLabel, "server.report-grpc-codes-in-instrumentation-label-enabled", false, "If set to true, gRPC statuses will be reported in instrumentation labels with their string representations. Otherwise, they will be reported as \"error\".")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
@@ -197,7 +215,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.GRPCServerMinTimeBetweenPings, "server.grpc.keepalive.min-time-between-pings", 5*time.Minute, "Minimum amount of time a client should wait before sending a keepalive ping. If client sends keepalive ping more often, server will send GOAWAY and close the connection.")
 	f.BoolVar(&cfg.GRPCServerPingWithoutStreamAllowed, "server.grpc.keepalive.ping-without-stream-allowed", false, "If true, server allows keepalive pings even when there are no active streams(RPCs). If false, and client sends ping when there are no active streams, server will send GOAWAY and close the connection.")
 	f.BoolVar(&cfg.GRPCServerStatsTrackingEnabled, "server.grpc.stats-tracking-enabled", true, "If true, the request_message_bytes, response_message_bytes, and inflight_requests metrics will be tracked. Enabling this option prevents the use of memory pools for parsing gRPC request bodies and may lead to more memory allocations.")
-	f.BoolVar(&cfg.GRPCServerRecvBufferPoolsEnabled, "server.grpc.recv-buffer-pools-enabled", false, "If true, gGPC's buffer pools will be used to handle incoming requests. Enabling this feature can reduce memory allocation, but also requires disabling GRPC server stats tracking by setting `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC feature, so it might be removed in a future version of the gRPC library.")
+	f.BoolVar(&cfg.GRPCServerRecvBufferPoolsEnabled, "server.grpc.recv-buffer-pools-enabled", false, "Deprecated option, has no effect and will be removed in a future version.")
 	f.IntVar(&cfg.GRPCServerNumWorkers, "server.grpc.num-workers", 0, "If non-zero, configures the amount of GRPC server workers used to serve the requests.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	f.StringVar(&cfg.LogFormat, "log.format", log.LogfmtFormat, "Output log messages in the given format. Valid formats: [logfmt, json]")
@@ -209,7 +227,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogRequestHeaders, "server.log-request-headers", false, "Optionally log request headers.")
 	f.StringVar(&cfg.LogRequestExcludeHeadersList, "server.log-request-headers-exclude-list", "", "Comma separated list of headers to exclude from loggin. Only used if server.log-request-headers is true.")
 	f.BoolVar(&cfg.LogRequestAtInfoLevel, "server.log-request-at-info-level-enabled", false, "Optionally log requests at info level instead of debug level. Applies to request headers as well if server.log-request-headers is enabled.")
+
+	f.BoolVar(&cfg.TraceRequestHeaders, "server.trace-request-headers", false, "Optionally add request headers to tracing spans.")
+	f.StringVar(&cfg.TraceRequestExcludeHeadersList, "server.trace-request-headers-exclude-list", "", fmt.Sprintf("Comma separated list of headers to exclude from tracing spans. Only used if server.trace-request-headers is true. The following headers are always excluded: %s.", strings.Join(slices.Sorted(maps.Keys(middleware.AlwaysExcludedHeaders)), ", ")))
+
 	f.BoolVar(&cfg.ProxyProtocolEnabled, "server.proxy-protocol-enabled", false, "Enables PROXY protocol.")
+	f.DurationVar(&cfg.Throughput.LatencyCutoff, "server.throughput.latency-cutoff", 0, "Requests taking over the cutoff are be observed to measure throughput. Server-Timing header is used with specified unit as the indicator, for example 'Server-Timing: unit;val=8.2'. If set to 0, the throughput is not calculated.")
+	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
+	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
+}
+
+func (cfg *Config) Validate() error {
+	return cfg.ClusterValidation.Validate()
 }
 
 func (cfg *Config) registererOrDefault() prometheus.Registerer {
@@ -255,6 +284,8 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if logger == nil {
 		logger = log.NewGoKitWithLevel(cfg.LogLevel, cfg.LogFormat)
 	}
+
+	reg := cfg.registererOrDefault()
 
 	gatherer := cfg.Gatherer
 	if gatherer == nil {
@@ -377,26 +408,49 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if cfg.ReportGRPCCodesInInstrumentationLabel {
 		grpcInstrumentationOptions = append(grpcInstrumentationOptions, middleware.ReportGRPCStatusOption)
 	}
-	if cfg.PerTenantDurationInstrumentation != nil {
+	if cfg.PerTenantInstrumentation != nil {
 		grpcInstrumentationOptions = append(grpcInstrumentationOptions,
 			middleware.WithPerTenantInstrumentation(
+				metrics.PerTenantRequestTotal,
 				metrics.PerTenantRequestDuration,
-				cfg.PerTenantDurationInstrumentation,
+				cfg.PerTenantInstrumentation,
 			))
 	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
-		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
-		middleware.HTTPGRPCTracingInterceptor(router), // This must appear after the OpenTracingServerInterceptor.
-		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
 	}
+
+	if opentracing.IsGlobalTracerRegistered() {
+		grpcMiddleware = append(grpcMiddleware,
+			otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
+		)
+	}
+
+	grpcMiddleware = append(grpcMiddleware,
+		middleware.HTTPGRPCTracingInterceptor(router), // This must appear after the OpenTracingServerInterceptor, if that's configured.
+		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
+	)
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
+	if cfg.ClusterValidation.GRPC.Enabled {
+		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(
+			cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation,
+			metrics.InvalidClusterRequests, logger,
+		))
+	}
 
 	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
 		serverLog.StreamServerInterceptor,
-		otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
-		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
 	}
+
+	if opentracing.IsGlobalTracerRegistered() {
+		grpcStreamMiddleware = append(grpcStreamMiddleware,
+			otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
+		)
+	}
+
+	grpcStreamMiddleware = append(grpcStreamMiddleware,
+		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration, grpcInstrumentationOptions...),
+	)
 	grpcStreamMiddleware = append(grpcStreamMiddleware, cfg.GRPCStreamMiddleware...)
 
 	grpcKeepAliveOptions := keepalive.ServerParameters{
@@ -412,6 +466,14 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		PermitWithoutStream: cfg.GRPCServerPingWithoutStreamAllowed,
 	}
 
+	var grpcServerLimit *grpcInflightLimitCheck
+	if cfg.GrpcMethodLimiter != nil {
+		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
+		grpcMiddleware = append(grpcMiddleware, grpcServerLimit.UnaryServerInterceptor)
+		grpcStreamMiddleware = append(grpcStreamMiddleware, grpcServerLimit.StreamServerInterceptor)
+	}
+
+	metrics.GRPCConcurrentStreamsLimit.WithLabelValues().Set(float64(cfg.GRPCServerMaxConcurrentStreams))
 	grpcOptions := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(grpcMiddleware...),
 		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
@@ -421,28 +483,30 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GRPCServerMaxConcurrentStreams)),
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
-	if cfg.GrpcMethodLimiter != nil {
-		grpcServerLimit := newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
-		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcServerLimit.TapHandle), grpc.StatsHandler(grpcServerLimit))
+	if grpcServerLimit != nil {
+		grpcOptions = append(grpcOptions,
+			grpc.StatsHandler(grpcServerLimit),
+			grpc.InTapHandle(grpcServerLimit.TapHandle),
+		)
 	}
 
 	if cfg.GRPCServerStatsTrackingEnabled {
 		grpcOptions = append(grpcOptions,
 			grpc.StatsHandler(middleware.NewStatsHandler(
+				reg,
 				metrics.ReceivedMessageSize,
 				metrics.SentMessageSize,
 				metrics.InflightRequests,
+				cfg.GRPCCollectMaxStreamsByConn,
 			)),
 		)
 	}
 
 	if cfg.GRPCServerRecvBufferPoolsEnabled {
-		if cfg.GRPCServerStatsTrackingEnabled {
-			return nil, fmt.Errorf("grpc_server_stats_tracking_enabled must be set to false if grpc_server_recv_buffer_pools_enabled is true")
-		}
-		grpcOptions = append(grpcOptions, experimental.RecvBufferPool(grpc.NewSharedBufferPool()))
+		level.Warn(logger).Log("msg", "'server.grpc.recv-buffer-pools-enabled' is a deprecated option that currently has no effect and will be removed in a future version")
 	}
 
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
@@ -520,17 +584,19 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 		middleware.RouteInjector{
 			RouteMatcher: router,
 		},
-		middleware.Tracer{
-			SourceIPs: sourceIPs,
-		},
+		middleware.NewTracer(sourceIPs, cfg.TraceRequestHeaders, strings.Split(cfg.TraceRequestExcludeHeadersList, ",")),
 		defaultLogMiddleware,
 		middleware.Instrument{
 			Duration:          metrics.RequestDuration,
 			PerTenantDuration: metrics.PerTenantRequestDuration,
-			PerTenantCallback: cfg.PerTenantDurationInstrumentation,
+			PerTenantTotal:    metrics.PerTenantRequestTotal,
+			PerTenantCallback: cfg.PerTenantInstrumentation,
 			RequestBodySize:   metrics.ReceivedMessageSize,
 			ResponseBodySize:  metrics.SentMessageSize,
 			InflightRequests:  metrics.InflightRequests,
+			LatencyCutoff:     cfg.Throughput.LatencyCutoff,
+			ThroughputUnit:    cfg.Throughput.Unit,
+			RequestThroughput: metrics.RequestThroughput,
 		},
 	}
 	var httpMiddleware []middleware.Interface
@@ -538,6 +604,13 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 		httpMiddleware = cfg.HTTPMiddleware
 	} else {
 		httpMiddleware = append(defaultHTTPMiddleware, cfg.HTTPMiddleware...)
+	}
+	if cfg.ClusterValidation.HTTP.Enabled {
+		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(
+			cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths,
+			cfg.ClusterValidation.HTTP.SoftValidation,
+			metrics.InvalidClusterRequests, logger,
+		))
 	}
 
 	return httpMiddleware, nil

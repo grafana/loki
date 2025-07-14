@@ -1,0 +1,163 @@
+---
+# Sets the global scrape interval for Alloy components
+global:
+  scrapeInterval: 15s
+
+# Global Label to be added to all telemetry data. Should reflect a recognizable name for the cluster.
+cluster:
+  name: loki-meta-monitoring-cluster
+
+# Destinations for telemetry data (metrics, logs)
+# The credentials are stored in the secrets metrics and logs
+# Further authentication methods are supported, see the documentation (https://github.com/grafana/k8s-monitoring-helm/tree/main/charts/k8s-monitoring/docs/examples/auth)
+destinations:
+  - name: prometheus
+    type: prometheus
+    url: https://<PROMETHEUS-ENDPOINT>/api/prom/push
+    auth:
+      type: basic
+      usernameKey: username
+      passwordKey: password
+    secret:
+        create: false
+        name: metrics
+        namespace: meta
+
+  - name: loki
+    type: loki
+    url: https://<LOKI-ENDPOINT>/loki/api/v1/push
+    auth:
+      type: basic
+      usernameKey: username
+      passwordKey: password
+    secret:
+        create: false
+        name: logs
+        namespace: meta
+
+# Components to be monitored by the meta-monitoring Helm chart. 
+# Two integrations are being used:
+# - alloy: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/alloy.md 
+# - loki: https://github.com/grafana/k8s-monitoring-helm/blob/main/charts/k8s-monitoring/charts/feature-integrations/docs/integrations/loki.md
+integrations:
+  collector: alloy-singleton
+  alloy:
+    instances:
+      # monitor the collectors gathering and sending metrics/logs to the local cluster
+      - name: alloy
+        labelSelectors:
+          app.kubernetes.io/name: [alloy-singleton]
+        namespaces:
+          - meta
+
+  loki:
+    instances:
+      - name: loki
+        namespaces:
+          - loki
+        labelSelectors:
+          app.kubernetes.io/name: loki
+        logs:
+          tuning:
+            # extract logfmt fields and set them as structured metadata
+            structuredMetadata:
+              caller:
+              tenant:
+              org_id:
+              user:
+# (Optional) Kubernetes events are captured as logs and are annotated with additional metadata to make them easier to search and filter.
+clusterEvents:
+  enabled: true
+  collector: alloy-singleton
+  namespaces:
+    - meta
+    - loki
+# A collection of metric collectors that gather metrics from various sources in the cluster.
+# (Required) cadvisor - Used to collect Loki pod metrics. Cadvisor is automatically deployed.
+# kubelet - Kubernetes information on each node
+# kubeletResource - Scrape resource metrics from the Kubelet.
+# kube-state-metrics - A simple service that listens to the Kubernetes API server and generates metrics about the state of the objects.
+clusterMetrics:
+  enabled: true
+  collector: alloy-singleton
+  kubelet:
+    enabled: true
+  kubeletResource:
+    enabled: true
+  cadvisor:
+    enabled: true
+    metricsTuning:
+      includeNamespaces:
+        - loki
+        - meta
+  apiServer:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+  kubeDNS:
+    enabled: false
+  kubeProxy:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kube-state-metrics:
+    enabled: true
+    namespaces: loki,meta
+    metricsTuning:
+      useDefaultAllowList: false
+      includeMetrics: [(.+)]
+  node-exporter:
+    enabled: true
+    deploy: true
+    metricsTuning:
+      useIntegrationAllowList: true
+  windows-exporter:
+    enabled: false
+    deploy: false
+  kepler:
+    enabled: false
+    deploy: false
+  opencost:
+    enabled: false
+    deploy: false
+
+nodeLogs:
+  enabled: false
+
+# Enable pod log collection for the cluster. Will collect logs from all pods in both the meta and loki namespace. 
+podLogs:
+  enabled: true
+  collector: alloy-singleton
+  labelsToKeep:
+    - app
+    - app_kubernetes_io_name
+    - component
+    - container
+    - job
+    - level
+    - namespace
+    - service_name
+    - cluster
+  gatherMethod: kubernetesApi
+  namespaces:
+    - meta
+    - loki
+  structuredMetadata:
+    pod:
+
+# Collectors
+# The Alloy Singleton is a single instance of the Alloy Collector that is deployed in the cluster.
+alloy-singleton:
+  enabled: true
+
+alloy-metrics:
+  enabled: false
+
+alloy-logs:
+  enabled: false
+
+alloy-profiles:
+  enabled: false
+
+alloy-receiver:
+  enabled: false

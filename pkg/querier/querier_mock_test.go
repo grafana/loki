@@ -7,11 +7,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/grafana/loki/pkg/push"
-
-	"github.com/grafana/loki/v3/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
@@ -19,16 +15,23 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -139,10 +142,23 @@ func (c *querierClientMock) Close() error {
 	return nil
 }
 
+type mockIngesterClientFactory struct {
+	requestedClients map[string]int
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
-func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
+func (f mockIngesterClientFactory) newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
 	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		f.requestedClients[addr]++
+		return c, nil
+	})
+}
+
+// newIngesterClientMockFactory creates a factory function always returning
+// the input querierClientMock
+func newIngesterClientMockFactory(c ring_client.PoolClient) ring_client.PoolFactory {
+	return ring_client.PoolAddrFunc(func(_ string) (ring_client.PoolClient, error) {
 		return c, nil
 	})
 }
@@ -248,62 +264,6 @@ func (c *querySampleClientMock) Context() context.Context {
 	return context.Background()
 }
 
-// tailClientMock is mockable version of Querier_TailClient
-type tailClientMock struct {
-	util.ExtendedMock
-	logproto.Querier_TailClient
-	recvTrigger chan time.Time
-}
-
-func newTailClientMock() *tailClientMock {
-	return &tailClientMock{
-		recvTrigger: make(chan time.Time, 10),
-	}
-}
-
-func (c *tailClientMock) Recv() (*logproto.TailResponse, error) {
-	args := c.Called()
-	return args.Get(0).(*logproto.TailResponse), args.Error(1)
-}
-
-func (c *tailClientMock) Header() (grpc_metadata.MD, error) {
-	return nil, nil
-}
-
-func (c *tailClientMock) Trailer() grpc_metadata.MD {
-	return nil
-}
-
-func (c *tailClientMock) CloseSend() error {
-	return nil
-}
-
-func (c *tailClientMock) Context() context.Context {
-	return context.Background()
-}
-
-func (c *tailClientMock) SendMsg(_ interface{}) error {
-	return nil
-}
-
-func (c *tailClientMock) RecvMsg(_ interface{}) error {
-	return nil
-}
-
-func (c *tailClientMock) mockRecvWithTrigger(response *logproto.TailResponse) *tailClientMock {
-	c.On("Recv").WaitUntil(c.recvTrigger).Return(response, nil)
-
-	return c
-}
-
-// triggerRecv triggers the Recv() mock to return from the next invocation
-// or from the current invocation if was already called and waiting for the
-// trigger. This method works if and only if the Recv() has been mocked with
-// mockRecvWithTrigger().
-func (c *tailClientMock) triggerRecv() {
-	c.recvTrigger <- time.Now()
-}
-
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
@@ -350,11 +310,14 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, _ ...*labels.Matcher) ([]string, error) {
-	args := s.Called(ctx, userID, from, through, metricName)
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, m ...*labels.Matcher) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName, m)
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -412,6 +375,54 @@ func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock
 			MaxErrors: maxErrors,
 		},
 	}
+}
+
+func (r *readRingMock) GetInstance(addr string) (ring.InstanceDesc, error) {
+	for _, ing := range r.replicationSet.Instances {
+		if ing.Addr == addr {
+			return ing, nil
+		}
+	}
+	return ring.InstanceDesc{}, errors.New("instance not found")
+}
+
+// partitionRingMock is a mocked version of a ReadRing, used in querier unit tests
+// to control the pool of ingesters available
+type partitionRingMock struct {
+	ring *ring.PartitionRing
+}
+
+func (p partitionRingMock) PartitionRing() *ring.PartitionRing {
+	return p.ring
+}
+
+func newPartitionInstanceRingMock(ingesterRing ring.InstanceRingReader, ingesters []ring.InstanceDesc, numPartitions int, ingestersPerPartition int) *ring.PartitionInstanceRing {
+	partitions := make(map[int32]ring.PartitionDesc)
+	owners := make(map[string]ring.OwnerDesc)
+	for i := 0; i < numPartitions; i++ {
+		partitions[int32(i)] = ring.PartitionDesc{
+			Id:     int32(i),
+			State:  ring.PartitionActive,
+			Tokens: []uint32{uint32(i)},
+		}
+
+		for j := 0; j < ingestersPerPartition; j++ {
+			ingesterIdx := i*ingestersPerPartition + j
+			if ingesterIdx < len(ingesters) {
+				owners[ingesters[ingesterIdx].Id] = ring.OwnerDesc{
+					OwnedPartition: int32(i),
+					State:          ring.OwnerActive,
+				}
+			}
+		}
+	}
+	partitionRing := partitionRingMock{
+		ring: ring.NewPartitionRing(ring.PartitionRingDesc{
+			Partitions: partitions,
+			Owners:     owners,
+		}),
+	}
+	return ring.NewPartitionInstanceRing(partitionRing, ingesterRing, time.Hour)
 }
 
 func (r *readRingMock) Describe(_ chan<- *prometheus.Desc) {
@@ -506,6 +517,14 @@ func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Option) (ring.ReplicationSet, error) {
+	return r.replicationSet, nil
+}
+
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -513,11 +532,17 @@ func mockReadRingWithOneActiveIngester() *readRingMock {
 }
 
 func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
+	return mockInstanceDescWithZone(addr, state, "")
+}
+
+func mockInstanceDescWithZone(addr string, state ring.InstanceState, zone string) ring.InstanceDesc {
 	return ring.InstanceDesc{
+		Id:        addr,
 		Addr:      addr,
 		Timestamp: time.Now().UnixNano(),
 		State:     state,
 		Tokens:    []uint32{1, 2, 3},
+		Zone:      zone,
 	}
 }
 
@@ -572,30 +597,44 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 }
 
 func mockLogfmtStream(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
 }
 
-func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
+func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
 	for i := quantity; i > 0; i-- {
-		entries = append(entries, logproto.Entry{
+		line := fmt.Sprintf(
+			`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
+			i,
+			i,
+			(i * 10),
+			(i * 256),
+			float32(i*10.0),
+			(i%2 == 0))
+
+		entry := logproto.Entry{
 			Timestamp: time.Unix(int64(i), 0),
-			Line: fmt.Sprintf(
-				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
-				i,
-				i,
-				(i * 10),
-				(i * 256),
-				float32(i*10.0),
-				(i%2 == 0)),
-		})
+			Line:      line,
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
 	}
 
 	return logproto.Stream{
 		Entries: entries,
-		Labels:  labels,
+		Labels:  lblBuilder.LabelsResult().String(),
 	}
 }
 
@@ -606,7 +645,7 @@ func mockLogfmtStreamWithStructuredMetadata(from int, quantity int) logproto.Str
 func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 	from int,
 	quantity int,
-	labels string,
+	lbls string,
 ) logproto.Stream {
 	var entries []logproto.Entry
 	metadata := push.LabelsAdapter{
@@ -623,15 +662,29 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		})
 	}
 
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := log.NewLogfmtParser(false, false)
+
 	for i := quantity; i > 0; i-- {
-		entries = append(entries, logproto.Entry{
+		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)
+		entry := logproto.Entry{
 			Timestamp:          time.Unix(int64(i), 0),
-			Line:               fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i),
+			Line:               line,
 			StructuredMetadata: metadata,
-		})
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
 	}
 	return logproto.Stream{
-		Labels:  labels,
+		Labels:  lbls,
 		Entries: entries,
 	}
 }
@@ -662,10 +715,6 @@ func (q *querierMock) Label(ctx context.Context, req *logproto.LabelRequest) (*l
 func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	args := q.Called(ctx, req)
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
-}
-
-func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest, _ bool) (*Tailer, error) {
-	return nil, errors.New("querierMock.Tail() has not been mocked")
 }
 
 func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*stats.Stats, error) {
@@ -721,7 +770,7 @@ func (q *querierMock) Patterns(ctx context.Context, req *logproto.QueryPatternsR
 }
 
 func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	args := q.MethodCalled("DetectedFields", ctx, req)
+	args := q.MethodCalled("DetectedLabels", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)
@@ -732,7 +781,7 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	return resp.(*logproto.DetectedLabelsResponse), err
 }
 
-func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
+func (q *querierMock) WithPatternQuerier(_ pattern.PatterQuerier) {}
 
 type engineMock struct {
 	util.ExtendedMock
@@ -749,10 +798,91 @@ func (e *engineMock) Query(p logql.Params) logql.Query {
 
 type queryMock struct {
 	result logqlmodel.Result
+	err    error
 }
 
 func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
-	return q.result, nil
+	return q.result, q.err
+}
+
+// mockPatternQuerier implements pattern.PatterQuerier interface for testing
+type mockPatternQuerier struct {
+	mock.Mock
+}
+
+func newMockPatternQuerier() *mockPatternQuerier {
+	return &mockPatternQuerier{}
+}
+
+func (m *mockPatternQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*logproto.QueryPatternsResponse), args.Error(1)
+}
+
+// Helper types and functions for pattern tests
+type patternSample struct {
+	pattern   string
+	timestamp int64
+	value     int64
+}
+
+// newMockEngineWithPatterns creates a mock engine that returns patterns when queried
+func newMockEngineWithPatterns(patterns []string) logql.Engine {
+	engine := &engineMock{}
+
+	// Create a result with the patterns
+	matrix := promql.Matrix{}
+	for _, pattern := range patterns {
+		matrix = append(matrix, promql.Series{
+			Metric: labels.Labels{
+				{Name: "service_name", Value: "test-service"},
+				{Name: "decoded_pattern", Value: pattern},
+			},
+			Floats: []promql.FPoint{
+				{T: time.Now().UnixMilli(), F: 100},
+			},
+		})
+	}
+
+	result := logqlmodel.Result{
+		Data: matrix,
+	}
+
+	// Mock the Query method to return a query that returns our result
+	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
+
+	return engine
+}
+
+// newMockEngineWithPatternsAndTimestamps creates a mock engine that returns patterns with specific timestamps
+func newMockEngineWithPatternsAndTimestamps(patternSamples []patternSample) logql.Engine {
+	engine := &engineMock{}
+
+	// Create a result with the patterns
+	matrix := promql.Matrix{}
+	for _, ps := range patternSamples {
+		matrix = append(matrix, promql.Series{
+			Metric: labels.Labels{
+				{Name: "service_name", Value: "test-service"},
+				{Name: "decoded_pattern", Value: ps.pattern},
+			},
+			Floats: []promql.FPoint{
+				{T: ps.timestamp, F: float64(ps.value)},
+			},
+		})
+	}
+
+	result := logqlmodel.Result{
+		Data: matrix,
+	}
+
+	// Mock the Query method to return a query that returns our result
+	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
+
+	return engine
 }
 
 type mockTenantLimits map[string]*validation.Limits
@@ -768,4 +898,14 @@ func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
 
 func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 	return tl
+}
+
+type mockDeleteGettter struct {
+	user    string
+	results []deletion.DeleteRequest
+}
+
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
+	d.user = userID
+	return d.results, nil
 }

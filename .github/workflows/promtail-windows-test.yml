@@ -8,15 +8,22 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     strategy:
       matrix:
-        go-version: [ '1.21.9', '1.22.2' ]
+        go-version: [ '1.22.12', '1.23.6', '1.24.0' ]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          cache: false
       # You can test your matrix by printing the current Go version
       - name: Display Go version
         run: go version

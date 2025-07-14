@@ -1,12 +1,10 @@
 ---
-version: "3"
-
 networks:
   loki:
 
 services:
   read:
-    image: grafana/loki:3.1.0
+    image: grafana/loki:latest
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -27,7 +25,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:3.1.0
+    image: grafana/loki:latest
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -121,7 +119,7 @@ services:
       - loki
 
   backend:
-    image: grafana/loki:3.1.0
+    image: grafana/loki:latest
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
     ports:

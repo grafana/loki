@@ -196,11 +196,14 @@ func decodeTimeout(s string) (time.Duration, error) {
 	if !ok {
 		return 0, fmt.Errorf("transport: timeout unit is not recognized: %q", s)
 	}
-	t, err := strconv.ParseInt(s[:size-1], 10, 64)
+	t, err := strconv.ParseUint(s[:size-1], 10, 64)
 	if err != nil {
 		return 0, err
 	}
-	const maxHours = math.MaxInt64 / int64(time.Hour)
+	if t == 0 {
+		return 0, fmt.Errorf("transport: timeout must be positive: %q", s)
+	}
+	const maxHours = math.MaxInt64 / uint64(time.Hour)
 	if d == time.Hour && t > maxHours {
 		// This timeout would overflow math.MaxInt64; clamp it.
 		return time.Duration(math.MaxInt64), nil
@@ -317,28 +320,32 @@ func newBufWriter(conn net.Conn, batchSize int, pool *sync.Pool) *bufWriter {
 	return w
 }
 
-func (w *bufWriter) Write(b []byte) (n int, err error) {
+func (w *bufWriter) Write(b []byte) (int, error) {
 	if w.err != nil {
 		return 0, w.err
 	}
 	if w.batchSize == 0 { // Buffer has been disabled.
-		n, err = w.conn.Write(b)
+		n, err := w.conn.Write(b)
 		return n, toIOError(err)
 	}
 	if w.buf == nil {
 		b := w.pool.Get().(*[]byte)
 		w.buf = *b
 	}
+	written := 0
 	for len(b) > 0 {
-		nn := copy(w.buf[w.offset:], b)
-		b = b[nn:]
-		w.offset += nn
-		n += nn
-		if w.offset >= w.batchSize {
-			err = w.flushKeepBuffer()
+		copied := copy(w.buf[w.offset:], b)
+		b = b[copied:]
+		written += copied
+		w.offset += copied
+		if w.offset < w.batchSize {
+			continue
+		}
+		if err := w.flushKeepBuffer(); err != nil {
+			return written, err
 		}
 	}
-	return n, err
+	return written, nil
 }
 
 func (w *bufWriter) Flush() error {
@@ -389,7 +396,7 @@ type framer struct {
 	fr     *http2.Framer
 }
 
-var writeBufferPoolMap map[int]*sync.Pool = make(map[int]*sync.Pool)
+var writeBufferPoolMap = make(map[int]*sync.Pool)
 var writeBufferMutex sync.Mutex
 
 func newFramer(conn net.Conn, writeBufferSize, readBufferSize int, sharedWriteBuffer bool, maxHeaderListSize uint32) *framer {
@@ -435,8 +442,8 @@ func getWriteBufferPool(size int) *sync.Pool {
 	return pool
 }
 
-// parseDialTarget returns the network and address to pass to dialer.
-func parseDialTarget(target string) (string, string) {
+// ParseDialTarget returns the network and address to pass to dialer.
+func ParseDialTarget(target string) (string, string) {
 	net := "tcp"
 	m1 := strings.Index(target, ":")
 	m2 := strings.Index(target, ":/")

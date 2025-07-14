@@ -189,7 +189,7 @@ func (b builder) Equal(a builder) bool {
 	// Protobuf serialization maintains the order of repeated fields. Matchers
 	// are specified as a repeated field inside the KeyBuilder proto. If the
 	// order changes, it means that the order in the protobuf changed. We report
-	// this case as not being equal even though the builders could possible be
+	// this case as not being equal even though the builders could possibly be
 	// functionally equal.
 	for i, bMatcher := range b.headerKeys {
 		aMatcher := a.headerKeys[i]
@@ -218,7 +218,7 @@ type matcher struct {
 	names []string
 }
 
-// Equal reports if m and are are equivalent headerKeys.
+// Equal reports if m and a are equivalent headerKeys.
 func (m matcher) Equal(a matcher) bool {
 	if m.key != a.key {
 		return false

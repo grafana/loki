@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -215,15 +214,11 @@ func readOneHexPart(hex []byte) (part []byte, i int) {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
 }
 
 var writerPool = sync.Pool{

@@ -19,12 +19,8 @@ package option
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
-
-	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
-	"google.golang.org/protobuf/proto"
 
 	"cloud.google.com/go/bigtable/internal"
 	"cloud.google.com/go/internal/version"
@@ -32,6 +28,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -66,25 +63,6 @@ func withGoogleClientInfo() metadata.MD {
 	return metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
 
-func makeFeatureFlags() string {
-	ff := btpb.FeatureFlags{ReverseScans: true, LastScannedRowResponses: true}
-	b, err := proto.Marshal(&ff)
-	if err != nil {
-		return ""
-	}
-
-	return base64.URLEncoding.EncodeToString(b)
-}
-
-var featureFlags = makeFeatureFlags()
-
-// WithFeatureFlags set the feature flags the client supports in the
-// `bigtable-features` header sent on each request. Intended for
-// use by Google-written clients.
-func WithFeatureFlags() metadata.MD {
-	return metadata.Pairs("bigtable-features", featureFlags)
-}
-
 // streamInterceptor intercepts the creation of ClientStream within the bigtable
 // client to inject Google client information into the context metadata for
 // streaming RPCs.
@@ -108,7 +86,7 @@ func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]op
 	// Check the environment variables for the bigtable emulator.
 	// Dial it directly and don't pass any credentials.
 	if addr := os.Getenv("BIGTABLE_EMULATOR_HOST"); addr != "" {
-		conn, err := grpc.Dial(addr, grpc.WithInsecure())
+		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, fmt.Errorf("emulator grpc.Dial: %w", err)
 		}
