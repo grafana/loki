@@ -129,6 +129,41 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	t.propagators.Inject(ctx, propagation.HeaderCarrier(r.Header))
 
 	res, err := t.rt.RoundTrip(r)
+
+	// Defer metrics recording function to record the metrics on error or no error.
+	defer func() {
+		metricAttributes := semconv.MetricAttributes{
+			Req:                  r,
+			AdditionalAttributes: append(labeler.Get(), t.metricAttributesFromRequest(r)...),
+		}
+
+		if err == nil {
+			metricAttributes.StatusCode = res.StatusCode
+		}
+
+		metricOpts := t.semconv.MetricOptions(metricAttributes)
+
+		metricData := semconv.MetricData{
+			RequestSize: bw.BytesRead(),
+		}
+
+		if err == nil {
+			// For handling response bytes we leverage a callback when the client reads the http response
+			readRecordFunc := func(n int64) {
+				t.semconv.RecordResponseSize(ctx, n, metricOpts)
+			}
+
+			res.Body = newWrappedBody(span, readRecordFunc, res.Body)
+		}
+
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
+
+		metricData.ElapsedTime = elapsedTime
+
+		t.semconv.RecordMetrics(ctx, metricData, metricOpts)
+	}()
+
 	if err != nil {
 		// set error type attribute if the error is part of the predefined
 		// error types.
@@ -141,34 +176,13 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
+
 		return res, err
-	}
-
-	// metrics
-	metricOpts := t.semconv.MetricOptions(semconv.MetricAttributes{
-		Req:                  r,
-		StatusCode:           res.StatusCode,
-		AdditionalAttributes: append(labeler.Get(), t.metricAttributesFromRequest(r)...),
-	})
-
-	// For handling response bytes we leverage a callback when the client reads the http response
-	readRecordFunc := func(n int64) {
-		t.semconv.RecordResponseSize(ctx, n, metricOpts)
 	}
 
 	// traces
 	span.SetAttributes(t.semconv.ResponseTraceAttrs(res)...)
 	span.SetStatus(t.semconv.Status(res.StatusCode))
-
-	res.Body = newWrappedBody(span, readRecordFunc, res.Body)
-
-	// Use floating point division here for higher precision (instead of Millisecond method).
-	elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
-
-	t.semconv.RecordMetrics(ctx, semconv.MetricData{
-		RequestSize: bw.BytesRead(),
-		ElapsedTime: elapsedTime,
-	}, metricOpts)
 
 	return res, nil
 }
