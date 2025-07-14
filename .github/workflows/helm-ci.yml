@@ -8,6 +8,7 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
+  GOFLAGS: "-tags=slicelabels"
 
 jobs:
   call-lint:

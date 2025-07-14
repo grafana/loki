@@ -49,6 +49,10 @@ in
 
     subPackages = [ "cmd/logcli" ];
 
+     tags = [
+        "slicelabels"
+     ];
+
     meta = with lib; {
       description = "LogCLI is a command line tool for interacting with Loki.";
       mainProgram = "logcli";
@@ -60,6 +64,10 @@ in
     pname = "loki-canary";
 
     subPackages = [ "cmd/loki-canary" ];
+
+     tags = [
+        "slicelabels"
+     ];
 
     meta = with lib; {
       description = "Loki Canary is a canary for the Loki project.";
