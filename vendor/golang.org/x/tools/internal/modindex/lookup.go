@@ -75,7 +75,7 @@ func (ix *Index) Lookup(pkg, name string, prefix bool) []Candidate {
 		return nil // didn't find the package
 	}
 	var ans []Candidate
-	// loc is the first entry for this package name, but there may be severeal
+	// loc is the first entry for this package name, but there may be several
 	for i := loc; i < len(ix.Entries); i++ {
 		e := ix.Entries[i]
 		if e.PkgName != pkg {
