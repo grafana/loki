@@ -2,6 +2,13 @@
 
 
 
+## [0.121.2](https://github.com/googleapis/google-cloud-go/compare/v0.121.1...v0.121.2) (2025-05-21)
+
+
+### Documentation
+
+* **internal/generated:** Remove outdated pubsub snippets ([#12284](https://github.com/googleapis/google-cloud-go/issues/12284)) ([0338a40](https://github.com/googleapis/google-cloud-go/commit/0338a40d70206317d319e69911be0321fbb54e3f))
+
 ## [0.121.1](https://github.com/googleapis/google-cloud-go/compare/v0.121.0...v0.121.1) (2025-05-13)
 
 
