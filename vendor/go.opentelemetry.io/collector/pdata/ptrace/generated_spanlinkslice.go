@@ -7,6 +7,7 @@
 package ptrace
 
 import (
+	"iter"
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -56,6 +57,21 @@ func (es SpanLinkSlice) At(i int) SpanLink {
 	return newSpanLink((*es.orig)[i], es.state)
 }
 
+// All returns an iterator over index-value pairs in the slice.
+//
+//	for i, v := range es.All() {
+//	    ... // Do something with index-value pair
+//	}
+func (es SpanLinkSlice) All() iter.Seq2[int, SpanLink] {
+	return func(yield func(int, SpanLink) bool) {
+		for i := 0; i < es.Len(); i++ {
+			if !yield(i, es.At(i)) {
+				return
+			}
+		}
+	}
+}
+
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
 // 1. If the newCap <= cap then no change in capacity.
 // 2. If the newCap > cap then the slice capacity will be expanded to equal newCap.
@@ -93,6 +109,10 @@ func (es SpanLinkSlice) AppendEmpty() SpanLink {
 func (es SpanLinkSlice) MoveAndAppendTo(dest SpanLinkSlice) {
 	es.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if es.orig == dest.orig {
+		return
+	}
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -125,22 +145,7 @@ func (es SpanLinkSlice) RemoveIf(f func(SpanLink) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SpanLinkSlice) CopyTo(dest SpanLinkSlice) {
 	dest.state.AssertMutable()
-	srcLen := es.Len()
-	destCap := cap(*dest.orig)
-	if srcLen <= destCap {
-		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
-		for i := range *es.orig {
-			newSpanLink((*es.orig)[i], es.state).CopyTo(newSpanLink((*dest.orig)[i], dest.state))
-		}
-		return
-	}
-	origs := make([]otlptrace.Span_Link, srcLen)
-	wrappers := make([]*otlptrace.Span_Link, srcLen)
-	for i := range *es.orig {
-		wrappers[i] = &origs[i]
-		newSpanLink((*es.orig)[i], es.state).CopyTo(newSpanLink(wrappers[i], dest.state))
-	}
-	*dest.orig = wrappers
+	*dest.orig = copyOrigSpanLinkSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the SpanLink elements within SpanLinkSlice given the
@@ -149,4 +154,19 @@ func (es SpanLinkSlice) CopyTo(dest SpanLinkSlice) {
 func (es SpanLinkSlice) Sort(less func(a, b SpanLink) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
+}
+
+func copyOrigSpanLinkSlice(dest, src []*otlptrace.Span_Link) []*otlptrace.Span_Link {
+	if cap(dest) < len(src) {
+		dest = make([]*otlptrace.Span_Link, len(src))
+		data := make([]otlptrace.Span_Link, len(src))
+		for i := range src {
+			dest[i] = &data[i]
+		}
+	}
+	dest = dest[:len(src)]
+	for i := range src {
+		copyOrigSpanLink(dest[i], src[i])
+	}
+	return dest
 }

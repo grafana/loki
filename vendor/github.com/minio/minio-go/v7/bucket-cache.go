@@ -23,53 +23,11 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"sync"
 
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/minio-go/v7/pkg/signer"
 )
-
-// bucketLocationCache - Provides simple mechanism to hold bucket
-// locations in memory.
-type bucketLocationCache struct {
-	// mutex is used for handling the concurrent
-	// read/write requests for cache.
-	sync.RWMutex
-
-	// items holds the cached bucket locations.
-	items map[string]string
-}
-
-// newBucketLocationCache - Provides a new bucket location cache to be
-// used internally with the client object.
-func newBucketLocationCache() *bucketLocationCache {
-	return &bucketLocationCache{
-		items: make(map[string]string),
-	}
-}
-
-// Get - Returns a value of a given key if it exists.
-func (r *bucketLocationCache) Get(bucketName string) (location string, ok bool) {
-	r.RLock()
-	defer r.RUnlock()
-	location, ok = r.items[bucketName]
-	return
-}
-
-// Set - Will persist a value into cache.
-func (r *bucketLocationCache) Set(bucketName, location string) {
-	r.Lock()
-	defer r.Unlock()
-	r.items[bucketName] = location
-}
-
-// Delete - Deletes a bucket name from cache.
-func (r *bucketLocationCache) Delete(bucketName string) {
-	r.Lock()
-	defer r.Unlock()
-	delete(r.items, bucketName)
-}
 
 // GetBucketLocation - get location for the bucket name from location cache, if not
 // fetch freshly by making a new request.
@@ -126,18 +84,18 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 			// request. Move forward and let the top level callers
 			// succeed if possible based on their policy.
 			switch errResp.Code {
-			case "NotImplemented":
+			case NotImplemented:
 				switch errResp.Server {
 				case "AmazonSnowball":
 					return "snowball", nil
 				case "cloudflare":
 					return "us-east-1", nil
 				}
-			case "AuthorizationHeaderMalformed":
+			case AuthorizationHeaderMalformed:
 				fallthrough
-			case "InvalidRegion":
+			case InvalidRegion:
 				fallthrough
-			case "AccessDenied":
+			case AccessDenied:
 				if errResp.Region == "" {
 					return "us-east-1", nil
 				}

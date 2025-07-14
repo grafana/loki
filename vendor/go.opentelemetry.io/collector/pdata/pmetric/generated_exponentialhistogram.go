@@ -42,6 +42,10 @@ func NewExponentialHistogram() ExponentialHistogram {
 func (ms ExponentialHistogram) MoveTo(dest ExponentialHistogram) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.ExponentialHistogram{}
 }
@@ -65,6 +69,10 @@ func (ms ExponentialHistogram) DataPoints() ExponentialHistogramDataPointSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogram) CopyTo(dest ExponentialHistogram) {
 	dest.state.AssertMutable()
-	dest.SetAggregationTemporality(ms.AggregationTemporality())
-	ms.DataPoints().CopyTo(dest.DataPoints())
+	copyOrigExponentialHistogram(dest.orig, ms.orig)
+}
+
+func copyOrigExponentialHistogram(dest, src *otlpmetrics.ExponentialHistogram) {
+	dest.AggregationTemporality = src.AggregationTemporality
+	dest.DataPoints = copyOrigExponentialHistogramDataPointSlice(dest.DataPoints, src.DataPoints)
 }

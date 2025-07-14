@@ -10,7 +10,10 @@ import (
 func TestBothSASLParamsMustBeSet(t *testing.T) {
 	cfg := Config{
 		// Other required params
-		Address:                    "abcd",
+		ReaderConfig: ClientConfig{
+			Address:  "abcd",
+			ClientID: "reader",
+		},
 		Topic:                      "abcd",
 		ProducerMaxRecordSizeBytes: 1048576,
 	}

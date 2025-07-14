@@ -258,6 +258,36 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	// Pattern middleware is just a metric middleware with sharding disabled.
+	// At some point hopefully we can implement sharding for pattern queries and remove this.
+	patternConfig := Config{
+		Config: base.Config{
+			AlignQueriesWithStep: cfg.AlignQueriesWithStep,
+			ResultsCacheConfig:   cfg.ResultsCacheConfig,
+			CacheResults:         cfg.CacheResults,
+			MaxRetries:           cfg.MaxRetries,
+			ShardedQueries:       false,
+			ShardAggregations:    []string{},
+		},
+		Transformer:                  cfg.Transformer,
+		CacheIndexStatsResults:       cfg.CacheIndexStatsResults,
+		StatsCacheConfig:             cfg.StatsCacheConfig,
+		CacheVolumeResults:           cfg.CacheVolumeResults,
+		VolumeCacheConfig:            cfg.VolumeCacheConfig,
+		CacheInstantMetricResults:    cfg.CacheInstantMetricResults,
+		InstantMetricCacheConfig:     cfg.InstantMetricCacheConfig,
+		InstantMetricQuerySplitAlign: cfg.InstantMetricQuerySplitAlign,
+		CacheSeriesResults:           cfg.CacheSeriesResults,
+		SeriesCacheConfig:            cfg.SeriesCacheConfig,
+		CacheLabelResults:            cfg.CacheLabelResults,
+		LabelsCacheConfig:            cfg.LabelsCacheConfig,
+	}
+	patternTripperware, err := NewMetricTripperware(patternConfig, engineOpts, log, limits, schema, codec, iqo, resultsCache,
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -270,6 +300,7 @@ func NewMiddleware(
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
 			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
+			patternRT        = patternTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(
@@ -285,6 +316,7 @@ func NewMiddleware(
 			seriesVolumeRT,
 			detectedFieldsRT,
 			detectedLabelsRT,
+			patternRT,
 			limits,
 		)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
@@ -340,7 +372,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, pattern base.Handler
 
 	limits Limits
 }
@@ -348,7 +380,7 @@ type roundTripper struct {
 // newRoundTripper creates a new queryrange roundtripper
 func newRoundTripper(
 	logger log.Logger,
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler,
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, pattern base.Handler,
 	limits Limits,
 ) roundTripper {
 	return roundTripper{
@@ -364,6 +396,7 @@ func newRoundTripper(
 		seriesVolume:   seriesVolume,
 		detectedFields: detectedFields,
 		detectedLabels: detectedLabels,
+		pattern:        pattern,
 		next:           next,
 	}
 }
@@ -524,6 +557,23 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 		)
 		return r.detectedLabels.Do(ctx, req)
+	case *logproto.QueryPatternsRequest:
+		expr, err := syntax.ParseExpr(req.GetQuery())
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
+
+		groups, err := syntax.MatcherGroups(expr)
+		if err != nil {
+			level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
+		}
+
+		for _, g := range groups {
+			if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+			}
+		}
+		return r.pattern.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}

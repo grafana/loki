@@ -90,45 +90,45 @@ func (m *RunView) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "up", "k":
 			if m.showDiff {
 				if m.DiffViewport.AtTop() {
-					m.Viewport.LineUp(1)
+					m.Viewport.ScrollUp(1)
 				} else {
-					m.DiffViewport.LineUp(1)
+					m.DiffViewport.ScrollUp(1)
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.LineUp(1)
+				m.Viewport.ScrollUp(1)
 			}
 			return m, nil
 		case "down", "j":
 			if m.showDiff {
 				if m.DiffViewport.AtBottom() {
-					m.Viewport.LineDown(1)
+					m.Viewport.ScrollDown(1)
 				} else {
-					m.DiffViewport.LineDown(1)
+					m.DiffViewport.ScrollDown(1)
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.LineDown(1)
+				m.Viewport.ScrollDown(1)
 			}
 			return m, nil
 		case "pgup", "b":
 			if m.showDiff {
 				if m.DiffViewport.AtTop() {
-					m.Viewport.HalfViewUp()
+					m.Viewport.HalfPageUp()
 				} else {
-					m.DiffViewport.HalfViewUp()
+					m.DiffViewport.HalfPageUp()
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.HalfViewUp()
+				m.Viewport.HalfPageUp()
 			}
 			return m, nil
 		case "pgdown", " ":
 			if m.showDiff {
 				if m.DiffViewport.AtBottom() {
-					m.Viewport.HalfViewDown()
+					m.Viewport.HalfPageDown()
 				} else {
-					m.DiffViewport.HalfViewDown()
+					m.DiffViewport.HalfPageDown()
 				}
 			} else if m.Viewport.Height > 0 {
-				m.Viewport.HalfViewDown()
+				m.Viewport.HalfPageDown()
 			}
 			return m, nil
 		case "+":
@@ -530,10 +530,10 @@ func buildTestRegex(tests []string, storageType string) string {
 		// If no tests are selected, match all tests
 		if storageType == "" {
 			// Match any storage type
-			return "^BenchmarkLogQL/.+/.*$"
+			return "^BenchmarkLogQL/query=.+/kind=.+/store=.+$"
 		}
 		// Match specific storage type
-		return fmt.Sprintf("^BenchmarkLogQL/%s/.*$", storageType)
+		return fmt.Sprintf("^BenchmarkLogQL/query=.+/kind=.+/store=%s$", storageType)
 	}
 
 	formatted := []string{}
@@ -542,10 +542,10 @@ func buildTestRegex(tests []string, storageType string) string {
 		var escaped string
 		if storageType == "" {
 			// When no storage type is specified, match any storage type
-			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/.+/%s", t), "{", "\\{")
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/query=%s/kind=.+/store=.+", t), "{", "\\{")
 		} else {
 			// When a storage type is specified, match only that storage type
-			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/%s/%s", storageType, t), "{", "\\{")
+			escaped = strings.ReplaceAll(fmt.Sprintf("BenchmarkLogQL/query=%s/kind=.+/store=%s", t, storageType), "{", "\\{")
 		}
 		escaped = strings.ReplaceAll(escaped, "}", "\\}")
 		escaped = strings.ReplaceAll(escaped, "\"", "\\\"")

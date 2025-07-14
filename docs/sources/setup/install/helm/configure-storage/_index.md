@@ -14,7 +14,7 @@ keywords:
 
 # Configure storage
 
-The [scalable](../install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](../install-monolithic/) installation can only use the filesystem for storage.
+The [scalable](../install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](../install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
 This guide assumes Loki will be installed in one of the modes above and that a `values.yaml ` has been created.
 

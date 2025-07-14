@@ -22,15 +22,15 @@ func newUserSeries(seriesID []byte, userID []byte) userSeries {
 	}
 }
 
-func (us userSeries) Key() string {
+func (us *userSeries) Key() string {
 	return unsafeGetString(us.key)
 }
 
-func (us userSeries) SeriesID() []byte {
+func (us *userSeries) SeriesID() []byte {
 	return us.key[:us.seriesIDLen]
 }
 
-func (us userSeries) UserID() []byte {
+func (us *userSeries) UserID() []byte {
 	return us.key[us.seriesIDLen:]
 }
 

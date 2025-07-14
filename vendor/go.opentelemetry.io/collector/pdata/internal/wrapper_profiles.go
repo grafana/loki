@@ -33,6 +33,7 @@ func NewProfiles(orig *otlpcollectorprofile.ExportProfilesServiceRequest, state 
 func ProfilesToProto(l Profiles) otlpprofile.ProfilesData {
 	return otlpprofile.ProfilesData{
 		ResourceProfiles: l.orig.ResourceProfiles,
+		Dictionary:       l.orig.Dictionary,
 	}
 }
 
@@ -42,5 +43,6 @@ func ProfilesFromProto(orig otlpprofile.ProfilesData) Profiles {
 	state := StateMutable
 	return NewProfiles(&otlpcollectorprofile.ExportProfilesServiceRequest{
 		ResourceProfiles: orig.ResourceProfiles,
+		Dictionary:       orig.Dictionary,
 	}, &state)
 }

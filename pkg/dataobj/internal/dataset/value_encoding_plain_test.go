@@ -21,17 +21,17 @@ var testStrings = []string{
 
 var batchSize = 64
 
-func Test_plainEncoder(t *testing.T) {
+func Test_plainBytesEncoder(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc    = newPlainEncoder(&buf)
-		dec    = newPlainDecoder(&buf)
+		enc    = newPlainBytesEncoder(&buf)
+		dec    = newPlainBytesDecoder(&buf)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(StringValue(v)))
+		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
 	}
 
 	var out []string
@@ -44,24 +44,24 @@ func Test_plainEncoder(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range decBuf[:n] {
-			out = append(out, v.String())
+			out = append(out, string(v.ByteArray()))
 		}
 	}
 
 	require.Equal(t, testStrings, out)
 }
 
-func Test_plainEncoder_partialRead(t *testing.T) {
+func Test_plainBytesEncoder_partialRead(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc    = newPlainEncoder(&buf)
-		dec    = newPlainDecoder(&oneByteReader{&buf})
+		enc    = newPlainBytesEncoder(&buf)
+		dec    = newPlainBytesDecoder(&oneByteReader{&buf})
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(StringValue(v)))
+		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
 	}
 
 	var out []string
@@ -74,34 +74,68 @@ func Test_plainEncoder_partialRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range decBuf[:n] {
-			out = append(out, v.String())
+			out = append(out, string(v.ByteArray()))
 		}
 	}
 
 	require.Equal(t, testStrings, out)
 }
 
-func Benchmark_plainEncoder_Append(b *testing.B) {
-	enc := newPlainEncoder(streamio.Discard)
+func Test_plainBytesEncoder_reusingValues(t *testing.T) {
+	var buf bytes.Buffer
+
+	var (
+		enc    = newPlainBytesEncoder(&buf)
+		dec    = newPlainBytesDecoder(&buf)
+		decBuf = make([]Value, batchSize)
+	)
+
+	for _, v := range testStrings {
+		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+	}
+
+	for i := range decBuf {
+		decBuf[i] = ByteArrayValue(make([]byte, 64))
+	}
+
+	var out []string
+
+	for {
+		n, err := dec.Decode(decBuf[:batchSize])
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range decBuf[:n] {
+			out = append(out, string(v.ByteArray()))
+		}
+	}
+
+	require.Equal(t, testStrings, out)
+}
+
+func Benchmark_plainBytesEncoder_Append(b *testing.B) {
+	enc := newPlainBytesEncoder(streamio.Discard)
 
 	for i := 0; i < b.N; i++ {
 		for _, v := range testStrings {
-			_ = enc.Encode(StringValue(v))
+			_ = enc.Encode(ByteArrayValue([]byte(v)))
 		}
 	}
 }
 
-func Benchmark_plainDecoder_Decode(b *testing.B) {
+func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024)) // Large enough to avoid reallocations.
 
 	var (
-		enc    = newPlainEncoder(buf)
-		dec    = newPlainDecoder(buf)
+		enc    = newPlainBytesEncoder(buf)
+		dec    = newPlainBytesDecoder(buf)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, v := range testStrings {
-		require.NoError(b, enc.Encode(StringValue(v)))
+		require.NoError(b, enc.Encode(ByteArrayValue([]byte(v))))
 	}
 
 	var err error

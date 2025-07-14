@@ -1,6 +1,7 @@
 package httpreq
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -139,6 +140,57 @@ func Test_testToKeyValues(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			got := TagsToKeyValues(c.in)
 			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestIsLogsDrilldownRequest(t *testing.T) {
+	tests := []struct {
+		name      string
+		queryTags string
+		expected  bool
+	}{
+		{
+			name:      "Valid Logs Drilldown request",
+			queryTags: "Source=grafana-lokiexplore-app,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Case insensitive source matching",
+			queryTags: "Source=GRAFANA-LOKIEXPLORE-APP,Feature=patterns",
+			expected:  true,
+		},
+		{
+			name:      "Different source",
+			queryTags: "Source=grafana,Feature=explore",
+			expected:  false,
+		},
+		{
+			name:      "No source tag",
+			queryTags: "Feature=patterns,User=test",
+			expected:  false,
+		},
+		{
+			name:      "Empty query tags",
+			queryTags: "",
+			expected:  false,
+		},
+		{
+			name:      "Malformed tags",
+			queryTags: "invalid_tags_format",
+			expected:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.queryTags != "" {
+				ctx = InjectQueryTags(ctx, test.queryTags)
+			}
+
+			result := IsLogsDrilldownRequest(ctx)
+			require.Equal(t, test.expected, result, "Expected %v, got %v for queryTags: %s", test.expected, result, test.queryTags)
 		})
 	}
 }

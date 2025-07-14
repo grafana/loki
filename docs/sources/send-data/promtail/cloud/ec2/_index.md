@@ -269,6 +269,52 @@ That's it, save the config and you can `reboot` the machine (or simply restart t
 
 Let's head back to Grafana and verify that your Promtail logs are available in Grafana by using the [LogQL](../../../../query/) query `{unit="promtail.service"}` in Explore. Finally make sure to checkout [live tailing][live tailing] to see logs appearing as they are ingested in Loki.
 
+# Troubleshooting Promtail on AWS EC2
+
+If you encounter the error `error="filetarget.fsnotify.NewWatcher: too many open files"` in standalone EC2, you can resolve it by adding the `LimitNOFILE` setting to your `promtail.service` file as follows:
+
+```yaml
+# /etc/systemd/system/promtail.service
+[Service]
+...
+LimitNOFILE=500000
+```
+
+The complete `promtail.service` file should look like this:
+
+```yaml
+# /etc/systemd/system/promtail.service
+[Unit]
+Description=Promtail
+
+[Service]
+User=root
+WorkingDirectory=/opt/promtail/
+ExecStartPre=/bin/sleep 30
+ExecStart=/opt/promtail/promtail-linux-amd64 --config.file=./ec2-promtail.yaml
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=500000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload and restart the promtail daemon to apply the changed systemd settings.
+
+```bash
+systemctl daemon-reload
+systemctl restart promtail.service
+```
+
+Continue to monitor whether the too many open files error occurs again.
+
+```bash
+watch -d -n2 "systemctl status promtail -l"
+```
+
 [promtail]: ../../promtail/README
 [aws cli]: https://aws.amazon.com/cli/
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html

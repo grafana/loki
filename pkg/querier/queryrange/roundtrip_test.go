@@ -114,32 +114,20 @@ var (
 					F: 0.013333333333333334,
 				},
 			},
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	vector = promql.Vector{
 		{
 			T: toMs(testTime.Add(-4 * time.Hour)),
 			F: 0.013333333333333334,
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/apport.log`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
+			Metric: labels.FromStrings(
+				"filename", `/var/hostlog/apport.log`,
+				"job", "varlogs",
+			),
 		},
 	}
 	streams = logqlmodel.Streams{
@@ -997,6 +985,7 @@ func TestPostQueries(t *testing.T) {
 		base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 			return nil, nil
 		}),
+		handler,
 		handler,
 		handler,
 		handler,

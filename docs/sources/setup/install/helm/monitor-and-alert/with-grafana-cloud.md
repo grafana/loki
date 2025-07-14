@@ -14,6 +14,12 @@ keywords:
 
 # Monitor Loki with Grafana Cloud
 
+<!-- vale Grafana.We = NO -->
+{{< admonition type="warning" >}}
+We no longer recommend using the meta-monitoring Helm chart to monitor Loki. To consolidate monitoring efforts into one Helm chart, Grafana Labs recommends using the Kubernetes monitoring Helm chart. Instructions for setting up the Kubernetes monitoring Helm chart can be found under [Manage](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/).
+{{< /admonition >}}
+<!-- vale Grafana.We = YES -->
+
 This guide will walk you through using Grafana Cloud to monitor a Loki installation set up with the `meta-monitoring` Helm chart. This method takes advantage of many of the chart's self-monitoring features, sending metrics, logs, and traces from the Loki deployment to Grafana Cloud. Monitoring Loki with Grafana Cloud offers the added benefit of troubleshooting Loki issues even when the Helm-installed Loki is down, as the telemetry data will remain available in the Grafana Cloud instance.
 
 These instructions are based off the [meta-monitoring-chart repository](https://github.com/grafana/meta-monitoring-chart/tree/main).

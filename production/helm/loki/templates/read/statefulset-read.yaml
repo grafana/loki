@@ -57,7 +57,7 @@ spec:
       labels:
         app.kubernetes.io/part-of: memberlist
         {{- include "loki.readLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.read.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.read.podLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
     spec:
@@ -104,6 +104,10 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- if .Values.read.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.read.livenessProbe | nindent 12 }}
+          {{- end }}
           {{- with .Values.read.lifecycle }}
           lifecycle:
             {{- toYaml . | nindent 12 }}

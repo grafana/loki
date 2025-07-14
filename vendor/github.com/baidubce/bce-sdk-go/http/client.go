@@ -68,7 +68,8 @@ func (c *timeoutConn) SetReadDeadline(t time.Time) error  { return c.conn.SetRea
 func (c *timeoutConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 type ClientConfig struct {
-	RedirectDisabled bool
+	RedirectDisabled  bool
+	DisableKeepAlives bool
 }
 
 var customizeInit sync.Once
@@ -76,9 +77,14 @@ var customizeInit sync.Once
 func InitClient(config ClientConfig) {
 	customizeInit.Do(func() {
 		httpClient = &http.Client{}
+		maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
+		if config.DisableKeepAlives {
+			maxIdleConnsPerHost = -1
+		}
 		transport = &http.Transport{
-			MaxIdleConnsPerHost:   defaultMaxIdleConnsPerHost,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
+			DisableKeepAlives:     config.DisableKeepAlives,
 			Dial: func(network, address string) (net.Conn, error) {
 				conn, err := net.DialTimeout(network, address, defaultDialTimeout)
 				if err != nil {
@@ -101,16 +107,21 @@ func InitClient(config ClientConfig) {
 // Execute - do the http requset and get the response
 //
 // PARAMS:
-//     - request: the http request instance to be sent
+//   - request: the http request instance to be sent
+//
 // RETURNS:
-//     - response: the http response returned from the server
-//     - error: nil if ok otherwise the specific error
+//   - response: the http response returned from the server
+//   - error: nil if ok otherwise the specific error
 func Execute(request *Request) (*Response, error) {
 	// Build the request object for the current requesting
 	httpRequest := &http.Request{
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
+	}
+
+	if request.Context() != nil {
+		httpRequest = httpRequest.WithContext(request.Context())
 	}
 
 	// Set the connection timeout for current request

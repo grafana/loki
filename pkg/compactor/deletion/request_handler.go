@@ -151,6 +151,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 
 	deleteRequests := mergeDeletes(deleteGroups)
+	// We have to retain UserID and SequenceNum in json encoding of deletion manifests.
+	// However, we do not want to return these to the users since they are not relevant.
+	// ToDo(Sandeep): See if we can avoid doing it when we move to proto encoding for deletion manifests.
+	for i := range deleteRequests {
+		deleteRequests[i].UserID = ""
+		deleteRequests[i].SequenceNum = 0
+	}
 
 	sort.Slice(deleteRequests, func(i, j int) bool {
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt

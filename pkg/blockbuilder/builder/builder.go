@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
@@ -31,6 +32,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/blockbuilder/builder")
 
 type Config struct {
 	ConcurrentFlushes int `yaml:"concurrent_flushes"`
@@ -139,7 +142,8 @@ func NewBlockBuilder(
 	logger log.Logger,
 	registerer prometheus.Registerer,
 ) (*BlockBuilder,
-	error) {
+	error,
+) {
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		return nil, err
@@ -175,9 +179,10 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		workerID := fmt.Sprintf("block-builder-worker-%d", j)
 		errgrp.Go(func() error {
 			c, err := client.NewReaderClient(
+				"blockbuilder",
 				i.kafkaCfg,
-				client.NewReaderClientMetrics(workerID, i.registerer),
 				log.With(i.logger, "component", workerID),
+				i.registerer,
 			)
 			if err != nil {
 				return err
@@ -202,7 +207,6 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 					}
 				}
 			}
-
 		})
 	}
 
@@ -351,7 +355,6 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		"appender",
 		i.cfg.ConcurrentWriters,
 		func(ctx context.Context) error {
-
 			for {
 				select {
 				case <-ctx.Done():

@@ -24,10 +24,10 @@ The Terraform deployment also takes in an array of log group and bucket names, a
 
 There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
-Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-protmail.
+Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-promtail.
 These extra labels will take the form `__extra_<name>=<value>`.
 
-An optional environment variable can be configured to add the tenant ID to the logs streamed by lambda-protmail.
+An optional environment variable can be configured to add the tenant ID to the logs streamed by lambda-promtail.
 
 In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users may clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo.
 

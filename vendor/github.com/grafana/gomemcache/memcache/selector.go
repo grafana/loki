@@ -23,6 +23,29 @@ import (
 	"sync"
 )
 
+// ResolveServers resolves each given server name to a UNIX or TCP address.
+// An error is returned if any of the server names fail to resolve.
+func ResolveServers(servers []string) ([]net.Addr, error) {
+	naddr := make([]net.Addr, len(servers))
+	for i, server := range servers {
+		if strings.Contains(server, "/") {
+			addr, err := net.ResolveUnixAddr("unix", server)
+			if err != nil {
+				return nil, err
+			}
+			naddr[i] = newStaticAddr(addr)
+		} else {
+			tcpaddr, err := net.ResolveTCPAddr("tcp", server)
+			if err != nil {
+				return nil, err
+			}
+			naddr[i] = newStaticAddr(tcpaddr)
+		}
+	}
+
+	return naddr, nil
+}
+
 // ServerSelector is the interface that selects a memcache server
 // as a function of the item's key.
 //
@@ -66,21 +89,9 @@ func (s *staticAddr) String() string  { return s.str }
 // resolve. No attempt is made to connect to the server. If any error
 // is returned, no changes are made to the ServerList.
 func (ss *ServerList) SetServers(servers ...string) error {
-	naddr := make([]net.Addr, len(servers))
-	for i, server := range servers {
-		if strings.Contains(server, "/") {
-			addr, err := net.ResolveUnixAddr("unix", server)
-			if err != nil {
-				return err
-			}
-			naddr[i] = newStaticAddr(addr)
-		} else {
-			tcpaddr, err := net.ResolveTCPAddr("tcp", server)
-			if err != nil {
-				return err
-			}
-			naddr[i] = newStaticAddr(tcpaddr)
-		}
+	naddr, err := ResolveServers(servers)
+	if err != nil {
+		return err
 	}
 
 	ss.mu.Lock()

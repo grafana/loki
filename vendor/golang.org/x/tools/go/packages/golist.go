@@ -851,8 +851,6 @@ func (state *golistState) cfgInvocation() gocommand.Invocation {
 	cfg := state.cfg
 	return gocommand.Invocation{
 		BuildFlags: cfg.BuildFlags,
-		ModFile:    cfg.modFile,
-		ModFlag:    cfg.modFlag,
 		CleanEnv:   cfg.Env != nil,
 		Env:        cfg.Env,
 		Logf:       cfg.Logf,

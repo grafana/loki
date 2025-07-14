@@ -62,7 +62,7 @@ spec:
         app.kubernetes.io/part-of: memberlist
         name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
         rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
-        {{- with merge .Values.loki.podLabels .Values.ingester.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.ingester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:

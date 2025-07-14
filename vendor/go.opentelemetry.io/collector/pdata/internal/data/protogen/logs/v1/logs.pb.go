@@ -446,8 +446,6 @@ type LogRecord struct {
 	// as an event.
 	//
 	// [Optional].
-	//
-	// Status: [Development]
 	EventName string `protobuf:"bytes,12,opt,name=event_name,json=eventName,proto3" json:"event_name,omitempty"`
 }
 

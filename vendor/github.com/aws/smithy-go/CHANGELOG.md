@@ -1,3 +1,23 @@
+# Release (2025-06-16)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.4
+  * **Bug Fix**: Fix CBOR serd empty check for string and enum fields
+  * **Bug Fix**: Fix HTTP metrics data race.
+  * **Bug Fix**: Replace usages of deprecated ioutil package.
+
+# Release (2025-02-17)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.22.3
+ *  **Dependency Update**: Bump minimum Go version to 1.22 per our language support policy.
+
 # Release (2025-01-21)
 
 ## General Highlights

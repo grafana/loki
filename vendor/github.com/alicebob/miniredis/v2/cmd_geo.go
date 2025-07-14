@@ -40,7 +40,7 @@ func (m *Miniredis) cmdGeoadd(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(key) && db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -103,7 +103,7 @@ func (m *Miniredis) cmdGeodist(c *server.Peer, cmd string, args []string) {
 			c.WriteNull()
 			return
 		}
-		if db.t(key) != "zset" {
+		if db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -157,7 +157,7 @@ func (m *Miniredis) cmdGeopos(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if db.exists(key) && db.t(key) != "zset" {
+		if db.exists(key) && db.t(key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}
@@ -495,7 +495,7 @@ func (m *Miniredis) cmdGeoradiusbymember(c *server.Peer, cmd string, args []stri
 			return
 		}
 
-		if db.t(opts.key) != "zset" {
+		if db.t(opts.key) != keyTypeSortedSet {
 			c.WriteError(ErrWrongType.Error())
 			return
 		}

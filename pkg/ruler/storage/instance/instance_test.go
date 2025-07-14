@@ -198,10 +198,7 @@ func TestInstance(t *testing.T) {
 
 	count := 3
 	for i := 0; i < count; i++ {
-		_, err := app.Append(0, labels.Labels{
-			labels.Label{Name: "__name__", Value: "test"},
-			labels.Label{Name: "iter", Value: fmt.Sprintf("%v", i)},
-		}, refTime-int64(i), float64(i))
+		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), refTime-int64(i), float64(i))
 
 		require.NoError(t, err)
 	}

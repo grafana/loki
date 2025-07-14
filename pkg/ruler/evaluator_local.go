@@ -18,7 +18,7 @@ import (
 const EvalModeLocal = "local"
 
 type LocalEvaluator struct {
-	engine *logql.Engine
+	engine *logql.QueryEngine
 	logger log.Logger
 
 	// we don't want/need to log all the additional context, such as
@@ -27,7 +27,7 @@ type LocalEvaluator struct {
 	insightsLogger log.Logger
 }
 
-func NewLocalEvaluator(engine *logql.Engine, logger log.Logger) (*LocalEvaluator, error) {
+func NewLocalEvaluator(engine *logql.QueryEngine, logger log.Logger) (*LocalEvaluator, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("given engine is nil")
 	}

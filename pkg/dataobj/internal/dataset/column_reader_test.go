@@ -35,10 +35,8 @@ func Test_columnReader_ReadAll(t *testing.T) {
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
 	cr := newColumnReader(col)
-	actualValues, err := readColumn(cr, 4)
+	actual, err := readColumn(t, cr, 4)
 	require.NoError(t, err)
-
-	actual := convertToStrings(t, actualValues)
 	require.Equal(t, columnReaderTestStrings, actual)
 }
 
@@ -71,17 +69,16 @@ func Test_columnReader_SeekToStart(t *testing.T) {
 	cr := newColumnReader(col)
 
 	// First read everything
-	_, err := readColumn(cr, 4)
+	_, err := readColumn(t, cr, 4)
 	require.NoError(t, err)
 
 	// Seek back to start and read again
 	_, err = cr.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	actualValues, err := readColumn(cr, 4)
+	actual, err := readColumn(t, cr, 4)
 	require.NoError(t, err)
 
-	actual := convertToStrings(t, actualValues)
 	require.Equal(t, columnReaderTestStrings, actual)
 }
 
@@ -92,16 +89,15 @@ func Test_columnReader_Reset(t *testing.T) {
 	cr := newColumnReader(col)
 
 	// First read everything
-	_, err := readColumn(cr, 4)
+	_, err := readColumn(t, cr, 4)
 	require.NoError(t, err)
 
 	// Reset and read again
 	cr.Reset(col)
 
-	actualValues, err := readColumn(cr, 4)
+	actual, err := readColumn(t, cr, 4)
 	require.NoError(t, err)
 
-	actual := convertToStrings(t, actualValues)
 	require.Equal(t, columnReaderTestStrings, actual)
 }
 
@@ -111,14 +107,14 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
 		PageSizeHint: 128, // Small page size to force multiple pages
-		Value:        datasetmd.VALUE_TYPE_STRING,
+		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	})
 	require.NoError(t, err)
 
 	for i, v := range values {
-		require.NoError(t, builder.Append(i, StringValue(v)))
+		require.NoError(t, builder.Append(i, ByteArrayValue([]byte(v))))
 	}
 
 	col, err := builder.Flush()
@@ -126,9 +122,9 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 	return col
 }
 
-func readColumn(cr *columnReader, batchSize int) ([]Value, error) {
+func readColumn(t *testing.T, cr *columnReader, batchSize int) ([]string, error) {
 	var (
-		all []Value
+		all []string
 
 		batch = make([]Value, batchSize)
 	)
@@ -136,7 +132,7 @@ func readColumn(cr *columnReader, batchSize int) ([]Value, error) {
 	for {
 		n, err := cr.Read(context.Background(), batch)
 		if n > 0 {
-			all = append(all, batch[:n]...)
+			all = append(all, convertToStrings(t, batch[:n])...)
 		}
 		if errors.Is(err, io.EOF) {
 			return all, nil

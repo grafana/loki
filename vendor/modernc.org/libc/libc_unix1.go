@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build unix && !illumos && !(linux && (amd64 || arm64 || loong64)) && !openbsd
+//go:build unix && !illumos && !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)) && !openbsd
 
 package libc // import "modernc.org/libc"
 

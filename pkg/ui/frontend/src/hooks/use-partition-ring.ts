@@ -113,8 +113,8 @@ export function usePartitionRing({
       const metricsData = await fetchMetrics({
         nodeNames: uniqueNodes,
         metrics: [
-          "loki_ingest_storage_reader_fetch_bytes_total",
-          "loki_ingest_storage_reader_fetch_compressed_bytes_total",
+          "loki_kafka_client_fetch_bytes_total",
+          "loki_kafka_client_fetch_compressed_bytes_total",
         ],
       });
       // Update partitions with metrics
@@ -128,13 +128,13 @@ export function usePartitionRing({
             ...partition,
             uncompressedRate:
               nodeRates.find(
-                (r) => r.name === "loki_ingest_storage_reader_fetch_bytes_total"
+                (r) => r.name === "loki_kafka_client_fetch_bytes_total"
               )?.rate || 0,
             compressedRate:
               nodeRates.find(
                 (r) =>
                   r.name ===
-                  "loki_ingest_storage_reader_fetch_compressed_bytes_total"
+                  "loki_kafka_client_fetch_compressed_bytes_total"
               )?.rate || 0,
           };
         }),

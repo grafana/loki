@@ -216,6 +216,10 @@ func (s *Server) Dispatch(c *Peer, args []string) {
 	s.infoCmds++
 	s.mu.Unlock()
 	cb(c, cmdUp, args)
+	if c.SwitchResp3 != nil {
+		c.Resp3 = *c.SwitchResp3
+		c.SwitchResp3 = nil
+	}
 }
 
 // TotalCommands is total (known) commands since this the server started
@@ -245,6 +249,7 @@ type Peer struct {
 	w            *bufio.Writer
 	closed       bool
 	Resp3        bool
+	SwitchResp3  *bool       // we'll switch to this version _after_ the command
 	Ctx          interface{} // anything goes, server won't touch this
 	onDisconnect []func()    // list of callbacks
 	mu           sync.Mutex  // for Block()

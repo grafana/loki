@@ -444,10 +444,17 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for ix, chunk := range chunks {
-		for _, label := range chunk.Metric {
-			if label.Value == "" {
-				return fmt.Errorf("Chunk has blank label %q", label.Name)
+		var err error
+		chunk.Metric.Range(func(l labels.Label) {
+			if err != nil {
+				return
 			}
+			if l.Value == "" {
+				err = fmt.Errorf("Chunk has blank label %q", l.Name)
+			}
+		})
+		if err != nil {
+			return err
 		}
 
 		// remove __name__ label
@@ -509,6 +516,10 @@ func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32
 	return &logproto.VolumeResponse{}, nil
 }
 
+func (s *testStore) Series(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
+}
+
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}
 
@@ -557,6 +568,19 @@ func buildTestStreams(offset int) []logproto.Stream {
 // check that the store is holding data equivalent to what we expect
 func (s *testStore) checkData(t *testing.T, testData map[string][]logproto.Stream) {
 	for userID, expected := range testData {
+		// Ensure all empty label sets use an empty set of adapters, rather than a nil slice, to make the assertion below easier.
+		for _, stream := range expected {
+			for i := range stream.Entries {
+				if len(stream.Entries[i].Parsed) == 0 {
+					stream.Entries[i].Parsed = logproto.EmptyLabelAdapters()
+				}
+
+				if len(stream.Entries[i].StructuredMetadata) == 0 {
+					stream.Entries[i].StructuredMetadata = logproto.EmptyLabelAdapters()
+				}
+			}
+		}
+
 		streams := s.getStreamsForUser(t, userID)
 		require.Equal(t, expected, streams)
 	}

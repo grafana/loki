@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -16,12 +17,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v2"
 )
 
-const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
+const messageSizeLargerErrFmt = "%w than max (%d vs %d)"
+
+var ErrMessageSizeTooLarge = errors.New("message size too large")
 
 const (
 	HTTPRateLimited  = "rate_limited"
@@ -162,18 +165,14 @@ const (
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
-	sp := opentracing.SpanFromContext(ctx)
-	if sp != nil {
-		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("util.ParseProtoRequest[start reading]")
 	body, err := decompressRequest(reader, expectedSize, maxSize, compression, sp)
 	if err != nil {
 		return err
 	}
 
-	if sp != nil {
-		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"), otlog.Int("size", len(body)))
-	}
+	sp.AddEvent("util.ParseProtoRequest[unmarshal]", trace.WithAttributes(attribute.Int("size", len(body))))
 
 	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
 	// which we can't override without upsetting golint.
@@ -190,14 +189,14 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 	return nil
 }
 
-func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
+func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp trace.Span) (body []byte, err error) {
 	defer func() {
 		if err != nil && len(body) > maxSize {
-			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
+			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(body), maxSize)
 		}
 	}()
 	if expectedSize > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, expectedSize, maxSize)
 	}
 	buffer, ok := tryBufferFromReader(reader)
 	if ok {
@@ -208,7 +207,7 @@ func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression 
 	return
 }
 
-func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
+func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
 	var (
 		buf  bytes.Buffer
 		body []byte
@@ -234,25 +233,24 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 	return body, err
 }
 
-func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
+func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
 	bufBytes := buffer.Bytes()
 	if len(bufBytes) > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(bufBytes), maxSize)
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, len(bufBytes), maxSize)
 	}
 	switch compression {
 	case NoCompression:
 		return bufBytes, nil
 	case RawSnappy:
-		if sp != nil {
-			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
-				otlog.Int("size", len(bufBytes)))
-		}
+		sp.AddEvent("util.ParseProtoRequest[decompress]", trace.WithAttributes(
+			attribute.Int("size", len(bufBytes)),
+		))
 		size, err := snappy.DecodedLen(bufBytes)
 		if err != nil {
 			return nil, err
 		}
 		if size > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageSizeTooLarge, size, maxSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)
 		if err != nil {

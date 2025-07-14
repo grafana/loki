@@ -1,6 +1,36 @@
 # Changes
 
 
+## [1.5.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.5.1...iam/v1.5.2) (2025-04-15)
+
+
+### Bug Fixes
+
+* **iam:** Update google.golang.org/api to 0.229.0 ([3319672](https://github.com/googleapis/google-cloud-go/commit/3319672f3dba84a7150772ccb5433e02dab7e201))
+
+## [1.5.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.5.0...iam/v1.5.1) (2025-04-15)
+
+
+### Documentation
+
+* **iam:** Formatting update for ListPolicyBindingsRequest ([dfdf404](https://github.com/googleapis/google-cloud-go/commit/dfdf404138728724aa6305c5c465ecc6fe5b1264))
+* **iam:** Minor doc update for ListPrincipalAccessBoundaryPoliciesResponse ([20f762c](https://github.com/googleapis/google-cloud-go/commit/20f762c528726a3f038d3e1f37e8a4952118badf))
+* **iam:** Minor doc update for ListPrincipalAccessBoundaryPoliciesResponse ([20f762c](https://github.com/googleapis/google-cloud-go/commit/20f762c528726a3f038d3e1f37e8a4952118badf))
+
+## [1.5.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.2...iam/v1.5.0) (2025-03-31)
+
+
+### Features
+
+* **iam:** New client(s) ([#11933](https://github.com/googleapis/google-cloud-go/issues/11933)) ([d5cb2e5](https://github.com/googleapis/google-cloud-go/commit/d5cb2e58334c6963cc46885f565fe3b19c52cb63))
+
+## [1.4.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.1...iam/v1.4.2) (2025-03-13)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
 ## [1.4.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.4.0...iam/v1.4.1) (2025-03-06)
 
 

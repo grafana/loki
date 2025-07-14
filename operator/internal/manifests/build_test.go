@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
-func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
+func TestApplyDefaultSettings_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -59,7 +59,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	}
 }
 
-func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
+func TestApplyDefaultSettings_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -87,6 +87,40 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 
 		// Require compactor to be reverted to 1 replica
 		require.Equal(t, defs.Template.Compactor, opt.Stack.Template.Compactor)
+	}
+}
+
+func TestApplyDefaultSettings_UseRequestsAsLimits(t *testing.T) {
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
+	}
+	for _, size := range allSizes {
+		opt := Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				Size: size,
+				Template: &lokiv1.LokiTemplateSpec{
+					UseRequestsAsLimits: true,
+				},
+			},
+			Timeouts: defaultTimeoutConfig,
+		}
+		err := ApplyDefaultSettings(&opt)
+
+		require.NoError(t, err)
+		require.Equal(t, opt.ResourceRequirements.IndexGateway.Limits, opt.ResourceRequirements.IndexGateway.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ingester.Limits, opt.ResourceRequirements.Ingester.Requests)
+		require.Equal(t, opt.ResourceRequirements.Compactor.Limits, opt.ResourceRequirements.Compactor.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ruler.Limits, opt.ResourceRequirements.Ruler.Requests)
+		require.Equal(t, opt.ResourceRequirements.WALStorage.Limits, opt.ResourceRequirements.WALStorage.Requests)
+		require.Equal(t, opt.ResourceRequirements.Querier.Limits, opt.ResourceRequirements.Querier.Requests)
+		require.Equal(t, opt.ResourceRequirements.Distributor.Limits, opt.ResourceRequirements.Distributor.Requests)
+		require.Equal(t, opt.ResourceRequirements.QueryFrontend.Limits, opt.ResourceRequirements.QueryFrontend.Requests)
+		require.Equal(t, opt.ResourceRequirements.Gateway.Limits, opt.ResourceRequirements.Gateway.Requests)
 	}
 }
 
@@ -337,9 +371,9 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 
 			for _, service := range svcs {
 				if !tst.BuildOptions.Gates.OpenShift.ServingCertsService {
-					require.Equal(t, service.ObjectMeta.Annotations, map[string]string{})
+					require.Equal(t, service.Annotations, map[string]string{})
 				} else {
-					require.NotNil(t, service.ObjectMeta.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
+					require.NotNil(t, service.Annotations["service.beta.openshift.io/serving-cert-secret-name"])
 				}
 			}
 		})
@@ -383,14 +417,14 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}
@@ -456,14 +490,14 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		case *appsv1.StatefulSet:
 			name = o.Name
 			vs = o.Spec.Template.Spec.Volumes
 			vms = o.Spec.Template.Spec.Containers[0].VolumeMounts
-			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.ProbeHandler.HTTPGet.Scheme
-			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.ProbeHandler.HTTPGet.Scheme
+			rps = o.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Scheme
+			lps = o.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Scheme
 		default:
 			continue
 		}

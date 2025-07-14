@@ -44,7 +44,6 @@ func NewWriter(
 	outOfOrderPercentage, entrySize int,
 	logger log.Logger,
 ) *Writer {
-
 	w := &Writer{
 		w:                    writer,
 		sent:                 sentChan,
@@ -106,5 +105,4 @@ func (w *Writer) run() {
 			return
 		}
 	}
-
 }

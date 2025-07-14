@@ -4,7 +4,7 @@
 # options for analysis running
 run:
   # define go version
-  go: "1.23"
+  go: "1.24"
 
   # default concurrency is a available CPU number
   concurrency: 16

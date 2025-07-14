@@ -13,6 +13,16 @@ import (
 )
 
 const (
+	keyTypeString    = "string"
+	keyTypeHash      = "hash"
+	keyTypeList      = "list"
+	keyTypeSet       = "set"
+	keyTypeHll       = "hll"
+	keyTypeSortedSet = "zset"
+	keyTypeStream    = "stream"
+)
+
+const (
 	msgWrongType            = "WRONGTYPE Operation against a key holding the wrong kind of value"
 	msgNotValidHllValue     = "WRONGTYPE Key is not a valid HyperLogLog string value."
 	msgInvalidInt           = "ERR value is not an integer or out of range"

@@ -160,6 +160,7 @@ type callInfo struct {
 	codec                 baseCodec
 	maxRetryRPCBufferSize int
 	onFinish              []func(err error)
+	authority             string
 }
 
 func defaultCallInfo() *callInfo {
@@ -364,6 +365,36 @@ func (o MaxRecvMsgSizeCallOption) before(c *callInfo) error {
 	return nil
 }
 func (o MaxRecvMsgSizeCallOption) after(*callInfo, *csAttempt) {}
+
+// CallAuthority returns a CallOption that sets the HTTP/2 :authority header of
+// an RPC to the specified value. When using CallAuthority, the credentials in
+// use must implement the AuthorityValidator interface.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a later
+// release.
+func CallAuthority(authority string) CallOption {
+	return AuthorityOverrideCallOption{Authority: authority}
+}
+
+// AuthorityOverrideCallOption is a CallOption that indicates the HTTP/2
+// :authority header value to use for the call.
+//
+// # Experimental
+//
+// Notice: This type is EXPERIMENTAL and may be changed or removed in a later
+// release.
+type AuthorityOverrideCallOption struct {
+	Authority string
+}
+
+func (o AuthorityOverrideCallOption) before(c *callInfo) error {
+	c.authority = o.Authority
+	return nil
+}
+
+func (o AuthorityOverrideCallOption) after(*callInfo, *csAttempt) {}
 
 // MaxCallSendMsgSize returns a CallOption which sets the maximum message size
 // in bytes the client can send. If this is not set, gRPC uses the default
@@ -870,25 +901,25 @@ func decompress(compressor encoding.Compressor, d mem.BufferSlice, dc Decompress
 			return nil, status.Errorf(codes.Internal, "grpc: failed to decompress the message: %v", err)
 		}
 
-		out, err := mem.ReadAll(io.LimitReader(dcReader, int64(maxReceiveMessageSize)), pool)
+		// Read at most one byte more than the limit from the decompressor.
+		// Unless the limit is MaxInt64, in which case, that's impossible, so
+		// apply no limit.
+		if limit := int64(maxReceiveMessageSize); limit < math.MaxInt64 {
+			dcReader = io.LimitReader(dcReader, limit+1)
+		}
+		out, err := mem.ReadAll(dcReader, pool)
 		if err != nil {
 			out.Free()
 			return nil, status.Errorf(codes.Internal, "grpc: failed to read decompressed data: %v", err)
 		}
 
-		if out.Len() == maxReceiveMessageSize && !atEOF(dcReader) {
+		if out.Len() > maxReceiveMessageSize {
 			out.Free()
 			return nil, status.Errorf(codes.ResourceExhausted, "grpc: received message after decompression larger than max %d", maxReceiveMessageSize)
 		}
 		return out, nil
 	}
 	return nil, status.Errorf(codes.Internal, "grpc: no decompressor available for compressed payload")
-}
-
-// atEOF reads data from r and returns true if zero bytes could be read and r.Read returns EOF.
-func atEOF(dcReader io.Reader) bool {
-	n, err := dcReader.Read(make([]byte, 1))
-	return n == 0 && err == io.EOF
 }
 
 type recvCompressor interface {

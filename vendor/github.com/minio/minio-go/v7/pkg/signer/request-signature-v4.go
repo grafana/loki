@@ -38,8 +38,9 @@ const (
 
 // Different service types
 const (
-	ServiceTypeS3  = "s3"
-	ServiceTypeSTS = "sts"
+	ServiceTypeS3        = "s3"
+	ServiceTypeSTS       = "sts"
+	ServiceTypeS3Express = "s3express"
 )
 
 // Excerpts from @lsegal -
@@ -128,8 +129,8 @@ func getCanonicalHeaders(req http.Request, ignoredHeaders map[string]bool) strin
 	for _, k := range headers {
 		buf.WriteString(k)
 		buf.WriteByte(':')
-		switch {
-		case k == "host":
+		switch k {
+		case "host":
 			buf.WriteString(getHostAddr(&req))
 			buf.WriteByte('\n')
 		default:
@@ -229,7 +230,11 @@ func PreSignV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, loc
 	query.Set("X-Amz-Credential", credential)
 	// Set session token if available.
 	if sessionToken != "" {
-		query.Set("X-Amz-Security-Token", sessionToken)
+		if v := req.Header.Get("x-amz-s3session-token"); v != "" {
+			query.Set("X-Amz-S3session-Token", sessionToken)
+		} else {
+			query.Set("X-Amz-Security-Token", sessionToken)
+		}
 	}
 	req.URL.RawQuery = query.Encode()
 
@@ -281,7 +286,11 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 
 	// Set session token if available.
 	if sessionToken != "" {
-		req.Header.Set("X-Amz-Security-Token", sessionToken)
+		// S3 Express token if not set then set sessionToken
+		// with older x-amz-security-token header.
+		if v := req.Header.Get("x-amz-s3session-token"); v == "" {
+			req.Header.Set("X-Amz-Security-Token", sessionToken)
+		}
 	}
 
 	if len(trailer) > 0 {
@@ -333,15 +342,50 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 	if len(trailer) > 0 {
 		// Use custom chunked encoding.
 		req.Trailer = trailer
-		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, time.Now().UTC())
+		return StreamingUnsignedV4(&req, sessionToken, req.ContentLength, t)
 	}
 	return &req
+}
+
+// UnsignedTrailer will do chunked encoding with a custom trailer.
+func UnsignedTrailer(req http.Request, trailer http.Header) *http.Request {
+	if len(trailer) == 0 {
+		return &req
+	}
+	// Initial time.
+	t := time.Now().UTC()
+
+	// Set x-amz-date.
+	req.Header.Set("X-Amz-Date", t.Format(iso8601DateFormat))
+
+	for k := range trailer {
+		req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
+	}
+
+	req.Header.Set("Content-Encoding", "aws-chunked")
+	req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
+
+	// Use custom chunked encoding.
+	req.Trailer = trailer
+	return StreamingUnsignedV4(&req, "", req.ContentLength, t)
 }
 
 // SignV4 sign the request before Do(), in accordance with
 // http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html.
 func SignV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string) *http.Request {
 	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3, nil)
+}
+
+// SignV4Express sign the request before Do(), in accordance with
+// http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html.
+func SignV4Express(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string) *http.Request {
+	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3Express, nil)
+}
+
+// SignV4TrailerExpress sign the request before Do(), in accordance with
+// http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
+func SignV4TrailerExpress(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string, trailer http.Header) *http.Request {
+	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3Express, trailer)
 }
 
 // SignV4Trailer sign the request before Do(), in accordance with

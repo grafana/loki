@@ -46,9 +46,9 @@ type StructLevel interface {
 	//
 	// NOTES:
 	//
-	// fieldName and altName get appended to the existing namespace that
-	// validator is on. e.g. pass 'FirstName' or 'Names[0]' depending
-	// on the nesting
+	// fieldName and structFieldName get appended to the existing
+	// namespace that validator is on. e.g. pass 'FirstName' or
+	// 'Names[0]' depending on the nesting
 	//
 	// tag can be an existing validation tag or just something you make up
 	// and process on the flip side it's up to you.

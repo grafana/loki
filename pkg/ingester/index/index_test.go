@@ -97,14 +97,14 @@ func TestDeleteAddLoopkup(t *testing.T) {
 }
 
 func Test_hash_mapping(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "compose_project", Value: "loki-tsdb-storage-s3"},
-		labels.Label{Name: "compose_service", Value: "ingester-2"},
-		labels.Label{Name: "container_name", Value: "loki-tsdb-storage-s3_ingester-2_1"},
-		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
-		labels.Label{Name: "host", Value: "docker-desktop"},
-		labels.Label{Name: "source", Value: "stderr"},
-	}
+	lbs := labels.FromStrings(
+		"compose_project", "loki-tsdb-storage-s3",
+		"compose_service", "ingester-2",
+		"container_name", "loki-tsdb-storage-s3_ingester-2_1",
+		"filename", "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log",
+		"host", "docker-desktop",
+		"source", "stderr",
+	)
 
 	for _, shard := range []uint32{16, 32, 64, 128} {
 		t.Run(fmt.Sprintf("%d", shard), func(t *testing.T) {
@@ -121,10 +121,10 @@ func Test_hash_mapping(t *testing.T) {
 }
 
 func Test_NoMatcherLookup(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "foo", Value: "bar"},
-		labels.Label{Name: "hi", Value: "hello"},
-	}
+	lbs := labels.FromStrings(
+		"foo", "bar",
+		"hi", "hello",
+	)
 	// with no shard param
 	ii := NewWithShards(16)
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
@@ -146,10 +146,10 @@ func Test_ConsistentMapping(t *testing.T) {
 	b := NewWithShards(32)
 
 	for i := 0; i < 100; i++ {
-		lbs := labels.Labels{
-			labels.Label{Name: "foo", Value: "bar"},
-			labels.Label{Name: "hi", Value: fmt.Sprint(i)},
-		}
+		lbs := labels.FromStrings(
+			"foo", "bar",
+			"hi", fmt.Sprint(i),
+		)
 		a.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
 		b.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
 	}

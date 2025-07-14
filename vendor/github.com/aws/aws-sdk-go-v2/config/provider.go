@@ -242,6 +242,40 @@ func getAccountIDEndpointMode(ctx context.Context, configs configs) (value aws.A
 	return
 }
 
+// requestChecksumCalculationProvider provides access to the RequestChecksumCalculation
+type requestChecksumCalculationProvider interface {
+	getRequestChecksumCalculation(context.Context) (aws.RequestChecksumCalculation, bool, error)
+}
+
+func getRequestChecksumCalculation(ctx context.Context, configs configs) (value aws.RequestChecksumCalculation, found bool, err error) {
+	for _, cfg := range configs {
+		if p, ok := cfg.(requestChecksumCalculationProvider); ok {
+			value, found, err = p.getRequestChecksumCalculation(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return
+}
+
+// responseChecksumValidationProvider provides access to the ResponseChecksumValidation
+type responseChecksumValidationProvider interface {
+	getResponseChecksumValidation(context.Context) (aws.ResponseChecksumValidation, bool, error)
+}
+
+func getResponseChecksumValidation(ctx context.Context, configs configs) (value aws.ResponseChecksumValidation, found bool, err error) {
+	for _, cfg := range configs {
+		if p, ok := cfg.(responseChecksumValidationProvider); ok {
+			value, found, err = p.getResponseChecksumValidation(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return
+}
+
 // ec2IMDSRegionProvider provides access to the ec2 imds region
 // configuration value
 type ec2IMDSRegionProvider interface {

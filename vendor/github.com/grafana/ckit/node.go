@@ -165,7 +165,7 @@ func NewNode(cli *http.Client, cfg Config) (*Node, error) {
 	httpTransport, transportMetrics, err := gossiphttp.NewTransport(gossiphttp.Options{
 		Log:           cfg.Log,
 		Client:        cli,
-		PacketTimeout: 1 * time.Second,
+		PacketTimeout: 5 * time.Second,
 		UseHTTPS:      cfg.EnableTLS,
 	})
 	if err != nil {
@@ -180,6 +180,11 @@ func NewNode(cli *http.Client, cfg Config) (*Node, error) {
 	mlc.AdvertiseAddr = advertiseIP.String()
 	mlc.AdvertisePort = advertisePort
 	mlc.Label = cfg.Label
+	mlc.ProbeInterval = 5 * time.Second
+	mlc.ProbeTimeout = 2 * time.Second
+	mlc.DisableTcpPings = true           // No point in TCP ping fallbacks when our transport is already HTTP/2.
+	mlc.UDPBufferSize = 10 * 1024 * 1024 // Our buffer size can be a bit higher since we use TCP (10 MiB).
+	mlc.TCPTimeout = 2 * time.Second
 
 	if cfg.Log != nil {
 		mlc.Logger = newMemberListLogger(log.With(cfg.Log, "subsystem", "memberlist"))
@@ -352,6 +357,10 @@ func (n *Node) CurrentState() peer.State {
 //	StateParticipant -> StateTerminating
 //
 // Nodes intended to only be viewers should never transition to another state.
+//
+// It is valid to call ChangeState before calling [Node.Start], but may result
+// in more gossip messages for nodes which have rejoined the cluster. To
+// minimize network traffic, only call ChangeState after starting the Node.
 func (n *Node) ChangeState(ctx context.Context, to peer.State) error {
 	n.stateMut.Lock()
 	defer n.stateMut.Unlock()
@@ -413,9 +422,13 @@ func (n *Node) changeState(to peer.State, onDone func()) error {
 		Time:     n.clock.Tick(),
 	}
 
-	// Treat the stateMsg as if it was received externally to track our own state
-	// along with other nodes.
-	n.handleStateMessage(stateMsg)
+	// We want to call [Node.storePeerState] directly rather than
+	// [Node.handleStateMessage] since the latter will cause the lamport time to be
+	// incremented twice for the state change, making it a little more difficult
+	// to track events.
+	n.peerMut.Lock()
+	n.storePeerState(stateMsg)
+	n.peerMut.Unlock()
 
 	bcast, err := messages.Broadcast(&stateMsg, onDone)
 	if err != nil {
@@ -423,6 +436,21 @@ func (n *Node) changeState(to peer.State, onDone func()) error {
 	}
 	n.broadcasts.QueueBroadcast(bcast)
 	return nil
+}
+
+// storePeerState stores a state message about a peer. If msg represents
+// a peer already found in the memberlist, handlePeersChanged will be
+// invoked.
+//
+// storePeerState must be called with n.peerMut held for writing.
+func (n *Node) storePeerState(msg messages.State) {
+	n.peerStates[msg.NodeName] = msg
+
+	if p, ok := n.peers[msg.NodeName]; ok {
+		p.State = msg.NewState
+		n.peers[msg.NodeName] = p
+		n.handlePeersChanged()
+	}
 }
 
 // handleStateMessage handles a state message from a peer. Returns true if the
@@ -439,7 +467,7 @@ func (n *Node) handleStateMessage(msg messages.State) (final messages.State, new
 	defer n.peerMut.Unlock()
 
 	curr, exist := n.peerStates[msg.NodeName]
-	if exist && msg.Time <= curr.Time {
+	if exist && msg.Time <= curr.Time && !n.shouldRefute(curr, msg) {
 		// Ignore a state message if we have the same or a newer one.
 		return curr, false
 	} else if msg.NodeName == n.cfg.Name {
@@ -457,15 +485,20 @@ func (n *Node) handleStateMessage(msg messages.State) (final messages.State, new
 		level.Debug(n.log).Log("msg", "handling state message", "msg", msg)
 	}
 
-	n.peerStates[msg.NodeName] = msg
-
-	if p, ok := n.peers[msg.NodeName]; ok {
-		p.State = msg.NewState
-		n.peers[msg.NodeName] = p
-		n.handlePeersChanged()
-	}
-
+	n.storePeerState(msg)
 	return msg, true
+}
+
+// shouldRefute returns whether a received message about the current node
+// conflicts with the current state of the node.
+//
+// This can happen when lamport times happen to collide from two different
+// instances of the same node.
+func (n *Node) shouldRefute(cached, recv messages.State) bool {
+	if recv.NodeName != n.cfg.Name {
+		return false
+	}
+	return recv.Time == cached.Time && recv.NewState != cached.NewState
 }
 
 // Peers returns all Peers currently known by n. The Peers list will include
@@ -681,21 +714,17 @@ func (nd *nodeDelegate) MergeRemoteState(buf []byte, join bool) {
 
 	nd.m.gossipEventsTotal.WithLabelValues(eventMergeRemoteState).Inc()
 
-	var (
-		peersChanged bool
-
-		// Map of remote states by name to optimize lookups.
-		remoteStates = make(map[string]messages.State, len(rs.NodeStates))
-	)
+	var peersChanged bool
 
 	// Merge in node states that the remote peer kept.
 	for _, msg := range rs.NodeStates {
-		// We don't use handleStateMessage here so we can defer recalculating peers
-		// to the end of the merge.
-		remoteStates[msg.NodeName] = msg
+		// Ignore peers we don't know about.
+		if _, ok := nd.peers[msg.NodeName]; !ok {
+			continue
+		}
 
 		curr, exist := nd.peerStates[msg.NodeName]
-		if exist && msg.Time <= curr.Time {
+		if exist && msg.Time <= curr.Time && !nd.shouldRefute(curr, msg) {
 			// Ignore a state message if we have a newer one.
 			continue
 		} else if msg.NodeName == nd.cfg.Name {
@@ -722,22 +751,6 @@ func (nd *nodeDelegate) MergeRemoteState(buf []byte, join bool) {
 		}
 
 		newMessages = append(newMessages, msg)
-	}
-
-	// Clean up stale entries in peerStates.
-	for nodeName := range nd.peerStates {
-		// If nodeName exists, it is not a stale reference.
-		if _, peerExists := nd.peers[nodeName]; peerExists {
-			continue
-		}
-
-		// We don't know about this peer. If the remote state also doesn't have an
-		// entry for this peer, we can treat it as stale and delete it.
-		_, peerExistsRemote := remoteStates[nodeName]
-		if !peerExistsRemote {
-			level.Debug(nd.log).Log("msg", "deleting stale reference to node", "node", nodeName)
-			delete(nd.peerStates, nodeName)
-		}
 	}
 
 	if peersChanged {
@@ -817,6 +830,7 @@ func (nd *nodeDelegate) updatePeer(p peer.Peer) {
 
 func (nd *nodeDelegate) removePeer(name string) {
 	delete(nd.peers, name)
+	delete(nd.peerStates, name)
 	nd.handlePeersChanged()
 }
 

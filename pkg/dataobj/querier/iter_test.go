@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
 // makeEntry is a helper function to create a log entry with given timestamp and line
@@ -94,19 +95,20 @@ func TestTopKIterator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create topk iterator
-			top := &topk{
-				k:       tt.k,
-				minHeap: entryHeap{less: lessFn(tt.direction)},
+			top := topk.Heap[entryWithLabels]{
+				Limit: tt.k,
+				Less:  lessFn(tt.direction),
 			}
 
 			// Add entries
 			for _, e := range tt.input {
-				top.Add(e)
+				top.Push(e)
 			}
 
 			// Collect results
 			var got []entryWithLabels
-			iter := top.Iterator()
+
+			iter := heapIterator(&top)
 			for iter.Next() {
 				got = append(got, entryWithLabels{
 					Entry:      iter.At(),

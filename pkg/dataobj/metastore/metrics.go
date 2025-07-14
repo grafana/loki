@@ -48,7 +48,7 @@ func newMetastoreMetrics() *metastoreMetrics {
 		}),
 		metastoreWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_metastore_writes_total",
-			Help: "Total number of metastore write failures",
+			Help: "Total number of metastore writes",
 		}, []string{"status"}),
 	}
 

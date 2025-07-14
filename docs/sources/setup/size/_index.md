@@ -31,7 +31,7 @@ Query resource needs can greatly vary with usage patterns and correct configurat
 {{< tab-content name="Less than 100TB/month (3TB/day)" >}}
 | Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
 |------------------|-------------|-------------------|----------------|----------------|-----------------|
-| Ingester         | 2           | 4                 | 6              | 12             | 36              |
+| Ingester         | 2           | 4                 | 6              | 12             | 24              |
 | Distributor      | 2           | 0.5               | 4              | 8              | 2               |
 | Index gateway    | 0.5         | 2                 | 4              | 2              | 8               |
 | Querier          | 1           | 1                 | 10             | 10             | 10              |

@@ -42,6 +42,10 @@ func NewStatus() Status {
 func (ms Status) MoveTo(dest Status) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlptrace.Status{}
 }
@@ -71,6 +75,10 @@ func (ms Status) SetMessage(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Status) CopyTo(dest Status) {
 	dest.state.AssertMutable()
-	dest.SetCode(ms.Code())
-	dest.SetMessage(ms.Message())
+	copyOrigStatus(dest.orig, ms.orig)
+}
+
+func copyOrigStatus(dest, src *otlptrace.Status) {
+	dest.Code = src.Code
+	dest.Message = src.Message
 }

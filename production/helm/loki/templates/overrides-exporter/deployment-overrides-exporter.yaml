@@ -34,7 +34,7 @@ spec:
       labels:
         {{- include "loki.overridesExporterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.overridesExporter.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.overridesExporter.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:

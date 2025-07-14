@@ -404,25 +404,25 @@ func (m *Miniredis) Dump() string {
 		r += fmt.Sprintf("- %s\n", k)
 		t := db.t(k)
 		switch t {
-		case "string":
+		case keyTypeString:
 			r += fmt.Sprintf("%s%s\n", indent, v(db.stringKeys[k]))
-		case "hash":
+		case keyTypeHash:
 			for _, hk := range db.hashFields(k) {
 				r += fmt.Sprintf("%s%s: %s\n", indent, hk, v(db.hashGet(k, hk)))
 			}
-		case "list":
+		case keyTypeList:
 			for _, lk := range db.listKeys[k] {
 				r += fmt.Sprintf("%s%s\n", indent, v(lk))
 			}
-		case "set":
+		case keyTypeSet:
 			for _, mk := range db.setMembers(k) {
 				r += fmt.Sprintf("%s%s\n", indent, v(mk))
 			}
-		case "zset":
+		case keyTypeSortedSet:
 			for _, el := range db.ssetElements(k) {
 				r += fmt.Sprintf("%s%f: %s\n", indent, el.score, v(el.member))
 			}
-		case "stream":
+		case keyTypeStream:
 			for _, entry := range db.streamKeys[k].entries {
 				r += fmt.Sprintf("%s%s\n", indent, entry.ID)
 				ev := entry.Values
@@ -430,7 +430,7 @@ func (m *Miniredis) Dump() string {
 					r += fmt.Sprintf("%s%s%s: %s\n", indent, indent, v(ev[2*i]), v(ev[2*i+1]))
 				}
 			}
-		case "hll":
+		case keyTypeHll:
 			for _, entry := range db.hllKeys {
 				r += fmt.Sprintf("%s%s\n", indent, v(string(entry.Bytes())))
 			}
@@ -703,19 +703,19 @@ func (m *Miniredis) copy(
 	}
 
 	switch srcDB.t(src) {
-	case "string":
+	case keyTypeString:
 		destDB.stringKeys[dst] = srcDB.stringKeys[src]
-	case "hash":
+	case keyTypeHash:
 		destDB.hashKeys[dst] = copyHashKey(srcDB.hashKeys[src])
-	case "list":
+	case keyTypeList:
 		destDB.listKeys[dst] = copyListKey(srcDB.listKeys[src])
-	case "set":
+	case keyTypeSet:
 		destDB.setKeys[dst] = copySetKey(srcDB.setKeys[src])
-	case "zset":
+	case keyTypeSortedSet:
 		destDB.sortedsetKeys[dst] = copySortedSet(srcDB.sortedsetKeys[src])
-	case "stream":
+	case keyTypeStream:
 		destDB.streamKeys[dst] = srcDB.streamKeys[src].copy()
-	case "hll":
+	case keyTypeHll:
 		destDB.hllKeys[dst] = srcDB.hllKeys[src].copy()
 	default:
 		panic("missing case")

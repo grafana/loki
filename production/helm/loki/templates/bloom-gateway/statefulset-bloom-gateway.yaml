@@ -40,7 +40,7 @@ spec:
       labels:
         {{- include "loki.bloomGatewayLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.bloomGateway.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.bloomGateway.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:

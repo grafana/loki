@@ -2,9 +2,8 @@ package logql
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/cespare/xxhash/v2"
@@ -104,14 +103,16 @@ func (v CountMinSketchVector) ToProto() (*logproto.CountMinSketchVector, error) 
 	// Serialize metric labels
 	for i, metric := range v.Metrics {
 		p.Metrics[i] = &logproto.Labels{
-			Metric: make([]*logproto.LabelPair, len(metric)),
+			Metric: make([]*logproto.LabelPair, metric.Len()),
 		}
-		for j, pair := range metric {
+		j := 0
+		metric.Range(func(lbl labels.Label) {
 			p.Metrics[i].Metric[j] = &logproto.LabelPair{
-				Name:  pair.Name,
-				Value: pair.Value,
+				Name:  lbl.Name,
+				Value: lbl.Value,
 			}
-		}
+			j++
+		})
 	}
 
 	return p, nil
@@ -144,12 +145,11 @@ func CountMinSketchVectorFromProto(p *logproto.CountMinSketchVector) (CountMinSk
 
 	// Deserialize metric labels
 	for i, in := range p.Metrics {
-		lbls := make(labels.Labels, len(in.Metric))
-		for j, labelPair := range in.Metric {
-			lbls[j].Name = labelPair.Name
-			lbls[j].Value = labelPair.Value
+		lbls := labels.NewScratchBuilder(len(in.Metric))
+		for _, labelPair := range in.Metric {
+			lbls.Add(labelPair.Name, labelPair.Value)
 		}
-		vec.Metrics[i] = lbls
+		vec.Metrics[i] = lbls.Labels()
 	}
 
 	return vec, nil
@@ -189,7 +189,7 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 }
 
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
-	slices.SortFunc(metric, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
+	// Needed? slices.SortFunc(metric, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	v.buffer = metric.Bytes(v.buffer)
 
 	v.F.Add(v.buffer, value)
@@ -269,7 +269,7 @@ func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *synt
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
-		lb:            labels.NewBuilder(nil),
+		lb:            labels.NewBuilder(labels.EmptyLabels()),
 		maxLabels:     maxLabels,
 	}, nil
 }
@@ -322,7 +322,7 @@ type CountMinSketchVectorStepEvaluator struct {
 	buffer []byte
 }
 
-var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewCountMinSketchVectorStepEvaluator(nil)
 
 func NewCountMinSketchVectorStepEvaluator(vec *CountMinSketchVector) *CountMinSketchVectorStepEvaluator {
 	return &CountMinSketchVectorStepEvaluator{
@@ -357,3 +357,45 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
+
+var _ StepEvaluator = (*CountMinSketchEvalStepEvaluator)(nil)
+
+// CountMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
+type CountMinSketchEvalStepEvaluator struct {
+	ctx           context.Context
+	nextEvFactory SampleEvaluatorFactory
+	expr          *CountMinSketchEvalExpr
+	params        Params
+}
+
+func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
+	return &CountMinSketchEvalStepEvaluator{
+		ctx:           ctx,
+		nextEvFactory: nextEvFactory,
+		expr:          expr,
+		params:        params,
+	}, nil
+}
+
+func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
+	nextEv, err := e.nextEvFactory.NewStepEvaluator(e.ctx, e.nextEvFactory, e.expr.SampleExpr, e.params)
+	if err != nil {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	ok, _, results := nextEv.Next()
+	if !ok {
+		return false, 0, CountMinSketchVector{}
+	}
+
+	data := results.CountMinSketchVec()
+	handler := NewCountMinSketchVectorStepEvaluator(&data)
+
+	return handler.Next()
+}
+
+func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
+
+func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
+
+func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}

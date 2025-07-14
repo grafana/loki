@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -133,7 +134,8 @@ func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	resp, err := c.client.Do(req)
 	defer func() {
 		if resp != nil {
-			resp.Body.Close()
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
 		}
 	}()
 
@@ -145,6 +147,7 @@ func (c *httpClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	done := make(chan struct{})
 	go func() {
 		var buf bytes.Buffer
+		// TODO(bwplotka): Add LimitReader for too long err messages (e.g. limit by 1KB)
 		_, err = buf.ReadFrom(resp.Body)
 		body = buf.Bytes()
 		close(done)

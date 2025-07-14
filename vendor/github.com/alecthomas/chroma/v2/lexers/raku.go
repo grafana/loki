@@ -1331,8 +1331,8 @@ func contains(s []string, e string) bool {
 type rulePosition int
 
 const (
-	topRule    rulePosition = 0
-	bottomRule              = -1
+	topRule rulePosition = 0 - iota
+	bottomRule
 )
 
 type ruleMakingConfig struct {

@@ -17,6 +17,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -40,6 +41,17 @@ type Request struct {
 	// Optional body and length fields to set the body stream and content length
 	body   io.ReadCloser
 	length int64
+	ctx    context.Context
+}
+
+func (r *Request) Context() context.Context {
+	return r.ctx
+}
+
+func (r *Request) SetContext(ctx context.Context) {
+	if ctx != nil {
+		r.ctx = ctx
+	}
 }
 
 func (r *Request) Protocol() string {

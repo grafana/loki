@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -171,6 +172,8 @@ func (pages *asyncPages) Close() (err error) {
 		pages.done = nil
 	}
 	for p := range pages.read {
+		Release(p.page)
+
 		// Capture the last error, which is the value returned from closing the
 		// underlying Pages instance.
 		err = p.err
@@ -196,6 +199,9 @@ func (pages *asyncPages) ReadPage() (Page, error) {
 		if p.version == pages.version {
 			return p.page, p.err
 		}
+
+		// the page is being dropped here b/c it was the wrong version
+		Release(p.page)
 	}
 }
 
@@ -255,18 +261,23 @@ func readPages(pages Pages, read chan<- asyncPage, seek <-chan asyncSeek, init, 
 		seekTo.rowIndex = -1
 	}
 
+	var err error
+
 	for {
 		var page Page
-		var err error
 
-		if seekTo.rowIndex >= 0 {
-			err = pages.SeekToRow(seekTo.rowIndex)
-			if err == nil {
-				seekTo.rowIndex = -1
-				continue
+		// if err is not fatal we consider the underlying pages object to be in an unknown state
+		// and we only repeatedly return that error
+		if !isFatalError(err) {
+			if seekTo.rowIndex >= 0 {
+				err = pages.SeekToRow(seekTo.rowIndex)
+				if err == nil {
+					seekTo.rowIndex = -1
+					continue
+				}
+			} else {
+				page, err = pages.ReadPage()
 			}
-		} else {
-			page, err = pages.ReadPage()
 		}
 
 		select {
@@ -282,6 +293,10 @@ func readPages(pages Pages, read chan<- asyncPage, seek <-chan asyncSeek, init, 
 			return
 		}
 	}
+}
+
+func isFatalError(err error) bool {
+	return err != nil && err != io.EOF && !errors.Is(err, ErrSeekOutOfRange) // ErrSeekOutOfRange can be returned from FilePages but is recoverable
 }
 
 type singlePage struct {
@@ -354,7 +369,7 @@ type errorPage struct {
 	columnIndex int
 }
 
-func newErrorPage(typ Type, columnIndex int, msg string, args ...interface{}) *errorPage {
+func newErrorPage(typ Type, columnIndex int, msg string, args ...any) *errorPage {
 	return &errorPage{
 		typ:         typ,
 		err:         fmt.Errorf(msg, args...),
@@ -595,7 +610,7 @@ func (page *booleanPage) valueAt(i int) bool {
 }
 
 func (page *booleanPage) min() bool {
-	for i := 0; i < int(page.numValues); i++ {
+	for i := range int(page.numValues) {
 		if !page.valueAt(i) {
 			return false
 		}
@@ -604,7 +619,7 @@ func (page *booleanPage) min() bool {
 }
 
 func (page *booleanPage) max() bool {
-	for i := 0; i < int(page.numValues); i++ {
+	for i := range int(page.numValues) {
 		if page.valueAt(i) {
 			return true
 		}
@@ -615,7 +630,7 @@ func (page *booleanPage) max() bool {
 func (page *booleanPage) bounds() (min, max bool) {
 	hasFalse, hasTrue := false, false
 
-	for i := 0; i < int(page.numValues); i++ {
+	for i := range int(page.numValues) {
 		v := page.valueAt(i)
 		if v {
 			hasTrue = true

@@ -38,6 +38,10 @@ func (i *queryClientIterator) Pattern() string {
 	return i.curr.Pattern()
 }
 
+func (i *queryClientIterator) Level() string {
+	return i.curr.Level()
+}
+
 func (i *queryClientIterator) At() logproto.PatternSample {
 	return i.curr.At()
 }
@@ -58,7 +62,7 @@ func NewQueryResponseIterator(resp *logproto.QueryPatternsResponse) Iterator {
 		for j, sample := range s.Samples {
 			samples[j] = *sample
 		}
-		iters[i] = NewSlice(s.Pattern, samples)
+		iters[i] = NewSlice(s.Pattern, s.Level, samples)
 	}
 	return NewMerge(iters...)
 }

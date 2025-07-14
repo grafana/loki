@@ -222,7 +222,7 @@ func TestTrap(t *testing.T) {
 		count++
 	})
 	call := trap.MustWait(ctx)
-	call.Release()
+	call.MustRelease(ctx)
 	if call.Duration != time.Hour {
 		t.Fatal("wrong duration")
 	}
@@ -268,15 +268,15 @@ func TestTrap2(t *testing.T) {
 	}(mClock)
 
 	// start
-	trap.MustWait(ctx).Release()
+	trap.MustWait(ctx).MustRelease(ctx)
 	// phase 1
 	call := trap.MustWait(ctx)
 	mClock.Advance(3*time.Second).MustWait(ctx)
-	call.Release()
+	call.MustRelease(ctx)
 	// phase 2
 	call = trap.MustWait(ctx)
 	mClock.Advance(5*time.Second).MustWait(ctx)
-	call.Release()
+	call.MustRelease(ctx)
 
 	<-done
 	// Now logs contains []string{"Phase 1 took 3s", "Phase 2 took 5s"}
@@ -302,7 +302,7 @@ go func(){
 }()
 call := trap.MustWait(ctx)
 mClock.Advance(time.Second).MustWait(ctx)
-call.Release()
+call.MustRelease(ctx)
 // call.Tags contains []string{"foo", "bar"}
 
 gotFoo := <-foo // 1s after start
@@ -478,8 +478,8 @@ func TestTicker(t *testing.T) {
 	trap := mClock.Trap().TickerFunc()
 	defer trap.Close() // stop trapping at end
 	go runMyTicker(mClock) // async calls TickerFunc()
-	call := trap.Wait(context.Background()) // waits for a call and blocks its return
-	call.Release() // allow the TickerFunc() call to return
+	call := trap.MustWait(context.Background()) // waits for a call and blocks its return
+	call.MustRelease(ctx) // allow the TickerFunc() call to return
 	// optionally check the duration using call.Duration
 	// Move the clock forward 1 tick
 	mClock.Advance(time.Second).MustWait(context.Background())
@@ -527,9 +527,9 @@ go func(clock quartz.Clock) {
 	measurement = clock.Since(start)
 }(mClock)
 
-c := trap.Wait(ctx)
+c := trap.MustWait(ctx)
 mClock.Advance(5*time.Second)
-c.Release()
+c.MustRelease(ctx)
 ```
 
 We wait until we trap the `clock.Since()` call, which implies that `clock.Now()` has completed, then
@@ -617,10 +617,10 @@ func TestInactivityTimer_Late(t *testing.T) {
 
 	// Trigger the AfterFunc
 	w := mClock.Advance(10*time.Minute)
-	c := trap.Wait(ctx)
+	c := trap.MustWait(ctx)
 	// Advance the clock a few ms to simulate a busy system
 	mClock.Advance(3*time.Millisecond)
-	c.Release() // Until() returns
+	c.MustRelease(ctx) // Until() returns
 	w.MustWait(ctx) // Wait for the AfterFunc to wrap up
 
 	// Assert that the timeoutLocked() function was called

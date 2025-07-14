@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -50,6 +51,20 @@ const emptyStats = `{
 				"headChunkStructuredMetadataBytes": 0,
 				"postFilterLines": 0,
 				"totalDuplicates": 0
+			},
+			"dataobj":{
+				"pageBatches": 0,
+				"pagesDownloaded": 0,
+				"pagesDownloadedBytes": 0,
+				"pagesScanned": 0,
+				"postFilterRows": 0,
+				"postPredicateRows": 0,
+				"postPredicateDecompressedBytes": 0,
+				"postPredicateStructuredMetadataBytes": 0,
+				"prePredicateDecompressedRows": 0,
+				"prePredicateDecompressedBytes": 0,
+				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalRowsAvailable": 0
 			}
 		},
 		"totalBatches": 0,
@@ -76,6 +91,20 @@ const emptyStats = `{
 				"headChunkStructuredMetadataBytes": 0,
 				"postFilterLines": 0,
 				"totalDuplicates": 0
+			},
+			"dataobj":{
+				"pageBatches": 0,
+				"pagesDownloaded": 0,
+				"pagesDownloadedBytes": 0,
+				"pagesScanned": 0,
+				"postFilterRows": 0,
+				"postPredicateRows": 0,
+				"postPredicateDecompressedBytes": 0,
+				"postPredicateStructuredMetadataBytes": 0,
+				"prePredicateDecompressedRows": 0,
+				"prePredicateDecompressedBytes": 0,
+				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalRowsAvailable": 0
 			}
 		}
 	},
@@ -302,30 +331,18 @@ var queryTests = []struct {
 			{
 				T: 1568404331324,
 				F: 0.013333333333333334,
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "varlogs",
+				),
 			},
 			{
 				T: 1568404331324,
 				F: 3.45,
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/syslog`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/syslog`,
+					"job", "varlogs",
+				),
 			},
 		},
 		fmt.Sprintf(`{
@@ -369,16 +386,10 @@ var queryTests = []struct {
 						F: 0.013333333333333334,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/apport.log`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/apport.log`,
+					"job", "varlogs",
+				),
 			},
 			{
 				Floats: []promql.FPoint{
@@ -391,16 +402,10 @@ var queryTests = []struct {
 						F: 4.45,
 					},
 				},
-				Metric: []labels.Label{
-					{
-						Name:  "filename",
-						Value: `/var/hostlog/syslog`,
-					},
-					{
-						Name:  "job",
-						Value: "varlogs",
-					},
-				},
+				Metric: labels.FromStrings(
+					"filename", `/var/hostlog/syslog`,
+					"job", "varlogs",
+				),
 			},
 		},
 		fmt.Sprintf(`{
@@ -987,13 +992,14 @@ func randLabel(rand *rand.Rand) labels.Label {
 }
 
 func randLabels(rand *rand.Rand) labels.Labels {
-	var labels labels.Labels
 	nLabels := rand.Intn(100)
+	b := labels.NewScratchBuilder(nLabels)
 	for i := 0; i < nLabels; i++ {
-		labels = append(labels, randLabel(rand))
+		l := randLabel(rand)
+		b.Add(l.Name, l.Value)
 	}
 
-	return labels
+	return b.Labels()
 }
 
 func randEntries(rand *rand.Rand) []logproto.Entry {
@@ -1080,6 +1086,7 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 				Series: []*logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(1), Value: 1},
 							{Timestamp: model.TimeFromUnix(2), Value: 2},
@@ -1087,13 +1094,14 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 					},
 				},
 			},
-			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]}]}`,
+			`{"status":"success","data":[{"pattern":"foo <*> bar","level":"info","samples":[[1,1],[2,2]]}]}`,
 		},
 		{
 			&logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(1), Value: 1},
 							{Timestamp: model.TimeFromUnix(2), Value: 2},
@@ -1101,6 +1109,7 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 					},
 					{
 						Pattern: "foo <*> buzz",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(3), Value: 1},
 							{Timestamp: model.TimeFromUnix(3), Value: 2},
@@ -1108,22 +1117,24 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 					},
 				},
 			},
-			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`,
+			`{"status":"success","data":[{"pattern":"foo <*> bar","level":"info","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","level":"info","samples":[[3,1],[3,2]]}]}`,
 		},
 		{
 			&logproto.QueryPatternsResponse{
 				Series: []*logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{},
 					},
 					{
 						Pattern: "foo <*> buzz",
+						Level:   constants.LogLevelInfo,
 						Samples: []*logproto.PatternSample{},
 					},
 				},
 			},
-			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
+			`{"status":"success","data":[{"pattern":"foo <*> bar","level":"info","samples":[]},{"pattern":"foo <*> buzz","level":"info","samples":[]}]}`,
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

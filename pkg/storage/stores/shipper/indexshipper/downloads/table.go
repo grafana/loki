@@ -303,7 +303,7 @@ func (t *table) Sync(ctx context.Context) error {
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
 func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
-	logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
+	logger := spanlogger.FromContext(ctx, loggerWithUserID(t.logger, id))
 
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]

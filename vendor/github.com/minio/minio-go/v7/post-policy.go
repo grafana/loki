@@ -161,7 +161,7 @@ func (p *PostPolicy) SetTagging(tagging string) error {
 	}
 	_, err := tags.ParseObjectXML(strings.NewReader(tagging))
 	if err != nil {
-		return errors.New("The XML you provided was not well-formed or did not validate against our published schema.") //nolint
+		return errors.New(s3ErrorResponseMap[MalformedXML]) //nolint
 	}
 	policyCond := policyCondition{
 		matchType: "eq",

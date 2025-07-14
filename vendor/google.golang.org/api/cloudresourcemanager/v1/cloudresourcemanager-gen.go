@@ -134,9 +134,6 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.Operations = NewOperationsService(s)
 	s.Organizations = NewOrganizationsService(s)
 	s.Projects = NewProjectsService(s)
-	if err != nil {
-		return nil, err
-	}
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -1673,6 +1670,11 @@ func (s Policy) MarshalJSON() ([]byte, error) {
 // container for ACLs, APIs, App Engine Apps, VMs, and other Google Cloud
 // Platform resources.
 type Project struct {
+	// ConfiguredCapabilities: Output only. If this project is a Management
+	// Project, list of capabilities configured on the parent folder. Note,
+	// presence of any capability implies that this is a Management Project.
+	// Example: `folders/123/capabilities/app-management`. OUTPUT ONLY.
+	ConfiguredCapabilities []string `json:"configuredCapabilities,omitempty"`
 	// CreateTime: Creation time. Read-only.
 	CreateTime string `json:"createTime,omitempty"`
 	// Labels: The labels associated with this Project. Label keys must be between
@@ -1722,15 +1724,15 @@ type Project struct {
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// ForceSendFields is a list of field names (e.g. "ConfiguredCapabilities") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "CreateTime") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
+	// NullFields is a list of field names (e.g. "ConfiguredCapabilities") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }

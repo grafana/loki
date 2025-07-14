@@ -179,6 +179,9 @@ func (auth *v3Auth) Request(ctx context.Context, c *Connection) (*http.Request, 
 			Secret: c.ApplicationCredentialSecret,
 			User:   user,
 		}
+	} else if c.Token != "" {
+		v3.Auth.Identity.Methods = []string{v3AuthMethodToken}
+		v3.Auth.Identity.Token = &v3AuthToken{Id: c.Token}
 	} else if c.UserName == "" && c.UserId == "" {
 		v3.Auth.Identity.Methods = []string{v3AuthMethodToken}
 		v3.Auth.Identity.Token = &v3AuthToken{Id: c.ApiKey}

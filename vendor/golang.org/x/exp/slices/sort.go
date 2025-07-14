@@ -9,11 +9,10 @@ import (
 	"slices"
 )
 
-// TODO(adonovan): add a "//go:fix inline" annotation to each function
-// in this file; see https://go.dev/issue/32816.
-
 // Sort sorts a slice of any ordered type in ascending order.
 // When sorting floating-point numbers, NaNs are ordered before other values.
+//
+//go:fix inline
 func Sort[S ~[]E, E cmp.Ordered](x S) {
 	slices.Sort(x)
 }
@@ -27,23 +26,31 @@ func Sort[S ~[]E, E cmp.Ordered](x S) {
 // SortFunc requires that cmp is a strict weak ordering.
 // See https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings.
 // To indicate 'uncomparable', return 0 from the function.
+//
+//go:fix inline
 func SortFunc[S ~[]E, E any](x S, cmp func(a, b E) int) {
 	slices.SortFunc(x, cmp)
 }
 
 // SortStableFunc sorts the slice x while keeping the original order of equal
 // elements, using cmp to compare elements in the same way as [SortFunc].
+//
+//go:fix inline
 func SortStableFunc[S ~[]E, E any](x S, cmp func(a, b E) int) {
 	slices.SortStableFunc(x, cmp)
 }
 
 // IsSorted reports whether x is sorted in ascending order.
+//
+//go:fix inline
 func IsSorted[S ~[]E, E cmp.Ordered](x S) bool {
 	return slices.IsSorted(x)
 }
 
 // IsSortedFunc reports whether x is sorted in ascending order, with cmp as the
 // comparison function as defined by [SortFunc].
+//
+//go:fix inline
 func IsSortedFunc[S ~[]E, E any](x S, cmp func(a, b E) int) bool {
 	return slices.IsSortedFunc(x, cmp)
 }
@@ -51,6 +58,8 @@ func IsSortedFunc[S ~[]E, E any](x S, cmp func(a, b E) int) bool {
 // Min returns the minimal value in x. It panics if x is empty.
 // For floating-point numbers, Min propagates NaNs (any NaN value in x
 // forces the output to be NaN).
+//
+//go:fix inline
 func Min[S ~[]E, E cmp.Ordered](x S) E {
 	return slices.Min(x)
 }
@@ -58,6 +67,8 @@ func Min[S ~[]E, E cmp.Ordered](x S) E {
 // MinFunc returns the minimal value in x, using cmp to compare elements.
 // It panics if x is empty. If there is more than one minimal element
 // according to the cmp function, MinFunc returns the first one.
+//
+//go:fix inline
 func MinFunc[S ~[]E, E any](x S, cmp func(a, b E) int) E {
 	return slices.MinFunc(x, cmp)
 }
@@ -65,6 +76,8 @@ func MinFunc[S ~[]E, E any](x S, cmp func(a, b E) int) E {
 // Max returns the maximal value in x. It panics if x is empty.
 // For floating-point E, Max propagates NaNs (any NaN value in x
 // forces the output to be NaN).
+//
+//go:fix inline
 func Max[S ~[]E, E cmp.Ordered](x S) E {
 	return slices.Max(x)
 }
@@ -72,6 +85,8 @@ func Max[S ~[]E, E cmp.Ordered](x S) E {
 // MaxFunc returns the maximal value in x, using cmp to compare elements.
 // It panics if x is empty. If there is more than one maximal element
 // according to the cmp function, MaxFunc returns the first one.
+//
+//go:fix inline
 func MaxFunc[S ~[]E, E any](x S, cmp func(a, b E) int) E {
 	return slices.MaxFunc(x, cmp)
 }
@@ -80,6 +95,8 @@ func MaxFunc[S ~[]E, E any](x S, cmp func(a, b E) int) E {
 // where target is found, or the position where target would appear in the
 // sort order; it also returns a bool saying whether the target is really found
 // in the slice. The slice must be sorted in increasing order.
+//
+//go:fix inline
 func BinarySearch[S ~[]E, E cmp.Ordered](x S, target E) (int, bool) {
 	return slices.BinarySearch(x, target)
 }
@@ -91,6 +108,8 @@ func BinarySearch[S ~[]E, E cmp.Ordered](x S, target E) (int, bool) {
 // or a positive number if the slice element follows the target.
 // cmp must implement the same ordering as the slice, such that if
 // cmp(a, t) < 0 and cmp(b, t) >= 0, then a must precede b in the slice.
+//
+//go:fix inline
 func BinarySearchFunc[S ~[]E, E, T any](x S, target T, cmp func(E, T) int) (int, bool) {
 	return slices.BinarySearchFunc(x, target, cmp)
 }

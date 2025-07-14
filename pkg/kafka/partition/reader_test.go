@@ -93,7 +93,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -152,7 +152,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -210,7 +210,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		partitionID,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
@@ -272,7 +272,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -288,7 +288,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 
 	// Set our offset part way through the records we just produced
 	offset := int64(1)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-tenant", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -334,7 +334,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -350,7 +350,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 
 	// Set our offset to the last record produced
 	offset := int64(4)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}

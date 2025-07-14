@@ -35,6 +35,8 @@ Grafana Logs Drilldown lets you automatically visualize and explore logs. Logs D
 Starting with Grafana v11.3, the plugin for the Logs Drilldown app is installed in Grafana by default.
 {{< /admonition >}}
 
+{{< docs/learning-journeys title="Explore logs using Logs Drilldown" url="https://grafana.com/docs/learning-journeys/drilldown-logs/" >}}
+
 ## Grafana Explore
 
 [Grafana Explore](https://grafana.com/docs/grafana/latest/explore/) helps you build and iterate on a LogQL query outside of the dashboard user interface. If you just want to explore your data and do not want to create a dashboard, then Explore makes this much easier.
@@ -71,3 +73,5 @@ Because Loki can be used as a built-in data source, you can use LogQL queries ba
 To configure Loki as a data source via provisioning, refer to the documentation for [Loki data source](https://grafana.com/docs/grafana/latest/datasources/loki/#configure-the-datasource-with-provisioning).
 
 Read more about how to build Grafana Dashboards in [build your first dashboard](https://grafana.com/docs/grafana/latest/getting-started/build-first-dashboard/).
+
+{{< docs/learning-journeys title="Visualize logs in a Grafana Cloud dashboard" url="https://grafana.com/docs/learning-journeys/visualization-logs/" >}}

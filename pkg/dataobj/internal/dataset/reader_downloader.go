@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // readerDownloader is a utility for downloading pages in bulk from a
@@ -302,6 +303,10 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		batchSize += pageSize
 	}
 
+	statistics := stats.FromContext(ctx)
+	statistics.AddPageBatches(1)
+	statistics.AddPagesDownloaded(int64(len(pageBatch)))
+	statistics.AddPagesDownloadedBytes(int64(batchSize))
 	return pageBatch, nil
 }
 

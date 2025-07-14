@@ -57,7 +57,7 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 		return nullRegistry{}
 	}
 
-	manager := createInstanceManager(logger, reg)
+	manager := createInstanceManager(logger, reg, overrides)
 
 	return &walRegistry{
 		logger:    logger,
@@ -75,10 +75,11 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 	}
 }
 
-func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instance.BasicManager {
+func createInstanceManager(logger log.Logger, reg prometheus.Registerer, overrides RulesLimits) *instance.BasicManager {
 	tenantManager := &tenantWALManager{
-		reg:    reg,
-		logger: log.With(logger, "manager", "tenant-wal"),
+		reg:       reg,
+		logger:    log.With(logger, "manager", "tenant-wal"),
+		overrides: overrides,
 	}
 
 	return instance.NewBasicManager(instance.BasicManagerConfig{
@@ -430,8 +431,9 @@ type readyChecker interface {
 }
 
 type tenantWALManager struct {
-	logger log.Logger
-	reg    prometheus.Registerer
+	logger    log.Logger
+	reg       prometheus.Registerer
+	overrides RulesLimits
 }
 
 func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -439,8 +441,14 @@ func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 		"tenant": c.Tenant,
 	}, t.reg)
 
-	// create metrics here and pass down
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
+	// Get the per-tenant setting for WAL replay from overrides
+	enableReplay := true // Default to true for backward compatibility
+	if t.overrides != nil {
+		enableReplay = t.overrides.RulerEnableWALReplay(c.Tenant)
+	}
+
+	// create the instance with our custom walFactory
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger, enableReplay)
 }
 
 type storageRegistryMetrics struct {

@@ -7,10 +7,15 @@ import (
 )
 
 type ReplicationStrategy interface {
-	// Filter out unhealthy instances and checks if there're enough instances
+	// Filter out unhealthy instances and checks if there are enough instances
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
 	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []InstanceDesc, maxFailures int, err error)
+
+	// SupportsExpandedReplication returns true for replication strategies that
+	// support increasing the replication factor beyond a single instance per zone,
+	// false otherwise.
+	SupportsExpandedReplication() bool
 }
 
 type defaultReplicationStrategy struct{}
@@ -70,6 +75,14 @@ func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operati
 	return instances, len(instances) - minSuccess, nil
 }
 
+func (s *defaultReplicationStrategy) SupportsExpandedReplication() bool {
+	// defaultReplicationStrategy assumes that a single instance per zone is returned and that
+	// it can treat replication factor as equivalent to the number of zones. This doesn't work
+	// when a per-call replication factor increases it beyond the configured replication factor
+	// and the number of zones.
+	return false
+}
+
 type ignoreUnhealthyInstancesReplicationStrategy struct{}
 
 func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
@@ -99,6 +112,10 @@ func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []Instanc
 	}
 
 	return instances, len(instances) - 1, nil
+}
+
+func (r *ignoreUnhealthyInstancesReplicationStrategy) SupportsExpandedReplication() bool {
+	return true
 }
 
 func (r *Ring) IsHealthy(instance *InstanceDesc, op Operation, now time.Time) bool {

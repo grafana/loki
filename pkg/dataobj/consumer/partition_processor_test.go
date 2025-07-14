@@ -16,12 +16,22 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/push"
 )
+
+var testBuilderConfig = logsobj.BuilderConfig{
+	TargetPageSize:    2048,
+	TargetObjectSize:  1 << 22, // 4 MiB
+	TargetSectionSize: 1 << 22, // 4 MiB
+
+	BufferSize: 2048 * 8,
+
+	SectionStripeMergeLimit: 2,
+}
 
 // mockBucket implements objstore.Bucket interface for testing
 type mockBucket struct {
@@ -91,14 +101,6 @@ func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
 	return nil
 }
 
-var testBuilderConfig = dataobj.BuilderConfig{
-	TargetPageSize:    2048,
-	TargetObjectSize:  4096,
-	TargetSectionSize: 4096,
-
-	BufferSize: 2048 * 8,
-}
-
 // TestIdleFlush tests the idle flush behavior of the partition processor
 // under different timeout and initialization conditions.
 func TestIdleFlush(t *testing.T) {
@@ -164,6 +166,7 @@ func TestIdleFlush(t *testing.T) {
 				prometheus.NewRegistry(),
 				bufPool,
 				tc.idleTimeout,
+				nil,
 			)
 
 			if tc.initBuilder {
@@ -233,6 +236,7 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 		prometheus.NewRegistry(),
 		bufPool,
 		200*time.Millisecond,
+		nil,
 	)
 
 	require.NoError(t, p.initBuilder())
@@ -294,6 +298,7 @@ func TestIdleFlushWithEmptyData(t *testing.T) {
 		prometheus.NewRegistry(),
 		bufPool,
 		200*time.Millisecond,
+		nil,
 	)
 
 	require.NoError(t, p.initBuilder())

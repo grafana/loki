@@ -4,7 +4,7 @@ groups:
   rules:
   - alert: LokiRequestErrors
     annotations:
-      message: |-
+      description: |-
         {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
       summary: "At least 10% of requests are responded by 5xx server errors."
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
@@ -23,7 +23,7 @@ groups:
       severity: critical
   - alert: LokiStackWriteRequestErrors
     annotations:
-      message: |-
+      description: |-
         {{ printf "%.2f" $value }}% of write requests from {{ $labels.job }} in {{ $labels.namespace }} are returned with server errors.
       summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
       runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
@@ -42,7 +42,7 @@ groups:
       severity: critical
   - alert: LokiStackReadRequestErrors
     annotations:
-      message: |-
+      description: |-
         {{ printf "%.2f" $value }}% of query requests from {{ $labels.job }} in {{ $labels.namespace }} are returned with server errors.
       summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
       runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
@@ -61,7 +61,7 @@ groups:
       severity: critical
   - alert: LokiRequestPanics
     annotations:
-      message: |-
+      description: |-
         {{ $labels.job }} is experiencing an increase of {{ $value }} panics.
       summary: "A panic was triggered."
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
@@ -76,7 +76,7 @@ groups:
       severity: critical
   - alert: LokiRequestLatency
     annotations:
-      message: |-
+      description: |-
         {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
       summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
       runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
@@ -94,7 +94,7 @@ groups:
       severity: critical
   - alert: LokiTenantRateLimit
     annotations:
-      message: |-
+      description: |-
         {{ $labels.job }} {{ $labels.route }} is experiencing 429 errors.
       summary: "At least 10% of requests are responded with the rate limit error code."
       runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
@@ -113,7 +113,7 @@ groups:
       severity: warning
   - alert: LokiStorageSlowWrite
     annotations:
-      message: |-
+      description: |-
         The storage path is experiencing slow write response rates.
       summary: "The storage path is experiencing slow write response rates."
       runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
@@ -129,7 +129,7 @@ groups:
       severity: warning
   - alert: LokiStorageSlowRead
     annotations:
-      message: |-
+      description: |-
         The storage path is experiencing slow read response rates.
       summary: "The storage path is experiencing slow read response rates."
       runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
@@ -145,7 +145,7 @@ groups:
       severity: warning
   - alert: LokiWritePathHighLoad
     annotations:
-      message: |-
+      description: |-
         The write path is experiencing high load.
       summary: "The write path is experiencing high load, causing backpressure storage flushing."
       runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
@@ -159,7 +159,7 @@ groups:
       severity: warning
   - alert: LokiReadPathHighLoad
     annotations:
-      message: |-
+      description: |-
         The read path is experiencing high load.
       summary: "The read path has high volume of queries, causing longer response times."
       runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"
@@ -177,7 +177,7 @@ groups:
       severity: warning
   - alert: LokiDiscardedSamplesWarning
     annotations:
-      message: |-
+      description: |-
         Loki in namespace {{ $labels.namespace }} is discarding samples in the "{{ $labels.tenant }}" tenant during ingestion.
         Samples are discarded because of "{{ $labels.reason }}" at a rate of {{ .Value | humanize }} samples per second.
       summary: Loki is discarding samples during ingestion because they fail validation.
@@ -195,7 +195,7 @@ groups:
       severity: warning
   - alert: LokistackSchemaUpgradesRequired
     annotations:
-      message: |-
+      description: |-
         The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.stack_namespace }}" is using a storage schema
         configuration that does not contain the latest schema version. It is recommended to update the schema
         configuration to update the schema version to the latest version in the future.

@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 
@@ -47,45 +46,47 @@ type Reader interface {
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
 type ReaderMetrics struct {
-	recordsPerFetch     prometheus.Histogram
-	fetchesErrors       prometheus.Counter
-	fetchesTotal        prometheus.Counter
-	fetchWaitDuration   prometheus.Histogram
-	receiveDelay        *prometheus.HistogramVec
-	lastCommittedOffset prometheus.Gauge
-	kprom               *kprom.Metrics
+	consumptionLag    *prometheus.HistogramVec
+	recordsPerFetch   prometheus.Histogram
+	fetchesErrors     prometheus.Counter
+	fetchesTotal      prometheus.Counter
+	fetchWaitDuration prometheus.Histogram
 }
 
 func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
-		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
-			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
-			NativeHistogramBucketFactor: 1.1,
-		}),
-		recordsPerFetch: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_kafka_reader_records_per_fetch",
-			Help:    "The number of records received in a single fetch operation.",
-			Buckets: prometheus.ExponentialBuckets(1, 2, 15),
-		}),
-		fetchesErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_kafka_reader_fetch_errors_total",
-			Help: "The number of fetch errors encountered.",
-		}),
-		fetchesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_kafka_reader_fetches_total",
-			Help: "Total number of Kafka fetches performed.",
-		}),
-		receiveDelay: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_kafka_reader_receive_delay_seconds",
-			Help:                            "Delay between producing a record and receiving it.",
+		consumptionLag: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:                       client.MetricsPrefix,
+			Name:                            "partition_reader_consumption_lag_seconds",
+			Help:                            "The estimated consumption lag in seconds, measured as the difference between the current time and the timestamp of the record.",
 			NativeHistogramZeroThreshold:    math.Pow(2, -10),
 			NativeHistogramBucketFactor:     1.2,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
 		}, []string{"phase"}),
-		kprom: client.NewReaderClientMetrics("partition-reader", r),
+		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                   client.MetricsPrefix,
+			Name:                        "partition_reader_fetch_wait_duration_seconds",
+			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
+			NativeHistogramBucketFactor: 1.1,
+		}),
+		recordsPerFetch: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_records_per_fetch",
+			Help:      "The number of records received in a single fetch operation.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 15),
+		}),
+		fetchesErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_fetch_errors_total",
+			Help:      "The number of fetch errors encountered.",
+		}),
+		fetchesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_fetches_total",
+			Help:      "Total number of Kafka fetches performed.",
+		}),
 	}
 }
 
@@ -105,13 +106,10 @@ func NewKafkaReader(
 	partitionID int32,
 	logger log.Logger,
 	metrics *ReaderMetrics,
+	reg prometheus.Registerer,
 ) (*KafkaReader, error) {
 	// Create a new Kafka client for this reader
-	c, err := client.NewReaderClient(
-		cfg,
-		metrics.kprom,
-		log.With(logger, "component", "kafka-client"),
-	)
+	c, err := client.NewReaderClient("partition-reader", cfg, log.With(logger, "component", "kafka-client"), reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
@@ -153,7 +151,7 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.receiveDelay.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
+		r.metrics.consumptionLag.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
 

@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -272,11 +271,8 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 func ParseLabels(lbs string) (labels.Labels, error) {
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
-	// Sort labels to ensure functionally equivalent
-	// inputs map to the same output
-	sort.Sort(ls)
 
 	// Use the label builder to trim empty label values.
 	// Empty label values are equivalent to absent labels

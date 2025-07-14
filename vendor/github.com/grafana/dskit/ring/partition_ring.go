@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"strconv"
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	shardUtil "github.com/grafana/dskit/ring/shard"
 )

@@ -103,7 +103,7 @@ func binarySearch(index ColumnIndex, value Value, cmp func(Value, Value) int) in
 func linearSearch(index ColumnIndex, value Value, cmp func(Value, Value) int) int {
 	n := index.NumPages()
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		min := index.MinValue(i)
 		max := index.MaxValue(i)
 

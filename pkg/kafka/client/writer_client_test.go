@@ -24,18 +24,22 @@ func TestNewWriterClient(t *testing.T) {
 		{
 			name: "valid config",
 			config: kafka.Config{
-				Address:      addr,
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("password"),
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "wrong password",
 			config: kafka.Config{
-				Address:      addr,
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
 				SASLUsername: "user",
@@ -46,7 +50,10 @@ func TestNewWriterClient(t *testing.T) {
 		{
 			name: "wrong username",
 			config: kafka.Config{
-				Address:      addr,
+				WriterConfig: kafka.ClientConfig{
+					Address:  addr,
+					ClientID: "writer",
+				},
 				Topic:        "abcd",
 				WriteTimeout: time.Second,
 				SASLUsername: "wrong wrong wrong",
@@ -57,7 +64,7 @@ func TestNewWriterClient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewWriterClient(tt.config, 10, nil, nil)
+			client, err := NewWriterClient("test-client", tt.config, 10, nil, nil)
 			require.NoError(t, err)
 
 			err = client.Ping(context.Background())

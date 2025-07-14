@@ -320,7 +320,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, nil
+		return nil, labels.EmptyLabels(), nil
 	}
 
 	stream.chunkMtx.Lock()

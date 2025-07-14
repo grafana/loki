@@ -230,7 +230,7 @@ func (cl *Client) Metadata(
 func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) (Metadata, error) {
 	req := kmsg.NewPtrMetadataRequest()
 	req.IncludeClusterAuthorizedOperations = true
-	req.IncludeTopicAuthorizedOperations = true
+	req.IncludeTopicAuthorizedOperations = ctx.Value(&includeAuthOps) != nil
 	for _, t := range topics {
 		rt := kmsg.NewMetadataRequestTopic()
 		rt.Topic = kmsg.StringPtr(t)

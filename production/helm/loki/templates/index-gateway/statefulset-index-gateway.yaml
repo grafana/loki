@@ -43,7 +43,7 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.indexGatewayLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.indexGateway.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.indexGateway.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- if .Values.indexGateway.joinMemberlist }}

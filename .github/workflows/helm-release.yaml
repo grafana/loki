@@ -11,12 +11,15 @@ on:
 
 jobs:
   call-update-helm-repo:
-    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@70dbbb722dee3f2ee126e12684cc0e92a20972ed
+    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@64b1c8260d69a9b1d9a186df25c51358b92f7662
+    permissions:
+      contents: "write"
+      id-token: "write"
+      packages: "write"
     with:
       charts_dir: production/helm
       cr_configfile: production/helm/cr.yaml
       ct_configfile: production/helm/ct.yaml
       helm_tag_prefix: helm
     secrets:   
-      github_app_id: ${{ secrets.APP_ID }}
-      github_app_pem: ${{ secrets.APP_PRIVATE_KEY }}
+      vault_repo_secret_name: loki-gh-app

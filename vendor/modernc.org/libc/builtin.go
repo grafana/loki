@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build linux && (amd64 || arm64 || loong64)
+//go:build linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)
 
 package libc // import "modernc.org/libc"
 
@@ -32,6 +32,10 @@ func X__builtin_round(tls *TLS, x float64) (r float64) {
 	return Xround(tls, x)
 }
 
+func X__builtin_lround(tls *TLS, x float64) (r long) {
+	return Xlround(tls, x)
+}
+
 func X__builtin_roundf(tls *TLS, x float32) (r float32) {
 	return Xroundf(tls, x)
 }
@@ -58,10 +62,6 @@ func X__builtin_ctz(t *TLS, n uint32) int32 {
 
 func X__builtin_clz(t *TLS, n uint32) int32 {
 	return int32(mbits.LeadingZeros32(n))
-}
-
-func X__builtin_clzl(t *TLS, n ulong) int32 {
-	return int32(mbits.LeadingZeros64(n))
 }
 
 func X__builtin_clzll(t *TLS, n uint64) int32 {
@@ -162,11 +162,6 @@ func X__builtin_trap(t *TLS) {
 
 func X__builtin_popcount(t *TLS, x uint32) int32 {
 	return int32(mbits.OnesCount32(x))
-}
-
-// int __builtin_popcountl (unsigned long x)
-func X__builtin_popcountl(t *TLS, x ulong) int32 {
-	return int32(mbits.OnesCount64(x))
 }
 
 // char * __builtin___strcpy_chk (char *dest, const char *src, size_t os);
@@ -295,7 +290,12 @@ func X__builtin___memset_chk(t *TLS, s uintptr, c int32, n, os Tsize_t) uintptr 
 
 // size_t __builtin_object_size (const void * ptr, int type)
 func X__builtin_object_size(t *TLS, p uintptr, typ int32) Tsize_t {
-	return ^Tsize_t(0) //TODO frontend magic
+	switch typ {
+	case 0, 1:
+		return ^Tsize_t(0)
+	default:
+		return 0
+	}
 }
 
 // int __builtin___sprintf_chk (char *s, int flag, size_t os, const char *fmt, ...);

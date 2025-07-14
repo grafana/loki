@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"bytes"
@@ -30,6 +30,17 @@ func (cli *Client) ImageInspect(ctx context.Context, imageID string, inspectOpts
 			return image.InspectResponse{}, err
 		}
 		query.Set("manifests", "1")
+	}
+
+	if opts.apiOptions.Platform != nil {
+		if err := cli.NewVersionError(ctx, "1.49", "platform"); err != nil {
+			return image.InspectResponse{}, err
+		}
+		platform, err := encodePlatform(opts.apiOptions.Platform)
+		if err != nil {
+			return image.InspectResponse{}, err
+		}
+		query.Set("platform", platform)
 	}
 
 	resp, err := cli.get(ctx, "/images/"+imageID+"/json", query, nil)

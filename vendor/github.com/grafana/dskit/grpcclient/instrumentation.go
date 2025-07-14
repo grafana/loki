@@ -10,13 +10,20 @@ import (
 )
 
 func Instrument(requestDuration *prometheus.HistogramVec, instrumentationLabelOptions ...middleware.InstrumentationOption) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
-	return []grpc.UnaryClientInterceptor{
-			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+	var (
+		unary  []grpc.UnaryClientInterceptor
+		stream []grpc.StreamClientInterceptor
+	)
+	if opentracing.IsGlobalTracerRegistered() {
+		unary = append(unary, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
+		stream = append(stream, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
+	}
+	return append(unary,
 			middleware.ClientUserHeaderInterceptor,
 			middleware.UnaryClientInstrumentInterceptor(requestDuration, instrumentationLabelOptions...),
-		}, []grpc.StreamClientInterceptor{
-			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+		),
+		append(stream,
 			middleware.StreamClientUserHeaderInterceptor,
 			middleware.StreamClientInstrumentInterceptor(requestDuration, instrumentationLabelOptions...),
-		}
+		)
 }

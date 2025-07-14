@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"encoding/json"
@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/errdefs"
 	"github.com/docker/docker/internal/lazyregexp"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -25,7 +25,7 @@ func (e emptyIDError) Error() string {
 // trimID trims the given object-ID / name, returning an error if it's empty.
 func trimID(objType, id string) (string, error) {
 	id = strings.TrimSpace(id)
-	if len(id) == 0 {
+	if id == "" {
 		return "", emptyIDError(objType)
 	}
 	return id, nil
@@ -90,7 +90,7 @@ func encodePlatforms(platform ...ocispec.Platform) ([]string, error) {
 func encodePlatform(platform *ocispec.Platform) (string, error) {
 	p, err := json.Marshal(platform)
 	if err != nil {
-		return "", errdefs.InvalidParameter(fmt.Errorf("invalid platform: %v", err))
+		return "", fmt.Errorf("%w: invalid platform: %v", cerrdefs.ErrInvalidArgument, err)
 	}
 	return string(p), nil
 }

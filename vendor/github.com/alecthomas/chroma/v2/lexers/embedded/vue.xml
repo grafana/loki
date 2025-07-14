@@ -64,23 +64,11 @@
       <rule pattern="(-)([\w]+)">
         <token type="NameTag"/>
       </rule>
-      <rule pattern="(@[\w]+)(=&#34;[\S]+&#34;)(&gt;)">
+      <rule pattern="(@[\w.]+)(=&#34;.*?&#34;)?(\/?&gt;|\s)">
         <bygroups>
           <token type="NameTag"/>
           <token type="LiteralString"/>
           <token type="Punctuation"/>
-        </bygroups>
-      </rule>
-      <rule pattern="(@[\w]+)(=&#34;[\S]+&#34;)">
-        <bygroups>
-          <token type="NameTag"/>
-          <token type="LiteralString"/>
-        </bygroups>
-      </rule>
-      <rule pattern="(@[\S]+)(=&#34;[\S]+&#34;)">
-        <bygroups>
-          <token type="NameTag"/>
-          <token type="LiteralString"/>
         </bygroups>
       </rule>
       <rule pattern="(:[\S]+)(=)(&#34;[\S]+&#34;)">
@@ -96,16 +84,7 @@
       <rule pattern="(v-b-[\S]+)">
         <token type="NameTag"/>
       </rule>
-      <rule pattern="(v-[\w]+)(=&#34;.+)([:][\w]+)(=&#34;[\w]+&#34;)(&gt;)">
-        <bygroups>
-          <token type="NameTag"/>
-          <token type="LiteralString"/>
-          <token type="NameTag"/>
-          <token type="LiteralString"/>
-          <token type="Punctuation"/>
-        </bygroups>
-      </rule>
-      <rule pattern="(v-[\w]+)(=)(&#34;[\S ]+&#34;)(&gt;|\s)">
+      <rule pattern="(v-[\w-]+)(=)(&#34;[\S ]+&#34;)(\/?&gt;|\s)">
         <bygroups>
           <token type="NameTag"/>
           <token type="Operator"/>
@@ -113,14 +92,23 @@
           <token type="Punctuation"/>
         </bygroups>
       </rule>
-      <rule pattern="(v-[\w]+)(&gt;)">
+      <rule pattern="(v-[\w-]+)(\/?&gt;|\s)">
         <bygroups>
           <token type="NameTag"/>
           <token type="Punctuation"/>
         </bygroups>
       </rule>
-      <rule pattern="(v-[\w]+)(=&#34;.+&#34;)(&gt;)">
+      <rule pattern="(v-[\w-]+)(=&#34;.+&#34;)(\/?&gt;|\s)">
         <bygroups>
+          <token type="NameTag"/>
+          <token type="LiteralString"/>
+          <token type="Punctuation"/>
+        </bygroups>
+      </rule>
+      <rule pattern="(v-[\w-]+)(=&#34;.+)([:][\w]+)(=&#34;[\w]+&#34;)(\/?&gt;|\s)">
+        <bygroups>
+          <token type="NameTag"/>
+          <token type="LiteralString"/>
           <token type="NameTag"/>
           <token type="LiteralString"/>
           <token type="Punctuation"/>

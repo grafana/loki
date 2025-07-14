@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !libc.membrk && !libc.memgrind && linux && (amd64 || arm64 || loong64)
+//go:build !libc.membrk && !libc.memgrind && linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm)
 
 package libc // import "modernc.org/libc"
 
@@ -125,6 +125,25 @@ func UsableSize(p uintptr) Tsize_t {
 	defer allocatorMu.Unlock()
 
 	return Tsize_t(memory.UintptrUsableSize(p))
+}
+
+type MemAllocatorStat struct {
+	Allocs int
+	Bytes  int
+	Mmaps  int
+}
+
+// MemStat returns the global memory allocator statistics.
+// should be compiled with the memory.counters build tag for the data to be available.
+func MemStat() MemAllocatorStat {
+	allocatorMu.Lock()
+	defer allocatorMu.Unlock()
+
+	return MemAllocatorStat{
+		Allocs: allocator.Allocs,
+		Bytes:  allocator.Bytes,
+		Mmaps:  allocator.Mmaps,
+	}
 }
 
 // MemAuditStart locks the memory allocator, initializes and enables memory

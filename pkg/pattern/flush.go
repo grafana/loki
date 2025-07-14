@@ -2,15 +2,12 @@ package pattern
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
-
-const retainSampleFor = 3 * time.Hour
 
 func (i *Ingester) initFlushQueues() {
 	// i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
@@ -62,10 +59,11 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 }
 
 func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
+	level.Debug(i.logger).Log("msg", "sweeping instance", "instance", instance.instanceID)
 	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 		if mayRemoveStreams {
 			instance.streams.WithLock(func() {
-				if s.prune(retainSampleFor) {
+				if s.prune(i.cfg.RetainFor) {
 					instance.removeStream(s)
 				}
 			})

@@ -2,12 +2,12 @@ package ring
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
@@ -92,6 +92,34 @@ func (m *PartitionRingDesc) partitionByToken() map[Token]int32 {
 	}
 
 	return out
+}
+
+// CountTokens returns the summed token distance of all tokens in each partition.
+func (m *PartitionRingDesc) countTokens() map[int32]int64 {
+	owned := make(map[int32]int64, len(m.Partitions))
+	sortedTokens := m.tokens()
+	tokensToPartitions := m.partitionByToken()
+
+	for i, token := range sortedTokens {
+		partition := tokensToPartitions[Token(token)]
+
+		var prevToken uint32
+		if i == 0 {
+			prevToken = sortedTokens[len(sortedTokens)-1]
+		} else {
+			prevToken = sortedTokens[i-1]
+		}
+		diff := tokenDistance(prevToken, token)
+		owned[partition] = owned[partition] + diff
+	}
+
+	// Partitions with 0 tokens should still exist in the result.
+	for id := range m.Partitions {
+		if _, ok := owned[id]; !ok {
+			owned[id] = 0
+		}
+	}
+	return owned
 }
 
 // ownersByPartition returns a map where the key is the partition ID and the value is a list of owner IDs.

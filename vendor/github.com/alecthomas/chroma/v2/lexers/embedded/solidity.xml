@@ -157,8 +157,20 @@
       <rule pattern="(continue|returns|storage|memory|delete|return|throw|break|catch|while|else|from|new|try|for|if|is|as|do|in|_)\b">
         <token type="Keyword"/>
       </rule>
-      <rule pattern="assembly\b">
-        <token type="Keyword"/>
+      <rule pattern="(assembly)(\s+\()(.+)(\)\s+{)">
+        <bygroups>
+          <token type="Keyword"/>
+          <token type="Text"/>
+          <token type="LiteralString"/>
+          <token type="Text"/>
+        </bygroups>
+        <push state="assembly"/>
+      </rule>
+      <rule pattern="(assembly)(\s+{)">
+        <bygroups>
+          <token type="Keyword"/>
+          <token type="Text"/>
+        </bygroups>
         <push state="assembly"/>
       </rule>
       <rule pattern="(contract|interface|enum|event|struct)(\s+)([a-zA-Z_]\w*)">
@@ -235,7 +247,7 @@
         <token type="Punctuation"/>
         <pop depth="1"/>
       </rule>
-      <rule pattern="[(),]">
+      <rule pattern="[(),.]">
         <token type="Punctuation"/>
       </rule>
       <rule pattern=":=|=:">

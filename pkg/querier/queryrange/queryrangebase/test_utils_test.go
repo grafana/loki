@@ -2,7 +2,6 @@ package queryrangebase
 
 import (
 	"math"
-	"sort"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -14,50 +13,23 @@ import (
 
 func TestGenLabelsCorrectness(t *testing.T) {
 	ls := genLabels([]string{"a", "b"}, 2)
-	for _, set := range ls {
-		sort.Sort(set)
-	}
 	expected := []labels.Labels{
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "0",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "0",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "0",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "1",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "1",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "0",
-			},
-		},
-		{
-			labels.Label{
-				Name:  "a",
-				Value: "1",
-			},
-			labels.Label{
-				Name:  "b",
-				Value: "1",
-			},
-		},
+		labels.FromStrings(
+			"a", "0",
+			"b", "0",
+		),
+		labels.FromStrings(
+			"a", "0",
+			"b", "1",
+		),
+		labels.FromStrings(
+			"a", "1",
+			"b", "0",
+		),
+		labels.FromStrings(
+			"a", "1",
+			"b", "1",
+		),
 	}
 	require.Equal(t, expected, ls)
 }

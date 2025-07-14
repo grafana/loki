@@ -99,6 +99,9 @@ type Metrics struct {
 	// Buffered
 	bufferedFetchRecords   prometheus.GaugeFunc
 	bufferedProduceRecords prometheus.GaugeFunc
+
+	// Holds references to all metric collectors
+	allMetricCollectors []prometheus.Collector
 }
 
 // NewMetrics returns a new Metrics that adds prometheus metrics to the
@@ -128,10 +131,12 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		factory     = promauto.With(m.cfg.reg)
 		namespace   = m.cfg.namespace
 		subsystem   = m.cfg.subsystem
-		constLabels prometheus.Labels
+		constLabels = m.cfg.withConstLabels
 	)
 	if m.cfg.withClientLabel {
-		constLabels = make(prometheus.Labels)
+		if constLabels == nil {
+			constLabels = make(prometheus.Labels)
+		}
 		constLabels["client_id"] = client.OptValue(kgo.ClientID).(string)
 	}
 
@@ -176,7 +181,7 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		Subsystem:   subsystem,
 		ConstLabels: constLabels,
 		Name:        "write_bytes_total",
-		Help:        "Total number of bytes written",
+		Help:        "Total number of bytes written to the TCP connection. The bytes count is tracked after compression (when used).",
 	}, []string{"node_id"})
 
 	m.writeErrorsTotal = factory.NewCounterVec(prometheus.CounterOpts{
@@ -212,7 +217,7 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		Subsystem:   subsystem,
 		ConstLabels: constLabels,
 		Name:        "read_bytes_total",
-		Help:        "Total number of bytes read",
+		Help:        "Total number of bytes read from the TCP connection. The bytes count is tracked before uncompression (when used).",
 	}, []string{"node_id"})
 
 	m.readErrorsTotal = factory.NewCounterVec(prometheus.CounterOpts{
@@ -360,33 +365,41 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		},
 		func() float64 { return float64(client.BufferedFetchRecords()) },
 	)
+
+	m.allMetricCollectors = append(m.allMetricCollectors,
+		m.connConnectsTotal,
+		m.connConnectErrorsTotal,
+		m.connDisconnectsTotal,
+		m.writeBytesTotal,
+		m.writeErrorsTotal,
+		m.writeWaitSeconds,
+		m.writeTimeSeconds,
+		m.readBytesTotal,
+		m.readErrorsTotal,
+		m.readWaitSeconds,
+		m.readTimeSeconds,
+		m.requestDurationE2ESeconds,
+		m.requestThrottledSeconds,
+		m.produceCompressedBytes,
+		m.produceUncompressedBytes,
+		m.produceBatchesTotal,
+		m.produceRecordsTotal,
+		m.fetchCompressedBytes,
+		m.fetchUncompressedBytes,
+		m.fetchBatchesTotal,
+		m.fetchRecordsTotal,
+		m.bufferedFetchRecords,
+		m.bufferedProduceRecords,
+	)
 }
 
 // OnClientClosed will unregister kprom metrics from kprom registerer
 func (m *Metrics) OnClientClosed(*kgo.Client) {
-	_ = m.cfg.reg.Unregister(m.connConnectsTotal)
-	_ = m.cfg.reg.Unregister(m.connConnectErrorsTotal)
-	_ = m.cfg.reg.Unregister(m.connDisconnectsTotal)
-	_ = m.cfg.reg.Unregister(m.writeBytesTotal)
-	_ = m.cfg.reg.Unregister(m.writeErrorsTotal)
-	_ = m.cfg.reg.Unregister(m.writeWaitSeconds)
-	_ = m.cfg.reg.Unregister(m.writeTimeSeconds)
-	_ = m.cfg.reg.Unregister(m.readBytesTotal)
-	_ = m.cfg.reg.Unregister(m.readErrorsTotal)
-	_ = m.cfg.reg.Unregister(m.readWaitSeconds)
-	_ = m.cfg.reg.Unregister(m.readTimeSeconds)
-	_ = m.cfg.reg.Unregister(m.requestDurationE2ESeconds)
-	_ = m.cfg.reg.Unregister(m.requestThrottledSeconds)
-	_ = m.cfg.reg.Unregister(m.produceCompressedBytes)
-	_ = m.cfg.reg.Unregister(m.produceUncompressedBytes)
-	_ = m.cfg.reg.Unregister(m.produceBatchesTotal)
-	_ = m.cfg.reg.Unregister(m.produceRecordsTotal)
-	_ = m.cfg.reg.Unregister(m.fetchCompressedBytes)
-	_ = m.cfg.reg.Unregister(m.fetchUncompressedBytes)
-	_ = m.cfg.reg.Unregister(m.fetchBatchesTotal)
-	_ = m.cfg.reg.Unregister(m.fetchRecordsTotal)
-	_ = m.cfg.reg.Unregister(m.bufferedFetchRecords)
-	_ = m.cfg.reg.Unregister(m.bufferedProduceRecords)
+	if m.cfg.reg != nil {
+		for _, c := range m.allMetricCollectors {
+			m.cfg.reg.Unregister(c)
+		}
+	}
 }
 
 // OnBrokerConnect implements the HookBrokerConnect interface for metrics
@@ -493,6 +506,24 @@ func (m *Metrics) OnBrokerE2E(meta kgo.BrokerMetadata, _ int16, e2e kgo.BrokerE2
 	}
 	if _, ok := m.cfg.histograms[RequestDurationE2E]; ok {
 		m.requestDurationE2ESeconds.WithLabelValues(nodeId).Observe(e2e.DurationE2E().Seconds())
+	}
+}
+
+// Collect returns the current state of all metrics of the collector.
+// Collect & Describe will allow applications that use kprom to
+// register multiple collectors to the same registry by inverting the dependency.
+// This follows the recommended approach of collector implementation
+// https://github.com/prometheus/client_golang/blob/main/prometheus/collector.go#L16-L18
+func (m *Metrics) Collect(ch chan<- prometheus.Metric) {
+	for _, c := range m.allMetricCollectors {
+		c.Collect(ch)
+	}
+}
+
+// Describe returns all descriptions of the collector.
+func (m *Metrics) Describe(ch chan<- *prometheus.Desc) {
+	for _, c := range m.allMetricCollectors {
+		c.Describe(ch)
 	}
 }
 

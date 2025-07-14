@@ -189,7 +189,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the pagination to a string.
 func (m Model) View() string {
-	switch m.Type {
+	switch m.Type { //nolint:exhaustive
 	case Dots:
 		return m.dotsView()
 	default:
@@ -211,11 +211,4 @@ func (m Model) dotsView() string {
 
 func (m Model) arabicView() string {
 	return fmt.Sprintf(m.ArabicFormat, m.Page+1, m.TotalPages)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

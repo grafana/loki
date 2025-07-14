@@ -41,6 +41,14 @@
       <rule pattern="\b(as|assert|begin|class|constraint|do|done|downto|else|end|exception|external|false|for|fun|function|functor|if|in|include|inherit|initializer|lazy|let|match|method|module|mutable|new|object|of|open|private|raise|rec|sig|struct|then|to|true|try|type|value|val|virtual|when|while|with)\b">
         <token type="Keyword"/>
       </rule>
+      <rule pattern="({([a-z_]*)\|)([\s\S]+?)(?=\|\2})(\|\2})">
+        <bygroups>
+          <token type="LiteralStringAffix"/>
+          <token type="Ignore"/>
+          <token type="LiteralString"/>
+          <token type="LiteralStringAffix"/>
+        </bygroups>
+      </rule>
       <rule pattern="(~|\}|\|]|\||\{&lt;|\{|`|_|]|\[\||\[&gt;|\[&lt;|\[|\?\?|\?|&gt;\}|&gt;]|&gt;|=|&lt;-|&lt;|;;|;|:&gt;|:=|::|:|\.\.|\.|-&gt;|-\.|-|,|\+|\*|\)|\(|&amp;&amp;|&amp;|#|!=)">
         <token type="Operator"/>
       </rule>

@@ -35,7 +35,7 @@ type DefaultItemStyles struct {
 func NewDefaultItemStyles() (s DefaultItemStyles) {
 	s.NormalTitle = lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#dddddd"}).
-		Padding(0, 0, 0, 2)
+		Padding(0, 0, 0, 2) //nolint:mnd
 
 	s.NormalDesc = s.NormalTitle.
 		Foreground(lipgloss.AdaptiveColor{Light: "#A49FA5", Dark: "#777777"})
@@ -51,7 +51,7 @@ func NewDefaultItemStyles() (s DefaultItemStyles) {
 
 	s.DimmedTitle = lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "#A49FA5", Dark: "#777777"}).
-		Padding(0, 0, 0, 2)
+		Padding(0, 0, 0, 2) //nolint:mnd
 
 	s.DimmedDesc = s.DimmedTitle.
 		Foreground(lipgloss.AdaptiveColor{Light: "#C2B8C2", Dark: "#4D4D4D"})
@@ -61,7 +61,7 @@ func NewDefaultItemStyles() (s DefaultItemStyles) {
 	return s
 }
 
-// DefaultItem describes an items designed to work with DefaultDelegate.
+// DefaultItem describes an item designed to work with DefaultDelegate.
 type DefaultItem interface {
 	Item
 	Title() string
@@ -93,11 +93,13 @@ type DefaultDelegate struct {
 
 // NewDefaultDelegate creates a new delegate with default styles.
 func NewDefaultDelegate() DefaultDelegate {
+	const defaultHeight = 2
+	const defaultSpacing = 1
 	return DefaultDelegate{
 		ShowDescription: true,
 		Styles:          NewDefaultItemStyles(),
-		height:          2,
-		spacing:         1,
+		height:          defaultHeight,
+		spacing:         defaultSpacing,
 	}
 }
 

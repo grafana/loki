@@ -2,6 +2,7 @@ package memberlist
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -46,6 +47,11 @@ func NewKVInitService(cfg *KVConfig, logger log.Logger, dnsProvider DNSProvider,
 
 // GetMemberlistKV will initialize Memberlist.KV on first call, and add it to service failure watcher.
 func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
+	// Validate WatchPrefixBufferSize before initialization
+	if kvs.cfg.WatchPrefixBufferSize <= 0 {
+		return nil, fmt.Errorf("invalid WatchPrefixBufferSize: must be greater than 0")
+	}
+
 	kvs.init.Do(func() {
 		kv := NewKV(*kvs.cfg, kvs.logger, kvs.dnsProvider, kvs.registerer)
 		kvs.watcher.WatchService(kv)

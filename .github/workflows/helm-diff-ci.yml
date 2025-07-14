@@ -14,12 +14,16 @@ jobs:
   helm-diff:
     name: ${{ matrix.scenario.name }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     timeout-minutes: 10
     strategy:
       matrix:
         scenario:
-          - name: Single Binary Scenario
-            values_file: default-single-binary-values.yaml
+          - name: Distributed Scenario
+            values_file: default-distributed-values.yaml
             use_k3d: true
           - name: Default Values Scenario
             values_file: default-values.yaml
@@ -40,9 +44,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4
 
       - name: Add required Helm repositories
         run: |
@@ -96,6 +102,10 @@ jobs:
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+      pull-requests: "write"
     if: github.event.pull_request.head.repo.fork == false
     needs: [helm-diff]
     steps:
@@ -125,7 +135,7 @@ jobs:
           done
 
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
         with:
           header: "Helm Diff Output - Summary"
           skip_unchanged: true
