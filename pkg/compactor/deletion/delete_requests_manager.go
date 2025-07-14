@@ -215,11 +215,14 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return nil
 	}
 
+	level.Info(util_log.Logger).Log("msg", "building deletion manifest")
+
 	deletionManifestBuilder, err := newDeletionManifestBuilder(d.deletionManifestStoreClient, deleteRequestsBatch)
 	if err != nil {
 		return err
 	}
 
+	level.Info(deletionManifestBuilder.logger).Log("msg", "adding series to deletion manifest")
 	userIDs := deleteRequestsBatch.userIDs()
 	if err := d.tablesManager.IterateTables(ctx, func(tableName string, table Table) error {
 		for _, userID := range userIDs {
@@ -240,6 +243,7 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return err
 	}
 
+	level.Info(util_log.Logger).Log("msg", "done adding series to deletion manifest")
 	err = deletionManifestBuilder.Finish(ctx)
 	if err != nil {
 		return err
