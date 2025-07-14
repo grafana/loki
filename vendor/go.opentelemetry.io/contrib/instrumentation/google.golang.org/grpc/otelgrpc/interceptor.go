@@ -4,7 +4,7 @@
 package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 // gRPC tracing middleware
-// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md
+// https://opentelemetry.io/docs/specs/semconv/rpc/
 import (
 	"context"
 	"errors"
@@ -15,14 +15,13 @@ import (
 	"google.golang.org/grpc"
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -196,118 +195,11 @@ func StreamClientInterceptor(opts ...Option) grpc.StreamClientInterceptor {
 	}
 }
 
-// serverStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
-// SendMsg method call.
-type serverStream struct {
-	grpc.ServerStream
-	ctx context.Context
-
-	receivedMessageID int
-	sentMessageID     int
-
-	receivedEvent bool
-	sentEvent     bool
-}
-
-func (w *serverStream) Context() context.Context {
-	return w.ctx
-}
-
-func (w *serverStream) RecvMsg(m interface{}) error {
-	err := w.ServerStream.RecvMsg(m)
-
-	if err == nil {
-		w.receivedMessageID++
-		if w.receivedEvent {
-			messageReceived.Event(w.Context(), w.receivedMessageID, m)
-		}
-	}
-
-	return err
-}
-
-func (w *serverStream) SendMsg(m interface{}) error {
-	err := w.ServerStream.SendMsg(m)
-
-	w.sentMessageID++
-	if w.sentEvent {
-		messageSent.Event(w.Context(), w.sentMessageID, m)
-	}
-
-	return err
-}
-
-func wrapServerStream(ctx context.Context, ss grpc.ServerStream, cfg *config) *serverStream {
-	return &serverStream{
-		ServerStream:  ss,
-		ctx:           ctx,
-		receivedEvent: cfg.ReceivedEvent,
-		sentEvent:     cfg.SentEvent,
-	}
-}
-
-// StreamServerInterceptor returns a grpc.StreamServerInterceptor suitable
-// for use in a grpc.NewServer call.
-//
-// Deprecated: Use [NewServerHandler] instead.
-func StreamServerInterceptor(opts ...Option) grpc.StreamServerInterceptor {
-	cfg := newConfig(opts)
-	tracer := cfg.TracerProvider.Tracer(
-		ScopeName,
-		trace.WithInstrumentationVersion(Version()),
-	)
-
-	return func(
-		srv interface{},
-		ss grpc.ServerStream,
-		info *grpc.StreamServerInfo,
-		handler grpc.StreamHandler,
-	) error {
-		ctx := ss.Context()
-		i := &InterceptorInfo{
-			StreamServerInfo: info,
-			Type:             StreamServer,
-		}
-		if cfg.InterceptorFilter != nil && !cfg.InterceptorFilter(i) {
-			return handler(srv, wrapServerStream(ctx, ss, cfg))
-		}
-
-		ctx = extract(ctx, cfg.Propagators)
-		name, attr := telemetryAttributes(info.FullMethod, peerFromCtx(ctx))
-
-		startOpts := append([]trace.SpanStartOption{
-			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(attr...),
-		},
-			cfg.SpanStartOptions...,
-		)
-
-		ctx, span := tracer.Start(
-			trace.ContextWithRemoteSpanContext(ctx, trace.SpanContextFromContext(ctx)),
-			name,
-			startOpts...,
-		)
-		defer span.End()
-
-		err := handler(srv, wrapServerStream(ctx, ss, cfg))
-		if err != nil {
-			s, _ := status.FromError(err)
-			statusCode, msg := serverStatus(s)
-			span.SetStatus(statusCode, msg)
-			span.SetAttributes(statusCodeAttr(s.Code()))
-		} else {
-			span.SetAttributes(statusCodeAttr(grpc_codes.OK))
-		}
-
-		return err
-	}
-}
-
 // telemetryAttributes returns a span name and span and metric attributes from
 // the gRPC method and peer address.
-func telemetryAttributes(fullMethod, sererAddr string) (string, []attribute.KeyValue) {
+func telemetryAttributes(fullMethod, serverAddr string) (string, []attribute.KeyValue) {
 	name, methodAttrs := internal.ParseFullMethod(fullMethod)
-	srvAttrs := serverAddrAttrs(sererAddr)
+	srvAttrs := serverAddrAttrs(serverAddr)
 
 	attrs := make([]attribute.KeyValue, 0, 1+len(methodAttrs)+len(srvAttrs))
 	attrs = append(attrs, semconv.RPCSystemGRPC)
@@ -331,15 +223,6 @@ func serverAddrAttrs(hostport string) []attribute.KeyValue {
 		semconv.ServerAddress(h),
 		semconv.ServerPort(p),
 	}
-}
-
-// peerFromCtx returns a peer address from a context, if one exists.
-func peerFromCtx(ctx context.Context) string {
-	p, ok := peer.FromContext(ctx)
-	if !ok {
-		return ""
-	}
-	return p.Addr.String()
 }
 
 // statusCodeAttr returns status code attribute based on given gRPC code.
