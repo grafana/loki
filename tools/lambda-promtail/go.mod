@@ -11,7 +11,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v1.0.0
 	github.com/grafana/dskit v0.0.0-20250617101305-c93a1bb09ecb
-	github.com/grafana/loki/v3 v3.5.2
+	github.com/grafana/loki/v3 v3.0.0-20250713064949-d446d47cf8ad
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/prometheus/common v0.65.0
 	github.com/prometheus/prometheus v2.5.0+incompatible
@@ -181,5 +181,3 @@ require (
 replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.304.2
 
 replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v0.0.0-20250414121140-35db323fe9fb
-
-replace github.com/grafana/loki/v3 => ../..
