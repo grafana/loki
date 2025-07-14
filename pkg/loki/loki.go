@@ -474,6 +474,7 @@ func (t *Loki) setupAuthMiddleware() {
 			"/blockbuilder.types.SchedulerService/GetJob",
 			"/blockbuilder.types.SchedulerService/CompleteJob",
 			"/blockbuilder.types.SchedulerService/SyncJob",
+			"/grpc.JobQueue/Loop",
 		})
 }
 
