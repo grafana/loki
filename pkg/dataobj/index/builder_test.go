@@ -92,6 +92,7 @@ func TestIndexBuilder(t *testing.T) {
 			EnabledTenantIDs:   []string{tenant},
 		},
 		kafka.Config{},
+		metastore.UpdaterConfig{},
 		log.NewNopLogger(),
 		"instance-id",
 		bucket,

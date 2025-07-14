@@ -67,7 +67,8 @@ const (
 type Builder struct {
 	services.Service
 
-	cfg Config
+	cfg        Config
+	updaterCfg metastore.UpdaterConfig
 
 	// Kafka client and topic/partition info
 	client *kgo.Client
@@ -99,6 +100,7 @@ type Builder struct {
 func NewIndexBuilder(
 	cfg Config,
 	kafkaCfg kafka.Config,
+	updaterCfg metastore.UpdaterConfig,
 	logger log.Logger,
 	instanceID string,
 	bucket objstore.Bucket,
@@ -151,6 +153,7 @@ func NewIndexBuilder(
 
 	s := &Builder{
 		cfg:               cfg,
+		updaterCfg:        updaterCfg,
 		client:            eventConsumerClient,
 		logger:            logger,
 		builder:           builder,
@@ -350,7 +353,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(indexStorageBucket, events[0].Tenant, p.logger)
+	metastoreUpdater := metastore.NewUpdater(p.updaterCfg, indexStorageBucket, events[0].Tenant, p.logger)
 	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
 		return errors.New("failed to get min/max timestamps")
 	}

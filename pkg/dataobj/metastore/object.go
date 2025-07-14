@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -390,6 +391,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	}
 	var objectPaths []string
 
+	// First we iterate over index objects based on the old format.
 	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {
 		ok, objPath := objectOverlapsRange(stream.Labels, start, end)
 		if ok {
@@ -399,7 +401,61 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, err
 	}
+
+	// Then we iterate over index objects based on the new format.
+	predicate := indexpointers.TimeRangePredicate{
+		MinTimestamp: start.UTC(),
+		MaxTimestamp: end.UTC(),
+	}
+	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
+		objectPaths = append(objectPaths, indexPointer.Path)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return objectPaths, nil
+}
+
+func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate indexpointers.RowPredicate, f func(indexpointers.IndexPointer)) error {
+	var reader indexpointers.RowReader
+	defer reader.Close()
+
+	buf := make([]indexpointers.IndexPointer, 1024)
+
+	for _, section := range object.Sections() {
+		if !indexpointers.CheckSection(section) {
+			continue
+		}
+
+		sec, err := indexpointers.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		reader.Reset(sec)
+		if predicate != nil {
+			err := reader.SetPredicate(predicate)
+			if err != nil {
+				return err
+			}
+		}
+
+		for {
+			num, err := reader.Read(ctx, buf)
+			if err != nil && err != io.EOF {
+				return err
+			}
+			if num == 0 && err == io.EOF {
+				break
+			}
+			for _, indexPointer := range buf[:num] {
+				f(indexPointer)
+			}
+		}
+	}
+
+	return nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {

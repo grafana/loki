@@ -119,9 +119,9 @@ func evaluateMinTimestampPredicate(p dataset.Predicate, s IndexPointer) bool {
 	case dataset.OrPredicate:
 		return evaluateMinTimestampPredicate(p.Left, s) || evaluateMinTimestampPredicate(p.Right, s)
 	case dataset.EqualPredicate:
-		return s.StartTs.Unix() == p.Value.Int64()
+		return s.StartTs.UnixNano() == p.Value.Int64()
 	case dataset.GreaterThanPredicate:
-		return s.StartTs.Unix() > p.Value.Int64()
+		return s.StartTs.UnixNano() > p.Value.Int64()
 
 	default:
 		panic(fmt.Sprintf("unexpected predicate type %T", p))
@@ -133,9 +133,9 @@ func evaluateMaxTimestampPredicate(p dataset.Predicate, s IndexPointer) bool {
 	case dataset.OrPredicate:
 		return evaluateMaxTimestampPredicate(p.Left, s) || evaluateMaxTimestampPredicate(p.Right, s)
 	case dataset.EqualPredicate:
-		return s.EndTs.Unix() == p.Value.Int64()
+		return s.EndTs.UnixNano() == p.Value.Int64()
 	case dataset.LessThanPredicate:
-		return s.EndTs.Unix() < p.Value.Int64()
+		return s.EndTs.UnixNano() < p.Value.Int64()
 
 	default:
 		panic(fmt.Sprintf("unexpected predicate type %T", p))

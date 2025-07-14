@@ -50,8 +50,8 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 func (b *Builder) Append(path string, startTs time.Time, endTs time.Time) {
 	p := &IndexPointer{
 		Path:    path,
-		StartTs: startTs,
-		EndTs:   endTs,
+		StartTs: startTs.UTC(),
+		EndTs:   endTs.UTC(),
 	}
 	b.indexPointers = append(b.indexPointers, p)
 }

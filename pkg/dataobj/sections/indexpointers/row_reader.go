@@ -188,21 +188,21 @@ func convertTimeRangePredicate(p TimeRangePredicate, minTimestampColumn, maxTime
 		Left: dataset.OrPredicate{
 			Left: dataset.EqualPredicate{
 				Column: minTimestampColumn,
-				Value:  dataset.Int64Value(p.MinTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.MinTimestamp.UnixNano()),
 			},
 			Right: dataset.GreaterThanPredicate{
 				Column: minTimestampColumn,
-				Value:  dataset.Int64Value(p.MinTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.MinTimestamp.UnixNano()),
 			},
 		},
 		Right: dataset.OrPredicate{
 			Left: dataset.EqualPredicate{
 				Column: maxTimestampColumn,
-				Value:  dataset.Int64Value(p.MaxTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.MaxTimestamp.UnixNano()),
 			},
 			Right: dataset.LessThanPredicate{
 				Column: maxTimestampColumn,
-				Value:  dataset.Int64Value(p.MaxTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.MaxTimestamp.UnixNano()),
 			},
 		},
 	}

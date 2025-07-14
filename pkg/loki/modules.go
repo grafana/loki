@@ -2224,6 +2224,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	t.dataObjIndexBuilder, err = dataobjindex.NewIndexBuilder(
 		t.Cfg.DataObj.Index,
 		t.Cfg.KafkaConfig,
+		t.Cfg.DataObj.Metastore.UpdaterConfig,
 		util_log.Logger,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		store,

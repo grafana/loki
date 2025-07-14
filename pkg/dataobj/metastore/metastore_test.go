@@ -23,7 +23,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
+	m := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
 
 	// Set limits for the test
 	m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -60,7 +60,7 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
+	m := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
 
 	// Set limits for the test
 	m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -190,7 +190,7 @@ func TestDataObjectsPaths(t *testing.T) {
 	tenantID := "test-tenant"
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
+	m := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
 
 	// Set limits for the test
 	m.backoff = backoff.New(context.TODO(), backoff.Config{

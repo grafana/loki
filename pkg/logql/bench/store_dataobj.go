@@ -68,7 +68,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(bucket, tenantID, logger)
+	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	return &DataObjStore{

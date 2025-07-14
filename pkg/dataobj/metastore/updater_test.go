@@ -34,10 +34,11 @@ func TestUpdater(t *testing.T) {
 			labels.Label{Name: labelNamePath, Value: "testdata/metastore.obj"},
 		)
 
-		builder.Append(logproto.Stream{
+		err = builder.Append(logproto.Stream{
 			Labels:  ls.String(),
 			Entries: []logproto.Entry{{Line: ""}},
 		})
+		require.NoError(t, err)
 
 		var buf bytes.Buffer
 		_, err = builder.Flush(&buf)
@@ -62,7 +63,8 @@ func TestUpdater(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
+		err = builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
+		require.NoError(t, err)
 
 		var buf bytes.Buffer
 		_, err = builder.Flush(&buf)
@@ -76,7 +78,7 @@ func TestUpdater(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("append default to new top-level metastore v2", func(t *testing.T) {
+	t.Run("append default to new top-level metastore v1", func(t *testing.T) {
 		tenantID := "test"
 		builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
@@ -104,16 +106,16 @@ func TestUpdater(t *testing.T) {
 
 		ty, err := updater.readFromExisting(context.Background(), dobj)
 		require.NoError(t, err)
-		require.Equal(t, MetaStoreTopLevelObjectTypeV2, ty)
+		require.Equal(t, TopLevelObjectTypeV1, ty)
 	})
 }
 
-func newUpdater(t *testing.T, tenantID string, bucket objstore.Bucket, old *logsobj.Builder, new *indexobj.Builder) *Updater {
+func newUpdater(t *testing.T, tenantID string, bucket objstore.Bucket, v1 *logsobj.Builder, v2 *indexobj.Builder) *Updater {
 	t.Helper()
 
 	updater := &Updater{
-		builder:          new,
-		metastoreBuilder: old,
+		builder:          v2,
+		metastoreBuilder: v1,
 		bucket:           bucket,
 		tenantID:         tenantID,
 		metrics:          newMetastoreMetrics(),
@@ -125,7 +127,9 @@ func newUpdater(t *testing.T, tenantID string, bucket objstore.Bucket, old *logs
 		builderOnce: sync.Once{},
 		buf:         bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize)),
 	}
-	updater.RegisterMetrics(prometheus.NewPedanticRegistry())
+
+	err := updater.RegisterMetrics(prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
 
 	return updater
 }
@@ -139,7 +143,8 @@ func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, buf *byt
 	)
 
 	if buf != nil && buf.Len() > 0 {
-		bucket.Upload(context.Background(), path, buf)
+		err := bucket.Upload(context.Background(), path, buf)
+		require.NoError(t, err)
 	}
 
 	return bucket
