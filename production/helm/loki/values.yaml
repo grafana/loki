@@ -331,6 +331,11 @@ loki:
     bloom_gateway:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.operational_config }}
+    operational_config:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -541,6 +546,8 @@ loki:
     enabled: false
     client:
       addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
+  # -- Optional operational configuration
+  operational_config: {}
 ######################################################################################################################
 #
 # Enterprise Loki Configs
