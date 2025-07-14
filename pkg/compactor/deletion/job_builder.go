@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -536,7 +535,11 @@ func (i *storageUpdatesIterator) Err() error {
 // It passes the labels for the series and updates to apply to the storage.
 func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error) error {
 	for labels, updates := range i.currUpdatesCollection.StorageUpdates {
-		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, *(*[]Chunk)(unsafe.Pointer(&updates.ChunksToIndex))); err != nil {
+		chunksToIndex := make([]Chunk, 0, len(updates.ChunksToIndex))
+		for i := range updates.ChunksToIndex {
+			chunksToIndex = append(chunksToIndex, updates.ChunksToIndex[i])
+		}
+		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, chunksToIndex); err != nil {
 			return err
 		}
 	}

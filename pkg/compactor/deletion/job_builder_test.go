@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"testing"
-	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ type tableUpdatesRecorder struct {
 	updates map[string]map[string]map[string]storageUpdates
 }
 
-func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []chunk) error {
+func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
 	if _, ok := t.updates[tableName]; !ok {
 		t.updates[tableName] = map[string]map[string]storageUpdates{
 			userID: {
@@ -40,7 +39,9 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 
 	updates.ChunksToDelete = append(updates.ChunksToDelete, chunksToDelete...)
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
-	updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex...)
+	for i := range chunksToIndex {
+		updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex[i].(chunk))
+	}
 
 	t.updates[tableName][userID][labels] = updates
 
@@ -382,7 +383,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
 				for iterator.Next() {
 					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
-						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, *(*[]chunk)(unsafe.Pointer(&chunksToIndex)))
+						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
 					}); err != nil {
 						return err
 					}
