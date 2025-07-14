@@ -1,20 +1,20 @@
-// pointersmd.proto holds metadata for the pointers section of a data object. The
-// pointers contains references to other dataobjects in storage, intended for use with indexing.
+// indexpointersmd.proto holds metadata for the indexpointers section of a data object. The
+// indexpointers contains references to other dataobjects in storage, intended for use with indexing.
 syntax = "proto3";
 
-package dataobj.metadata.pointers.v1;
+package dataobj.metadata.indexpointers.v1;
 
 import "pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd";
 
-// Metadata describes the metadata for the pointers section.
+// Metadata describes the metadata for the indexpointers section.
 message Metadata {
-  // Columns within the pointers section.
+  // Columns within the indexpointers section.
   repeated ColumnDesc columns = 1;
 }
 
-// ColumnDesc describes an individual column within the pointers table.
+// ColumnDesc describes an individual column within the indexpointers table.
 message ColumnDesc {
   // Information about the column.
   dataobj.metadata.dataset.v1.ColumnInfo info = 1;
@@ -23,7 +23,7 @@ message ColumnDesc {
   ColumnType type = 2;
 }
 
-// ColumnType represents the valid types that a pointer's column can have.
+// ColumnType represents the valid types that a indexpointer's column can have.
 enum ColumnType {
   // Invalid column type.
   COLUMN_TYPE_UNSPECIFIED = 0;
