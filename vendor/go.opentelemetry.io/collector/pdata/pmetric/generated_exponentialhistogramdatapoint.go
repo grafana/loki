@@ -236,20 +236,35 @@ func copyOrigExponentialHistogramDataPoint(dest, src *otlpmetrics.ExponentialHis
 	copyOrigExponentialHistogramDataPointBuckets(&dest.Negative, &src.Negative)
 	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
 	dest.Flags = src.Flags
-	if src.Sum_ == nil {
+	if srcSum, ok := src.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum); ok {
+		destSum, ok := dest.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum)
+		if !ok {
+			destSum = &otlpmetrics.ExponentialHistogramDataPoint_Sum{}
+			dest.Sum_ = destSum
+		}
+		destSum.Sum = srcSum.Sum
+	} else {
 		dest.Sum_ = nil
-	} else {
-		dest.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: src.GetSum()}
 	}
-	if src.Min_ == nil {
+	if srcMin, ok := src.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min); ok {
+		destMin, ok := dest.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min)
+		if !ok {
+			destMin = &otlpmetrics.ExponentialHistogramDataPoint_Min{}
+			dest.Min_ = destMin
+		}
+		destMin.Min = srcMin.Min
+	} else {
 		dest.Min_ = nil
-	} else {
-		dest.Min_ = &otlpmetrics.ExponentialHistogramDataPoint_Min{Min: src.GetMin()}
 	}
-	if src.Max_ == nil {
-		dest.Max_ = nil
+	if srcMax, ok := src.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max); ok {
+		destMax, ok := dest.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max)
+		if !ok {
+			destMax = &otlpmetrics.ExponentialHistogramDataPoint_Max{}
+			dest.Max_ = destMax
+		}
+		destMax.Max = srcMax.Max
 	} else {
-		dest.Max_ = &otlpmetrics.ExponentialHistogramDataPoint_Max{Max: src.GetMax()}
+		dest.Max_ = nil
 	}
 	dest.ZeroThreshold = src.ZeroThreshold
 }
