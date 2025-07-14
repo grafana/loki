@@ -17,6 +17,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Allow specifying additional labels for memcached statefulsets volume claim templates [#15554](https://github.com/grafana/loki/pull/15554)
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
 - [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
+- [CHANGE] Changed version of Grafana Loki to 3.5.2
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.5.2
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
 
 ## 6.31.0
@@ -54,8 +56,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.29.0
 
-- [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
+
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
+- [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
 
 ## 6.28.0
