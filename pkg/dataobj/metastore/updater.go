@@ -18,6 +18,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -26,6 +28,16 @@ const (
 	labelNameStart = "__start__"
 	labelNameEnd   = "__end__"
 	labelNamePath  = "__path__"
+)
+
+// MetaStoreTopLevelObjectType is the type of metastore object being updated.
+type MetaStoreTopLevelObjectType int
+
+const (
+	// MetaStoreTopLevelObjectTypeV1 is the old top-level streams based object format.
+	MetaStoreTopLevelObjectTypeV1 MetaStoreTopLevelObjectType = iota
+	// MetaStoreTopLevelObjectTypeV2 is the new top-level index pointer based object format.
+	MetaStoreTopLevelObjectTypeV2
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
@@ -39,7 +51,8 @@ var metastoreBuilderCfg = logsobj.BuilderConfig{
 }
 
 type Updater struct {
-	metastoreBuilder *logsobj.Builder
+	builder          *indexobj.Builder // New index pointer based builder.
+	metastoreBuilder *logsobj.Builder  // Deprecated streams based builder.
 	tenantID         string
 	metrics          *metastoreMetrics
 	bucket           objstore.Bucket
@@ -84,6 +97,19 @@ func (m *Updater) initBuilder() error {
 		}
 		m.buf = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
 		m.metastoreBuilder = metastoreBuilder
+
+		indexBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
+			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
+			BufferSize:              metastoreBuilderCfg.BufferSize,
+			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
+			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
+		})
+		if err != nil {
+			initErr = err
+			return
+		}
+		m.builder = indexBuilder
 	})
 	return initErr
 }
@@ -117,6 +143,12 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 				}
 
 				m.metastoreBuilder.Reset()
+				m.builder.Reset()
+
+				// Set new default to V2 for new files. Fallback to V1 for old files.
+				var (
+					ty = MetaStoreTopLevelObjectTypeV2
+				)
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
@@ -124,32 +156,36 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 					if err != nil {
 						return nil, errors.Wrap(err, "creating object from buffer")
 					}
-					if err := m.readFromExisting(ctx, object); err != nil {
+					ty, err = m.readFromExisting(ctx, object)
+					if err != nil {
 						return nil, errors.Wrap(err, "reading existing metastore version")
 					}
 					replayDuration.ObserveDuration()
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
-
-				ls := labels.New(
-					labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
-					labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
-					labels.Label{Name: labelNamePath, Value: dataobjPath},
-				)
-				err := m.metastoreBuilder.Append(logproto.Stream{
-					Labels:  ls.String(),
-					Entries: []logproto.Entry{{Line: ""}},
-				})
+				err = m.append(ty, dataobjPath, minTimestamp, maxTimestamp)
 				if err != nil {
-					return nil, errors.Wrap(err, "appending internal metadata stream")
+					return nil, errors.Wrap(err, "appending to metastore builder")
 				}
 
 				m.buf.Reset()
-				_, err = m.metastoreBuilder.Flush(m.buf)
-				if err != nil {
-					return nil, errors.Wrap(err, "flushing metastore builder")
+
+				switch ty {
+				case MetaStoreTopLevelObjectTypeV1:
+					_, err = m.metastoreBuilder.Flush(m.buf)
+					if err != nil {
+						return nil, errors.Wrap(err, "flushing metastore builder")
+					}
+				case MetaStoreTopLevelObjectTypeV2:
+					_, err = m.builder.Flush(m.buf)
+					if err != nil {
+						return nil, errors.Wrap(err, "flushing metastore builder")
+					}
+				default:
+					return nil, errors.New("unknown metastore top-level object type")
 				}
+
 				encodingDuration.ObserveDuration()
 				return m.buf, nil
 			})
@@ -168,39 +204,99 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	return err
 }
 
-// readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
-func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) error {
-	var streamsReader streams.RowReader
-	defer streamsReader.Close()
+func (m *Updater) append(ty MetaStoreTopLevelObjectType, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+	switch ty {
+	// Backwards compatibility with old metastore top-level objects.
+	case MetaStoreTopLevelObjectTypeV1:
+		ls := labels.New(
+			labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
+			labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
+			labels.Label{Name: labelNamePath, Value: dataobjPath},
+		)
 
-	// Read streams from existing metastore object and write them to the builder for the new object
-	buf := make([]streams.Stream, 100)
-
-	for _, section := range object.Sections() {
-		if !streams.CheckSection(section) {
-			continue
-		}
-		sec, err := streams.Open(ctx, section)
+		err := m.metastoreBuilder.Append(logproto.Stream{
+			Labels:  ls.String(),
+			Entries: []logproto.Entry{{Line: ""}},
+		})
 		if err != nil {
-			return errors.Wrap(err, "opening section")
+			return errors.Wrap(err, "appending internal metadata stream")
 		}
-
-		streamsReader.Reset(sec)
-		for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
-			if err != nil && err != io.EOF {
-				return errors.Wrap(err, "reading streams")
-			}
-			for _, stream := range buf[:n] {
-				err = m.metastoreBuilder.Append(logproto.Stream{
-					Labels:  stream.Labels.String(),
-					Entries: []logproto.Entry{{Line: ""}},
-				})
-				if err != nil {
-					return errors.Wrap(err, "appending streams")
-				}
-			}
-		}
+	// New standard approach for metastore top-level objects.
+	case MetaStoreTopLevelObjectTypeV2:
+		m.builder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
+	default:
+		return errors.New("unknown metastore top-level object type")
 	}
 
 	return nil
+}
+
+// readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
+func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) (MetaStoreTopLevelObjectType, error) {
+	var streamsReader streams.RowReader
+	defer streamsReader.Close()
+
+	var indexPointersReader indexpointers.RowReader
+	defer indexPointersReader.Close()
+
+	// Read streams from existing metastore object and write them to the builder for the new object
+	buf := make([]streams.Stream, 100)
+	pbuf := make([]indexpointers.IndexPointer, 100)
+
+	for _, section := range object.Sections() {
+		if !streams.CheckSection(section) && !indexpointers.CheckSection(section) {
+			continue
+		}
+
+		switch {
+		// Backwards compatibility with old metastore top-level objects.
+		case streams.CheckSection(section):
+			sec, err := streams.Open(ctx, section)
+			if err != nil {
+				return MetaStoreTopLevelObjectTypeV1, errors.Wrap(err, "opening section")
+			}
+
+			streamsReader.Reset(sec)
+			for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
+				if err != nil && err != io.EOF {
+					return MetaStoreTopLevelObjectTypeV1, errors.Wrap(err, "reading streams")
+				}
+				for _, stream := range buf[:n] {
+					err = m.metastoreBuilder.Append(logproto.Stream{
+						Labels:  stream.Labels.String(),
+						Entries: []logproto.Entry{{Line: ""}},
+					})
+					if err != nil {
+						return MetaStoreTopLevelObjectTypeV1, errors.Wrap(err, "appending streams")
+					}
+				}
+			}
+
+			return MetaStoreTopLevelObjectTypeV1, nil
+		// New standard approach for metastore top-level objects.
+		case indexpointers.CheckSection(section):
+			sec, err := indexpointers.Open(ctx, section)
+			if err != nil {
+				return MetaStoreTopLevelObjectTypeV2, errors.Wrap(err, "opening section")
+			}
+			indexPointersReader.Reset(sec)
+			for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
+				if err != nil && err != io.EOF {
+					return MetaStoreTopLevelObjectTypeV2, errors.Wrap(err, "reading index pointers")
+				}
+				for _, indexPointer := range pbuf[:n] {
+					err = m.builder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+					if err != nil {
+						return MetaStoreTopLevelObjectTypeV2, errors.Wrap(err, "appending index pointers")
+					}
+				}
+			}
+
+			return MetaStoreTopLevelObjectTypeV2, nil
+		default:
+			return MetaStoreTopLevelObjectTypeV2, errors.New("unknown section type")
+		}
+	}
+
+	return MetaStoreTopLevelObjectTypeV2, nil
 }

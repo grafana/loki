@@ -149,3 +149,23 @@ func TestBuilder_Append(t *testing.T) {
 		i++
 	}
 }
+
+func TestBuilder_AppendIndexPointer(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	builder, err := NewBuilder(testBuilderConfig)
+	require.NoError(t, err)
+
+	i := 0
+	for {
+		require.NoError(t, ctx.Err())
+
+		err := builder.AppendIndexPointer(fmt.Sprintf("test/path-%d", i), time.Unix(10, 0).Add(time.Duration(i)*time.Second).UTC(), time.Unix(20, 0).Add(time.Duration(i)*time.Second).UTC())
+		if errors.Is(err, ErrBuilderFull) {
+			break
+		}
+		require.NoError(t, err)
+		i++
+	}
+}

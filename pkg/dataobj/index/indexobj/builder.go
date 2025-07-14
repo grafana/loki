@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -117,9 +118,10 @@ type Builder struct {
 
 	currentSizeEstimate int
 
-	builder  *dataobj.Builder // Inner builder for accumulating sections.
-	streams  *streams.Builder
-	pointers *pointers.Builder
+	builder       *dataobj.Builder // Inner builder for accumulating sections.
+	streams       *streams.Builder
+	pointers      *pointers.Builder
+	indexPointers *indexpointers.Builder
 
 	state builderState
 }
@@ -156,14 +158,40 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
-		builder:  dataobj.NewBuilder(),
-		streams:  streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
-		pointers: pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
+		builder:       dataobj.NewBuilder(),
+		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
+		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
+		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),
 	}, nil
 }
 
 func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
+}
+
+func (b *Builder) AppendIndexPointer(path string, startTs time.Time, endTs time.Time) error {
+	b.metrics.appendsTotal.Inc()
+	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
+
+	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
+		return ErrBuilderFull
+	}
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	b.indexPointers.Append(path, startTs, endTs)
+
+	if b.indexPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(b.indexPointers); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+
+	return nil
 }
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
@@ -302,6 +330,7 @@ func (b *Builder) estimatedSize() int {
 	var size int
 	size += b.streams.EstimatedSize()
 	size += b.pointers.EstimatedSize()
+	size += b.indexPointers.EstimatedSize()
 	size += b.builder.Bytes()
 	b.metrics.sizeEstimate.Set(float64(size))
 	return size
@@ -334,6 +363,7 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 
 	flushErrors = append(flushErrors, b.builder.Append(b.streams))
 	flushErrors = append(flushErrors, b.builder.Append(b.pointers))
+	flushErrors = append(flushErrors, b.builder.Append(b.indexPointers))
 
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
@@ -374,6 +404,13 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 
 	for _, sec := range obj.Sections() {
 		switch {
+		case indexpointers.CheckSection(sec):
+			indexPointerSection, err := indexpointers.Open(context.Background(), sec)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			errs = append(errs, b.metrics.indexPointers.Observe(ctx, indexPointerSection))
 		case pointers.CheckSection(sec):
 			pointerSection, err := pointers.Open(context.Background(), sec)
 			if err != nil {
@@ -399,6 +436,7 @@ func (b *Builder) Reset() {
 	b.builder.Reset()
 	b.streams.Reset()
 	b.pointers.Reset()
+	b.indexPointers.Reset()
 
 	//b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0

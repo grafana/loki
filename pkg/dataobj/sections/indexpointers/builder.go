@@ -48,11 +48,12 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new index pointer to the builder.
 func (b *Builder) Append(path string, startTs time.Time, endTs time.Time) {
-	b.indexPointers = append(b.indexPointers, &IndexPointer{
+	p := &IndexPointer{
 		Path:    path,
 		StartTs: startTs,
 		EndTs:   endTs,
-	})
+	}
+	b.indexPointers = append(b.indexPointers, p)
 }
 
 // EstimatedSize returns the estimated size of the Pointers section in bytes.
