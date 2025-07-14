@@ -136,7 +136,9 @@ func TestWorker_ProcessJob(t *testing.T) {
 
 	go newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: jobRunner,
-	}, newWorkerMetrics(nil)).Start(ctx)
+	}, newWorkerMetrics(nil, func() bool {
+		return true
+	})).Start(ctx)
 
 	// verify that the job builder got to send all 3 jobs and that both the valid jobs got processed
 	require.Eventually(t, func() bool {
@@ -169,7 +171,9 @@ func TestWorker_StreamClosure(t *testing.T) {
 	// build a worker
 	worker := newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: &mockJobRunner{},
-	}, newWorkerMetrics(nil))
+	}, newWorkerMetrics(nil, func() bool {
+		return true
+	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

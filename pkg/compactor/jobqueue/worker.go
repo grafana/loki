@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go.uber.org/atomic"
 	"sync"
 	"time"
 
@@ -54,7 +55,8 @@ type WorkerManager struct {
 	jobRunners map[grpc.JobType]JobRunner
 	metrics    *workerMetrics
 
-	wg sync.WaitGroup
+	workers []*worker
+	wg      sync.WaitGroup
 }
 
 func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient, r prometheus.Registerer) *WorkerManager {
@@ -62,8 +64,20 @@ func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient, r prometheus
 		cfg:        cfg,
 		grpcClient: grpcClient,
 		jobRunners: make(map[grpc.JobType]JobRunner),
-		metrics:    newWorkerMetrics(r),
 	}
+
+	wm.metrics = newWorkerMetrics(r, func() bool {
+		if len(wm.workers) != cfg.NumWorkers {
+			return false
+		}
+
+		for _, w := range wm.workers {
+			if !w.isConnected() {
+				return false
+			}
+		}
+		return true
+	})
 
 	return wm
 }
@@ -85,10 +99,13 @@ func (w *WorkerManager) Start(ctx context.Context) error {
 	wg := &sync.WaitGroup{}
 
 	for i := 0; i < w.cfg.NumWorkers; i++ {
+		worker := newWorker(w.grpcClient, w.jobRunners, w.metrics)
+		w.workers = append(w.workers, worker)
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			newWorker(w.grpcClient, w.jobRunners, w.metrics).Start(ctx)
+			worker.Start(ctx)
 		}()
 	}
 
@@ -100,6 +117,7 @@ type worker struct {
 	grpcClient CompactorClient
 	jobRunners map[grpc.JobType]JobRunner
 	metrics    *workerMetrics
+	connected  atomic.Bool
 }
 
 func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner, metrics *workerMetrics) *worker {
@@ -108,6 +126,10 @@ func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner
 		jobRunners: jobRunners,
 		metrics:    metrics,
 	}
+}
+
+func (w *worker) isConnected() bool {
+	return w.connected.Load()
 }
 
 func (w *worker) Start(ctx context.Context) {
@@ -137,6 +159,9 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 	// Build a child context so we can cancel the job when the stream is closed.
 	ctx, cancel := context.WithCancelCause(c.Context())
 	defer cancel(errors.New("job queue stream closed"))
+
+	w.connected.Store(true)
+	defer w.connected.Store(false)
 
 	for {
 		job, err := c.Recv()

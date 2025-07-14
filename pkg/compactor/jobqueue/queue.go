@@ -210,6 +210,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 		}
 		q.processingJobsMtx.Unlock()
 
+		now := time.Now()
 		if err := s.Send(job); err != nil {
 			return err
 		}
@@ -219,8 +220,10 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 		// Worker signals completion of job by sending us back the execution result of the job we sent.
 		resp, err := s.Recv()
 		if err != nil {
+			q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())
 			return err
 		}
+		q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())
 
 		if err := q.reportJobResult(resp); err != nil {
 			return err

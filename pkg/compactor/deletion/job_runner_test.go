@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,9 +27,13 @@ import (
 type mockChunkClient struct {
 	client.Client
 	chunks map[string]storage_chunk.Chunk
+	mtx    sync.RWMutex
 }
 
 func (m *mockChunkClient) GetChunks(_ context.Context, chunks []storage_chunk.Chunk) ([]storage_chunk.Chunk, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
 	var result []storage_chunk.Chunk
 	for _, chk := range chunks {
 		if storedChk, ok := m.chunks[chunkKey(chk)]; ok {
@@ -39,6 +44,9 @@ func (m *mockChunkClient) GetChunks(_ context.Context, chunks []storage_chunk.Ch
 }
 
 func (m *mockChunkClient) PutChunks(_ context.Context, chunks []storage_chunk.Chunk) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	for _, chk := range chunks {
 		m.chunks[chunkKey(chk)] = chk
 	}

@@ -106,9 +106,6 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		req.Metrics = newDeleteRequestsManagerMetrics(nil)
 	}
 
-	var prevFingerprint uint64
-	var filterFuncs []filter.Func
-
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
 	updatesMtx := sync.Mutex{}
 	err = concurrency.ForEachJob(ctx, len(deletionJob.ChunkIDs), jr.chunkProcessingConcurrency, func(ctx context.Context, idx int) error {
@@ -129,19 +126,14 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		}
 
 		// Build a chain of filters to apply on the chunk to remove data requested for deletion.
-		// If we are processing chunk of the same stream then reuse the same filterFuncs as earlier
-		if prevFingerprint != chks[0].Fingerprint {
-			filterFuncs = filterFuncs[:0]
-			prevFingerprint = chks[0].Fingerprint
-
-			for _, req := range deletionJob.DeleteRequests {
-				filterFunc, err := req.FilterFunction(chks[0].Metric)
-				if err != nil {
-					return err
-				}
-
-				filterFuncs = append(filterFuncs, filterFunc)
+		var filterFuncs []filter.Func
+		for _, req := range deletionJob.DeleteRequests {
+			filterFunc, err := req.FilterFunction(chks[0].Metric)
+			if err != nil {
+				return err
 			}
+
+			filterFuncs = append(filterFuncs, filterFunc)
 		}
 
 		// rebuild the chunk and see if we excluded any of the lines from the existing chunk
