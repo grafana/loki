@@ -61,6 +61,10 @@ spec:
         - name: query-scheduler
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          {{- if or .Values.loki.command .Values.queryScheduler.command }}
+          command:
+            - {{ coalesce .Values.queryScheduler.command .Values.loki.command | quote }}
+          {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-scheduler
