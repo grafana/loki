@@ -1170,6 +1170,7 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
+    "labels": {},
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1386,6 +1387,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for bloom gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-gateway pods</td>
@@ -1551,9 +1561,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1732,7 +1743,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.annotations</td>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-planner PVCs</td>
 			<td><pre lang="json">
@@ -1741,11 +1761,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.claims</td>
-			<td>list</td>
-			<td>List of the bloom-planner PVCs</td>
-			<td><pre lang="list">
-
+			<td>bloomPlanner.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for bloom planner PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2324,9 +2344,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -2507,7 +2528,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.annotations</td>
+			<td>compactor.persistence.claims</td>
+			<td>list</td>
+			<td>List of the compactor PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for compactor PVCs</td>
 			<td><pre lang="json">
@@ -2516,11 +2546,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.claims</td>
-			<td>list</td>
-			<td>List of the compactor PVCs</td>
-			<td><pre lang="list">
-
+			<td>compactor.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for compactor PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8264,9 +8294,10 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -8457,7 +8488,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.annotations</td>
+			<td>patternIngester.persistence.claims</td>
+			<td>list</td>
+			<td>List of the pattern ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for pattern ingester PVCs</td>
 			<td><pre lang="json">
@@ -8466,11 +8506,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.claims</td>
-			<td>list</td>
-			<td>List of the pattern ingester PVCs</td>
-			<td><pre lang="list">
-
+			<td>patternIngester.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8699,12 +8739,6 @@ null
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
-  "persistence": {
-    "annotations": {},
-    "enabled": false,
-    "size": "10Gi",
-    "storageClass": null
-  },
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
@@ -8981,42 +9015,6 @@ null
 			<td>Node selector for querier pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.annotations</td>
-			<td>object</td>
-			<td>Annotations for querier PVCs</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.enabled</td>
-			<td>bool</td>
-			<td>Enable creating PVCs for the querier cache</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -10075,6 +10073,7 @@ false
 {
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
+  "labels": {},
   "selector": null,
   "size": "10Gi",
   "storageClass": null

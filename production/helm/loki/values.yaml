@@ -2213,19 +2213,6 @@ querier:
   tolerations: []
   # -- DNSConfig for querier pods
   dnsConfig: {}
-  persistence:
-    # -- Enable creating PVCs for the querier cache
-    enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
-    # -- Annotations for querier PVCs
-    annotations: {}
   # -- Adds the appProtocol field to the querier service. This allows querier to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2557,8 +2544,6 @@ compactor:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for compactor PVCs
-    annotations: {}
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
@@ -2570,6 +2555,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for compactor PVCs
+        annotations: {}
+        # -- Labels for compactor PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2659,6 +2648,8 @@ bloomGateway:
     enabled: false
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
+    # -- Labels for bloom gateway PVCs
+    labels: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
@@ -2756,8 +2747,6 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Annotations for bloom-planner PVCs
-    annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
     claims:
@@ -2770,6 +2759,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for bloom-planner PVCs
+        annotations: {}
+        # -- Labels for bloom planner PVCs
+        labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2957,8 +2950,6 @@ patternIngester:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for pattern ingester PVCs
-    annotations: {}
     # -- List of the pattern ingester PVCs
     # @notationType -- list
     claims:
@@ -2970,6 +2961,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for pattern ingester PVCs
+        annotations: {}
+        # -- Labels for pattern ingester PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
