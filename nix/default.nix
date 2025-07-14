@@ -73,7 +73,10 @@ in
 
     buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
 
-    tags = [ "promtail_journal_enabled" ];
+    tags = [
+        "promtail_journal_enabled"
+        "slicelabels"
+    ];
 
     subPackages = [ "clients/cmd/promtail" ];
 
