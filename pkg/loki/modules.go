@@ -54,6 +54,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
+	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobjquerier "github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -158,6 +159,7 @@ const (
 	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
+	DataObjIndexBuilder      = "dataobj-index-builder"
 	UI                       = "ui"
 	All                      = "all"
 	Read                     = "read"
@@ -2162,6 +2164,28 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	)
 
 	return t.dataObjConsumer, nil
+}
+
+func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	store, err := t.createDataObjBucket("dataobj-index-builder")
+	if err != nil {
+		return nil, err
+	}
+
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj index builder", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
+	t.dataObjIndexBuilder, err = dataobjindex.NewIndexBuilder(
+		t.Cfg.DataObj.Index,
+		t.Cfg.KafkaConfig,
+		util_log.Logger,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		store,
+		prometheus.DefaultRegisterer,
+	)
+
+	return t.dataObjIndexBuilder, err
 }
 
 func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {

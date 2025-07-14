@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -38,6 +39,7 @@ var (
 
 	EOF       = errors.New("pipeline exhausted") // nolint:revive
 	Exhausted = failureState(EOF)
+	Canceled  = failureState(context.Canceled)
 )
 
 type state struct {
@@ -119,4 +121,113 @@ func emptyPipeline() Pipeline {
 	return newGenericPipeline(Local, func(_ []Pipeline) state {
 		return Exhausted
 	})
+}
+
+// prefetchWrapper wraps a [Pipeline] with pre-fetching capability,
+// reading data in a separate goroutine to enable concurrent processing.
+type prefetchWrapper struct {
+	Pipeline // the pipeline that is wrapped
+
+	initialized bool // internal state to indicate whether the pre-fetching goroutine is running
+
+	ch    chan state // the results channel for pre-fetched items
+	state state      // internal state representing the last pre-fetched item
+
+	ctx    context.Context         // context to control lifecycle
+	cancel context.CancelCauseFunc // cancellation function for the context
+}
+
+var _ Pipeline = (*prefetchWrapper)(nil)
+
+// newPrefetchingPipeline creates a new prefetching pipeline wrapper that reads data from the underlying pipeline
+// in a separate goroutine. This allows for concurrent processing where data can be fetched ahead of time
+// while the consumer is processing the current batch.
+//
+// The prefetching pipeline maintains a buffered channel with capacity 1 to store the next batch,
+// enabling pipeline parallelism and potentially improving throughput.
+//
+// The function accepts a [context.Context] `ctx` and a [Pipeline] `p`, which is the underlying pipeline to wrap
+// with pre-fetching capability.
+//
+// Returns a [prefetchWrapper] that implements the [Pipeline] interface.
+func newPrefetchingPipeline(ctx context.Context, p Pipeline) *prefetchWrapper {
+	ctx, cancel := context.WithCancelCause(ctx)
+	return &prefetchWrapper{
+		Pipeline: p,
+		ch:       make(chan state),
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+}
+
+// Read implements [Pipeline].
+func (p *prefetchWrapper) Read() error {
+	p.init()
+	return p.read()
+}
+
+func (p *prefetchWrapper) init() {
+	if p.initialized {
+		return
+	}
+
+	p.initialized = true
+	go p.prefetch(p.ctx) // nolint:errcheck
+}
+
+func (p prefetchWrapper) prefetch(ctx context.Context) error {
+	// Close channel on exit
+	defer close(p.ch)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			var s state
+			s.err = p.Pipeline.Read()
+			if s.err != nil {
+				p.ch <- s
+				return s.err
+			}
+			s.batch, s.err = p.Pipeline.Value()
+			s.batch.Retain()
+			// Sending to channel will block until the batch is read by the parent pipeline.
+			// If the context is cancelled while waiting to send, we return.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case p.ch <- s:
+			}
+		}
+	}
+}
+
+func (p *prefetchWrapper) read() error {
+	// Release previously retained batch
+	if p.state.batch != nil {
+		p.state.batch.Release()
+	}
+	p.state = <-p.ch
+	// Reading from a channel that is closed while waiting yields a zero-value.
+	// In that case, the pipeline should produce an error state.
+	if p.state.err == nil && p.state.batch == nil {
+		p.state = Canceled
+	}
+	return p.state.err
+}
+
+// Value implements [Pipeline].
+func (p *prefetchWrapper) Value() (arrow.Record, error) {
+	return p.state.batch, p.state.err
+}
+
+// Close implements [Pipeline].
+func (p *prefetchWrapper) Close() {
+	// Cancel internal context so the goroutine can exit
+	p.cancel(errors.New("pipeline is closed"))
+	// Clear already pre-fetched, but unused items from channel
+	for range p.ch { // nolint:revive
+	}
+	p.Pipeline.Close()
 }

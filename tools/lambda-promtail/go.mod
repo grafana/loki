@@ -11,7 +11,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v1.0.0
 	github.com/grafana/dskit v0.0.0-20250617101305-c93a1bb09ecb
-	github.com/grafana/loki/v3 v3.5.1
+	github.com/grafana/loki/v3 v3.5.2
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
 	github.com/prometheus/prometheus v2.5.0+incompatible
