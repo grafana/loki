@@ -8,7 +8,6 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
-  GOFLAGS: "-tags=slicelabels"
 
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
