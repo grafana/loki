@@ -9,12 +9,15 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
@@ -28,6 +31,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
+
+var tracer = otel.Tracer("pkg/pattern")
 
 const indexShards = 32
 
@@ -48,7 +53,8 @@ type instance struct {
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
 
-	writer aggregation.EntryWriter
+	metricWriter  aggregation.EntryWriter
+	patternWriter aggregation.EntryWriter
 }
 
 type aggregatedMetrics struct {
@@ -64,7 +70,8 @@ func newInstance(
 	drainLimits drain.Limits,
 	ringClient RingClient,
 	ingesterID string,
-	writer aggregation.EntryWriter,
+	metricWriter aggregation.EntryWriter,
+	patternWriter aggregation.EntryWriter,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
@@ -82,7 +89,8 @@ func newInstance(
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
-		writer:                     writer,
+		metricWriter:               metricWriter,
+		patternWriter:              patternWriter,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -106,6 +114,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		if ownedStream {
 			if len(reqStream.Entries) == 0 {
+				level.Warn(i.logger).Log(
+					"msg", "skipping empty stream for aggregations",
+					"stream", reqStream.Labels,
+				)
 				continue
 			}
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -224,7 +236,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -257,17 +269,13 @@ func (i *instance) Observe(ctx context.Context, stream string, entries []logprot
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
 
-	sp, _ := opentracing.StartSpanFromContext(
-		ctx,
-		"patternIngester.Observe",
-	)
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "patternIngester.Observe")
+	defer sp.End()
 
-	sp.LogKV(
-		"event", "observe stream for metrics",
-		"stream", stream,
-		"entries", len(entries),
-	)
+	sp.AddEvent("observe stream for metrics", trace.WithAttributes(
+		attribute.String("stream", stream),
+		attribute.Int("entries", len(entries)),
+	))
 
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
@@ -327,21 +335,21 @@ func (i *instance) writeAggregatedMetrics(
 	}
 
 	newLbls := labels.Labels{
-		labels.Label{Name: push.AggregatedMetricLabel, Value: service},
+		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
 	}
 
 	sturcturedMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: level},
 	}
 
-	if i.writer != nil {
-		i.writer.WriteEntry(
+	if i.metricWriter != nil {
+		i.metricWriter.WriteEntry(
 			now.Time(),
-			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls),
 			newLbls,
 			sturcturedMetadata,
 		)
 
-		i.metrics.samples.WithLabelValues(service).Inc()
+		i.metrics.metricSamples.WithLabelValues(service).Inc()
 	}
 }

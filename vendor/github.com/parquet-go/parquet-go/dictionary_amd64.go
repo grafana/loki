@@ -77,7 +77,7 @@ func (d *byteArrayDictionary) lookupString(indexes []int32, rows sparse.Array) {
 	//
 	// This command was used to trigger the problem:
 	//
-	//	GOMAXPROCS=8 go test -run TestIssue368 -count 10
+	//	GOMAXPROCS=8 go test -run TestIssueSegmentio368 -count 10
 	//
 	// https://github.com/segmentio/parquet-go/issues/368
 	//

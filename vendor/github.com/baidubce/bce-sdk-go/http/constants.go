@@ -57,6 +57,8 @@ const (
 	BCE_GRANT_FULL_CONTROL   = "x-bce-grant-full-control"
 	BCE_CONTENT_SHA256       = "x-bce-content-sha256"
 	BCE_CONTENT_CRC32        = "x-bce-content-crc32"
+	BCE_CONTENT_CRC32C       = "x-bce-content-crc32c"
+	BCE_CONTENT_CRC32C_FLAG  = "x-bce-content-crc32c-flag"
 	BCE_REQUEST_ID           = "x-bce-request-id"
 	BCE_USER_METADATA_PREFIX = "x-bce-meta-"
 	BCE_SECURITY_TOKEN       = "x-bce-security-token"
@@ -88,4 +90,6 @@ const (
 	BCE_OBJECT_TAGGING                  = "x-bce-tagging"
 	BCE_FETCH_CALLBACK_ADDRESS          = "x-bce-callback-address"
 	BCE_VERSION_ID                      = "x-bce-version-id"
+	BCE_OBJECT_EXPIRES                  = "x-bce-object-expires"
+	BCE_EXPIRATION_DATE                 = "x-bce-expiration-date"
 )

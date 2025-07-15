@@ -9,6 +9,8 @@ weight: 400
 
 # Metric queries
 
+{{< shared id="metric-queries" >}}
+
 Metric queries extend log queries by applying a function to log query results.
 This powerful feature creates metrics from logs.
 
@@ -16,6 +18,8 @@ Metric queries can be used to calculate the rate of error messages or the top N 
 
 Combined with parsers, metric queries can also be used to calculate metrics from a sample value within the log line, such as latency or request size.
 All labels, including extracted ones, will be available for aggregations and generation of new series.
+
+{{< /shared >}}
 
 ## Range Vector aggregation
 
@@ -184,3 +188,7 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
+
+## Further resources
+
+- Watch: [How to turn logs into metrics with Grafana Loki](https://youtube.com/live/tKcnQ0Q2E-k) (Loki Community Call July 2025)

@@ -9,6 +9,8 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+var includeAuthOps = "include_auth_ops"
+
 // ListTopics issues a metadata request and returns TopicDetails. Specific
 // topics to describe can be passed as additional arguments. If no topics are
 // specified, all topics are requested. Internal topics are not returned unless
@@ -642,4 +644,11 @@ func (cl *Client) createPartitions(ctx context.Context, dry bool, add, set int, 
 		}
 	}
 	return rs, nil
+}
+
+// WithAuthorizedOps attaches an internal key/value to the context through WithValue.
+// Using this context will cause all Metadata requests (assuming Kafka version 2.3.0
+// or higher) to fetch the list of authorized operations. See KIP-430 for details.
+func WithAuthorizedOps(ctx context.Context) context.Context {
+	return context.WithValue(ctx, &includeAuthOps, struct{}{})
 }

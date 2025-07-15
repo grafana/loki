@@ -10,6 +10,12 @@ type Emitter interface {
 	Emit(groups []string, state *LexerState) Iterator
 }
 
+// ValidatingEmitter is an Emitter that can validate against a compiled rule.
+type ValidatingEmitter interface {
+	Emitter
+	ValidateEmitter(rule *CompiledRule) error
+}
+
 // SerialisableEmitter is an Emitter that can be serialised and deserialised to/from JSON.
 type SerialisableEmitter interface {
 	Emitter
@@ -30,12 +36,21 @@ type byGroupsEmitter struct {
 	Emitters
 }
 
+var _ ValidatingEmitter = (*byGroupsEmitter)(nil)
+
 // ByGroups emits a token for each matching group in the rule's regex.
 func ByGroups(emitters ...Emitter) Emitter {
 	return &byGroupsEmitter{Emitters: emitters}
 }
 
 func (b *byGroupsEmitter) EmitterKind() string { return "bygroups" }
+
+func (b *byGroupsEmitter) ValidateEmitter(rule *CompiledRule) error {
+	if len(rule.Regexp.GetGroupNumbers())-1 != len(b.Emitters) {
+		return fmt.Errorf("number of groups %d does not match number of emitters %d", len(rule.Regexp.GetGroupNumbers())-1, len(b.Emitters))
+	}
+	return nil
+}
 
 func (b *byGroupsEmitter) Emit(groups []string, state *LexerState) Iterator {
 	iterators := make([]Iterator, 0, len(groups)-1)

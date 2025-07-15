@@ -14,11 +14,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/hashtag"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
 	"github.com/redis/go-redis/v9/internal/rand"
+)
+
+const (
+	minLatencyMeasurementInterval = 10 * time.Second
 )
 
 var errClusterNoNodes = fmt.Errorf("redis: cluster has no nodes")
@@ -62,11 +67,12 @@ type ClusterOptions struct {
 
 	OnConnect func(ctx context.Context, cn *Conn) error
 
-	Protocol                   int
-	Username                   string
-	Password                   string
-	CredentialsProvider        func() (username string, password string)
-	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+	Protocol                     int
+	Username                     string
+	Password                     string
+	CredentialsProvider          func() (username string, password string)
+	CredentialsProviderContext   func(ctx context.Context) (username string, password string, err error)
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
 
 	MaxRetries      int
 	MinRetryBackoff time.Duration
@@ -107,9 +113,10 @@ type ClusterOptions struct {
 }
 
 func (opt *ClusterOptions) init() {
-	if opt.MaxRedirects == -1 {
+	switch opt.MaxRedirects {
+	case -1:
 		opt.MaxRedirects = 0
-	} else if opt.MaxRedirects == 0 {
+	case 0:
 		opt.MaxRedirects = 3
 	}
 
@@ -287,11 +294,12 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		Dialer:     opt.Dialer,
 		OnConnect:  opt.OnConnect,
 
-		Protocol:                   opt.Protocol,
-		Username:                   opt.Username,
-		Password:                   opt.Password,
-		CredentialsProvider:        opt.CredentialsProvider,
-		CredentialsProviderContext: opt.CredentialsProviderContext,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
 
 		MaxRetries:      opt.MaxRetries,
 		MinRetryBackoff: opt.MinRetryBackoff,
@@ -332,6 +340,10 @@ type clusterNode struct {
 	latency    uint32 // atomic
 	generation uint32 // atomic
 	failing    uint32 // atomic
+
+	// last time the latency measurement was performed for the node, stored in nanoseconds
+	// from epoch
+	lastLatencyMeasurement int64 // atomic
 }
 
 func newClusterNode(clOpt *ClusterOptions, addr string) *clusterNode {
@@ -384,6 +396,7 @@ func (n *clusterNode) updateLatency() {
 		latency = float64(dur) / float64(successes)
 	}
 	atomic.StoreUint32(&n.latency, uint32(latency+0.5))
+	n.SetLastLatencyMeasurement(time.Now())
 }
 
 func (n *clusterNode) Latency() time.Duration {
@@ -413,6 +426,10 @@ func (n *clusterNode) Generation() uint32 {
 	return atomic.LoadUint32(&n.generation)
 }
 
+func (n *clusterNode) LastLatencyMeasurement() int64 {
+	return atomic.LoadInt64(&n.lastLatencyMeasurement)
+}
+
 func (n *clusterNode) SetGeneration(gen uint32) {
 	for {
 		v := atomic.LoadUint32(&n.generation)
@@ -420,6 +437,23 @@ func (n *clusterNode) SetGeneration(gen uint32) {
 			break
 		}
 	}
+}
+
+func (n *clusterNode) SetLastLatencyMeasurement(t time.Time) {
+	for {
+		v := atomic.LoadInt64(&n.lastLatencyMeasurement)
+		if t.UnixNano() < v || atomic.CompareAndSwapInt64(&n.lastLatencyMeasurement, v, t.UnixNano()) {
+			break
+		}
+	}
+}
+
+func (n *clusterNode) Loading() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := n.Client.Ping(ctx).Err()
+	return err != nil && isLoadingError(err)
 }
 
 //------------------------------------------------------------------------------
@@ -511,10 +545,11 @@ func (c *clusterNodes) GC(generation uint32) {
 	c.mu.Lock()
 
 	c.activeAddrs = c.activeAddrs[:0]
+	now := time.Now()
 	for addr, node := range c.nodes {
 		if node.Generation() >= generation {
 			c.activeAddrs = append(c.activeAddrs, addr)
-			if c.opt.RouteByLatency {
+			if c.opt.RouteByLatency && node.LastLatencyMeasurement() < now.Add(-minLatencyMeasurementInterval).UnixNano() {
 				go node.updateLatency()
 			}
 			continue
@@ -730,7 +765,8 @@ func (c *clusterState) slotSlaveNode(slot int) (*clusterNode, error) {
 	case 1:
 		return nodes[0], nil
 	case 2:
-		if slave := nodes[1]; !slave.Failing() {
+		slave := nodes[1]
+		if !slave.Failing() && !slave.Loading() {
 			return slave, nil
 		}
 		return nodes[0], nil
@@ -739,7 +775,7 @@ func (c *clusterState) slotSlaveNode(slot int) (*clusterNode, error) {
 		for i := 0; i < 10; i++ {
 			n := rand.Intn(len(nodes)-1) + 1
 			slave = nodes[n]
-			if !slave.Failing() {
+			if !slave.Failing() && !slave.Loading() {
 				return slave, nil
 			}
 		}
@@ -900,6 +936,9 @@ type ClusterClient struct {
 // NewClusterClient returns a Redis Cluster client as described in
 // http://redis.io/topics/cluster-spec.
 func NewClusterClient(opt *ClusterOptions) *ClusterClient {
+	if opt == nil {
+		panic("redis: NewClusterClient nil options")
+	}
 	opt.init()
 
 	c := &ClusterClient{
@@ -954,7 +993,7 @@ func (c *ClusterClient) Process(ctx context.Context, cmd Cmder) error {
 }
 
 func (c *ClusterClient) process(ctx context.Context, cmd Cmder) error {
-	slot := c.cmdSlot(ctx, cmd)
+	slot := c.cmdSlot(cmd)
 	var node *clusterNode
 	var moved bool
 	var ask bool
@@ -1302,7 +1341,7 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 
 	if c.opt.ReadOnly && c.cmdsAreReadOnly(ctx, cmds) {
 		for _, cmd := range cmds {
-			slot := c.cmdSlot(ctx, cmd)
+			slot := c.cmdSlot(cmd)
 			node, err := c.slotReadOnlyNode(state, slot)
 			if err != nil {
 				return err
@@ -1313,7 +1352,7 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 	}
 
 	for _, cmd := range cmds {
-		slot := c.cmdSlot(ctx, cmd)
+		slot := c.cmdSlot(cmd)
 		node, err := state.slotMasterNode(slot)
 		if err != nil {
 			return err
@@ -1339,7 +1378,9 @@ func (c *ClusterClient) processPipelineNode(
 	_ = node.Client.withProcessPipelineHook(ctx, cmds, func(ctx context.Context, cmds []Cmder) error {
 		cn, err := node.Client.getConn(ctx)
 		if err != nil {
-			node.MarkAsFailing()
+			if !isContextError(err) {
+				node.MarkAsFailing()
+			}
 			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 			setCmdsErr(cmds, err)
 			return err
@@ -1469,7 +1510,7 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 		return err
 	}
 
-	cmdsMap := c.mapCmdsBySlot(ctx, cmds)
+	cmdsMap := c.mapCmdsBySlot(cmds)
 	for slot, cmds := range cmdsMap {
 		node, err := state.slotMasterNode(slot)
 		if err != nil {
@@ -1508,10 +1549,10 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 	return cmdsFirstErr(cmds)
 }
 
-func (c *ClusterClient) mapCmdsBySlot(ctx context.Context, cmds []Cmder) map[int][]Cmder {
+func (c *ClusterClient) mapCmdsBySlot(cmds []Cmder) map[int][]Cmder {
 	cmdsMap := make(map[int][]Cmder)
 	for _, cmd := range cmds {
-		slot := c.cmdSlot(ctx, cmd)
+		slot := c.cmdSlot(cmd)
 		cmdsMap[slot] = append(cmdsMap[slot], cmd)
 	}
 	return cmdsMap
@@ -1540,7 +1581,7 @@ func (c *ClusterClient) processTxPipelineNode(
 }
 
 func (c *ClusterClient) processTxPipelineNodeConn(
-	ctx context.Context, node *clusterNode, cn *pool.Conn, cmds []Cmder, failedCmds *cmdsMap,
+	ctx context.Context, _ *clusterNode, cn *pool.Conn, cmds []Cmder, failedCmds *cmdsMap,
 ) error {
 	if err := cn.WithWriter(c.context(ctx), c.opt.WriteTimeout, func(wr *proto.Writer) error {
 		return writeCmds(wr, cmds)
@@ -1829,9 +1870,9 @@ func (c *ClusterClient) cmdInfo(ctx context.Context, name string) *CommandInfo {
 	return info
 }
 
-func (c *ClusterClient) cmdSlot(ctx context.Context, cmd Cmder) int {
+func (c *ClusterClient) cmdSlot(cmd Cmder) int {
 	args := cmd.Args()
-	if args[0] == "cluster" && args[1] == "getkeysinslot" {
+	if args[0] == "cluster" && (args[1] == "getkeysinslot" || args[1] == "countkeysinslot") {
 		return args[2].(int)
 	}
 

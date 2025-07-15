@@ -622,6 +622,8 @@ Ingress service paths for distributed deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $compactorServiceName "paths" .Values.ingress.paths.compactor)}}
 {{- end -}}
 
 {{/*
@@ -634,6 +636,7 @@ Ingress service paths for legacy simple scalable deployment when backend compone
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $backendServiceName := include "loki.backendFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -643,6 +646,7 @@ Ingress service paths for legacy simple scalable deployment
 {{- $readServiceName := include "loki.readFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- $writeServiceName := include "loki.writeFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
@@ -655,6 +659,7 @@ Ingress service paths for single binary deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -727,7 +732,11 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
+{{- if .Values.enterprise.tokengen.adminTokenSecret }}
+{{- .Values.enterprise.tokengen.adminTokenSecret -}}
+{{- else }}
 {{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
+{{- end -}}
 {{- end -}}
 
 {{/* Prefix for provisioned secrets created for each provisioned tenant */}}
@@ -741,7 +750,7 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
-{{- define "loki.nginxFile" }}
+{{- define "loki.nginxFile" -}}
 worker_processes  5;  ## Default: 1
 error_log  /dev/stderr;
 pid        /tmp/nginx.pid;
@@ -791,6 +800,17 @@ http {
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
   {{- tpl . $ | nindent 2 }}
   {{- end }}
+
+  # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
+  map $http_x_query_tags $query_tags {
+    ""        "noop=";            # When header is empty, set noop=
+    default   $http_x_query_tags; # Otherwise, preserve the original value
+  }
+
+  # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+  proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
 
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
@@ -984,13 +1004,9 @@ http {
     # QueryFrontend, Querier
     location = /api/prom/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
@@ -998,14 +1014,7 @@ http {
     location = /api/prom {
       internal;        # to suppress 301
     }
-    # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
-    set $query_tags $http_x_query_tags;
-    if ($query_tags !~* '') {
-      set $query_tags "noop=";
-    }
     location ^~ /loki/api/v1/ {
-      # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
-      proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
@@ -1169,31 +1178,13 @@ the thanos_storage_config model*/}}
 {{- with .ctx.Values.loki.storage.object_store }}
 {{- if eq .type "s3" }}
 s3:
-  {{- with .s3 }}
-  bucket_name: {{ $bucketName }}
-  endpoint: {{ .endpoint }}
-  access_key_id: {{ .access_key_id }}
-  secret_access_key: {{ .secret_access_key }}
-  region: {{ .region }}
-  insecure: {{ .insecure }}
-  http:
-    {{ toYaml .http | nindent 4 }}
-  sse:
-    {{ toYaml .sse | nindent 4 }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
 {{- else if eq .type "gcs" }}
 gcs:
-  {{- with .gcs }}
-  bucket_name: {{ $bucketName }}
-  service_account: {{ .service_account }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
 {{- else if eq .type "azure" }}
 azure:
-  {{- with .azure }}
-  container_name: {{ $bucketName }}
-  account_name: {{ .account_name }}
-  account_key: {{ .account_key }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
 {{- end }}
 storage_prefix: {{ .storage_prefix }}
 {{- end }}

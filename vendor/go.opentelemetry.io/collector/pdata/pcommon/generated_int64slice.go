@@ -37,13 +37,13 @@ func NewInt64Slice() Int64Slice {
 
 // AsRaw returns a copy of the []int64 slice.
 func (ms Int64Slice) AsRaw() []int64 {
-	return copyInt64Slice(nil, *ms.getOrig())
+	return internal.CopyOrigInt64Slice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []int64 into the slice Int64Slice.
 func (ms Int64Slice) FromRaw(val []int64) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = copyInt64Slice(*ms.getOrig(), val)
+	*ms.getOrig() = internal.CopyOrigInt64Slice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []int64 slice value.
@@ -106,22 +106,35 @@ func (ms Int64Slice) Append(elms ...int64) {
 func (ms Int64Slice) MoveTo(dest Int64Slice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
+	*ms.getOrig() = nil
+}
+
+// MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
+// The current slice will be cleared.
+func (ms Int64Slice) MoveAndAppendTo(dest Int64Slice) {
+	ms.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	if *dest.getOrig() == nil {
+		// We can simply move the entire vector and avoid any allocations.
+		*dest.getOrig() = *ms.getOrig()
+	} else {
+		*dest.getOrig() = append(*dest.getOrig(), *ms.getOrig()...)
+	}
 	*ms.getOrig() = nil
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Int64Slice) CopyTo(dest Int64Slice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = copyInt64Slice(*dest.getOrig(), *ms.getOrig())
+	*dest.getOrig() = internal.CopyOrigInt64Slice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another Int64Slice
 func (ms Int64Slice) Equal(val Int64Slice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
-}
-
-func copyInt64Slice(dst, src []int64) []int64 {
-	dst = dst[:0]
-	return append(dst, src...)
 }

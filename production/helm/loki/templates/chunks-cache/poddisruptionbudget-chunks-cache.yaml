@@ -1,4 +1,4 @@
-{{- if .Values.chunksCache.enabled }}
+{{- if and .Values.chunksCache.enabled (.Values.memcached.enabled) }}
 apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:

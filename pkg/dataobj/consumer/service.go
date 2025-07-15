@@ -33,6 +33,9 @@ type Service struct {
 	reg    prometheus.Registerer
 	client *consumer.Client
 
+	eventsProducerClient *kgo.Client
+	eventConsumerClient  *kgo.Client
+
 	cfg    Config
 	bucket objstore.Bucket
 	codec  distributor.TenantPrefixCodec
@@ -59,12 +62,12 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		},
 	}
 
-	client, err := consumer.NewGroupClient(
+	consumerClient, err := consumer.NewGroupClient(
 		kafkaCfg,
 		partitionRing,
 		groupName,
-		client.NewReaderClientMetrics(groupName, reg),
 		logger,
+		reg,
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.RebalanceTimeout(5*time.Minute),
@@ -77,7 +80,18 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		level.Error(logger).Log("msg", "failed to create consumer", "err", err)
 		return nil
 	}
-	s.client = client
+
+	eventsKafkaCfg := kafkaCfg
+	eventsKafkaCfg.Topic = "loki.metastore-events"
+	eventsKafkaCfg.AutoCreateTopicDefaultPartitions = 1
+	eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to create producer", "err", err)
+		return nil
+	}
+	s.client = consumerClient
+	s.eventsProducerClient = eventsProducerClient
+
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
@@ -100,7 +114,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
@@ -173,6 +187,15 @@ func (s *Service) run(ctx context.Context) error {
 			if len(records) == 0 {
 				return
 			}
+
+			// Calculate total bytes in this batch
+			var totalBytes int64
+			for _, record := range records {
+				totalBytes += int64(len(record.Value))
+			}
+
+			// Update metrics
+			processor.metrics.addBytesProcessed(totalBytes)
 
 			_ = processor.Append(records)
 		})

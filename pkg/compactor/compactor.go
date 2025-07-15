@@ -2,18 +2,14 @@ package compactor
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -23,7 +19,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -32,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -67,103 +64,18 @@ const (
 	ringNumTokens = 1
 )
 
+const (
+	HorizontalScalingModeDisabled = "disabled"
+	HorizontalScalingModeMain     = "main"
+	HorizontalScalingModeWorker   = "worker"
+)
+
 var (
 	retentionEnabledStats = analytics.NewString("compactor_retention_enabled")
 	defaultRetentionStats = analytics.NewString("compactor_default_retention")
+
+	errSchemaForTableNotFound = errors.New("schema for table not found")
 )
-
-type Config struct {
-	WorkingDirectory               string              `yaml:"working_directory"`
-	CompactionInterval             time.Duration       `yaml:"compaction_interval"`
-	ApplyRetentionInterval         time.Duration       `yaml:"apply_retention_interval"`
-	RetentionEnabled               bool                `yaml:"retention_enabled"`
-	RetentionDeleteDelay           time.Duration       `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount       int                 `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout          time.Duration       `yaml:"retention_table_timeout"`
-	RetentionBackoffConfig         backoff.Config      `yaml:"retention_backoff_config"`
-	DeleteRequestStore             string              `yaml:"delete_request_store"`
-	DeleteRequestStoreKeyPrefix    string              `yaml:"delete_request_store_key_prefix"`
-	DeleteRequestStoreDBType       string              `yaml:"delete_request_store_db_type"`
-	BackupDeleteRequestStoreDBType string              `yaml:"backup_delete_request_store_db_type"`
-	DeleteBatchSize                int                 `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod      time.Duration       `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval              time.Duration       `yaml:"delete_max_interval"`
-	MaxCompactionParallelism       int                 `yaml:"max_compaction_parallelism"`
-	UploadParallelism              int                 `yaml:"upload_parallelism"`
-	CompactorRing                  lokiring.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                        bool                `yaml:"_" doc:"hidden"`
-	TablesToCompact                int                 `yaml:"tables_to_compact"`
-	SkipLatestNTables              int                 `yaml:"skip_latest_n_tables"`
-}
-
-// RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WorkingDirectory, "compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
-	f.DurationVar(&cfg.ApplyRetentionInterval, "compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
-	f.DurationVar(&cfg.RetentionDeleteDelay, "compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
-	f.BoolVar(&cfg.RetentionEnabled, "compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
-	f.IntVar(&cfg.RetentionDeleteWorkCount, "compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
-	f.StringVar(&cfg.DeleteRequestStore, "compactor.delete-request-store", "", "Store used for managing delete requests.")
-	f.StringVar(&cfg.DeleteRequestStoreKeyPrefix, "compactor.delete-request-store.key-prefix", "index/", "Path prefix for storing delete requests.")
-	f.StringVar(&cfg.DeleteRequestStoreDBType, "compactor.delete-request-store.db-type", string(deletion.DeleteRequestsStoreDBTypeBoltDB), fmt.Sprintf("Type of DB to use for storing delete requests. Supported types: %s", strings.Join(*(*[]string)(unsafe.Pointer(&deletion.SupportedDeleteRequestsStoreDBTypes)), ", ")))
-	f.StringVar(&cfg.BackupDeleteRequestStoreDBType, "compactor.delete-request-store.backup-db-type", "", fmt.Sprintf("Type of DB to use as backup for storing delete requests. Backup DB should ideally be used while migrating from one DB type to another. Supported type(s): %s", deletion.DeleteRequestsStoreDBTypeBoltDB))
-	f.IntVar(&cfg.DeleteBatchSize, "compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
-	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-	f.DurationVar(&cfg.DeleteMaxInterval, "compactor.delete-max-interval", 24*time.Hour, "Constrain the size of any single delete request with line filters. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
-	f.DurationVar(&cfg.RetentionTableTimeout, "compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
-	f.IntVar(&cfg.MaxCompactionParallelism, "compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.IntVar(&cfg.UploadParallelism, "compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")
-	f.BoolVar(&cfg.RunOnce, "compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
-	f.IntVar(&cfg.TablesToCompact, "compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
-	f.IntVar(&cfg.SkipLatestNTables, "compactor.skip-latest-n-tables", 0, "Do not compact N latest tables. Together with -compactor.run-once and -compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
-
-	cfg.RetentionBackoffConfig.RegisterFlagsWithPrefix("compactor.retention-backoff-config", f)
-	// Ring
-	skipFlags := []string{
-		"compactor.ring.num-tokens",
-		"compactor.ring.replication-factor",
-	}
-	cfg.CompactorRing.RegisterFlagsWithPrefix("compactor.", "collectors/", f, skipFlags...)
-	f.IntVar(&cfg.CompactorRing.NumTokens, "compactor.ring.num-tokens", ringNumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", ringNumTokens))
-	f.IntVar(&cfg.CompactorRing.ReplicationFactor, "compactor.ring.replication-factor", ringReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ringReplicationFactor))
-}
-
-// Validate verifies the config does not contain inappropriate values
-func (cfg *Config) Validate() error {
-	if cfg.MaxCompactionParallelism < 1 {
-		return errors.New("max compaction parallelism must be >= 1")
-	}
-
-	if cfg.CompactorRing.NumTokens != ringNumTokens {
-		return errors.New("Num tokens must not be changed as it will not take effect")
-	}
-
-	if cfg.CompactorRing.ReplicationFactor != ringReplicationFactor {
-		return errors.New("Replication factor must not be changed as it will not take effect")
-	}
-
-	if cfg.RetentionEnabled {
-		if cfg.DeleteRequestStore == "" {
-			return fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
-		}
-
-		if cfg.ApplyRetentionInterval == 0 {
-			cfg.ApplyRetentionInterval = cfg.CompactionInterval
-		}
-
-		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
-			// add some jitter to avoid running retention and compaction at same time
-			cfg.ApplyRetentionInterval += min(10*time.Minute, cfg.ApplyRetentionInterval/2)
-		}
-
-		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
-			return fmt.Errorf("validate delete store path prefix: %w", err)
-		}
-	}
-
-	return nil
-}
 
 type Compactor struct {
 	services.Service
@@ -182,9 +94,10 @@ type Compactor struct {
 	wg                        sync.WaitGroup
 	indexCompactors           map[string]IndexCompactor
 	schemaConfig              config.SchemaConfig
-	tableLocker               *tableLocker
 	limits                    Limits
+	JobQueue                  *jobqueue.Queue
 
+	tablesManager *tablesManager
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
@@ -233,7 +146,6 @@ func NewCompactor(
 		ringPollPeriod:  5 * time.Second,
 		indexCompactors: map[string]IndexCompactor{},
 		schemaConfig:    schemaConfig,
-		tableLocker:     newTableLocker(),
 		limits:          limits,
 	}
 
@@ -305,6 +217,8 @@ func (c *Compactor) init(
 		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
+	} else {
+		c.expirationChecker = retention.NeverExpiringExpirationChecker(limits)
 	}
 
 	legacyMarkerDirs := make(map[string]struct{})
@@ -378,6 +292,23 @@ func (c *Compactor) init(
 	}
 
 	c.metrics = newMetrics(r)
+	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
+
+	if c.cfg.RetentionEnabled {
+		if err := c.deleteRequestsManager.Init(c.tablesManager); err != nil {
+			return err
+		}
+	}
+
+	if c.cfg.HorizontalScalingMode == HorizontalScalingModeMain {
+		c.JobQueue = jobqueue.NewQueue(r)
+		if c.cfg.RetentionEnabled {
+			if err := c.JobQueue.RegisterBuilder(grpc.JOB_TYPE_DELETION, c.deleteRequestsManager.JobBuilder(), c.cfg.JobsConfig.Deletion.Timeout, c.cfg.JobsConfig.Deletion.MaxRetries); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -406,7 +337,16 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 
 	c.DeleteRequestsGRPCHandler = deletion.NewGRPCRequestHandler(c.deleteRequestsStore, limits)
 
-	c.deleteRequestsManager, err = deletion.NewDeleteRequestsManager(deletionWorkDir, c.deleteRequestsStore, c.cfg.DeleteRequestCancelPeriod, c.cfg.DeleteBatchSize, limits, r)
+	c.deleteRequestsManager, err = deletion.NewDeleteRequestsManager(
+		deletionWorkDir,
+		c.deleteRequestsStore,
+		c.cfg.DeleteRequestCancelPeriod,
+		c.cfg.DeleteBatchSize,
+		limits,
+		c.cfg.HorizontalScalingMode == HorizontalScalingModeMain,
+		client.NewPrefixedObjectClient(objectClient, c.cfg.JobsConfig.Deletion.DeletionManifestStorePrefix),
+		r,
+	)
 	if err != nil {
 		return err
 	}
@@ -466,7 +406,7 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 func (c *Compactor) loop(ctx context.Context) error {
 	if c.cfg.RunOnce {
 		level.Info(util_log.Logger).Log("msg", "running single compaction")
-		err := c.RunCompaction(ctx, false)
+		err := c.tablesManager.runCompaction(ctx, false)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "compaction encountered an error", "err", err)
 		}
@@ -483,9 +423,6 @@ func (c *Compactor) loop(ctx context.Context) error {
 		if c.deleteRequestsStore != nil {
 			defer c.deleteRequestsStore.Stop()
 		}
-		if c.deleteRequestsManager != nil {
-			defer c.deleteRequestsManager.Stop()
-		}
 	}
 
 	syncTicker := time.NewTicker(c.ringPollPeriod)
@@ -493,6 +430,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 
 	var runningCtx context.Context
 	var runningCancel context.CancelFunc
+	var wg sync.WaitGroup
 
 	for {
 		select {
@@ -500,7 +438,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 			if runningCancel != nil {
 				runningCancel()
 			}
-			c.wg.Wait()
+			wg.Wait()
 			level.Info(util_log.Logger).Log("msg", "compactor exiting")
 			return nil
 		case <-syncTicker.C:
@@ -521,7 +459,29 @@ func (c *Compactor) loop(ctx context.Context) error {
 				if !c.running {
 					level.Info(util_log.Logger).Log("msg", "this instance has been chosen to run the compactor, starting compactor")
 					runningCtx, runningCancel = context.WithCancel(ctx)
-					go c.runCompactions(runningCtx)
+
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						c.tablesManager.start(runningCtx)
+					}()
+
+					if c.deleteRequestsManager != nil {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.deleteRequestsManager.Start(runningCtx)
+						}()
+					}
+
+					if c.cfg.HorizontalScalingMode == HorizontalScalingModeMain {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.JobQueue.Start(runningCtx)
+						}()
+					}
+
 					c.running = true
 					c.metrics.compactorRunning.Set(1)
 				}
@@ -530,7 +490,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 				if c.running {
 					level.Info(util_log.Logger).Log("msg", "this instance should no longer run the compactor, stopping compactor")
 					runningCancel()
-					c.wg.Wait()
+					wg.Wait()
 					c.running = false
 					c.metrics.compactorRunning.Set(0)
 					level.Info(util_log.Logger).Log("msg", "compactor stopped")
@@ -540,305 +500,16 @@ func (c *Compactor) loop(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) runCompactions(ctx context.Context) {
-	// To avoid races, wait 1 compaction interval before actually starting the compactor
-	// this allows the ring to settle if there are a lot of ring changes and gives
-	// time for existing compactors to shutdown before this starts to avoid
-	// multiple compactors running at the same time.
-	func() {
-		t := time.NewTimer(c.cfg.CompactionInterval)
-		defer t.Stop()
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("waiting %v for ring to stay stable and previous compactions to finish before starting compactor", c.cfg.CompactionInterval))
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			level.Info(util_log.Logger).Log("msg", "compactor startup delay completed")
-			break
-		}
-	}()
-
-	// do the initial compaction
-	if err := c.RunCompaction(ctx, false); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
-	}
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		ticker := time.NewTicker(c.cfg.CompactionInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if err := c.RunCompaction(ctx, false); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	if c.cfg.RetentionEnabled {
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
-			if err := c.RunCompaction(ctx, true); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
-			}
-
-			ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					if err := c.RunCompaction(ctx, true); err != nil {
-						level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-
-		for _, container := range c.storeContainers {
-			c.wg.Add(1)
-			go func(sc storeContainer) {
-				// starts the chunk sweeper
-				defer func() {
-					sc.sweeper.Stop()
-					c.wg.Done()
-				}()
-				sc.sweeper.Start()
-				<-ctx.Done()
-			}(container)
-		}
-	}
-	level.Info(util_log.Logger).Log("msg", "compactor started")
-}
-
 func (c *Compactor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), c.subservices)
-}
-
-func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	schemaCfg, ok := SchemaPeriodForTable(c.schemaConfig, tableName)
-	if !ok {
-		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
-		return nil
-	}
-
-	indexCompactor, ok := c.indexCompactors[schemaCfg.IndexType]
-	if !ok {
-		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
-	}
-
-	sc, ok := c.storeContainers[schemaCfg.From]
-	if !ok {
-		return fmt.Errorf("index store client not found for period starting at %s", schemaCfg.From.String())
-	}
-
-	for {
-		locked, lockWaiterChan := c.tableLocker.lockTable(tableName)
-		if locked {
-			break
-		}
-		// do not wait for lock to be released if we are only compacting the table since
-		// compaction should happen more frequently than retention and retention anyway compacts un-compacted files as well.
-		if !applyRetention {
-			hasUncompactedIndex, err := tableHasUncompactedIndex(ctx, tableName, sc.indexStorageClient)
-			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to check if table has uncompacted index", "table_name", tableName)
-				hasUncompactedIndex = true
-			}
-
-			if hasUncompactedIndex {
-				c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Inc()
-				level.Warn(util_log.Logger).Log("msg", "skipped compacting table which likely has uncompacted index since it is locked by retention", "table_name", tableName)
-			}
-			return nil
-		}
-
-		// we are applying retention and processing delete requests so,
-		// wait for lock to be released since we can't mark delete requests as processed without checking all the tables
-		select {
-		case <-lockWaiterChan:
-		case <-ctx.Done():
-			return nil
-		}
-	}
-	defer c.tableLocker.unlockTable(tableName)
-
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
-		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
-		return err
-	}
-
-	interval := retention.ExtractIntervalFromTableName(tableName)
-	intervalMayHaveExpiredChunks := false
-	if applyRetention {
-		intervalMayHaveExpiredChunks = c.expirationChecker.IntervalMayHaveExpiredChunks(interval, "")
-	}
-
-	err = table.compact(intervalMayHaveExpiredChunks)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
-		return err
-	}
-
-	if !applyRetention {
-		c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Set(0)
-	}
-	return nil
 }
 
 func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor IndexCompactor) {
 	c.indexCompactors[indexType] = indexCompactor
 }
 
-func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err error) {
-	status := statusSuccess
-	start := time.Now()
-
-	if applyRetention {
-		c.expirationChecker.MarkPhaseStarted()
-	}
-
-	defer func() {
-		if err != nil {
-			status = statusFailure
-		}
-		if applyRetention {
-			c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
-		} else {
-			c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
-		}
-		runtime := time.Since(start)
-		if status == statusSuccess {
-			if applyRetention {
-				c.metrics.applyRetentionOperationDurationSeconds.Set(runtime.Seconds())
-				c.metrics.applyRetentionLastSuccess.SetToCurrentTime()
-			} else {
-				c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
-				c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
-			}
-		}
-
-		if applyRetention {
-			if status == statusSuccess {
-				c.expirationChecker.MarkPhaseFinished()
-			} else {
-				c.expirationChecker.MarkPhaseFailed()
-			}
-		}
-		if !applyRetention && runtime > c.cfg.CompactionInterval {
-			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("last compaction took %s which is longer than the compaction interval of %s, this can lead to duplicate compactors running if not running a standalone compactor instance.", runtime, c.cfg.CompactionInterval))
-		}
-	}()
-
-	var (
-		tables []string
-		// it possible for two periods to use the same storage bucket and path prefix (different indexType or schema version)
-		// so more than one index storage client may end up listing the same set of buckets
-		// avoid including the same table twice in the compact tables list.
-		seen = make(map[string]struct{})
-	)
-	for _, sc := range c.storeContainers {
-		// refresh index list cache since previous compaction would have changed the index files in the object store
-		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
-		tbls, err := sc.indexStorageClient.ListTables(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list tables: %w", err)
-		}
-
-		for _, table := range tbls {
-			if _, ok := seen[table]; ok {
-				continue
-			}
-
-			tables = append(tables, table)
-			seen[table] = struct{}{}
-		}
-	}
-
-	// process most recent tables first
-	SortTablesByRange(tables)
-
-	// apply passed in compaction limits
-	if c.cfg.SkipLatestNTables <= len(tables) {
-		tables = tables[c.cfg.SkipLatestNTables:]
-	}
-	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
-		tables = tables[:c.cfg.TablesToCompact]
-	}
-
-	compactTablesChan := make(chan string)
-	errChan := make(chan error)
-
-	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
-		go func() {
-			var err error
-			defer func() {
-				errChan <- err
-			}()
-
-			for {
-				select {
-				case tableName, ok := <-compactTablesChan:
-					if !ok {
-						return
-					}
-
-					level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
-					err = c.CompactTable(ctx, tableName, applyRetention)
-					if err != nil {
-						return
-					}
-					level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	go func() {
-		for _, tableName := range tables {
-			if tableName == deletion.DeleteRequestsTableName {
-				// we do not want to compact or apply retention on delete requests table
-				continue
-			}
-
-			select {
-			case compactTablesChan <- tableName:
-			case <-ctx.Done():
-				return
-			}
-		}
-
-		close(compactTablesChan)
-	}()
-
-	var firstErr error
-	// read all the errors
-	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
-		err := <-errChan
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	if firstErr != nil {
-		return firstErr
-	}
-
-	return ctx.Err()
+func (c *Compactor) TablesManager() TablesManager {
+	return c.tablesManager
 }
 
 type expirationChecker struct {
@@ -888,6 +559,14 @@ func (e *expirationChecker) DropFromIndex(userID []byte, chk retention.Chunk, la
 
 func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool {
 	return e.retentionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now) && e.deletionExpiryChecker.CanSkipSeries(userID, lbls, seriesID, seriesStart, tableName, now)
+}
+
+func (e *expirationChecker) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
+	if err := e.retentionExpiryChecker.MarkSeriesAsProcessed(userID, seriesID, lbls, tableName); err != nil {
+		return err
+	}
+
+	return e.deletionExpiryChecker.MarkSeriesAsProcessed(userID, seriesID, lbls, tableName)
 }
 
 func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {

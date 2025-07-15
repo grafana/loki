@@ -11,13 +11,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
-	ExceedsLimits(context.Context, *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error)
+	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -34,7 +35,7 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 }
 
 // Implements the ingestLimitsFrontendClient interface.
-func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
 	// We use an FNV-1 of all stream hashes in the request to load balance requests
 	// to limits-frontends instances.
 	h := fnv.New32()
@@ -64,7 +65,7 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 			lastErr = err
 			continue
 		}
-		client := c.(logproto.IngestLimitsFrontendClient)
+		client := c.(proto.IngestLimitsFrontendClient)
 		resp, err := client.ExceedsLimits(ctx, req)
 		if err != nil {
 			lastErr = err
@@ -75,79 +76,103 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 	return nil, lastErr
 }
 
-// exceedsIngestLimitsResult contains the reasons a stream exceeds per-tenant
-// ingest limits.
-type exceedsIngestLimitsResult struct {
-	hash    uint64
-	reasons []string
-}
-
 type ingestLimits struct {
 	client         ingestLimitsFrontendClient
-	limitsFailures prometheus.Counter
+	requests       prometheus.Counter
+	requestsFailed prometheus.Counter
 }
 
 func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
 	return &ingestLimits{
 		client: client,
-		limitsFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_ingest_limits_failures_total",
-			Help: "The total number of failures checking ingest limits.",
+		requests: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_requests_total",
+			Help: "The total number of requests.",
+		}),
+		requestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_requests_failed_total",
+			Help: "The total number of requests that failed.",
 		}),
 	}
 }
 
-// ExceedsLimits returns true if at least one stream exceeds the per-tenant
-// limits, otherwise false. It also returns a slice containing the streams
-// that exceeded the per-tenant limits, and for each stream the reasons it
-// exceeded the limits. This slice can be nil. An error is returned if the
-// limits could not be checked.
-func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) (bool, []exceedsIngestLimitsResult, error) {
+// EnforceLimits checks all streams against the per-tenant limits and returns
+// a slice containing the streams that are accepted (within the per-tenant
+// limits). Any streams that could not have their limits checked are also
+// accepted.
+func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, error) {
+	results, err := l.ExceedsLimits(ctx, tenant, streams)
+	if err != nil {
+		return streams, err
+	}
+	// Fast path. No results means all streams were accepted and there were
+	// no failures, so we can return the input streams.
+	if len(results) == 0 {
+		return streams, nil
+	}
+	// We can do this without allocation if needed, but doing so will modify
+	// the original backing array. See "Filtering without allocation" from
+	// https://go.dev/wiki/SliceTricks.
+	accepted := make([]KeyedStream, 0, len(streams))
+	for _, s := range streams {
+		// Check each stream to see if it failed.
+		// TODO(grobinson): We have an O(N*M) loop here. Need to benchmark if
+		// its faster to do this or if we should create a map instead.
+		var (
+			found  bool
+			reason uint32
+		)
+		for _, res := range results {
+			if res.StreamHash == s.HashKeyNoShard {
+				found = true
+				reason = res.Reason
+				break
+			}
+		}
+		if !found || reason == uint32(limits.ReasonFailed) {
+			accepted = append(accepted, s)
+		}
+	}
+	return accepted, nil
+}
+
+// ExceedsLimits checks all streams against the per-tenant limits. It returns
+// an error if the client failed to send the request or receive a response
+// from the server. Any streams that could not have their limits checked
+// and returned in the results with the reason "ReasonFailed".
+func (l *ingestLimits) ExceedsLimits(
+	ctx context.Context,
+	tenant string,
+	streams []KeyedStream,
+) ([]*proto.ExceedsLimitsResult, error) {
+	l.requests.Inc()
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
-		return false, nil, err
+		l.requestsFailed.Inc()
+		return nil, err
 	}
 	resp, err := l.client.ExceedsLimits(ctx, req)
 	if err != nil {
-		return false, nil, err
+		l.requestsFailed.Inc()
+		return nil, err
 	}
-	if len(resp.Results) == 0 {
-		return false, nil, nil
-	}
-	// A stream can exceed limits for multiple reasons. For example, exceeding
-	// both per-tenant stream limit and rate limits. We organize the reasons
-	// for each stream into a slice, and then add that to the results.
-	reasonsForHashes := make(map[uint64][]string)
-	for _, result := range resp.Results {
-		reasons := reasonsForHashes[result.StreamHash]
-		reasons = append(reasons, result.Reason)
-		reasonsForHashes[result.StreamHash] = reasons
-	}
-	result := make([]exceedsIngestLimitsResult, 0, len(reasonsForHashes))
-	for hash, reasons := range reasonsForHashes {
-		result = append(result, exceedsIngestLimitsResult{
-			hash:    hash,
-			reasons: reasons,
-		})
-	}
-	return true, result, nil
+	return resp.Results, nil
 }
 
-func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*logproto.ExceedsLimitsRequest, error) {
+func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
-	streamMetadata := make([]*logproto.StreamMetadata, 0, len(streams))
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
-			StreamHash:             stream.HashKeyNoShard,
-			EntriesSize:            entriesSize,
-			StructuredMetadataSize: structuredMetadataSize,
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+			StreamHash: stream.HashKeyNoShard,
+			TotalSize:  entriesSize + structuredMetadataSize,
 		})
 	}
-	return &logproto.ExceedsLimitsRequest{
+	return &proto.ExceedsLimitsRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

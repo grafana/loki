@@ -414,6 +414,9 @@ func (e CountMinSketchEvalExpr) String() string {
 
 		sb.WriteString(d.String())
 	}
+	if len(e.downstreams) == 0 {
+		sb.WriteString(e.SampleExpr.String())
+	}
 	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
 }
 

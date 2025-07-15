@@ -64,10 +64,8 @@ func NewMergeQuerier(primaries, secondaries []Querier, mergeFn VerticalSeriesMer
 		queriers = append(queriers, newSecondaryQuerierFrom(q))
 	}
 
-	concurrentSelect := false
-	if len(secondaries) > 0 {
-		concurrentSelect = true
-	}
+	concurrentSelect := len(secondaries) > 0
+
 	return &querierAdapter{&mergeGenericQuerier{
 		mergeFn:          (&seriesMergerAdapter{VerticalSeriesMergeFunc: mergeFn}).Merge,
 		queriers:         queriers,
@@ -111,10 +109,8 @@ func NewMergeChunkQuerier(primaries, secondaries []ChunkQuerier, mergeFn Vertica
 		queriers = append(queriers, newSecondaryQuerierFromChunk(q))
 	}
 
-	concurrentSelect := false
-	if len(secondaries) > 0 {
-		concurrentSelect = true
-	}
+	concurrentSelect := len(secondaries) > 0
+
 	return &chunkQuerierAdapter{&mergeGenericQuerier{
 		mergeFn:          (&chunkSeriesMergerAdapter{VerticalChunkSeriesMergeFunc: mergeFn}).Merge,
 		queriers:         queriers,
@@ -133,7 +129,7 @@ func filterChunkQueriers(qs []ChunkQuerier) []ChunkQuerier {
 }
 
 // Select returns a set of series that matches the given label matchers.
-func (q *mergeGenericQuerier) Select(ctx context.Context, sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) genericSeriesSet {
+func (q *mergeGenericQuerier) Select(ctx context.Context, _ bool, hints *SelectHints, matchers ...*labels.Matcher) genericSeriesSet {
 	seriesSets := make([]genericSeriesSet, 0, len(q.queriers))
 	var limit int
 	if hints != nil {

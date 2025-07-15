@@ -107,7 +107,7 @@ func (m *Multi) indexFor(t time.Time) Interface {
 type noopInvertedIndex struct{}
 
 func (noopInvertedIndex) Add(_ []logproto.LabelAdapter, _ model.Fingerprint) labels.Labels {
-	return nil
+	return labels.EmptyLabels()
 }
 
 func (noopInvertedIndex) Delete(_ labels.Labels, _ model.Fingerprint) {}

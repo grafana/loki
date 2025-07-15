@@ -24,7 +24,7 @@ type debugReader struct {
 	l *log.Logger
 }
 
-func (d *debugReader) log(method string, res interface{}, err error) {
+func (d *debugReader) log(method string, res any, err error) {
 	if err != nil {
 		d.l.Printf("(%T).%s() → ERROR: %v", d.r, method, err)
 	} else {
@@ -129,7 +129,7 @@ type debugWriter struct {
 	l *log.Logger
 }
 
-func (d *debugWriter) log(method string, arg interface{}, err error) {
+func (d *debugWriter) log(method string, arg any, err error) {
 	if err != nil {
 		d.l.Printf("(%T).%s(%#v) → ERROR: %v", d.w, method, arg, err)
 	} else {

@@ -1,5 +1,117 @@
 # Change Log
 
+## [v1.152.0] - 2025-06-16
+
+- #846 - @harshmaru7 - GenAI Knowledgebase endpoints 
+- #849 - @danaelhe - Databases: Add mongo_user_settings
+
+## [v1.151.0] - 2025-06-03
+
+- #847 - @thearyanahmed - Apps add instance alias
+
+## [v1.150.0] - 2025-05-29
+
+- #844 - @thearyanahmed - Add App Platform Edge Control settings
+
+## [v1.149.0] - 2025-05-27
+
+- #839 - @asaha2 - Rename as vpc nat gateways
+- #841 - @d-honeybadger - expose custom Kubernetes CA expanders
+- #840 - @wez470 - partner-network-connect: Add redundancy zone
+- #836 - @asaha2 - Support gateway size config
+- #834 - @anup-deka - GenAI Agent Service
+- #835 - @asaha2 - Fix url opts encoding for egress-gateways
+
+## [v1.148.0] - 2025-05-14
+
+- #824 - @asaha2 - Introduce egress-gateway service api
+
+## [v1.147.0] - 2025-05-14
+
+- #831 - @thearyanahmed - Implement GetAppInstances - allowing users to list currently running compute instances
+
+## [v1.146.1] - 2025-05-09
+
+- #828 - @thearyanahmed - Pass GetExec() request params as query params
+
+## [v1.146.0] - 2025-05-09
+
+- #826 - @ssaengs - APPS-5889: add liveness health check, update comment
+- #820 - @thearyanahmed - Add support to exec into a specific instance
+- #823 - @blesswinsamuel - APPS-10997 Add AUTOSCALE_FAILED alert
+
+## [v1.145.0] - 2025-04-30
+
+- #821 - @greeshmapill - APPS-11076: Add support for VALKEY as a database engine option
+- #817 - @ZachEddy - Bring app spec changes for subdomain routing to godo
+
+## [v1.144.0] - 2025-04-24
+
+- #818 - @dweinshenker - Support Valkey in DatabaseOptions
+
+## [v1.143.0] - 2025-04-22
+
+- #815 - @StephenVarela - Support Load Balancers tls-cipher-policy
+
+## [v1.142.0] - 2025-03-27
+
+- #813 - @lfundaro-do - partner-network-connect: fix typo
+- #811 - @lfundaro-do - fix partner attachment rename
+- #810 - @apinonformoso - VPC-4359: remove custom unmarshaler for PNCs
+- #809 - @apinonformoso - hotfix: json field name
+- #808 - @apinonformoso - fix partner network connect json tags
+- #807 - @bentranter - Bump Go version to v1.23
+
+## [v1.141.0] - 2025-03-20
+
+- #805 - @singhsaubhikdo - BLOCK-4316: Adds region param in ListSnapshot for resource type volume
+- #802 - @apinonformoso - VPC-4312: rename partner interconnect attachment to partner network connect
+- #774 - @blesswinsamuel - APPS-10284 Remove "closed beta" note in archive feature to prep for GA release
+- #797 - @kperath - add support for cluster status messages
+
+## [v1.140.0] - 2025-03-14
+
+- #800 - @lee-aaron - support Spaces Keys GET by Access Key ID
+
+## [v1.139.0] - 2025-03-12
+
+- #798 - @dylanrhysscott - Fix: Update godo to use simplified template response and provide consistent struct naming
+- #796 - @apinonformoso - fix partner interconnect attachment json request response
+- #795 - @dylanrhysscott - CON-11904 Ensure taints are correctly returned via node template endpoint
+- #794 - @brunograsselli - Update partner interconnect attachment comments
+- #793 - @apinonformoso - add auth_key field
+- #789 - @guptado - [VPC-3917] Update get service key response model
+
+## [v1.138.0] - 2025-02-18
+
+- #785 - @guptado - Support partner interconnect GetBgpAuthKey and RegenerateServiceKey operations
+- #787 - @andrewsomething - ci: upgrade to actions/cache@v4
+- #786 - @m3co-code - add flags for doks routing-agent plugin
+- #784 - @asaha2 - Support name and id filters for list op
+
+## [v1.137.0] - 2025-02-12
+
+- #782 - @apinonformoso - fix partner interconnect json tag
+- #781 - @dylanrhysscott - CON-11810 Implement GetNodePoolTemplate endpoint for DOKS godo client
+
+## [v1.136.0] - 2025-01-28
+
+- #776 - @danaelhe - Databases: Support online-migrations
+- #777 - @apinonformoso - update bgp to be a pointer
+
+##  [v1.135.0] - 2025-01-27
+- #766 - @dhij - kubernetes: add cluster autoscaler config
+- #775 - @jvasilevsky - LBASA-3620: add network_stack field to load balancers model
+- #773 - @blesswinsamuel - Add field to customize the offline page during app maintenance
+
+##  [v1.134.0] - 2025-01-15
+- #771 - @d-honeybadger - add ID field to KubernetesClusterUser response
+- #768 - @lee-aaron - support Spaces Keys API
+
+##  [v1.133.0] - 2025-01-10
+- #769 - @guptado - support partner interconnect attachment operations
+- #767 - @loosla - [kubernetes]: make kubernetes maintenance_policy day case insensitive
+
 ##  [v1.132.0] - 2024-12-17
 - #764 - @greeshmapill - APPS-9365: Add bitbucket source to App Spec
 

@@ -14,11 +14,50 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 - [BUGFIX] Use variable instead of root context in _helpers.tpl.
+- [FEATURE] Add support for templated `loki.operational_config` [#17045](https://github.com/grafana/loki/pull/17045)
+- [ENHANCEMENT] Allow specifying additional labels for memcached statefulsets volume claim templates [#15554](https://github.com/grafana/loki/pull/15554)
+- [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
+- [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
+- [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
+
+## 6.31.0
+
+- [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
+- [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose [#17742](https://github.com/grafana/loki/pull/17742)
+- [FEATURE] Allow external memcached setup [#17432](https://github.com/grafana/loki/pull/17432)
+- [FEATURE] Add block_builder config to helm chart [#17451](https://github.com/grafana/loki/pull/17451)
+- [FEATURE] Support bypass all s3/gcs/azure config in object_store [#17597](https://github.com/grafana/loki/pull/17597)
+- [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+- [BUGFIX] Fix custom gateway nginx config rendering error [#18167](https://github.com/grafana/loki/pull/18167)
+- [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
+- [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
+- [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
+
+## 6.30.1
+
+- [BUGFIX] Add livenessProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191#issuecomment-2769843275)
+
+## 6.29.1
+
+- [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
+- [FEATURE] Added affinity property to the loki-canary deamonset
+- [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
+- [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+- [FEATURE] Add config support for external memcache cluster by setting the following config:
+    memcached:
+        enabled: false # <- setting false here
+    resultsCache:
+        addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
+    chunksCache:
+        addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
 
 ## 6.29.0
 
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
+- [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
 
 ## 6.28.0
 

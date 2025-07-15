@@ -37,13 +37,13 @@ func NewFloat64Slice() Float64Slice {
 
 // AsRaw returns a copy of the []float64 slice.
 func (ms Float64Slice) AsRaw() []float64 {
-	return copyFloat64Slice(nil, *ms.getOrig())
+	return internal.CopyOrigFloat64Slice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []float64 into the slice Float64Slice.
 func (ms Float64Slice) FromRaw(val []float64) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = copyFloat64Slice(*ms.getOrig(), val)
+	*ms.getOrig() = internal.CopyOrigFloat64Slice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []float64 slice value.
@@ -106,22 +106,35 @@ func (ms Float64Slice) Append(elms ...float64) {
 func (ms Float64Slice) MoveTo(dest Float64Slice) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
+	*ms.getOrig() = nil
+}
+
+// MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
+// The current slice will be cleared.
+func (ms Float64Slice) MoveAndAppendTo(dest Float64Slice) {
+	ms.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	if *dest.getOrig() == nil {
+		// We can simply move the entire vector and avoid any allocations.
+		*dest.getOrig() = *ms.getOrig()
+	} else {
+		*dest.getOrig() = append(*dest.getOrig(), *ms.getOrig()...)
+	}
 	*ms.getOrig() = nil
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Float64Slice) CopyTo(dest Float64Slice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = copyFloat64Slice(*dest.getOrig(), *ms.getOrig())
+	*dest.getOrig() = internal.CopyOrigFloat64Slice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another Float64Slice
 func (ms Float64Slice) Equal(val Float64Slice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
-}
-
-func copyFloat64Slice(dst, src []float64) []float64 {
-	dst = dst[:0]
-	return append(dst, src...)
 }

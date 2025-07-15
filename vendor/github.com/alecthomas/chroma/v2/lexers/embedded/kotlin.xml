@@ -3,6 +3,7 @@
     <name>Kotlin</name>
     <alias>kotlin</alias>
     <filename>*.kt</filename>
+    <filename>*.kts</filename>
     <mime_type>text/x-kotlin</mime_type>
     <dot_all>true</dot_all>
   </config>

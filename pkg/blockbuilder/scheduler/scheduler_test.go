@@ -29,6 +29,9 @@ func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
 func (m *mockOffsetManager) GroupLag(_ context.Context, _ int64) (map[int32]partition.Lag, error) {
 	return nil, nil
 }
+func (m *mockOffsetManager) NextOffset(_ context.Context, _ int32, _ time.Time) (int64, error) {
+	return 0, nil
+}
 func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
 	return 0, nil
 }

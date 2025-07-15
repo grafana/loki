@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -324,16 +325,16 @@ func (m *Manager) LoadGroups(
 
 			rules := make([]Rule, 0, len(rg.Rules))
 			for _, r := range rg.Rules {
-				expr, err := m.opts.GroupLoader.Parse(r.Expr.Value)
+				expr, err := m.opts.GroupLoader.Parse(r.Expr)
 				if err != nil {
 					return nil, []error{fmt.Errorf("%s: %w", fn, err)}
 				}
 
 				mLabels := FromMaps(rg.Labels, r.Labels)
 
-				if r.Alert.Value != "" {
+				if r.Alert != "" {
 					rules = append(rules, NewAlertingRule(
-						r.Alert.Value,
+						r.Alert,
 						expr,
 						time.Duration(r.For),
 						time.Duration(r.KeepFiringFor),
@@ -347,7 +348,7 @@ func (m *Manager) LoadGroups(
 					continue
 				}
 				rules = append(rules, NewRecordingRule(
-					r.Record.Value,
+					r.Record,
 					expr,
 					mLabels,
 				))
@@ -429,7 +430,7 @@ type Sender interface {
 
 // SendAlerts implements the rules.NotifyFunc for a Notifier.
 func SendAlerts(s Sender, externalURL string) NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*Alert) {
+	return func(_ context.Context, expr string, alerts ...*Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -484,7 +485,7 @@ type ConcurrentRules []int
 // Its purpose is to bound the amount of concurrency in rule evaluations to avoid overwhelming the Prometheus
 // server with additional query load. Concurrency is controlled globally, not on a per-group basis.
 type RuleConcurrencyController interface {
-	// SplitGroupIntoBatches returns an ordered slice of of ConcurrentRules, which are batches of rules that can be evaluated concurrently.
+	// SplitGroupIntoBatches returns an ordered slice of ConcurrentRules, which are batches of rules that can be evaluated concurrently.
 	// The rules are represented by their index from the input rule group.
 	SplitGroupIntoBatches(ctx context.Context, group *Group) []ConcurrentRules
 
@@ -508,7 +509,7 @@ func newRuleConcurrencyController(maxConcurrency int64) RuleConcurrencyControlle
 	}
 }
 
-func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, rule Rule) bool {
+func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
 	return c.sema.TryAcquire(1)
 }
 
@@ -561,7 +562,7 @@ func (c sequentialRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule)
 	return false
 }
 
-func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
+func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, _ *Group) []ConcurrentRules {
 	return nil
 }
 
@@ -578,4 +579,33 @@ func FromMaps(maps ...map[string]string) labels.Labels {
 	}
 
 	return labels.FromMap(mLables)
+}
+
+// ParseFiles parses the rule files corresponding to glob patterns.
+func ParseFiles(patterns []string) error {
+	files := map[string]string{}
+	for _, pat := range patterns {
+		fns, err := filepath.Glob(pat)
+		if err != nil {
+			return fmt.Errorf("failed retrieving rule files for %q: %w", pat, err)
+		}
+		for _, fn := range fns {
+			absPath, err := filepath.Abs(fn)
+			if err != nil {
+				absPath = fn
+			}
+			cleanPath, err := filepath.EvalSymlinks(absPath)
+			if err != nil {
+				return fmt.Errorf("failed evaluating rule file path %q (pattern: %q): %w", absPath, pat, err)
+			}
+			files[cleanPath] = pat
+		}
+	}
+	for fn, pat := range files {
+		_, errs := rulefmt.ParseFile(fn, false)
+		if len(errs) > 0 {
+			return fmt.Errorf("parse rules from file %q (pattern: %q): %w", fn, pat, errors.Join(errs...))
+		}
+	}
+	return nil
 }

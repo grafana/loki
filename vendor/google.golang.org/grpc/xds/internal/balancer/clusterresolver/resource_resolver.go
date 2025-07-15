@@ -38,7 +38,7 @@ type resourceUpdate struct {
 	priorities []priorityConfig
 	// To be invoked once the update is completely processed, or is dropped in
 	// favor of a newer update.
-	onDone xdsresource.OnDoneFunc
+	onDone func()
 }
 
 // topLevelResolver is used by concrete endpointsResolver implementations for
@@ -50,7 +50,7 @@ type topLevelResolver interface {
 	// endpointsResolver implementation. The onDone callback is to be invoked
 	// once the update is completely processed, or is dropped in favor of a
 	// newer update.
-	onUpdate(onDone xdsresource.OnDoneFunc)
+	onUpdate(onDone func())
 }
 
 // endpointsResolver wraps the functionality to resolve a given resource name to
@@ -282,7 +282,7 @@ func (rr *resourceResolver) stop(closing bool) {
 // clusterresolver LB policy.
 //
 // Caller must hold rr.mu.
-func (rr *resourceResolver) generateLocked(onDone xdsresource.OnDoneFunc) {
+func (rr *resourceResolver) generateLocked(onDone func()) {
 	var ret []priorityConfig
 	for _, rDM := range rr.children {
 		u, ok := rDM.r.lastUpdate()
@@ -312,7 +312,7 @@ func (rr *resourceResolver) generateLocked(onDone xdsresource.OnDoneFunc) {
 	rr.updateChannel <- &resourceUpdate{priorities: ret, onDone: onDone}
 }
 
-func (rr *resourceResolver) onUpdate(onDone xdsresource.OnDoneFunc) {
+func (rr *resourceResolver) onUpdate(onDone func()) {
 	handleUpdate := func(context.Context) {
 		rr.mu.Lock()
 		rr.generateLocked(onDone)

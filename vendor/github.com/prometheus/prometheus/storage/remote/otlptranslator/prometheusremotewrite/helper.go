@@ -25,10 +25,12 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
@@ -36,8 +38,6 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
-
-	prometheustranslator "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 )
 
 const (
@@ -54,10 +54,11 @@ const (
 	maxExemplarRunes = 128
 	// Trace and Span id keys are defined as part of the spec:
 	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification%2Fmetrics%2Fdatamodel.md#exemplars-2
-	traceIDKey       = "trace_id"
-	spanIDKey        = "span_id"
-	infoType         = "info"
-	targetMetricName = "target_info"
+	traceIDKey           = "trace_id"
+	spanIDKey            = "span_id"
+	infoType             = "info"
+	targetMetricName     = "target_info"
+	defaultLookbackDelta = 5 * time.Minute
 )
 
 type bucketBoundsData struct {
@@ -116,27 +117,27 @@ var seps = []byte{'\xff'}
 // Unpaired string values are ignored. String pairs overwrite OTLP labels if collisions happen and
 // if logOnOverwrite is true, the overwrite is logged. Resulting label names are sanitized.
 // If settings.PromoteResourceAttributes is not empty, it's a set of resource attributes that should be promoted to labels.
-func createAttributes(resource pcommon.Resource, attributes pcommon.Map, settings Settings,
-	ignoreAttrs []string, logOnOverwrite bool, extras ...string) []prompb.Label {
+func createAttributes(resource pcommon.Resource, attributes pcommon.Map, scope scope, settings Settings,
+	ignoreAttrs []string, logOnOverwrite bool, extras ...string,
+) []prompb.Label {
 	resourceAttrs := resource.Attributes()
 	serviceName, haveServiceName := resourceAttrs.Get(conventions.AttributeServiceName)
 	instance, haveInstanceID := resourceAttrs.Get(conventions.AttributeServiceInstanceID)
 
-	promotedAttrs := make([]prompb.Label, 0, len(settings.PromoteResourceAttributes))
-	for _, name := range settings.PromoteResourceAttributes {
-		if value, exists := resourceAttrs.Get(name); exists {
-			promotedAttrs = append(promotedAttrs, prompb.Label{Name: name, Value: value.AsString()})
-		}
-	}
-	sort.Stable(ByLabelName(promotedAttrs))
+	promotedAttrs := settings.PromoteResourceAttributes.promotedAttributes(resourceAttrs)
 
-	// Calculate the maximum possible number of labels we could return so we can preallocate l
-	maxLabelCount := attributes.Len() + len(settings.ExternalLabels) + len(promotedAttrs) + len(extras)/2
+	promoteScope := settings.PromoteScopeMetadata && scope.name != ""
+	scopeLabelCount := 0
+	if promoteScope {
+		// Include name, version and schema URL.
+		scopeLabelCount = scope.attributes.Len() + 3
+	}
+	// Calculate the maximum possible number of labels we could return so we can preallocate l.
+	maxLabelCount := attributes.Len() + len(settings.ExternalLabels) + len(promotedAttrs) + scopeLabelCount + len(extras)/2
 
 	if haveServiceName {
 		maxLabelCount++
 	}
-
 	if haveInstanceID {
 		maxLabelCount++
 	}
@@ -156,11 +157,9 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, setting
 
 	// map ensures no duplicate label names.
 	l := make(map[string]string, maxLabelCount)
+	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: settings.AllowUTF8}
 	for _, label := range labels {
-		finalKey := label.Name
-		if !settings.AllowUTF8 {
-			finalKey = prometheustranslator.NormalizeLabel(finalKey)
-		}
+		finalKey := labelNamer.Build(label.Name)
 		if existingValue, alreadyExists := l[finalKey]; alreadyExists {
 			l[finalKey] = existingValue + ";" + label.Value
 		} else {
@@ -169,16 +168,24 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, setting
 	}
 
 	for _, lbl := range promotedAttrs {
-		normalized := lbl.Name
-		if !settings.AllowUTF8 {
-			normalized = prometheustranslator.NormalizeLabel(normalized)
-		}
+		normalized := labelNamer.Build(lbl.Name)
 		if _, exists := l[normalized]; !exists {
 			l[normalized] = lbl.Value
 		}
 	}
+	if promoteScope {
+		l["otel_scope_name"] = scope.name
+		l["otel_scope_version"] = scope.version
+		l["otel_scope_schema_url"] = scope.schemaURL
+		scope.attributes.Range(func(k string, v pcommon.Value) bool {
+			name := "otel_scope_" + k
+			name = labelNamer.Build(name)
+			l[name] = v.AsString()
+			return true
+		})
+	}
 
-	// Map service.name + service.namespace to job
+	// Map service.name + service.namespace to job.
 	if haveServiceName {
 		val := serviceName.AsString()
 		if serviceNamespace, ok := resourceAttrs.Get(conventions.AttributeServiceNamespace); ok {
@@ -186,14 +193,14 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, setting
 		}
 		l[model.JobLabel] = val
 	}
-	// Map service.instance.id to instance
+	// Map service.instance.id to instance.
 	if haveInstanceID {
 		l[model.InstanceLabel] = instance.AsString()
 	}
 	for key, value := range settings.ExternalLabels {
-		// External labels have already been sanitized
+		// External labels have already been sanitized.
 		if _, alreadyExists := l[key]; alreadyExists {
-			// Skip external labels if they are overridden by metric attributes
+			// Skip external labels if they are overridden by metric attributes.
 			continue
 		}
 		l[key] = value
@@ -209,9 +216,9 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, setting
 		if found && logOnOverwrite {
 			log.Println("label " + name + " is overwritten. Check if Prometheus reserved labels are used.")
 		}
-		// internal labels should be maintained
-		if !settings.AllowUTF8 && !(len(name) > 4 && name[:2] == "__" && name[len(name)-2:] == "__") {
-			name = prometheustranslator.NormalizeLabel(name)
+		// internal labels should be maintained.
+		if len(name) <= 4 || name[:2] != "__" || name[len(name)-2:] != "__" {
+			name = labelNamer.Build(name)
 		}
 		l[name] = extras[i+1]
 	}
@@ -224,21 +231,19 @@ func createAttributes(resource pcommon.Resource, attributes pcommon.Map, setting
 	return labels
 }
 
-// isValidAggregationTemporality checks whether an OTel metric has a valid
-// aggregation temporality for conversion to a Prometheus metric.
-func isValidAggregationTemporality(metric pmetric.Metric) bool {
+func aggregationTemporality(metric pmetric.Metric) (pmetric.AggregationTemporality, bool, error) {
 	//exhaustive:enforce
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge, pmetric.MetricTypeSummary:
-		return true
+		return 0, false, nil
 	case pmetric.MetricTypeSum:
-		return metric.Sum().AggregationTemporality() == pmetric.AggregationTemporalityCumulative
+		return metric.Sum().AggregationTemporality(), true, nil
 	case pmetric.MetricTypeHistogram:
-		return metric.Histogram().AggregationTemporality() == pmetric.AggregationTemporalityCumulative
+		return metric.Histogram().AggregationTemporality(), true, nil
 	case pmetric.MetricTypeExponentialHistogram:
-		return metric.ExponentialHistogram().AggregationTemporality() == pmetric.AggregationTemporalityCumulative
+		return metric.ExponentialHistogram().AggregationTemporality(), true, nil
 	}
-	return false
+	return 0, false, fmt.Errorf("could not get aggregation temporality for %s as it has unsupported metric type %s", metric.Name(), metric.Type())
 }
 
 // addHistogramDataPoints adds OTel histogram data points to the corresponding Prometheus time series
@@ -249,7 +254,8 @@ func isValidAggregationTemporality(metric pmetric.Metric) bool {
 // However, work is under way to resolve this shortcoming through a feature called native histograms custom buckets:
 // https://github.com/prometheus/prometheus/issues/13485.
 func (c *PrometheusConverter) addHistogramDataPoints(ctx context.Context, dataPoints pmetric.HistogramDataPointSlice,
-	resource pcommon.Resource, settings Settings, baseName string) error {
+	resource pcommon.Resource, settings Settings, baseName string, scope scope,
+) error {
 	for x := 0; x < dataPoints.Len(); x++ {
 		if err := c.everyN.checkContext(ctx); err != nil {
 			return err
@@ -257,7 +263,7 @@ func (c *PrometheusConverter) addHistogramDataPoints(ctx context.Context, dataPo
 
 		pt := dataPoints.At(x)
 		timestamp := convertTimeStamp(pt.Timestamp())
-		baseLabels := createAttributes(resource, pt.Attributes(), settings, nil, false)
+		baseLabels := createAttributes(resource, pt.Attributes(), scope, settings, nil, false)
 
 		// If the sum is unset, it indicates the _sum metric point should be
 		// omitted
@@ -273,7 +279,6 @@ func (c *PrometheusConverter) addHistogramDataPoints(ctx context.Context, dataPo
 
 			sumlabels := createLabels(baseName+sumStr, baseLabels)
 			c.addSample(sum, sumlabels)
-
 		}
 
 		// treat count as a sample in an individual TimeSeries
@@ -413,43 +418,54 @@ func getPromExemplars[T exemplarType](ctx context.Context, everyN *everyNTimes, 
 	return promExemplars, nil
 }
 
-// mostRecentTimestampInMetric returns the latest timestamp in a batch of metrics
-func mostRecentTimestampInMetric(metric pmetric.Metric) pcommon.Timestamp {
-	var ts pcommon.Timestamp
+// findMinAndMaxTimestamps returns the minimum of minTimestamp and the earliest timestamp in metric and
+// the maximum of maxTimestamp and the latest timestamp in metric, respectively.
+func findMinAndMaxTimestamps(metric pmetric.Metric, minTimestamp, maxTimestamp pcommon.Timestamp) (pcommon.Timestamp, pcommon.Timestamp) {
 	// handle individual metric based on type
 	//exhaustive:enforce
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
 		dataPoints := metric.Gauge().DataPoints()
 		for x := 0; x < dataPoints.Len(); x++ {
-			ts = max(ts, dataPoints.At(x).Timestamp())
+			ts := dataPoints.At(x).Timestamp()
+			minTimestamp = min(minTimestamp, ts)
+			maxTimestamp = max(maxTimestamp, ts)
 		}
 	case pmetric.MetricTypeSum:
 		dataPoints := metric.Sum().DataPoints()
 		for x := 0; x < dataPoints.Len(); x++ {
-			ts = max(ts, dataPoints.At(x).Timestamp())
+			ts := dataPoints.At(x).Timestamp()
+			minTimestamp = min(minTimestamp, ts)
+			maxTimestamp = max(maxTimestamp, ts)
 		}
 	case pmetric.MetricTypeHistogram:
 		dataPoints := metric.Histogram().DataPoints()
 		for x := 0; x < dataPoints.Len(); x++ {
-			ts = max(ts, dataPoints.At(x).Timestamp())
+			ts := dataPoints.At(x).Timestamp()
+			minTimestamp = min(minTimestamp, ts)
+			maxTimestamp = max(maxTimestamp, ts)
 		}
 	case pmetric.MetricTypeExponentialHistogram:
 		dataPoints := metric.ExponentialHistogram().DataPoints()
 		for x := 0; x < dataPoints.Len(); x++ {
-			ts = max(ts, dataPoints.At(x).Timestamp())
+			ts := dataPoints.At(x).Timestamp()
+			minTimestamp = min(minTimestamp, ts)
+			maxTimestamp = max(maxTimestamp, ts)
 		}
 	case pmetric.MetricTypeSummary:
 		dataPoints := metric.Summary().DataPoints()
 		for x := 0; x < dataPoints.Len(); x++ {
-			ts = max(ts, dataPoints.At(x).Timestamp())
+			ts := dataPoints.At(x).Timestamp()
+			minTimestamp = min(minTimestamp, ts)
+			maxTimestamp = max(maxTimestamp, ts)
 		}
 	}
-	return ts
+	return minTimestamp, maxTimestamp
 }
 
 func (c *PrometheusConverter) addSummaryDataPoints(ctx context.Context, dataPoints pmetric.SummaryDataPointSlice, resource pcommon.Resource,
-	settings Settings, baseName string) error {
+	settings Settings, baseName string, scope scope,
+) error {
 	for x := 0; x < dataPoints.Len(); x++ {
 		if err := c.everyN.checkContext(ctx); err != nil {
 			return err
@@ -457,7 +473,7 @@ func (c *PrometheusConverter) addSummaryDataPoints(ctx context.Context, dataPoin
 
 		pt := dataPoints.At(x)
 		timestamp := convertTimeStamp(pt.Timestamp())
-		baseLabels := createAttributes(resource, pt.Attributes(), settings, nil, false)
+		baseLabels := createAttributes(resource, pt.Attributes(), scope, settings, nil, false)
 
 		// treat sum as a sample in an individual TimeSeries
 		sum := &prompb.Sample{
@@ -563,7 +579,7 @@ func (c *PrometheusConverter) getOrCreateTimeSeries(lbls []prompb.Label) (*promp
 // addTimeSeriesIfNeeded adds a corresponding time series if it doesn't already exist.
 // If the time series doesn't already exist, it gets added with startTimestamp for its value and timestamp for its timestamp,
 // both converted to milliseconds.
-func (c *PrometheusConverter) addTimeSeriesIfNeeded(lbls []prompb.Label, startTimestamp pcommon.Timestamp, timestamp pcommon.Timestamp) {
+func (c *PrometheusConverter) addTimeSeriesIfNeeded(lbls []prompb.Label, startTimestamp, timestamp pcommon.Timestamp) {
 	ts, created := c.getOrCreateTimeSeries(lbls)
 	if created {
 		ts.Samples = []prompb.Sample{
@@ -577,8 +593,8 @@ func (c *PrometheusConverter) addTimeSeriesIfNeeded(lbls []prompb.Label, startTi
 }
 
 // addResourceTargetInfo converts the resource to the target info metric.
-func addResourceTargetInfo(resource pcommon.Resource, settings Settings, timestamp pcommon.Timestamp, converter *PrometheusConverter) {
-	if settings.DisableTargetInfo || timestamp == 0 {
+func addResourceTargetInfo(resource pcommon.Resource, settings Settings, earliestTimestamp, latestTimestamp time.Time, converter *PrometheusConverter) {
+	if settings.DisableTargetInfo {
 		return
 	}
 
@@ -610,7 +626,7 @@ func addResourceTargetInfo(resource pcommon.Resource, settings Settings, timesta
 		// Do not pass identifying attributes as ignoreAttrs below.
 		identifyingAttrs = nil
 	}
-	labels := createAttributes(resource, attributes, settings, identifyingAttrs, false, model.MetricNameLabel, name)
+	labels := createAttributes(resource, attributes, scope{}, settings, identifyingAttrs, false, model.MetricNameLabel, name)
 	haveIdentifier := false
 	for _, l := range labels {
 		if l.Name == model.JobLabel || l.Name == model.InstanceLabel {
@@ -624,15 +640,30 @@ func addResourceTargetInfo(resource pcommon.Resource, settings Settings, timesta
 		return
 	}
 
-	sample := &prompb.Sample{
-		Value: float64(1),
-		// convert ns to ms
-		Timestamp: convertTimeStamp(timestamp),
+	// Generate target_info samples starting at earliestTimestamp and ending at latestTimestamp,
+	// with a sample at every interval between them.
+	// Use an interval corresponding to half of the lookback delta, to ensure that target_info samples are found
+	// for the entirety of the relevant period.
+	if settings.LookbackDelta == 0 {
+		settings.LookbackDelta = defaultLookbackDelta
 	}
-	converter.addSample(sample, labels)
+	interval := settings.LookbackDelta / 2
+	ts, _ := converter.getOrCreateTimeSeries(labels)
+	for timestamp := earliestTimestamp; timestamp.Before(latestTimestamp); timestamp = timestamp.Add(interval) {
+		ts.Samples = append(ts.Samples, prompb.Sample{
+			Value:     float64(1),
+			Timestamp: timestamp.UnixMilli(),
+		})
+	}
+	if len(ts.Samples) == 0 || ts.Samples[len(ts.Samples)-1].Timestamp < latestTimestamp.UnixMilli() {
+		ts.Samples = append(ts.Samples, prompb.Sample{
+			Value:     float64(1),
+			Timestamp: latestTimestamp.UnixMilli(),
+		})
+	}
 }
 
-// convertTimeStamp converts OTLP timestamp in ns to timestamp in ms
+// convertTimeStamp converts OTLP timestamp in ns to timestamp in ms.
 func convertTimeStamp(timestamp pcommon.Timestamp) int64 {
 	return int64(timestamp) / 1_000_000
 }

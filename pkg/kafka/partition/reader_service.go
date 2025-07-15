@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 const (
@@ -35,12 +36,14 @@ type serviceMetrics struct {
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 	return &serviceMetrics{
 		partition: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_ingest_storage_reader_partition",
-			Help: "The partition ID assigned to this reader.",
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_partition",
+			Help:      "The partition ID assigned to this reader.",
 		}, []string{"id"}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_ingest_storage_reader_phase",
-			Help: "The current phase of the consumer.",
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_phase",
+			Help:      "The current phase of the consumer.",
 		}, []string{"phase"}),
 	}
 }
@@ -76,12 +79,7 @@ func NewReaderService(
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg)
-	reader, err := NewKafkaReader(
-		kafkaCfg,
-		partitionID,
-		logger,
-		readerMetrics,
-	)
+	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
