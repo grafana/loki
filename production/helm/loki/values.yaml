@@ -1184,7 +1184,7 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
-    # -- Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block.
+    # -- Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.
     locationSnippet: ""
     # -- Allows customizing the `client_max_body_size` directive
     clientMaxBodySize: 4M
