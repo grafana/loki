@@ -2052,6 +2052,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -2065,6 +2066,15 @@ true
 			<td>Enable creating PVCs for the chunks-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6294,6 +6304,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.operational_config</td>
+			<td>object</td>
+			<td>Optional operational configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.pattern_ingester</td>
 			<td>object</td>
 			<td>Optional pattern ingester configuration</td>
@@ -10346,6 +10365,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -10359,6 +10379,15 @@ true
 			<td>Enable creating PVCs for the results-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
