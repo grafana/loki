@@ -198,7 +198,8 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 }
 
 func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
-	startTime := time.Now()
+	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -241,10 +242,10 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, errors.New("no relevant sections returned")
 	}
 
-	m.metrics.resolvedSectionsTotalDuration.Observe(time.Since(startTime).Seconds())
+	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	level.Debug(m.logger).Log("msg", "resolved sections", "duration", time.Since(startTime), "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
+	level.Debug(m.logger).Log("msg", "resolved sections", "duration", duration, "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
 
 	return streamSectionPointers, nil
 }
@@ -514,10 +515,8 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
 func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
-	startTime := time.Now()
-	defer func() {
-		m.metrics.streamFilterTotalDuration.Observe(time.Since(startTime).Seconds())
-	}()
+	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
+	defer timer.ObserveDuration()
 
 	var sectionDescriptors []*DataobjSectionDescriptor
 
@@ -535,17 +534,17 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 				return fmt.Errorf("fetching object '%s' from bucket: %w", path, err)
 			}
 
-			streamReadStartTime := time.Now()
+			streamReadTimer := prometheus.NewTimer(m.metrics.streamFilterStreamsReadDuration)
 			err = forEachStream(ctx, idxObject, streamPredicate, func(stream streams.Stream) {
 				matchingStreamIDs = append(matchingStreamIDs, stream.ID)
 			})
 			if err != nil {
 				return fmt.Errorf("reading streams from index: %w", err)
 			}
-			m.metrics.streamFilterStreamsReadDuration.Observe(time.Since(streamReadStartTime).Seconds())
+			streamReadTimer.ObserveDuration()
 
 			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
-			sectionPointerReadStartTime := time.Now()
+			sectionPointerReadTimer := prometheus.NewTimer(m.metrics.streamFilterPointersReadDuration)
 			err = forEachObjPointer(ctx, idxObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
 				key.ObjectPath = pointer.Path
 				key.SectionIdx = pointer.Section
@@ -560,7 +559,7 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 			if err != nil {
 				return fmt.Errorf("reading section pointers from index: %w", err)
 			}
-			m.metrics.streamFilterPointersReadDuration.Observe(time.Since(sectionPointerReadStartTime).Seconds())
+			sectionPointerReadTimer.ObserveDuration()
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
 			sectionDescriptorsMutex.Lock()
@@ -585,10 +584,8 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 // estimateSectionsForPredicates checks the predicates against the section AMQs to determine approximate section membership.
 // This is an inexact lookup and only returns probable sections: there may be false positives, but no true negatives. There is no additional metadata returned beyond the section info.
 func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, paths []string, predicate pointers.RowPredicate) ([]*DataobjSectionDescriptor, error) {
-	startTime := time.Now()
-	defer func() {
-		m.metrics.estimateSectionsTotalDuration.Observe(time.Since(startTime).Seconds())
-	}()
+	timer := prometheus.NewTimer(m.metrics.estimateSectionsTotalDuration)
+	defer timer.ObserveDuration()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -602,7 +599,7 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 				return fmt.Errorf("fetching object from bucket: %w", err)
 			}
 
-			pointerReadStartTime := time.Now()
+			pointerReadTimer := prometheus.NewTimer(m.metrics.estimateSectionsPointerReadDuration)
 			var objectSectionDescriptors []*DataobjSectionDescriptor
 			err = forEachObjPointer(ctx, idxObject, predicate, nil, func(pointer pointers.SectionPointer) {
 				objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
@@ -615,7 +612,7 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 			if err != nil {
 				return fmt.Errorf("reading object from bucket: %w", err)
 			}
-			m.metrics.estimateSectionsPointerReadDuration.Observe(time.Since(pointerReadStartTime).Seconds())
+			pointerReadTimer.ObserveDuration()
 
 			sectionDescriptorsMutex.Lock()
 			sectionDescriptors = append(sectionDescriptors, objectSectionDescriptors...)

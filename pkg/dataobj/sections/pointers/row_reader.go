@@ -263,7 +263,8 @@ func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn,
 				bf := bloom.New(1, 1) // Dummy values
 				_, err := bf.ReadFrom(bytes.NewReader(bloomBytes))
 				if err != nil {
-					panic(fmt.Sprintf("error reading bloom filter: name=%s err=%v", p.Name, err))
+					// If the bloom filter is invalid, we assume it would pass.
+					return true
 				}
 				return bf.TestString(p.Value)
 			},
