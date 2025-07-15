@@ -79,7 +79,17 @@ const (
 	sqlGetUnprocessedShards                    = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
                               FROM shards sh
                               JOIN requests dr ON sh.id = dr.id`
-	sqlCountDeleteRequests = `SELECT COUNT(*) FROM requests;`
+	sqlCountDeleteRequests   = `SELECT COUNT(*) FROM requests;`
+	sqlGetIncompleteRequests = `SELECT id FROM requests WHERE completed_at IS NULL;`
+	sqlUpdateShardCount      = `UPDATE requests
+                              SET
+                                 processed_shards = total_shards - ?,
+                                 completed_at = CASE
+                                     WHEN ? = 0 THEN ?
+                                    ELSE NULL
+                                 END
+                              WHERE id=?;`
+	sqlCountShards = `SELECT COUNT(*) FROM shards WHERE id=?;`
 )
 
 type userCacheGen struct {
@@ -472,4 +482,54 @@ func (ds *deleteRequestsStoreSQLite) queryDeleteRequests(ctx context.Context, qu
 	}
 
 	return requests, nil
+}
+
+func (ds *deleteRequestsStoreSQLite) fixProcessedShardCount(ctx context.Context) error {
+	// find all the IDs of requests which are still incomplete
+	var incompleteRequestIDs []string
+	if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
+		query: sqlGetIncompleteRequests,
+		execOpts: &sqlitex.ExecOptions{
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				incompleteRequestIDs = append(incompleteRequestIDs, stmt.GetText(columnNameID))
+				return nil
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// go through ID of each incomplete request and fix their shard count
+	for _, requestID := range incompleteRequestIDs {
+		shardCount := 0
+		if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
+			query: sqlCountShards,
+			execOpts: &sqlitex.ExecOptions{
+				Args: []any{requestID},
+				ResultFunc: func(stmt *sqlite.Stmt) error {
+					shardCount = stmt.ColumnInt(0)
+					return nil
+				},
+			},
+		}); err != nil {
+			return err
+		}
+
+		if err := ds.sqliteStore.Exec(ctx, true, sqlQuery{
+			query: sqlUpdateShardCount,
+			execOpts: &sqlitex.ExecOptions{
+				Args: []any{
+					shardCount,
+					shardCount,
+					time.Now().UnixNano(),
+					requestID,
+				},
+			},
+		}); err != nil {
+			return err
+		}
+
+	}
+
+	return nil
 }
