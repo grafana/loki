@@ -2552,9 +2552,13 @@ worker_config:
 
 jobs_config:
   deletion:
+    # Object storage path prefix for storing deletion manifests.
+    # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
+    [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
+
     # Maximum number of chunks to process concurrently in each worker.
     # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
-    [chunkprocessingconcurrency: <int> | default = 5]
+    [chunk_processing_concurrency: <int> | default = 5]
 
     # Maximum time to wait for a job before considering it failed and retrying.
     # CLI flag: -compactor.jobs.deletion.timeout
