@@ -611,7 +611,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest.SegmentsCount, builder.segmentsCount)
 			require.Equal(t, tc.expectedManifest.ChunksCount, builder.overallChunksCount)
 
-			reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
+			reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
 			require.NoError(t, err)
 
 			manifestJSON, err := io.ReadAll(reader)
@@ -627,7 +627,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.Equal(t, tc.expectedManifest, manifest)
 
 			for i := 0; i < tc.expectedManifest.SegmentsCount; i++ {
-				reader, _, err := builder.deletionStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
+				reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(fmt.Sprintf("%d.json", i)))
 				require.NoError(t, err)
 
 				segmentJSON, err := io.ReadAll(reader)
@@ -684,4 +684,84 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 
 	err = builder.Finish(ctx)
 	require.EqualError(t, err, ErrNoChunksSelectedForDeletion.Error())
+}
+
+func TestCleanupInvalidManifest(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx := context.Background()
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: tempDir,
+	})
+	require.NoError(t, err)
+
+	// Create delete request batch
+	batch := newDeleteRequestBatch(nil)
+	batch.addDeleteRequest(&DeleteRequest{
+		UserID:    user1,
+		RequestID: req1,
+		Query:     lblFooBar,
+		StartTime: 0,
+		EndTime:   100,
+	})
+
+	// ensure that storageHasValidManifest returns false since we have not built any manifests yet
+	manifestExists, err := storageHasValidManifest(ctx, objectClient)
+	require.NoError(t, err)
+	require.False(t, manifestExists)
+
+	// build a manifest
+	builder, err := newDeletionManifestBuilder(objectClient, batch)
+	require.NoError(t, err)
+
+	err = builder.AddSeries(ctx, table1, &mockSeries{
+		userID: user1,
+		labels: mustParseLabel(lblFooBar),
+		chunks: buildRetentionChunks(0, 25),
+	})
+	require.NoError(t, err)
+
+	err = builder.Finish(ctx)
+	require.NoError(t, err)
+
+	// ensure that storageHasValidManifest returns true since we just built a manifest
+	manifestExists, err = storageHasValidManifest(ctx, objectClient)
+	require.NoError(t, err)
+	require.True(t, manifestExists)
+
+	// cleanupInvalidManifests should not clean up the manifest we built
+	require.NoError(t, cleanupInvalidManifests(ctx, objectClient))
+	manifestExists, err = storageHasValidManifest(ctx, objectClient)
+	require.NoError(t, err)
+	require.True(t, manifestExists)
+
+	// ensure that manifest has the expected number of files
+	reader, _, err := builder.deletionManifestStoreClient.GetObject(context.Background(), builder.buildObjectKey(manifestFileName))
+	require.NoError(t, err)
+
+	manifestJSON, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+
+	var manifest manifest
+	require.NoError(t, json.Unmarshal(manifestJSON, &manifest))
+
+	objects, _, err := objectClient.List(ctx, builder.buildObjectKey(""), "/")
+	require.NoError(t, err)
+	require.Len(t, objects, manifest.SegmentsCount+1)
+
+	// remove the manifest.json file to make the manifest invalid
+	require.NoError(t, builder.deletionManifestStoreClient.DeleteObject(ctx, builder.buildObjectKey(manifestFileName)))
+
+	// ensure that storageHasValidManifest returns true since we just deliberately made the manifest invalid
+	manifestExists, err = storageHasValidManifest(ctx, objectClient)
+	require.NoError(t, err)
+	require.False(t, manifestExists)
+
+	// cleanupInvalidManifests should cleanup all the files for the manifest
+	require.NoError(t, cleanupInvalidManifests(ctx, objectClient))
+
+	// ensure that we are left with no manifest directories in the storage
+	_, commonPrefixes, err := objectClient.List(ctx, "", "/")
+	require.NoError(t, err)
+	require.Len(t, commonPrefixes, 0)
 }
