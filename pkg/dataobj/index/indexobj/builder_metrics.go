@@ -6,15 +6,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // builderMetrics provides instrumnetation for a [Builder].
 type builderMetrics struct {
-	pointers *pointers.Metrics
-	streams  *streams.Metrics
-	dataobj  *dataobj.Metrics
+	pointers      *pointers.Metrics
+	indexPointers *indexpointers.Metrics
+	streams       *streams.Metrics
+	dataobj       *dataobj.Metrics
 
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
@@ -35,9 +37,10 @@ type builderMetrics struct {
 // logs objects.
 func newBuilderMetrics() *builderMetrics {
 	return &builderMetrics{
-		pointers: pointers.NewMetrics(),
-		streams:  streams.NewMetrics(),
-		dataobj:  dataobj.NewMetrics(),
+		indexPointers: indexpointers.NewMetrics(),
+		pointers:      pointers.NewMetrics(),
+		streams:       streams.NewMetrics(),
+		dataobj:       dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_indexobj_config_target_page_size_bytes",
 
@@ -122,6 +125,7 @@ func (m *builderMetrics) ObserveConfig(cfg BuilderConfig) {
 func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 
+	errs = append(errs, m.indexPointers.Register(reg))
 	errs = append(errs, m.pointers.Register(reg))
 	errs = append(errs, m.streams.Register(reg))
 	errs = append(errs, m.dataobj.Register(reg))
@@ -145,6 +149,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
+	m.indexPointers.Unregister(reg)
 	m.pointers.Unregister(reg)
 	m.streams.Unregister(reg)
 	m.dataobj.Unregister(reg)
