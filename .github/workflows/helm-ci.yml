@@ -16,7 +16,7 @@ jobs:
       contents: "read"
       id-token: "write"
       pull-requests: "write"
-    uses: grafana/helm-charts/.github/workflows/linter.yml@803ce018df3a76d01866c0589a1c95433bd26df2
+    uses: grafana/helm-charts/.github/workflows/linter.yml@490190857dd259231dcf4b79e75e71d9544ebbb9
     with:
       filter_regex_include: .*production/helm/loki/.*
       golang_ci_lint_file: production/helm/loki/.golangci.yaml
