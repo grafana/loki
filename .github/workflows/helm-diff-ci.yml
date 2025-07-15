@@ -137,6 +137,11 @@ jobs:
             echo "" >> formatted_diff_output.md
           done
 
+      - name: Truncate summary diff to 65535 characters
+        run: |
+          head -c 65535 formatted_diff_output.md > formatted_diff_output.truncated.md
+          mv formatted_diff_output.truncated.md formatted_diff_output.md
+
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
         with:
