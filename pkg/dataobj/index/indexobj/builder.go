@@ -405,7 +405,7 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 	for _, sec := range obj.Sections() {
 		switch {
 		case indexpointers.CheckSection(sec):
-			indexPointerSection, err := indexpointers.Open(context.Background(), sec)
+			indexPointerSection, err := indexpointers.Open(ctx, sec)
 			if err != nil {
 				errs = append(errs, err)
 				continue

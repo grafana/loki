@@ -146,8 +146,6 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 				m.metastoreBuilder.Reset()
 				m.builder.Reset()
-
-				// Keep using V1 for now.
 				var (
 					ty = m.cfg.StorageFormat
 				)

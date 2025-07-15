@@ -423,11 +423,7 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 
 	buf := make([]indexpointers.IndexPointer, 1024)
 
-	for _, section := range object.Sections() {
-		if !indexpointers.CheckSection(section) {
-			continue
-		}
-
+	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
