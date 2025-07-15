@@ -1,6 +1,6 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@028c5f9537de46f74765125c6c0c7696b0ccfd15"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@main"
     "with":
       "build_image": "grafana/loki-build-image:0.34.6"
       "golang_ci_lint_version": "v1.64.5"
