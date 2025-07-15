@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -100,7 +101,7 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
 		Local,
-		func(_ []Pipeline) state {
+		func(_ context.Context, _ []Pipeline) state {
 			if pos >= rows {
 				return Exhausted
 			}
@@ -114,8 +115,9 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 
 // collect reads all data from the pipeline until it is exhausted or returns an error.
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
+	ctx := t.Context()
 	for {
-		err := pipeline.Read()
+		err := pipeline.Read(ctx)
 		if errors.Is(err, EOF) {
 			break
 		}
