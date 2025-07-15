@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -24,6 +25,10 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		lessFunc = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
+	}
+
+	for i := range inputs {
+		inputs[i] = newPrefetchingPipeline(inputs[i])
 	}
 
 	return &KWayMerge{
@@ -67,9 +72,9 @@ func (p *KWayMerge) Inputs() []Pipeline {
 }
 
 // Read implements Pipeline.
-func (p *KWayMerge) Read() error {
-	p.init()
-	return p.read()
+func (p *KWayMerge) Read(ctx context.Context) error {
+	p.init(ctx)
+	return p.read(ctx)
 }
 
 // Transport implements Pipeline.
@@ -82,7 +87,7 @@ func (p *KWayMerge) Value() (arrow.Record, error) {
 	return p.state.Value()
 }
 
-func (p *KWayMerge) init() {
+func (p *KWayMerge) init(ctx context.Context) {
 	if p.initialized {
 		return
 	}
@@ -94,6 +99,14 @@ func (p *KWayMerge) init() {
 	p.exhausted = make([]bool, n)
 	p.offsets = make([]int64, n)
 
+	// Initialize pre-fetching on inputs
+	for i := range p.inputs {
+		inp, ok := p.inputs[i].(*prefetchWrapper)
+		if ok {
+			inp.init(ctx)
+		}
+	}
+
 	if p.compare == nil {
 		p.compare = func(a, b int64) bool { return a <= b }
 	}
@@ -103,7 +116,7 @@ func (p *KWayMerge) init() {
 // Track the top two winners (e.g., the record whose next value is the smallest and the record whose next value is the next smallest).
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
-func (p *KWayMerge) read() error {
+func (p *KWayMerge) read(ctx context.Context) error {
 start:
 	// Release previous batch
 	if p.state.batch != nil {
@@ -127,7 +140,7 @@ loop:
 			p.offsets[i] = 0
 
 			// Read from input
-			err := p.inputs[i].Read()
+			err := p.inputs[i].Read(ctx)
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true

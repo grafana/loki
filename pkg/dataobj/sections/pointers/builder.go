@@ -52,17 +52,25 @@ const (
 	PointerKindColumnIndex                    // PointerKindColumnIndex is a pointer for a column index.
 )
 
+type streamKey struct {
+	objectPath string
+	section    int64
+	streamID   int64
+}
+
 // Builder builds a pointers section.
 type Builder struct {
 	metrics  *Metrics
 	pageSize int
 
 	// streamLookup is a map of the stream ID in this index object to the pointer.
-	streamLookup map[string]*SectionPointer
+	streamLookup map[streamKey]*SectionPointer
 	// streamObjectRefs is a map of the stream ID in the referenced logs object to the stream ID in this index object.
 	streamObjectRefs map[string]map[int64]int64
 	// pointers is the list of pointers to encode.
 	pointers []*SectionPointer
+
+	key streamKey
 }
 
 // NewBuilder creates a new pointers section builder. The pageSize argument
@@ -75,7 +83,7 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		metrics:  metrics,
 		pageSize: pageSize,
 
-		streamLookup:     make(map[string]*SectionPointer),
+		streamLookup:     make(map[streamKey]*SectionPointer),
 		streamObjectRefs: make(map[string]map[int64]int64),
 		pointers:         make([]*SectionPointer, 0, 1024),
 	}
@@ -97,8 +105,12 @@ func (b *Builder) RecordStreamRef(path string, idInObject int64, idInIndex int64
 // ObserveStream observes a stream in the index by recording the start & end timestamps, line count, and uncompressed size per-section.
 func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts time.Time, uncompressedSize int64) {
 	indexStreamID := b.streamObjectRefs[path][idInObject]
-	key := fmt.Sprintf("%s:%d:%d", path, section, indexStreamID)
-	pointer, ok := b.streamLookup[key]
+
+	b.key.objectPath = path
+	b.key.section = section
+	b.key.streamID = indexStreamID
+
+	pointer, ok := b.streamLookup[b.key]
 	if ok {
 		// Update the existing pointer
 		if ts.Before(pointer.StartTs) {
@@ -124,7 +136,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 		UncompressedSize: uncompressedSize,
 	}
 	b.pointers = append(b.pointers, newPointer)
-	b.streamLookup[key] = newPointer
+	b.streamLookup[b.key] = newPointer
 }
 
 func (b *Builder) RecordColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloomFilter []byte) {
