@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Common Config : Use grpc for contacting the compactor in distributed deployment, rather than http. The compactor_grpc_address parameter replaces the compactor_address in the default commonConfig section of values.yaml.
 - [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
 - [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
+- [CHANGE] Common Config : Use grpc for contacting the compactor in distributed deployment, rather than http. The compactor_grpc_address parameter replaces the compactor_address in the default commonConfig section of values.yaml. If the compactor_address parameter is set, the compactor_grpc_address must be set to an empty string. Careful, the loki.compactorAddress helper now returns the address of the compactor in grpc format rather than http. [#17454](https://github.com/grafana/loki/pull/17454)
 - [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
 - [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose
 
