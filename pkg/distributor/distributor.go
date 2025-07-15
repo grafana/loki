@@ -15,12 +15,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	otlptranslate "github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/codes"
@@ -636,6 +636,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 
+			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -646,7 +647,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
 				for i := range entry.StructuredMetadata {
-					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					normalized = labelNamer.Build(structuredMetadata[i].Name)
 					if normalized != structuredMetadata[i].Name {
 						structuredMetadata[i].Name = normalized
 						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()

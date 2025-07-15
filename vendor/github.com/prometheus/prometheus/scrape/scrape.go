@@ -149,12 +149,8 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 		return nil, fmt.Errorf("error creating HTTP client: %w", err)
 	}
 
-	validationScheme, err := config.ToValidationScheme(cfg.MetricNameValidationScheme)
-	if err != nil {
-		return nil, fmt.Errorf("invalid metric name validation scheme: %w", err)
-	}
 	var escapingScheme model.EscapingScheme
-	escapingScheme, err = model.ToEscapingScheme(cfg.MetricNameEscapingScheme)
+	escapingScheme, err = config.ToEscapingScheme(cfg.MetricNameEscapingScheme, cfg.MetricNameValidationScheme)
 	if err != nil {
 		return nil, fmt.Errorf("invalid metric name escaping scheme, %w", err)
 	}
@@ -172,7 +168,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 		logger:               logger,
 		metrics:              metrics,
 		httpOpts:             options.HTTPClientOptions,
-		validationScheme:     validationScheme,
+		validationScheme:     cfg.MetricNameValidationScheme,
 		escapingScheme:       escapingScheme,
 	}
 	sp.newLoop = func(opts scrapeLoopOptions) loop {
@@ -209,6 +205,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 			opts.convertClassicHistToNHCB,
 			options.EnableNativeHistogramsIngestion,
 			options.EnableCreatedTimestampZeroIngestion,
+			options.EnableTypeAndUnitLabels,
 			options.ExtraMetrics,
 			options.AppendMetadata,
 			opts.target,
@@ -324,11 +321,7 @@ func (sp *scrapePool) reload(cfg *config.ScrapeConfig) error {
 	sp.config = cfg
 	oldClient := sp.client
 	sp.client = client
-	validationScheme, err := config.ToValidationScheme(cfg.MetricNameValidationScheme)
-	if err != nil {
-		return fmt.Errorf("invalid metric name validation scheme: %w", err)
-	}
-	sp.validationScheme = validationScheme
+	sp.validationScheme = cfg.MetricNameValidationScheme
 	var escapingScheme model.EscapingScheme
 	escapingScheme, err = model.ToEscapingScheme(cfg.MetricNameEscapingScheme)
 	if err != nil {
@@ -366,7 +359,7 @@ func (sp *scrapePool) restartLoops(reuseCache bool) {
 		trackTimestampsStaleness = sp.config.TrackTimestampsStaleness
 		mrc                      = sp.config.MetricRelabelConfigs
 		fallbackScrapeProtocol   = sp.config.ScrapeFallbackProtocol.HeaderMediaType()
-		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistograms
+		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistogramsEnabled()
 		convertClassicHistToNHCB = sp.config.ConvertClassicHistogramsToNHCBEnabled()
 	)
 
@@ -522,7 +515,7 @@ func (sp *scrapePool) sync(targets []*Target) {
 		trackTimestampsStaleness = sp.config.TrackTimestampsStaleness
 		mrc                      = sp.config.MetricRelabelConfigs
 		fallbackScrapeProtocol   = sp.config.ScrapeFallbackProtocol.HeaderMediaType()
-		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistograms
+		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistogramsEnabled()
 		convertClassicHistToNHCB = sp.config.ConvertClassicHistogramsToNHCBEnabled()
 	)
 
@@ -932,6 +925,7 @@ type scrapeLoop struct {
 	// Feature flagged options.
 	enableNativeHistogramIngestion bool
 	enableCTZeroIngestion          bool
+	enableTypeAndUnitLabels        bool
 
 	appender            func(ctx context.Context) storage.Appender
 	symbolTable         *labels.SymbolTable
@@ -1239,6 +1233,7 @@ func newScrapeLoop(ctx context.Context,
 	convertClassicHistToNHCB bool,
 	enableNativeHistogramIngestion bool,
 	enableCTZeroIngestion bool,
+	enableTypeAndUnitLabels bool,
 	reportExtraMetrics bool,
 	appendMetadataToWAL bool,
 	target *Target,
@@ -1296,6 +1291,7 @@ func newScrapeLoop(ctx context.Context,
 		convertClassicHistToNHCB:       convertClassicHistToNHCB,
 		enableNativeHistogramIngestion: enableNativeHistogramIngestion,
 		enableCTZeroIngestion:          enableCTZeroIngestion,
+		enableTypeAndUnitLabels:        enableTypeAndUnitLabels,
 		reportExtraMetrics:             reportExtraMetrics,
 		appendMetadataToWAL:            appendMetadataToWAL,
 		metrics:                        metrics,
@@ -1622,7 +1618,7 @@ func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string,
 		return
 	}
 
-	p, err := textparse.New(b, contentType, sl.fallbackScrapeProtocol, sl.alwaysScrapeClassicHist, sl.enableCTZeroIngestion, sl.symbolTable)
+	p, err := textparse.New(b, contentType, sl.fallbackScrapeProtocol, sl.alwaysScrapeClassicHist, sl.enableCTZeroIngestion, sl.enableTypeAndUnitLabels, sl.symbolTable)
 	if p == nil {
 		sl.l.Error(
 			"Failed to determine correct type of scrape target.",
