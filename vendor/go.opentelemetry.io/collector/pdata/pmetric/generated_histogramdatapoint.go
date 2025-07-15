@@ -198,19 +198,34 @@ func copyOrigHistogramDataPoint(dest, src *otlpmetrics.HistogramDataPoint) {
 	dest.ExplicitBounds = internal.CopyOrigFloat64Slice(dest.ExplicitBounds, src.ExplicitBounds)
 	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
 	dest.Flags = src.Flags
-	if src.Sum_ == nil {
+	if srcSum, ok := src.Sum_.(*otlpmetrics.HistogramDataPoint_Sum); ok {
+		destSum, ok := dest.Sum_.(*otlpmetrics.HistogramDataPoint_Sum)
+		if !ok {
+			destSum = &otlpmetrics.HistogramDataPoint_Sum{}
+			dest.Sum_ = destSum
+		}
+		destSum.Sum = srcSum.Sum
+	} else {
 		dest.Sum_ = nil
-	} else {
-		dest.Sum_ = &otlpmetrics.HistogramDataPoint_Sum{Sum: src.GetSum()}
 	}
-	if src.Min_ == nil {
+	if srcMin, ok := src.Min_.(*otlpmetrics.HistogramDataPoint_Min); ok {
+		destMin, ok := dest.Min_.(*otlpmetrics.HistogramDataPoint_Min)
+		if !ok {
+			destMin = &otlpmetrics.HistogramDataPoint_Min{}
+			dest.Min_ = destMin
+		}
+		destMin.Min = srcMin.Min
+	} else {
 		dest.Min_ = nil
-	} else {
-		dest.Min_ = &otlpmetrics.HistogramDataPoint_Min{Min: src.GetMin()}
 	}
-	if src.Max_ == nil {
-		dest.Max_ = nil
+	if srcMax, ok := src.Max_.(*otlpmetrics.HistogramDataPoint_Max); ok {
+		destMax, ok := dest.Max_.(*otlpmetrics.HistogramDataPoint_Max)
+		if !ok {
+			destMax = &otlpmetrics.HistogramDataPoint_Max{}
+			dest.Max_ = destMax
+		}
+		destMax.Max = srcMax.Max
 	} else {
-		dest.Max_ = &otlpmetrics.HistogramDataPoint_Max{Max: src.GetMax()}
+		dest.Max_ = nil
 	}
 }

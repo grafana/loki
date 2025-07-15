@@ -24,6 +24,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -62,15 +63,69 @@ var (
 type ValidationScheme int
 
 const (
+	// UnsetValidation represents an undefined ValidationScheme.
+	// Should not be used in practice.
+	UnsetValidation ValidationScheme = iota
+
 	// LegacyValidation is a setting that requires that all metric and label names
 	// conform to the original Prometheus character requirements described by
 	// MetricNameRE and LabelNameRE.
-	LegacyValidation ValidationScheme = iota
+	LegacyValidation
 
 	// UTF8Validation only requires that metric and label names be valid UTF-8
 	// strings.
 	UTF8Validation
 )
+
+var (
+	_ yaml.Marshaler = UnsetValidation
+	_ fmt.Stringer   = UnsetValidation
+)
+
+// String returns the string representation of s.
+func (s ValidationScheme) String() string {
+	switch s {
+	case UnsetValidation:
+		return "unset"
+	case LegacyValidation:
+		return "legacy"
+	case UTF8Validation:
+		return "utf8"
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (s ValidationScheme) MarshalYAML() (any, error) {
+	switch s {
+	case UnsetValidation:
+		return "", nil
+	case LegacyValidation, UTF8Validation:
+		return s.String(), nil
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (s *ValidationScheme) UnmarshalYAML(unmarshal func(any) error) error {
+	var scheme string
+	if err := unmarshal(&scheme); err != nil {
+		return err
+	}
+	switch scheme {
+	case "":
+		// Don't change the value.
+	case "legacy":
+		*s = LegacyValidation
+	case "utf8":
+		*s = UTF8Validation
+	default:
+		return fmt.Errorf("unrecognized ValidationScheme: %q", scheme)
+	}
+	return nil
+}
 
 type EscapingScheme int
 
@@ -185,7 +240,7 @@ func IsValidMetricName(n LabelValue) bool {
 		}
 		return utf8.ValidString(string(n))
 	default:
-		panic(fmt.Sprintf("Invalid name validation scheme requested: %d", NameValidationScheme))
+		panic(fmt.Sprintf("Invalid name validation scheme requested: %s", NameValidationScheme.String()))
 	}
 }
 

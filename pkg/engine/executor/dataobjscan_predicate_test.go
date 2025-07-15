@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
@@ -31,6 +32,10 @@ func tsColExpr() *physical.ColumnExpr {
 	return newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
+func ts(t time.Time) datatype.Timestamp {
+	return datatype.Timestamp(t.UnixNano())
+}
+
 func TestMapTimestampPredicate(t *testing.T) {
 	time100 := time.Unix(0, 100).UTC()
 	time200 := time.Unix(0, 200).UTC()
@@ -47,7 +52,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
@@ -61,7 +66,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpGt,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
@@ -75,7 +80,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpGte,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			want: logs.TimeRangeRowPredicate{
 				StartTime:    time100,
@@ -89,7 +94,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpLt,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
@@ -103,7 +108,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpLte,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			want: logs.TimeRangeRowPredicate{
 				StartTime:    testOpenStart,
@@ -120,7 +125,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.BinaryExpr",
@@ -136,7 +141,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Right: &physical.BinaryExpr{
 						Left:  tsColExpr(),
 						Op:    types.BinaryOpLte,
-						Right: physical.NewLiteral(time200),
+						Right: physical.NewLiteral(ts(time200)),
 					},
 				},
 			},
@@ -144,15 +149,15 @@ func TestMapTimestampPredicate(t *testing.T) {
 		},
 		{
 			desc:     "input is not BinaryExpr",
-			expr:     physical.NewLiteral(time100),
+			expr:     physical.NewLiteral(ts(time100)),
 			errMatch: "unsupported expression type for timestamp predicate: *physical.LiteralExpr, expected *physical.BinaryExpr",
 		},
 		{
 			desc: "LHS of BinaryExpr is not ColumnExpr",
 			expr: &physical.BinaryExpr{
-				Left:  physical.NewLiteral(time100),
+				Left:  physical.NewLiteral(ts(time100)),
 				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(time200),
+				Right: physical.NewLiteral(ts(time200)),
 			},
 			errMatch: "invalid LHS for comparison: expected timestamp column, got 1970-01-01T00:00:00.0000001Z",
 		},
@@ -161,7 +166,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  newColumnExpr("other_col", types.ColumnTypeBuiltin),
 				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			errMatch: "invalid LHS for comparison: expected timestamp column, got builtin.other_col",
 		},
@@ -188,7 +193,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Left:  tsColExpr(),
 				Op:    types.BinaryOpAnd,
-				Right: physical.NewLiteral(time100),
+				Right: physical.NewLiteral(ts(time100)),
 			},
 			errMatch: "invalid left operand for AND: unsupported expression type for timestamp predicate: *physical.ColumnExpr, expected *physical.BinaryExpr",
 		},
@@ -200,7 +205,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			errMatch: "unsupported operator for timestamp predicate: OR",
@@ -211,13 +216,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -233,13 +238,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -255,13 +260,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
@@ -272,13 +277,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
@@ -289,13 +294,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -311,13 +316,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
@@ -328,13 +333,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
@@ -346,20 +351,20 @@ func TestMapTimestampPredicate(t *testing.T) {
 					Left: &physical.BinaryExpr{
 						Left:  tsColExpr(),
 						Op:    types.BinaryOpGt,
-						Right: physical.NewLiteral(time100),
+						Right: physical.NewLiteral(ts(time100)),
 					},
 					Op: types.BinaryOpAnd,
 					Right: &physical.BinaryExpr{
 						Left:  tsColExpr(),
 						Op:    types.BinaryOpLt,
-						Right: physical.NewLiteral(time300),
+						Right: physical.NewLiteral(ts(time300)),
 					},
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -375,13 +380,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{ // Invalid: LHS not timestamp column
 					Left:  newColumnExpr("not_ts", types.ColumnTypeBuiltin),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			errMatch: "invalid left operand for AND: invalid LHS for comparison: expected timestamp column, got builtin.not_ts",
@@ -392,7 +397,7 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{ // Invalid: RHS literal not timestamp
@@ -409,13 +414,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -431,13 +436,13 @@ func TestMapTimestampPredicate(t *testing.T) {
 				Left: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time200),
+					Right: physical.NewLiteral(ts(time200)),
 				},
 				Op: types.BinaryOpAnd,
 				Right: &physical.BinaryExpr{
 					Left:  tsColExpr(),
 					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(time100),
+					Right: physical.NewLiteral(ts(time100)),
 				},
 			},
 			want: logs.TimeRangeRowPredicate{
@@ -620,7 +625,7 @@ func TestMapMetadataPredicate(t *testing.T) {
 			name: "error: RHS literal not string for EQ",
 			expr: &physical.BinaryExpr{
 				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Right: physical.NewLiteral(123), // Not string
+				Right: physical.NewLiteral(int64(123)), // Not string
 				Op:    types.BinaryOpEq,
 			},
 			expectedPred: nil,

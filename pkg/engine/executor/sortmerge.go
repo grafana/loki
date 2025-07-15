@@ -1,8 +1,10 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -11,22 +13,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
+type compareFunc[T comparable] func(a, b T) bool
+
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
 func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
-	var compare func(a, b int64) bool
+	var lessFunc func(a, b int64) bool
 	switch order {
 	case physical.ASC:
-		compare = func(a, b int64) bool { return a <= b }
+		lessFunc = func(a, b int64) bool { return a <= b }
 	case physical.DESC:
-		compare = func(a, b int64) bool { return a >= b }
+		lessFunc = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
+	}
+
+	// TODO(chaudum): Pass context from execution context
+	ctx := context.Background()
+
+	for i := range inputs {
+		inputs[i] = newPrefetchingPipeline(ctx, inputs[i])
 	}
 
 	return &KWayMerge{
 		inputs:     inputs,
 		columnEval: evaluator.newFunc(column),
-		compare:    compare,
+		compare:    lessFunc,
 	}, nil
 }
 
@@ -42,7 +53,7 @@ type KWayMerge struct {
 	exhausted   []bool
 	offsets     []int64
 	columnEval  evalFunc
-	compare     func(a, b int64) bool
+	compare     compareFunc[int64]
 }
 
 var _ Pipeline = (*KWayMerge)(nil)
@@ -91,6 +102,14 @@ func (p *KWayMerge) init() {
 	p.exhausted = make([]bool, n)
 	p.offsets = make([]int64, n)
 
+	// Initialize pre-fetching on inputs
+	for i := range p.inputs {
+		inp, ok := p.inputs[i].(*prefetchWrapper)
+		if ok {
+			inp.init()
+		}
+	}
+
 	if p.compare == nil {
 		p.compare = func(a, b int64) bool { return a <= b }
 	}
@@ -101,40 +120,42 @@ func (p *KWayMerge) init() {
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
 func (p *KWayMerge) read() error {
+start:
 	// Release previous batch
 	if p.state.batch != nil {
 		p.state.batch.Release()
 	}
 
 	timestamps := make([]int64, 0, len(p.inputs))
-	batchIndexes := make([]int, 0, len(p.inputs))
+	inputIndexes := make([]int, 0, len(p.inputs))
 
+loop:
 	for i := range len(p.inputs) {
 		// Skip exhausted inputs
 		if p.exhausted[i] {
-			continue
+			continue loop
 		}
 
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
-		if p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+		// Read another batch as long as the input yields zero-length batches.
+		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+			// Reset offset
+			p.offsets[i] = 0
+
+			// Read from input
 			err := p.inputs[i].Read()
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
-					continue
+					p.batches[i] = nil // remove reference to arrow.Record from slice
+					continue loop
 				}
 				return err
 			}
-			p.offsets[i] = 0
+
 			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
 			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
 			p.batches[i], _ = p.inputs[i].Value()
-		}
-
-		// Prevent out-of-bounds error: `p.inputs[i].Read()` returned a batch with 0 rows, and therefore does not have a value at offset `p.offsets[i]`.
-		// However, since the call did not return EOF, the next read may return rows again, so we only skip without marking the input as exhausted.
-		if p.batches[i].NumRows() == 0 {
-			continue
 		}
 
 		// Fetch timestamp value at current offset
@@ -149,27 +170,30 @@ func (p *KWayMerge) read() error {
 		ts := tsCol.Value(int(p.offsets[i]))
 
 		// Populate slices for sorting
-		batchIndexes = append(batchIndexes, i)
+		inputIndexes = append(inputIndexes, i)
 		timestamps = append(timestamps, int64(ts))
 	}
 
 	// Pipeline is exhausted if no more input batches are available
-	if len(batchIndexes) == 0 {
+	if !slices.Contains(p.exhausted, false) {
 		p.state = Exhausted
 		return p.state.err
 	}
 
+	if len(inputIndexes) == 0 {
+		goto start
+	}
+
 	// If there is only a single remaining batch, return the remaining record
-	if len(batchIndexes) == 1 {
-		j := batchIndexes[0]
+	if len(inputIndexes) == 1 {
+		j := inputIndexes[0]
 		start := p.offsets[j]
 		end := p.batches[j].NumRows()
 
-		// check against empty batch
-		if start > end || end == 0 {
-			p.state = successState(p.batches[j])
-			p.offsets[j] = end
-			return nil
+		// check against empty last batch
+		if start >= end || end == 0 {
+			p.state = Exhausted
+			return p.state.err
 		}
 
 		p.state = successState(p.batches[j].NewSlice(start, end))
@@ -177,10 +201,10 @@ func (p *KWayMerge) read() error {
 		return nil
 	}
 
-	sortIndexesByTimestamps(batchIndexes, timestamps, p.compare)
+	sortIndexesByTimestamps(inputIndexes, timestamps, p.compare)
 
 	// Return the slice of the current record
-	j := batchIndexes[0]
+	j := inputIndexes[0]
 
 	// Fetch timestamp value at current offset
 	col, err := p.columnEval(p.batches[j])
@@ -215,7 +239,7 @@ func (p *KWayMerge) read() error {
 	return nil
 }
 
-func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn func(a, b int64) bool) {
+func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn compareFunc[int64]) {
 	if len(indexes) != len(timestamps) {
 		panic("lengths of indexes and timestamps must match")
 	}
