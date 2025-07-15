@@ -13,7 +13,8 @@ type (
 		UncompressedSize uint64
 		CompressedSize   uint64
 
-		Columns []ColumnStats
+		Columns  []ColumnStats
+		TenantID string
 	}
 
 	// ColumnStats provides statistics about a column in a section.
@@ -58,8 +59,9 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")
 	}
-	columnDescs := metadata.GetColumns()
 
+	stats.TenantID = metadata.GetTenantID()
+	columnDescs := metadata.GetColumns()
 	pageSets, err := result.Collect(dec.Pages(ctx, columnDescs))
 	if err != nil {
 		return stats, fmt.Errorf("reading pages: %w", err)

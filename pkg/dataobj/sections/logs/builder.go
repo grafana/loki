@@ -44,8 +44,9 @@ type BuilderOptions struct {
 
 // Builder accumulate a set of [Record]s within a data object.
 type Builder struct {
-	metrics *Metrics
-	opts    BuilderOptions
+	tenantID string
+	metrics  *Metrics
+	opts     BuilderOptions
 
 	// Sorting the entire set of logs is very expensive, so we need to break it
 	// up into smaller pieces:
@@ -75,14 +76,15 @@ type Builder struct {
 
 // Nwe creates a new logs section. The pageSize argument specifies how large
 // pages should be.
-func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
+func NewBuilder(tenantID string, metrics *Metrics, opts BuilderOptions) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 
 	return &Builder{
-		metrics: metrics,
-		opts:    opts,
+		tenantID: tenantID,
+		metrics:  metrics,
+		opts:     opts,
 	}
 }
 
@@ -223,6 +225,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 			},
 		},
 	})
+	logsEnc.SetTenantID(b.tenantID)
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
@@ -286,6 +289,9 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 
 // Reset resets all state, allowing b to be reused.
 func (b *Builder) Reset() {
+	// We don't reset the tenantID as we don't reuse builders across tenants
+	// at this time.
+	// b.tenantID = ""
 	b.metrics.recordCount.Set(0)
 
 	b.records = sliceclear.Clear(b.records)

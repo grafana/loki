@@ -67,7 +67,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, st
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
+		engineV2: engine.New(cfg.Engine, store, limits, reg, logger, true),
 		logger:   logger,
 	}
 }

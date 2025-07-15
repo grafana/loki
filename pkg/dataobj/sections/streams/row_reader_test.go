@@ -84,7 +84,7 @@ func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 func buildStreamsSection(t *testing.T, pageSize int) *streams.Section {
 	t.Helper()
 
-	s := streams.NewBuilder(nil, pageSize)
+	s := streams.NewBuilder("test", nil, pageSize)
 	for _, d := range streamsTestdata {
 		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}

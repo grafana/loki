@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 )
@@ -13,7 +14,7 @@ func main() {
 	var (
 		size        = flag.Int64("size", 2147483648, "Size in bytes to generate")
 		dir         = flag.String("dir", "data", "Output directory")
-		tenantID    = flag.String("tenant", "test-tenant", "Tenant ID")
+		tenantIDs   = flag.String("tenant", "test-tenant", "Comma separated list of tenant IDs")
 		clearFolder = flag.Bool("clear", true, "Clear output directory before generating data")
 	)
 	flag.Parse()
@@ -26,20 +27,27 @@ func main() {
 		}
 	}
 
-	// Create stores
-	chunkStore, err := bench.NewChunkStore(*dir, *tenantID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create chunk store: %v\n", err)
-		os.Exit(1)
+	tenantIDsSlice := strings.Split(*tenantIDs, ",")
+
+	var stores []bench.Store
+	for _, tenantID := range tenantIDsSlice {
+		// Create stores
+		dataObjStore, err := bench.NewDataObjStore(*dir, tenantID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
+			os.Exit(1)
+		}
+		stores = append(stores, dataObjStore)
 	}
-	dataObjStore, err := bench.NewDataObjStore(*dir, *tenantID)
+	multiTenantStore, err := bench.NewMultiTenantDataObjStore(*dir, tenantIDsSlice)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
 		os.Exit(1)
 	}
+	stores = append(stores, multiTenantStore)
 
 	// Create builder with default options and the store
-	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), chunkStore, dataObjStore)
+	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), stores...)
 
 	// Generate the data
 	ctx := context.Background()

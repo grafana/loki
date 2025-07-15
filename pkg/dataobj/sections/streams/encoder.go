@@ -33,7 +33,8 @@ var (
 //
 // The zero value of encoder is ready for use.
 type encoder struct {
-	data *bytes.Buffer
+	data     *bytes.Buffer
+	tenantID string
 
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
@@ -77,6 +78,12 @@ func (enc *encoder) size() int {
 	return enc.data.Len()
 }
 
+// setTenantID sets the tenant ID for the streams section.
+// This should be called before committing the encoder.
+func (enc *encoder) SetTenantID(tenantID string) {
+	enc.tenantID = tenantID
+}
+
 // MetadataSize returns an estimate of the current size of the metadata for the
 // stream. MetadataSize includes an estimate for the currently open element.
 func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
@@ -86,7 +93,7 @@ func (enc *encoder) Metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &streamsmd.Metadata{Columns: columns}
+	return &streamsmd.Metadata{TenantID: enc.tenantID, Columns: columns}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush

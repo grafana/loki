@@ -157,8 +157,9 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
-		builder:       dataobj.NewBuilder(),
-		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
+		builder: dataobj.NewBuilder(),
+		// TODO(grobinson): This is a hack where the tenant is "".
+		streams:       streams.NewBuilder("", metrics.streams, int(cfg.TargetPageSize)),
 		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
 		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),
 	}, nil

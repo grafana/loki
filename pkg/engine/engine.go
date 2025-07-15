@@ -28,11 +28,15 @@ import (
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger, multiTenant bool) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
 		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
-		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
+		if multiTenant {
+			ms = metastore.NewMultiTenantObjectMetastore(metastoreBucket, logger, reg)
+		} else {
+			ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
+		}
 	}
 
 	if opts.BatchSize <= 0 {

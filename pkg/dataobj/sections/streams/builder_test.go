@@ -28,7 +28,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
 	}
 
-	tracker := streams.NewBuilder(nil, 1024)
+	tracker := streams.NewBuilder("test", nil, 1024)
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
