@@ -98,6 +98,8 @@ Loki can be run in a single host, no-dependencies mode using the following comma
 
 You need an up-to-date version of [Go](https://go.dev/), we recommend using the version found in our [Makefile](https://github.com/grafana/loki/blob/main/Makefile)
 
+Loki uses an older version of `labels.Labels` from prometheus. To build on your local, use `--tags=slicelabels` go flag.
+
 ```bash
 # Checkout source code
 $ git clone https://github.com/grafana/loki
