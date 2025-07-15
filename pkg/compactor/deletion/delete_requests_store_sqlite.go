@@ -66,7 +66,7 @@ const (
                                      WHEN processed_shards+1 = total_shards THEN ?
                                     ELSE NULL
                                  END
-                              WHERE id=?`
+                              WHERE id=? AND processed_shards < total_shards;`
 	sqlDeleteShards          = `DELETE FROM shards WHERE id=? AND user_id=?;`
 	sqlRemoveDeleteRequest   = `DELETE FROM requests WHERE id=? AND user_id=?`
 	sqlSelectRequestByID     = `SELECT * FROM requests WHERE id = ? AND user_id = ?;`
