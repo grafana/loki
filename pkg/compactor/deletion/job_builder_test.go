@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"testing"
-	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ type tableUpdatesRecorder struct {
 	updates map[string]map[string]map[string]storageUpdates
 }
 
-func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []chunk) error {
+func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
 	if _, ok := t.updates[tableName]; !ok {
 		t.updates[tableName] = map[string]map[string]storageUpdates{
 			userID: {
@@ -40,7 +39,9 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 
 	updates.ChunksToDelete = append(updates.ChunksToDelete, chunksToDelete...)
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
-	updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex...)
+	for i := range chunksToIndex {
+		updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex[i].(chunk))
+	}
 
 	t.updates[tableName][userID][labels] = updates
 
@@ -96,7 +97,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -154,7 +154,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -172,7 +171,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "0_1",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -237,7 +235,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -255,7 +252,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "1_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -325,7 +321,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			},
 			expectedJobs: []grpc.Job{
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table1,
@@ -343,7 +338,6 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 				{
-					Id:   "0_0",
 					Type: grpc.JOB_TYPE_DELETION,
 					Payload: mustMarshalPayload(&deletionJob{
 						TableName: table2,
@@ -389,7 +383,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
 				for iterator.Next() {
 					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
-						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, *(*[]chunk)(unsafe.Pointer(&chunksToIndex)))
+						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
 					}); err != nil {
 						return err
 					}
@@ -402,12 +396,23 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			jobsChan := make(chan *grpc.Job)
 
 			var jobsBuilt []grpc.Job
+			seenJobIDs := map[string]struct{}{}
 			go func() {
 				cnt := 0
 				for job := range jobsChan {
+					// ensure that we get unique job IDs
+					jobID := job.Id
+					if _, ok := seenJobIDs[jobID]; ok {
+						t.Errorf("job id %s already seen", jobID)
+						return
+					}
+					seenJobIDs[jobID] = struct{}{}
+
+					// while comparing jobs built vs expected, do not compare the job IDs
+					job.Id = ""
 					jobsBuilt = append(jobsBuilt, *job)
 					err := builder.OnJobResponse(&grpc.JobResult{
-						JobId:   job.Id,
+						JobId:   jobID,
 						JobType: job.Type,
 						Result:  mustMarshal(t, buildStorageUpdates(cnt, 1)),
 					})

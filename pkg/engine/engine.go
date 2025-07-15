@@ -165,9 +165,9 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	return builder.Build(), nil
 }
 
-func collectResult(_ context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
 	for {
-		if err := pipeline.Read(); err != nil {
+		if err := pipeline.Read(ctx); err != nil {
 			if errors.Is(err, executor.EOF) {
 				break
 			}

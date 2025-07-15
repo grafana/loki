@@ -941,6 +941,14 @@ func (a *AppIngressSpecRule) GetRedirect() *AppIngressSpecRuleRoutingRedirect {
 	return a.Redirect
 }
 
+// GetAuthority returns the Authority field.
+func (a *AppIngressSpecRuleMatch) GetAuthority() *AppIngressSpecRuleStringMatch {
+	if a == nil {
+		return nil
+	}
+	return a.Authority
+}
+
 // GetPath returns the Path field.
 func (a *AppIngressSpecRuleMatch) GetPath() *AppIngressSpecRuleStringMatch {
 	if a == nil {
@@ -1013,12 +1021,52 @@ func (a *AppIngressSpecRuleRoutingRedirect) GetUri() string {
 	return a.Uri
 }
 
+// GetExact returns the Exact field.
+func (a *AppIngressSpecRuleStringMatch) GetExact() string {
+	if a == nil {
+		return ""
+	}
+	return a.Exact
+}
+
 // GetPrefix returns the Prefix field.
 func (a *AppIngressSpecRuleStringMatch) GetPrefix() string {
 	if a == nil {
 		return ""
 	}
 	return a.Prefix
+}
+
+// GetComponentName returns the ComponentName field.
+func (a *AppInstance) GetComponentName() string {
+	if a == nil {
+		return ""
+	}
+	return a.ComponentName
+}
+
+// GetComponentType returns the ComponentType field.
+func (a *AppInstance) GetComponentType() AppInstanceComponentType {
+	if a == nil {
+		return ""
+	}
+	return a.ComponentType
+}
+
+// GetInstanceAlias returns the InstanceAlias field.
+func (a *AppInstance) GetInstanceAlias() string {
+	if a == nil {
+		return ""
+	}
+	return a.InstanceAlias
+}
+
+// GetInstanceName returns the InstanceName field.
+func (a *AppInstance) GetInstanceName() string {
+	if a == nil {
+		return ""
+	}
+	return a.InstanceName
 }
 
 // GetBandwidthAllowanceGib returns the BandwidthAllowanceGib field.
@@ -1453,14 +1501,6 @@ func (a *AppMaintenanceSpec) GetEnabled() bool {
 	return a.Enabled
 }
 
-// GetOfflinePageURL returns the OfflinePageURL field.
-func (a *AppMaintenanceSpec) GetOfflinePageURL() string {
-	if a == nil {
-		return ""
-	}
-	return a.OfflinePageURL
-}
-
 // GetAppID returns the AppID field.
 func (a *AppProposeRequest) GetAppID() string {
 	if a == nil {
@@ -1475,6 +1515,14 @@ func (a *AppProposeRequest) GetSpec() *AppSpec {
 		return nil
 	}
 	return a.Spec
+}
+
+// GetOfflinePageURL returns the OfflinePageURL field.
+func (a *AppMaintenanceSpec) GetOfflinePageURL() string {
+	if a == nil {
+		return ""
+	}
+	return a.OfflinePageURL
 }
 
 // GetAppCost returns the AppCost field.
@@ -1941,6 +1989,22 @@ func (a *AppSpec) GetDatabases() []*AppDatabaseSpec {
 	return a.Databases
 }
 
+// GetDisableEdgeCache returns the DisableEdgeCache field.
+func (a *AppSpec) GetDisableEdgeCache() bool {
+	if a == nil {
+		return false
+	}
+	return a.DisableEdgeCache
+}
+
+// GetDisableEmailObfuscation returns the DisableEmailObfuscation field.
+func (a *AppSpec) GetDisableEmailObfuscation() bool {
+	if a == nil {
+		return false
+	}
+	return a.DisableEmailObfuscation
+}
+
 // GetDomains returns the Domains field.
 func (a *AppSpec) GetDomains() []*AppDomainSpec {
 	if a == nil {
@@ -1955,6 +2019,14 @@ func (a *AppSpec) GetEgress() *AppEgressSpec {
 		return nil
 	}
 	return a.Egress
+}
+
+// GetEnhancedThreatControlEnabled returns the EnhancedThreatControlEnabled field.
+func (a *AppSpec) GetEnhancedThreatControlEnabled() bool {
+	if a == nil {
+		return false
+	}
+	return a.EnhancedThreatControlEnabled
 }
 
 // GetEnvs returns the Envs field.
@@ -3419,6 +3491,14 @@ func (g *GetAppDatabaseConnectionDetailsResponse) GetConnectionDetails() []*GetD
 		return nil
 	}
 	return g.ConnectionDetails
+}
+
+// GetInstances returns the Instances field.
+func (g *GetAppInstancesResponse) GetInstances() []*AppInstance {
+	if g == nil {
+		return nil
+	}
+	return g.Instances
 }
 
 // GetComponentName returns the ComponentName field.

@@ -22,7 +22,6 @@ import (
 )
 
 type dataobjScan struct {
-	ctx  context.Context
 	opts dataobjScanOptions
 
 	initialized bool
@@ -56,21 +55,21 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of all log sections in a data object. Rows in the
 // returned record are ordered by timestamp in the direction specified by
 // opts.Direction.
-func newDataobjScanPipeline(ctx context.Context, opts dataobjScanOptions) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
 	if opts.Direction == physical.ASC {
 		// It's ok to panic here, because the validation of log query direction is performed in the logical planner.
 		panic("sorting by timestamp ASC is not supported by DataObjScan")
 	}
-	return &dataobjScan{ctx: ctx, opts: opts}
+	return &dataobjScan{opts: opts}
 }
 
 // Read retrieves the next [arrow.Record] from the dataobj.
-func (s *dataobjScan) Read() error {
-	if err := s.init(); err != nil {
+func (s *dataobjScan) Read(ctx context.Context) error {
+	if err := s.init(ctx); err != nil {
 		return err
 	}
 
-	rec, err := s.read()
+	rec, err := s.read(ctx)
 	s.state = newState(rec, err)
 
 	if err != nil {
@@ -79,14 +78,14 @@ func (s *dataobjScan) Read() error {
 	return nil
 }
 
-func (s *dataobjScan) init() error {
+func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
 
 	s.records = make([]logs.Record, 0, s.opts.batchSize)
 
-	if err := s.initStreams(); err != nil {
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
@@ -98,7 +97,7 @@ func (s *dataobjScan) init() error {
 			continue
 		}
 
-		sec, err := logs.Open(s.ctx, section)
+		sec, err := logs.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening logs section: %w", err)
 		}
@@ -134,7 +133,7 @@ func (s *dataobjScan) init() error {
 
 // initStreams retrieves all requested stream records from streams sections so
 // that emitted [arrow.Record]s can include stream labels in results.
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	var sr streams.RowReader
 	defer sr.Close()
 
@@ -148,7 +147,7 @@ func (s *dataobjScan) initStreams() error {
 	}
 
 	for _, section := range s.opts.Object.Sections().Filter(streams.CheckSection) {
-		sec, err := streams.Open(s.ctx, section)
+		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
 		}
@@ -160,7 +159,7 @@ func (s *dataobjScan) initStreams() error {
 		sr.Reset(sec)
 
 		for {
-			n, err := sr.Read(s.ctx, streamsBuf)
+			n, err := sr.Read(ctx, streamsBuf)
 			if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			} else if err != nil && !errors.Is(err, io.EOF) {
@@ -194,7 +193,7 @@ func (s *dataobjScan) initStreams() error {
 // read reads the entire data object into memory and generates an arrow.Record
 // from the data. It returns an error upon encountering an error while reading
 // one of the sections.
-func (s *dataobjScan) read() (arrow.Record, error) {
+func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		n   int   // number of rows yielded by the datobj reader
 		err error // error yielded by the dataobj reader
@@ -205,7 +204,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 		// Reset buffer
 		s.records = s.records[:s.opts.batchSize]
 
-		n, err = s.reader.Read(s.ctx, s.records)
+		n, err = s.reader.Read(ctx, s.records)
 		if n == 0 && errors.Is(err, io.EOF) {
 			return nil, EOF
 		} else if err != nil && !errors.Is(err, io.EOF) {
