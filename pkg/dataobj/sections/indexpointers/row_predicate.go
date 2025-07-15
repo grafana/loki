@@ -9,9 +9,9 @@ type (
 
 // Supported predicates.
 type (
-	// A TimeRangePredicate is a RowPredicate which requires a min and max timestamp column to exist,
+	// A TimeRangeRowPredicate is a RowPredicate which requires a start and end timestamp column to exist,
 	// and for the timestamp to be within the range.
-	TimeRangePredicate struct{ MinTimestamp, MaxTimestamp time.Time }
+	TimeRangeRowPredicate struct{ Start, End time.Time }
 )
 
-func (TimeRangePredicate) isRowPredicate() {}
+func (TimeRangeRowPredicate) isRowPredicate() {}
