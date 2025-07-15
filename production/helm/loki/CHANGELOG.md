@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+
+## 6.32.0
+
 - [CHANGE] Changed version of Grafana Loki to 3.5.2
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.5.2
 - [FEATURE] Add support for templated `loki.operational_config` [#17045](https://github.com/grafana/loki/pull/17045)
