@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.152.0"
+	libraryVersion = "1.157.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -97,7 +97,7 @@ type Client struct {
 	VPCs                VPCsService
 	PartnerAttachment   PartnerAttachmentService
 	GenAI               GenAIService
-
+	BYOIPPrefixes       BYOIPPrefixesService
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
 
@@ -314,6 +314,7 @@ func NewClient(httpClient *http.Client) *Client {
 	c.ReservedIPV6s = &ReservedIPV6sServiceOp{client: c}
 	c.ReservedIPActions = &ReservedIPActionsServiceOp{client: c}
 	c.ReservedIPV6Actions = &ReservedIPV6ActionsServiceOp{client: c}
+	c.BYOIPPrefixes = &BYOIPPrefixServiceOp{client: c}
 	c.Sizes = &SizesServiceOp{client: c}
 	c.Snapshots = &SnapshotsServiceOp{client: c}
 	c.SpacesKeys = &SpacesKeysServiceOp{client: c}
