@@ -11,15 +11,16 @@ env:
   GOFLAGS: "-tags=slicelabels"
 
 jobs:
-  call-lint:
-    permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
-    uses: grafana/helm-charts/.github/workflows/linter.yml@490190857dd259231dcf4b79e75e71d9544ebbb9
-    with:
-      filter_regex_include: .*production/helm/loki/.*
-      golang_ci_lint_file: production/helm/loki/.golangci.yaml
+# Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
+#  call-lint:
+#    permissions:
+#      contents: "read"
+#      id-token: "write"
+#      pull-requests: "write"
+#    uses: grafana/helm-charts/.github/workflows/linter.yml@490190857dd259231dcf4b79e75e71d9544ebbb9
+#    with:
+#      filter_regex_include: .*production/helm/loki/.*
+#      golang_ci_lint_file: production/helm/loki/.golangci.yaml
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
