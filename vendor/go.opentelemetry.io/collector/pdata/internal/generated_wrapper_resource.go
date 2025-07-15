@@ -30,6 +30,7 @@ func NewResource(orig *otlpresource.Resource, state *State) Resource {
 func CopyOrigResource(dest, src *otlpresource.Resource) {
 	dest.Attributes = CopyOrigMap(dest.Attributes, src.Attributes)
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
+	dest.EntityRefs = CopyOrigEntityRefSlice(dest.EntityRefs, src.EntityRefs)
 }
 
 func GenerateTestResource() Resource {
@@ -43,4 +44,5 @@ func GenerateTestResource() Resource {
 func FillTestResource(tv Resource) {
 	FillTestMap(NewMap(&tv.orig.Attributes, tv.state))
 	tv.orig.DroppedAttributesCount = uint32(17)
+	FillTestEntityRefSlice(NewEntityRefSlice(&tv.orig.EntityRefs, tv.state))
 }

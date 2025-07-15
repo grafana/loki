@@ -251,7 +251,10 @@ func (c *BceClient) GetBceClientConfig() *BceClientConfiguration {
 }
 
 func NewBceClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
-	clientConfig := http.ClientConfig{RedirectDisabled: conf.RedirectDisabled}
+	clientConfig := http.ClientConfig{
+		RedirectDisabled:  conf.RedirectDisabled,
+		DisableKeepAlives: conf.DisableKeepAlives,
+	}
 	http.InitClient(clientConfig)
 	return &BceClient{conf, sign}
 }

@@ -25,6 +25,9 @@ jobs:
           - name: Distributed Scenario
             values_file: default-distributed-values.yaml
             use_k3d: true
+          - name: Single Binary Scenario
+            values_file: default-single-binary-values.yaml
+            use_k3d: true
           - name: Default Values Scenario
             values_file: default-values.yaml
             use_k3d: true
@@ -133,6 +136,11 @@ jobs:
             echo "</details>" >> formatted_diff_output.md
             echo "" >> formatted_diff_output.md
           done
+
+      - name: Truncate summary diff to 65535 characters
+        run: |
+          head -c 65535 formatted_diff_output.md > formatted_diff_output.truncated.md
+          mv formatted_diff_output.truncated.md formatted_diff_output.md
 
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2

@@ -88,15 +88,17 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(fmt.Errorf("creating data object: %w", err))
 	}
 
-	return newDataobjScanPipeline(ctx, dataobjScanOptions{
+	return newDataobjScanPipeline(dataobjScanOptions{
 		Object:      obj,
 		StreamIDs:   node.StreamIDs,
-		Sections:    node.Sections,
+		Section:     node.Section,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
 		Direction: node.Direction,
 		Limit:     node.Limit,
+
+		batchSize: c.batchSize,
 	})
 }
 

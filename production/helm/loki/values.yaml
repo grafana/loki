@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.1
+    tag: 3.5.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -212,7 +212,7 @@ loki:
           batch_size: {{ .batchSize }}
           parallelism: {{ .parallelism }}
         memcached_client:
-          addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+          addresses: {{ .addresses }}
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
@@ -260,8 +260,8 @@ loki:
             writeback_buffer: {{ .writebackBuffer }}
             writeback_size_limit: {{ .writebackSizeLimit }}
           memcached_client:
+            addresses: {{ .addresses }}
             consistent_hash: true
-            addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
             timeout: {{ .timeout }}
             update_interval: 1m
       {{- end }}
@@ -329,6 +329,11 @@ loki:
 
     {{- with .Values.loki.bloom_gateway }}
     bloom_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.operational_config }}
+    operational_config:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
   # Should authentication be enabled
@@ -463,21 +468,6 @@ loki:
         # Optional storage account key
         account_key: null
 
-  # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
-  # must enable and specify a host for each cache you would like to use.
-  memcached:
-    chunk_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      batch_size: 256
-      parallelism: 10
-    results_cache:
-      enabled: false
-      host: ""
-      service: "memcached-client"
-      timeout: "500ms"
-      default_validity: "12h"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
   # -- a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around
@@ -557,6 +547,8 @@ loki:
     enabled: false
     client:
       addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
+  # -- Optional operational configuration
+  operational_config: {}
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -610,7 +602,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.1
+    tag: 3.5.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -762,6 +754,8 @@ test:
 # that it's working correctly
 lokiCanary:
   enabled: true
+  # -- The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.
+  kind: DaemonSet
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
@@ -1045,7 +1039,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.28-alpine
+    tag: 1.29-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy
@@ -1206,7 +1200,7 @@ gateway:
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
-      {{- include "loki.nginxFile" . | indent 2 -}}
+      {{- include "loki.nginxFile" . -}}
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
@@ -3206,7 +3200,10 @@ overridesExporter:
   appProtocol:
     grpc: ""
 
+# You can use a self hosted memcached by setting enabled to false and providing addresses.
 memcached:
+  # -- Enable the built in memcached server provided by the chart
+  enabled: true
   image:
     # -- Memcached Docker image repository
     repository: memcached
@@ -3265,6 +3262,8 @@ memcachedExporter:
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3360,9 +3359,13 @@ resultsCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    # -- PVC additional labels
+    labels: {}
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
+  # -- Comma separated addresses list in DNS Service Discovery format
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3462,6 +3465,8 @@ chunksCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    # -- PVC additional labels
+    labels: {}
 ######################################################################################################################
 #
 # Subchart configurations
@@ -3565,7 +3570,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.6
+    tag: 1.30.7
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"context"
+
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
@@ -12,7 +14,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(Local, func(inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		var length int64
 		var start, end int64
 		var batch arrow.Record
@@ -26,7 +28,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 
 			// Pull the next item from input
 			input := inputs[0]
-			err := input.Read()
+			err := input.Read(ctx)
 			if err != nil {
 				return failureState(err)
 			}

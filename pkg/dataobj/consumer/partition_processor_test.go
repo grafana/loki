@@ -17,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
@@ -157,6 +158,7 @@ func TestIdleFlush(t *testing.T) {
 				&kgo.Client{},
 				testBuilderConfig,
 				uploader.Config{},
+				metastore.Config{},
 				bucket,
 				"test-tenant",
 				0,
@@ -227,6 +229,7 @@ func TestIdleFlushWithActiveProcessing(t *testing.T) {
 		&kgo.Client{},
 		testBuilderConfig,
 		uploader.Config{},
+		metastore.Config{},
 		bucket,
 		"test-tenant",
 		0,
@@ -289,6 +292,7 @@ func TestIdleFlushWithEmptyData(t *testing.T) {
 		&kgo.Client{},
 		testBuilderConfig,
 		uploader.Config{},
+		metastore.Config{},
 		bucket,
 		"test-tenant",
 		0,
