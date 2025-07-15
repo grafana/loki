@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/atomic"
 	"sync"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
