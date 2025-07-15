@@ -361,6 +361,14 @@ func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req Delete
 					req.EndTime,
 				},
 			},
+			postUpdateExecCallback: func(numChanges int) error {
+				// Exactly one row should be deleted. Fail the transaction if not.
+				if numChanges != 1 {
+					return fmt.Errorf("expected 1 change, got %d", numChanges)
+				}
+
+				return nil
+			},
 		}, {
 			query: sqlProcessedShardUpdate,
 			execOpts: &sqlitex.ExecOptions{
@@ -368,6 +376,14 @@ func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req Delete
 					model.Now(),
 					req.RequestID,
 				},
+			},
+			postUpdateExecCallback: func(numChanges int) error {
+				// Exactly one row should be updated. Fail the transaction if not.
+				if numChanges != 1 {
+					return fmt.Errorf("expected 1 change, got %d", numChanges)
+				}
+
+				return nil
 			},
 		},
 	}
