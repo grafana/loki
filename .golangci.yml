@@ -22,6 +22,7 @@ run:
   build-tags:
     - cgo
     - integration
+    - slicelabels
 
 # output configuration options
 output:
