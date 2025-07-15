@@ -123,7 +123,7 @@ type objectMetastoreMetrics struct {
 	resolvedSectionsRatio               prometheus.Histogram
 }
 
-func newObjectMetastoreMetrics(reg prometheus.Registerer) *objectMetastoreMetrics {
+func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 	metrics := &objectMetastoreMetrics{
 		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_total_duration_seconds",

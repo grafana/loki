@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
@@ -51,11 +50,6 @@ func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard Sh
 	})
 
 	return filterForShard(shard, paths, streams, sections)
-}
-
-// ResolveSections implements Catalog.
-func (c *catalog) ResolveSections(expr, tableHint Expression) ([]metastore.DataobjSectionDescriptor, error) {
-	return c.ResolveSections(expr, tableHint)
 }
 
 var _ Catalog = (*catalog)(nil)

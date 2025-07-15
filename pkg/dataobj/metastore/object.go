@@ -104,7 +104,7 @@ func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheu
 		bucket:      bucket,
 		parallelism: 64,
 		logger:      logger,
-		metrics:     newObjectMetastoreMetrics(reg),
+		metrics:     newObjectMetastoreMetrics(),
 	}
 	if reg != nil {
 		store.metrics.register(reg)
@@ -488,22 +488,20 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
-	for i, path := range paths {
-		func(idx int) {
-			g.Go(func() error {
-				object, err := dataobj.FromBucket(ctx, m.bucket, path)
-				if err != nil {
-					return fmt.Errorf("getting object from bucket: %w", err)
-				}
+	for idx, path := range paths {
+		g.Go(func() error {
+			object, err := dataobj.FromBucket(ctx, m.bucket, path)
+			if err != nil {
+				return fmt.Errorf("getting object from bucket: %w", err)
+			}
 
-				sections[idx] = object.Sections().Count(logs.CheckSection)
-				streamIDs[idx] = make([]int64, 0, 8)
+			sections[idx] = object.Sections().Count(logs.CheckSection)
+			streamIDs[idx] = make([]int64, 0, 8)
 
-				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
-					streamIDs[idx] = append(streamIDs[idx], stream.ID)
-				})
+			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
+				streamIDs[idx] = append(streamIDs[idx], stream.ID)
 			})
-		}(i)
+		})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -527,54 +525,52 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
-	for i, path := range paths {
-		func(idx int) {
-			g.Go(func() error {
-				var key SectionKey
-				var matchingStreamIDs []int64
+	for _, path := range paths {
+		g.Go(func() error {
+			var key SectionKey
+			var matchingStreamIDs []int64
 
-				idxObject, err := fetchObject(ctx, m.bucket, path)
-				if err != nil {
-					return fmt.Errorf("fetching object '%s' from bucket: %w", path, err)
-				}
+			idxObject, err := fetchObject(ctx, m.bucket, path)
+			if err != nil {
+				return fmt.Errorf("fetching object '%s' from bucket: %w", path, err)
+			}
 
-				streamReadStartTime := time.Now()
-				err = forEachStream(ctx, idxObject, streamPredicate, func(stream streams.Stream) {
-					matchingStreamIDs = append(matchingStreamIDs, stream.ID)
-				})
-				if err != nil {
-					return fmt.Errorf("reading streams from index: %w", err)
-				}
-				m.metrics.streamFilterStreamsReadDuration.Observe(time.Since(streamReadStartTime).Seconds())
-
-				objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
-				sectionPointerReadStartTime := time.Now()
-				err = forEachObjPointer(ctx, idxObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
-					key.ObjectPath = pointer.Path
-					key.SectionIdx = pointer.Section
-
-					sectionDescriptor, ok := objectSectionDescriptors[key]
-					if !ok {
-						objectSectionDescriptors[key] = NewSectionDescriptor(pointer)
-						return
-					}
-					sectionDescriptor.Merge(pointer)
-				})
-				if err != nil {
-					return fmt.Errorf("reading section pointers from index: %w", err)
-				}
-				m.metrics.streamFilterPointersReadDuration.Observe(time.Since(sectionPointerReadStartTime).Seconds())
-
-				// Merge the section descriptors for the object into the global section descriptors in one batch
-				sectionDescriptorsMutex.Lock()
-				for _, sectionDescriptor := range objectSectionDescriptors {
-					sectionDescriptors = append(sectionDescriptors, sectionDescriptor)
-				}
-				sectionDescriptorsMutex.Unlock()
-
-				return nil
+			streamReadStartTime := time.Now()
+			err = forEachStream(ctx, idxObject, streamPredicate, func(stream streams.Stream) {
+				matchingStreamIDs = append(matchingStreamIDs, stream.ID)
 			})
-		}(i)
+			if err != nil {
+				return fmt.Errorf("reading streams from index: %w", err)
+			}
+			m.metrics.streamFilterStreamsReadDuration.Observe(time.Since(streamReadStartTime).Seconds())
+
+			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
+			sectionPointerReadStartTime := time.Now()
+			err = forEachObjPointer(ctx, idxObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
+				key.ObjectPath = pointer.Path
+				key.SectionIdx = pointer.Section
+
+				sectionDescriptor, ok := objectSectionDescriptors[key]
+				if !ok {
+					objectSectionDescriptors[key] = NewSectionDescriptor(pointer)
+					return
+				}
+				sectionDescriptor.Merge(pointer)
+			})
+			if err != nil {
+				return fmt.Errorf("reading section pointers from index: %w", err)
+			}
+			m.metrics.streamFilterPointersReadDuration.Observe(time.Since(sectionPointerReadStartTime).Seconds())
+
+			// Merge the section descriptors for the object into the global section descriptors in one batch
+			sectionDescriptorsMutex.Lock()
+			for _, sectionDescriptor := range objectSectionDescriptors {
+				sectionDescriptors = append(sectionDescriptors, sectionDescriptor)
+			}
+			sectionDescriptorsMutex.Unlock()
+
+			return nil
+		})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -599,38 +595,34 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 
 	var sectionDescriptors []*DataobjSectionDescriptor
 	var sectionDescriptorsMutex sync.Mutex
-	for i, path := range paths {
-		func(idx int) {
-			g.Go(func() error {
-				idxObject, err := fetchObject(ctx, m.bucket, path)
-				if err != nil {
-					return fmt.Errorf("fetching object from bucket: %w", err)
-				}
+	for _, path := range paths {
+		g.Go(func() error {
+			idxObject, err := fetchObject(ctx, m.bucket, path)
+			if err != nil {
+				return fmt.Errorf("fetching object from bucket: %w", err)
+			}
 
-				pointerReadStartTime := time.Now()
-				var objectSectionDescriptors []*DataobjSectionDescriptor
-				err = forEachObjPointer(ctx, idxObject, predicate, nil, func(pointer pointers.SectionPointer) {
-					objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
-						SectionKey: SectionKey{
-							ObjectPath: pointer.Path,
-							SectionIdx: pointer.Section,
-						},
-					})
+			pointerReadStartTime := time.Now()
+			var objectSectionDescriptors []*DataobjSectionDescriptor
+			err = forEachObjPointer(ctx, idxObject, predicate, nil, func(pointer pointers.SectionPointer) {
+				objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
+					SectionKey: SectionKey{
+						ObjectPath: pointer.Path,
+						SectionIdx: pointer.Section,
+					},
 				})
-				if err != nil {
-					return fmt.Errorf("reading object from bucket: %w", err)
-				}
-				m.metrics.estimateSectionsPointerReadDuration.Observe(time.Since(pointerReadStartTime).Seconds())
-
-				sectionDescriptorsMutex.Lock()
-				for _, section := range objectSectionDescriptors {
-					sectionDescriptors = append(sectionDescriptors, section)
-				}
-				sectionDescriptorsMutex.Unlock()
-
-				return nil
 			})
-		}(i)
+			if err != nil {
+				return fmt.Errorf("reading object from bucket: %w", err)
+			}
+			m.metrics.estimateSectionsPointerReadDuration.Observe(time.Since(pointerReadStartTime).Seconds())
+
+			sectionDescriptorsMutex.Lock()
+			sectionDescriptors = append(sectionDescriptors, objectSectionDescriptors...)
+			sectionDescriptorsMutex.Unlock()
+
+			return nil
+		})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -798,7 +790,10 @@ func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate po
 		}
 
 		reader.Reset(sec)
-		reader.MatchStreams(slices.Values(matchIDs))
+		err = reader.MatchStreams(slices.Values(matchIDs))
+		if err != nil {
+			return fmt.Errorf("matching streams: %w", err)
+		}
 		if predicate != nil {
 			err := reader.SetPredicate(predicate)
 			if err != nil {
