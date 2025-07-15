@@ -59,6 +59,15 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"empty label filter string": {
 			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
+		"multiple variants": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with aggregation": {
+			query: `variants(sum by (app) (bytes_over_time({foo="bar"}[5m])), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with filters": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"} | logfmt[5m])`,
+		},
 	}
 
 	for name, test := range tests {
@@ -80,6 +89,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		})
 	}
 }
+
 func TestJSONSerializationParseTestCases(t *testing.T) {
 	for _, tc := range ParseTestCases {
 		if tc.err == nil {
@@ -98,7 +108,7 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 
 				t.Log(buf.String())
 
-				require.Equal(t, tc.exp, actual)
+				AssertExpressions(t, tc.exp, actual)
 			})
 		}
 	}

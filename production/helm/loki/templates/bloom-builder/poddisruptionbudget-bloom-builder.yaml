@@ -1,0 +1,21 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.bloomBuilder.replicas) 1) }}
+{{- if kindIs "invalid" .Values.bloomBuilder.maxUnavailable }}
+{{- fail "`.Values.bloomBuilder.maxUnavailable` must be set when `.Values.bloomBuilder.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.bloomBuilderFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.bloomBuilderSelectorLabels" . | nindent 6 }}
+  {{- with .Values.bloomBuilder.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}

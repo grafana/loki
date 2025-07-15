@@ -9,12 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	gokitlog "github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -47,7 +57,8 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -59,21 +70,21 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				chunkfmt,
 				headfmt,
 				cfg,
-				limiter,
+				limiter.rateLimitStrategy,
 				"fake",
 				model.Fingerprint(0),
-				labels.Labels{
-					{Name: "foo", Value: "bar"},
-				},
+				labels.FromStrings("foo", "bar"),
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
 				nil,
+				nil,
+				retentionHours,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
 				{Timestamp: time.Unix(int64(numLogs), 0), Line: "log"},
-			}, recordPool.GetRecord(), 0, true, false, nil)
+			}, recordPool.GetRecord(), 0, true, false, nil, "loki")
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
@@ -92,9 +103,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			}
 
 			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
-			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
+			expectErr := httpgrpc.Errorf(http.StatusBadRequest, "%s", expected.String())
 
-			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false, nil)
+			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false, nil, "loki")
 			require.Error(t, err)
 			require.Equal(t, expectErr.Error(), err.Error())
 		})
@@ -104,31 +115,31 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true, false, nil)
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -136,27 +147,96 @@ func TestPushDeduplication(t *testing.T) {
 	require.Equal(t, len("test"+"newer, better test"), written)
 }
 
+func TestPushDeduplicationExtraMetrics(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	buf := bytes.NewBuffer(nil)
+	logger := gokitlog.NewLogfmtLogger(buf)
+
+	provider := &providerMock{
+		tenantConfig: func(tenantID string) *runtime.Config {
+			if tenantID == "fake" {
+				return &runtime.Config{
+					LogDuplicateMetrics:    true,
+					LogDuplicateStreamInfo: true,
+				}
+			}
+
+			return &runtime.Config{}
+		},
+	}
+
+	runtimeCfg, err := runtime.NewTenantConfigs(provider)
+
+	registry := prometheus.NewRegistry()
+	manager := writefailures.NewManager(logger, registry, writefailures.Cfg{LogRate: flagext.ByteSize(1000), AddInsightsLabel: true}, runtimeCfg, "ingester")
+
+	require.NoError(t, err)
+	metrics := newIngesterMetrics(registry, "loki")
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		true,
+		NewStreamRateCalculator(),
+		metrics,
+		manager,
+		runtimeCfg,
+		retentionHours,
+	)
+
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "not a test"},
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, 2, s.chunks[0].chunk.Size(), "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+	require.Equal(t, float64(4), testutil.ToFloat64(metrics.duplicateLogBytesTotal.WithLabelValues("fake")))
+
+	content := buf.String()
+	require.NotEmpty(t, content)
+	require.Contains(t, content, "insight")
+	require.Contains(t, content, "duplicate")
+}
+
 func TestPushRejectOldCounter(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -164,7 +244,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "test"},
 		{Timestamp: time.Unix(1, 0), Line: "newer, better test"},
-	}, recordPool.GetRecord(), 0, true, false, nil)
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
@@ -173,13 +253,13 @@ func TestPushRejectOldCounter(t *testing.T) {
 	// fail to push with a counter <= the streams internal counter
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 2, true, false, nil)
+	}, recordPool.GetRecord(), 2, true, false, nil, "loki")
 	require.Equal(t, ErrEntriesExist, err)
 
 	// succeed with a greater counter
 	_, err = s.Push(context.Background(), []logproto.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "test"},
-	}, recordPool.GetRecord(), 3, true, false, nil)
+	}, recordPool.GetRecord(), 3, true, false, nil, "loki")
 	require.Nil(t, err)
 
 }
@@ -195,7 +275,7 @@ func TestStreamIterator(t *testing.T) {
 		{"gzipChunk", func() *chunkenc.MemChunk {
 			chunkfmt, headfmt := defaultChunkFormat(t)
 
-			return chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
+			return chunkenc.NewMemChunk(chunkfmt, compression.GZIP, headfmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -204,10 +284,11 @@ func TestStreamIterator(t *testing.T) {
 				chunk := chk.new()
 				for j := int64(0); j < entries; j++ {
 					k := i*entries + j
-					err := chunk.Append(&logproto.Entry{
+					dup, err := chunk.Append(&logproto.Entry{
 						Timestamp: time.Unix(k, 0),
 						Line:      fmt.Sprintf("line %d", k),
 					})
+					require.False(t, dup)
 					require.NoError(t, err)
 				}
 				s.chunks = append(s.chunks, chunkDesc{chunk: chunk})
@@ -245,24 +326,24 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
 		headfmt,
 		&cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 	s.highestTs = time.Now()
 
@@ -272,7 +353,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker)
+	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki")
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
@@ -283,24 +364,24 @@ func TestUnorderedPush(t *testing.T) {
 	cfg.MaxChunkAge = 10 * time.Second
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
 		headfmt,
 		&cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	for _, x := range []struct {
@@ -343,7 +424,7 @@ func TestUnorderedPush(t *testing.T) {
 		if x.cutBefore {
 			_ = s.cutChunk(context.Background())
 		}
-		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true, false, nil)
+		written, err := s.Push(context.Background(), x.entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
 		if x.err {
 			require.NotNil(t, err)
 		} else {
@@ -372,8 +453,8 @@ func TestUnorderedPush(t *testing.T) {
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())
-		require.Equal(t, x.Timestamp, time.Unix(0, sItr.Sample().Timestamp))
-		require.Equal(t, float64(1), sItr.Sample().Value)
+		require.Equal(t, x.Timestamp, time.Unix(0, sItr.At().Timestamp))
+		require.Equal(t, float64(1), sItr.At().Value)
 	}
 	require.Equal(t, false, sItr.Next())
 }
@@ -385,24 +466,24 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	entries := []logproto.Entry{
@@ -411,7 +492,7 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	// Counter should be 2 now since the first line will be deduped.
 	tracker := &mockUsageTracker{}
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker)
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 	require.Equal(t, 20.0, tracker.discardedBytes)
@@ -424,8 +505,8 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	cfg := defaultConfig()
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -433,16 +514,16 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	entries := []logproto.Entry{
@@ -452,7 +533,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 
 	// Both entries have errors because rate limiting is done all at once
 	tracker := &mockUsageTracker{}
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker)
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[0].Line))}).Error())
 	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
@@ -462,8 +543,8 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = time.Minute
 	chunkfmt, headfmt := defaultChunkFormat(t)
@@ -472,16 +553,16 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
-		labels.Labels{
-			{Name: "foo", Value: "bar"},
-		},
+		labels.FromStrings("foo", "bar"),
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
+		retentionHours,
 	)
 
 	base := time.Now()
@@ -491,7 +572,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Push a first entry (it doesn't matter if we look like we're replaying or not)
-	_, err = s.Push(context.Background(), entries, nil, 1, true, false, nil)
+	_, err = s.Push(context.Background(), entries, nil, 1, true, false, nil, "loki")
 	require.Nil(t, err)
 
 	// Create a sample outside the validity window
@@ -500,11 +581,11 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	}
 
 	// Pretend it's not a replay, ensure we error
-	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil)
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, false, nil, "loki")
 	require.NotNil(t, err)
 
 	// Now pretend it's a replay. The same write should succeed.
-	_, err = s.Push(context.Background(), entries, nil, 2, true, false, nil)
+	_, err = s.Push(context.Background(), entries, nil, 2, true, false, nil, "loki")
 	require.Nil(t, err)
 
 }
@@ -512,27 +593,27 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
-		require.Equal(t, exp[i].Line, got.Entry().Line)
+		require.Equal(t, exp[i].Timestamp, got.At().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.At().Line)
 		i++
 	}
 	require.Equal(t, i, len(exp), "incorrect number of entries expected")
 }
 
 func Benchmark_PushStream(b *testing.B) {
-	ls := labels.Labels{
-		labels.Label{Name: "namespace", Value: "loki-dev"},
-		labels.Label{Name: "cluster", Value: "dev-us-central1"},
-		labels.Label{Name: "job", Value: "loki-dev/ingester"},
-		labels.Label{Name: "container", Value: "ingester"},
-	}
+	ls := labels.FromStrings(
+		"namespace", "loki-dev",
+		"cluster", "dev-us-central1",
+		"job", "loki-dev/ingester",
+		"container", "ingester",
+	)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
-
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
@@ -549,7 +630,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, rec, 0, true, false, nil)
+		_, err := s.Push(ctx, e, rec, 0, true, false, nil, "loki")
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}
@@ -565,4 +646,12 @@ func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {
 	require.NoError(t, err)
 
 	return chunkfmt, headfmt
+}
+
+type providerMock struct {
+	tenantConfig func(string) *runtime.Config
+}
+
+func (m *providerMock) TenantConfig(userID string) *runtime.Config {
+	return m.tenantConfig(userID)
 }

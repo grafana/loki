@@ -27,6 +27,12 @@ const (
 	ErrDeadlineExceeded = "Request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed."
 )
 
+type UserError string
+
+func (e UserError) Error() string {
+	return string(e)
+}
+
 func ClientGrpcStatusAndError(err error) error {
 	if err == nil {
 		return nil
@@ -48,9 +54,14 @@ func WriteError(err error, w http.ResponseWriter) {
 // ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without
 // exposing any implementation details.
 func ClientHTTPStatusAndError(err error) (int, error) {
+	if err == nil {
+		return http.StatusOK, nil
+	}
+
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
+		userErr  UserError
 	)
 
 	me, ok := err.(util.MultiError)
@@ -78,9 +89,18 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline) || errors.Is(err, logqlmodel.ErrBlocked) || errors.Is(err, logqlmodel.ErrParseMatchers):
+	case errors.Is(err, logqlmodel.ErrLimit) ||
+		errors.Is(err, logqlmodel.ErrParse) ||
+		errors.Is(err, logqlmodel.ErrPipeline) ||
+		errors.Is(err, logqlmodel.ErrBlocked) ||
+		errors.Is(err, logqlmodel.ErrParseMatchers) ||
+		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
+		return http.StatusBadRequest, err
+	case errors.As(err, &userErr):
+		return http.StatusBadRequest, err
+	case errors.Is(err, logqlmodel.ErrVariantsDisabled):
 		return http.StatusBadRequest, err
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {

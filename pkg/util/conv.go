@@ -13,7 +13,7 @@ func ModelLabelSetToMap(m model.LabelSet) map[string]string {
 	if len(m) == 0 {
 		return map[string]string{}
 	}
-	return *(*map[string]string)(unsafe.Pointer(&m))
+	return *(*map[string]string)(unsafe.Pointer(&m)) // #nosec G103 -- we know the string is not mutated
 }
 
 // MapToModelLabelSet converts a map into a model.LabelSet
@@ -21,7 +21,7 @@ func MapToModelLabelSet(m map[string]string) model.LabelSet {
 	if len(m) == 0 {
 		return model.LabelSet{}
 	}
-	return *(*map[model.LabelName]model.LabelValue)(unsafe.Pointer(&m))
+	return *(*map[model.LabelName]model.LabelValue)(unsafe.Pointer(&m)) // #nosec G103 -- we know the string is not mutated
 }
 
 // RoundToMilliseconds returns milliseconds precision time from nanoseconds.
@@ -41,9 +41,9 @@ func RoundToMilliseconds(from, through time.Time) (model.Time, model.Time) {
 // LabelsToMetric converts a Labels to Metric
 // Don't do this on any performance sensitive paths.
 func LabelsToMetric(ls labels.Labels) model.Metric {
-	m := make(model.Metric, len(ls))
-	for _, l := range ls {
+	m := make(model.Metric, ls.Len())
+	ls.Range(func(l labels.Label) {
 		m[model.LabelName(l.Name)] = model.LabelValue(l.Value)
-	}
+	})
 	return m
 }

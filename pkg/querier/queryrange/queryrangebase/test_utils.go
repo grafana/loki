@@ -20,26 +20,23 @@ func genLabels(
 	labelSet []string,
 	labelBuckets int,
 ) (result []labels.Labels) {
+
 	if len(labelSet) == 0 {
-		return result
+		return []labels.Labels{}
 	}
 
 	l := labelSet[0]
 	rest := genLabels(labelSet[1:], labelBuckets)
 
 	for i := 0; i < labelBuckets; i++ {
-		x := labels.Label{
-			Name:  l,
-			Value: fmt.Sprintf("%d", i),
-		}
 		if len(rest) == 0 {
-			set := labels.Labels{x}
-			result = append(result, set)
+			result = append(result, labels.FromStrings(l, fmt.Sprintf("%d", i)))
 			continue
 		}
 		for _, others := range rest {
-			set := append(others, x)
-			result = append(result, set)
+			builder := labels.NewBuilder(others)
+			builder.Set(l, fmt.Sprintf("%d", i))
+			result = append(result, builder.Labels())
 		}
 	}
 	return result
@@ -154,29 +151,26 @@ type ShardLabelSeries struct {
 
 // Labels impls storage.Series
 func (s *ShardLabelSeries) Labels() labels.Labels {
-	ls := s.Series.Labels()
+	ls := labels.NewBuilder(s.Series.Labels())
 
 	if s.name != "" {
-		ls = append(ls, labels.Label{
-			Name:  "__name__",
-			Value: s.name,
-		})
+		ls.Set("__name__", s.name)
 	}
 
 	if s.shard != nil {
-		ls = append(ls, s.shard.Label())
+		ls.Set(s.shard.Label().Name, s.shard.Label().Value)
 	}
 
-	return ls
+	return ls.Labels()
 }
 
 // LabelValues impls storage.Querier
-func (q *MockShardedQueryable) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockShardedQueryable) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (q *MockShardedQueryable) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockShardedQueryable) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 

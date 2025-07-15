@@ -386,7 +386,7 @@ func TestCacheTest(t *testing.T) {
 
 	queryResultsDiff = &mockCounter{}    // reset counter
 	mr.countOverTime = 2.3               // value not important
-	mr.noCacheCountOvertime = 2.30000005 // different than `countOverTime` value but withing tolerance
+	mr.noCacheCountOvertime = 2.30000005 // different than `countOverTime` value but within tolerance
 	c.cacheTest(now)
 	assert.Equal(t, 0, queryResultsDiff.(*mockCounter).count)
 

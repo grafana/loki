@@ -20,6 +20,10 @@ func NewTraceState(orig *string, state *State) TraceState {
 	return TraceState{orig: orig, state: state}
 }
 
+func CopyOrigTraceState(dest, src *string) {
+	*dest = *src
+}
+
 func GenerateTestTraceState() TraceState {
 	var orig string
 	state := StateMutable

@@ -2,7 +2,7 @@
 Package filters provides tools for encoding a mapping of keys to a set of
 multiple values.
 */
-package filters // import "github.com/docker/docker/api/types/filters"
+package filters
 
 import (
 	"encoding/json"
@@ -196,11 +196,10 @@ func (args Args) Match(field, source string) bool {
 }
 
 // GetBoolOrDefault returns a boolean value of the key if the key is present
-// and is intepretable as a boolean value. Otherwise the default value is returned.
+// and is interpretable as a boolean value. Otherwise the default value is returned.
 // Error is not nil only if the filter values are not valid boolean or are conflicting.
 func (args Args) GetBoolOrDefault(key string, defaultValue bool) (bool, error) {
 	fieldValues, ok := args.fields[key]
-
 	if !ok {
 		return defaultValue, nil
 	}
@@ -211,20 +210,11 @@ func (args Args) GetBoolOrDefault(key string, defaultValue bool) (bool, error) {
 
 	isFalse := fieldValues["0"] || fieldValues["false"]
 	isTrue := fieldValues["1"] || fieldValues["true"]
-
-	conflicting := isFalse && isTrue
-	invalid := !isFalse && !isTrue
-
-	if conflicting || invalid {
+	if isFalse == isTrue {
+		// Either no or conflicting truthy/falsy value were provided
 		return defaultValue, &invalidFilter{key, args.Get(key)}
-	} else if isFalse {
-		return false, nil
-	} else if isTrue {
-		return true, nil
 	}
-
-	// This code shouldn't be reached.
-	return defaultValue, &unreachableCode{Filter: key, Value: args.Get(key)}
+	return isTrue, nil
 }
 
 // ExactMatch returns true if the source matches exactly one of the values.

@@ -15,13 +15,13 @@
       <div>
         <ul>
           {{ range .Links }}
-          <li><a href="{{ .Address }}">{{.Text}}</a>{{if .Description}}: {{.Description}}{{end}}</li>
+          <li><a href="{{if $.RoutePrefix}}{{ $.RoutePrefix }}{{end}}{{ .Address }}">{{.Text}}</a>{{if .Description}}: {{.Description}}{{end}}</li>
           {{ end }}
         </ul>
       </div>
       {{ if .Form.Action }}
       <div>
-      <form action="{{ .Form.Action}}">
+      <form action="{{if $.RoutePrefix}}{{ $.RoutePrefix }}{{end}}{{ .Form.Action }}">
       {{ range .Form.Inputs }}
       <label>{{ .Label }}:</label>&nbsp;<input type="{{ .Type }}" name="{{ .Name }}" placeholder="{{ .Placeholder }}" value="{{ .Value }}"><br>
       {{ end }}
@@ -30,6 +30,14 @@
       </div>
       {{ end }}
       {{ .ExtraHTML }}
+      <div id="pprof">
+      Download a detailed report of resource usage (pprof format, from the Go runtime):
+      <ul>
+        <li><a href="{{if $.RoutePrefix}}{{ $.RoutePrefix }}{{end}}debug/pprof/heap">heap usage (memory)</a>
+        <li><a href="{{if $.RoutePrefix}}{{ $.RoutePrefix }}{{end}}debug/pprof/profile?seconds=60">CPU usage (60 second profile)</a>
+      </ul>
+      To visualize and share profiles you can upload to <a href="https://pprof.me" target="_blank" rel="noopener noreferrer">pprof.me</a>
+      </div>
     </main>
   </body>
 </html>

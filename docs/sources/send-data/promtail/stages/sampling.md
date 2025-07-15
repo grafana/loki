@@ -9,6 +9,8 @@ weight:
 
 # sampling
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `sampling` stage is a stage that sampling logs. 
 
 ## Sampling stage schema

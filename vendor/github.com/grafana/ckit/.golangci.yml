@@ -1,0 +1,70 @@
+# Full list of configuration options: https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 10m
+
+output:
+  sort-results: true
+
+linters:
+  enable:
+    - errcheck    # Report unchecked errors
+    - goconst     # Find repeated strings that could be replaced by constant
+    - gofmt       # Check whether code was gofmt-ed
+    - goimports   # Check imports were formatted with gofmt
+    - revive      # Broad set of rules; replaces deprecated golint
+    - gosimple    # Check whether code can be simplified
+    - ineffassign # Detect when assignment to variable is never used
+    - misspell    # Report on commonly misspelled English words
+    - unconvert   # Remove unnecessary type conversions
+    - unparam     # Detect unused function parameters
+    - govet       # `go vet`
+    - unused      # Detect unused constants/variables/functions/types
+    - typecheck   # Ensure code typechecks
+    - makezero    # Detect misuse of make with non-zero length and append
+    - tenv        # Use testing.(*T).Setenv instead of os.Setenv
+    - whitespace  # Report unnecessary blank lines
+
+issues:
+  # We want to use our own exclusion rules and ignore all the defaults.
+  exclude-use-default: false
+
+  exclude-rules:
+    # It's fine if tests ignore errors.
+    - path: _test.go
+      linters:
+        - errcheck
+
+  exclude:
+    # Ignoring errors on Close, Log, and removing files is OK in most cases.
+    - "Error return value of `(.*\\.Close|.*\\.Log|os.Remove)` is not checked"
+
+# Linter settings options: https://golangci-lint.run/usage/linters/
+linters-settings:
+  whitespace:
+    # While there normally shouldn't be extra redundant leading/trailing
+    # whitespace, if statement conditions and function headers that cross
+    # multiple lines are an exception.
+    #
+    #   if true ||
+    #      false {
+    #
+    #       // ... ^ must have empty line above
+    #    }
+    #
+    #   func foo(
+    #     a int,
+    #   ) {
+    #
+    #     // ... ^ must have empty line above
+    #   }
+    #
+    # This helps readers easily separate where the multi-line if/function ends
+    # at a glance.
+    multi-if: true
+    multi-func: true
+
+  revive:
+    rules:
+    - name: package-comments
+      disabled: true

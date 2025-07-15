@@ -51,9 +51,6 @@ type IndexReader interface {
 	// beyond the lifetime of the index reader.
 	Symbols() index.StringIter
 
-	// SortedLabelValues returns sorted possible label values.
-	SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
-
 	// LabelValues returns possible label values which may not be sorted.
 	LabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
 
@@ -69,7 +66,7 @@ type IndexReader interface {
 	Series(ref storage.SeriesRef, from int64, through int64, lset *labels.Labels, chks *[]index.ChunkMeta) (uint64, error)
 
 	// ChunkStats returns the stats for the chunks in the given series.
-	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels) (uint64, index.ChunkStats, error)
+	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error)
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)

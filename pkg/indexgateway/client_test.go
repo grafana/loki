@@ -259,7 +259,7 @@ func TestGatewayClient(t *testing.T) {
 	}
 
 	numCallbacks := 0
-	err = gatewayClient.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	err = gatewayClient.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 
 		for j := 0; j <= numCallbacks; j++ {

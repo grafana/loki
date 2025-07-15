@@ -9,6 +9,8 @@ weight:
 
 # geoip
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `geoip` stage is a parsing stage that reads an ip address and populates the labelset with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
 
 Populated fields for City db:

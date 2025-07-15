@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
 	"net/textproto"
 	"strings"
 	"sync"
@@ -20,11 +19,12 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
@@ -38,6 +38,8 @@ import (
 	lokihttpreq "github.com/grafana/loki/v3/pkg/util/httpreq"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
+
+var tracer = otel.Tracer("pkg/scheduler")
 
 const (
 	// NumTokens is 1 since we only need to insert 1 token to be used for leader election purposes.
@@ -229,10 +231,10 @@ type schedulerRequest struct {
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-	queueSpan opentracing.Span
+	queueSpan trace.Span
 
 	// This is only used for testing.
-	parentSpanContext opentracing.SpanContext
+	parentSpanContext trace.SpanContext
 }
 
 // FrontendLoop handles connection from frontend.
@@ -354,11 +356,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 
 	// Extract tracing information from headers in HTTP request. FrontendContext doesn't have the correct tracing
 	// information, since that is a long-running request.
-	tracer := opentracing.GlobalTracer()
-	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg)
-	if err != nil && err != opentracing.ErrSpanContextNotFound {
-		return err
-	}
+	ctx = lokigrpc.ExtractSpanFromRequest(ctx, msg)
 
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
@@ -371,8 +369,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 
 	now := time.Now()
 
-	req.parentSpanContext = parentSpanContext
-	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
+	req.parentSpanContext = trace.SpanFromContext(ctx).SpanContext()
+	req.ctx, req.queueSpan = tracer.Start(ctx, "queued")
 	req.queueTime = now
 	req.ctxCancel = cancel
 
@@ -447,7 +445,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		reqQueueTime := time.Since(r.queueTime)
 		s.queueDuration.Observe(reqQueueTime.Seconds())
-		r.queueSpan.Finish()
+		r.queueSpan.End()
 
 		// Add HTTP header to the request containing the query queue time
 		if r.request != nil {
@@ -548,15 +546,16 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 
 func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {
 	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
-		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
 	},
-		nil)
+		nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
 		return
 	}
+	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)

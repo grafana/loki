@@ -17,6 +17,7 @@ var errNoNetworks = errors.New("no networks have been defined")
 // See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Droplets
 type DropletsService interface {
 	List(context.Context, *ListOptions) ([]Droplet, *Response, error)
+	ListWithGPUs(context.Context, *ListOptions) ([]Droplet, *Response, error)
 	ListByName(context.Context, string, *ListOptions) ([]Droplet, *Response, error)
 	ListByTag(context.Context, string, *ListOptions) ([]Droplet, *Response, error)
 	Get(context.Context, int) (*Droplet, *Response, error)
@@ -29,6 +30,9 @@ type DropletsService interface {
 	Backups(context.Context, int, *ListOptions) ([]Image, *Response, error)
 	Actions(context.Context, int, *ListOptions) ([]Action, *Response, error)
 	Neighbors(context.Context, int) ([]Droplet, *Response, error)
+	GetBackupPolicy(context.Context, int) (*DropletBackupPolicy, *Response, error)
+	ListBackupPolicies(context.Context, *ListOptions) (map[int]*DropletBackupPolicy, *Response, error)
+	ListSupportedBackupPolicies(context.Context) ([]*SupportedBackupPolicy, *Response, error)
 }
 
 // DropletsServiceOp handles communication with the Droplet related methods of the
@@ -217,37 +221,46 @@ func (d DropletCreateSSHKey) MarshalJSON() ([]byte, error) {
 
 // DropletCreateRequest represents a request to create a Droplet.
 type DropletCreateRequest struct {
-	Name              string                `json:"name"`
-	Region            string                `json:"region"`
-	Size              string                `json:"size"`
-	Image             DropletCreateImage    `json:"image"`
-	SSHKeys           []DropletCreateSSHKey `json:"ssh_keys"`
-	Backups           bool                  `json:"backups"`
-	IPv6              bool                  `json:"ipv6"`
-	PrivateNetworking bool                  `json:"private_networking"`
-	Monitoring        bool                  `json:"monitoring"`
-	UserData          string                `json:"user_data,omitempty"`
-	Volumes           []DropletCreateVolume `json:"volumes,omitempty"`
-	Tags              []string              `json:"tags"`
-	VPCUUID           string                `json:"vpc_uuid,omitempty"`
-	WithDropletAgent  *bool                 `json:"with_droplet_agent,omitempty"`
+	Name              string                      `json:"name"`
+	Region            string                      `json:"region"`
+	Size              string                      `json:"size"`
+	Image             DropletCreateImage          `json:"image"`
+	SSHKeys           []DropletCreateSSHKey       `json:"ssh_keys"`
+	Backups           bool                        `json:"backups"`
+	IPv6              bool                        `json:"ipv6"`
+	PrivateNetworking bool                        `json:"private_networking"`
+	Monitoring        bool                        `json:"monitoring"`
+	UserData          string                      `json:"user_data,omitempty"`
+	Volumes           []DropletCreateVolume       `json:"volumes,omitempty"`
+	Tags              []string                    `json:"tags"`
+	VPCUUID           string                      `json:"vpc_uuid,omitempty"`
+	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
+	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
 }
 
 // DropletMultiCreateRequest is a request to create multiple Droplets.
 type DropletMultiCreateRequest struct {
-	Names             []string              `json:"names"`
-	Region            string                `json:"region"`
-	Size              string                `json:"size"`
-	Image             DropletCreateImage    `json:"image"`
-	SSHKeys           []DropletCreateSSHKey `json:"ssh_keys"`
-	Backups           bool                  `json:"backups"`
-	IPv6              bool                  `json:"ipv6"`
-	PrivateNetworking bool                  `json:"private_networking"`
-	Monitoring        bool                  `json:"monitoring"`
-	UserData          string                `json:"user_data,omitempty"`
-	Tags              []string              `json:"tags"`
-	VPCUUID           string                `json:"vpc_uuid,omitempty"`
-	WithDropletAgent  *bool                 `json:"with_droplet_agent,omitempty"`
+	Names             []string                    `json:"names"`
+	Region            string                      `json:"region"`
+	Size              string                      `json:"size"`
+	Image             DropletCreateImage          `json:"image"`
+	SSHKeys           []DropletCreateSSHKey       `json:"ssh_keys"`
+	Backups           bool                        `json:"backups"`
+	IPv6              bool                        `json:"ipv6"`
+	PrivateNetworking bool                        `json:"private_networking"`
+	Monitoring        bool                        `json:"monitoring"`
+	UserData          string                      `json:"user_data,omitempty"`
+	Tags              []string                    `json:"tags"`
+	VPCUUID           string                      `json:"vpc_uuid,omitempty"`
+	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
+	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
+}
+
+// DropletBackupPolicyRequest defines the backup policy when creating a Droplet.
+type DropletBackupPolicyRequest struct {
+	Plan    string `json:"plan,omitempty"`
+	Weekday string `json:"weekday,omitempty"`
+	Hour    *int   `json:"hour,omitempty"`
 }
 
 func (d DropletCreateRequest) String() string {
@@ -313,6 +326,17 @@ func (s *DropletsServiceOp) list(ctx context.Context, path string) ([]Droplet, *
 // List all Droplets.
 func (s *DropletsServiceOp) List(ctx context.Context, opt *ListOptions) ([]Droplet, *Response, error) {
 	path := dropletBasePath
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return s.list(ctx, path)
+}
+
+// ListWithGPUs lists all Droplets with GPUs.
+func (s *DropletsServiceOp) ListWithGPUs(ctx context.Context, opt *ListOptions) ([]Droplet, *Response, error) {
+	path := fmt.Sprintf("%s?type=gpus", dropletBasePath)
 	path, err := addOptions(path, opt)
 	if err != nil {
 		return nil, nil, err
@@ -605,4 +629,110 @@ func (s *DropletsServiceOp) dropletActionStatus(ctx context.Context, uri string)
 	}
 
 	return action.Status, nil
+}
+
+// DropletBackupPolicy defines the information about a droplet's backup policy.
+type DropletBackupPolicy struct {
+	DropletID        int                        `json:"droplet_id,omitempty"`
+	BackupEnabled    bool                       `json:"backup_enabled,omitempty"`
+	BackupPolicy     *DropletBackupPolicyConfig `json:"backup_policy,omitempty"`
+	NextBackupWindow *BackupWindow              `json:"next_backup_window,omitempty"`
+}
+
+// DropletBackupPolicyConfig defines the backup policy for a Droplet.
+type DropletBackupPolicyConfig struct {
+	Plan                string `json:"plan,omitempty"`
+	Weekday             string `json:"weekday,omitempty"`
+	Hour                int    `json:"hour,omitempty"`
+	WindowLengthHours   int    `json:"window_length_hours,omitempty"`
+	RetentionPeriodDays int    `json:"retention_period_days,omitempty"`
+}
+
+// dropletBackupPolicyRoot represents a DropletBackupPolicy root
+type dropletBackupPolicyRoot struct {
+	DropletBackupPolicy *DropletBackupPolicy `json:"policy,omitempty"`
+}
+
+type dropletBackupPoliciesRoot struct {
+	DropletBackupPolicies map[int]*DropletBackupPolicy `json:"policies,omitempty"`
+	Links                 *Links                       `json:"links,omitempty"`
+	Meta                  *Meta                        `json:"meta"`
+}
+
+// Get individual droplet backup policy.
+func (s *DropletsServiceOp) GetBackupPolicy(ctx context.Context, dropletID int) (*DropletBackupPolicy, *Response, error) {
+	if dropletID < 1 {
+		return nil, nil, NewArgError("dropletID", "cannot be less than 1")
+	}
+
+	path := fmt.Sprintf("%s/%d/backups/policy", dropletBasePath, dropletID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(dropletBackupPolicyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.DropletBackupPolicy, resp, err
+}
+
+// List all droplet backup policies.
+func (s *DropletsServiceOp) ListBackupPolicies(ctx context.Context, opt *ListOptions) (map[int]*DropletBackupPolicy, *Response, error) {
+	path := fmt.Sprintf("%s/backups/policies", dropletBasePath)
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(dropletBackupPoliciesRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+
+	return root.DropletBackupPolicies, resp, nil
+}
+
+type SupportedBackupPolicy struct {
+	Name                 string   `json:"name,omitempty"`
+	PossibleWindowStarts []int    `json:"possible_window_starts,omitempty"`
+	WindowLengthHours    int      `json:"window_length_hours,omitempty"`
+	RetentionPeriodDays  int      `json:"retention_period_days,omitempty"`
+	PossibleDays         []string `json:"possible_days,omitempty"`
+}
+
+type dropletSupportedBackupPoliciesRoot struct {
+	SupportedBackupPolicies []*SupportedBackupPolicy `json:"supported_policies,omitempty"`
+}
+
+// List supported droplet backup policies.
+func (s *DropletsServiceOp) ListSupportedBackupPolicies(ctx context.Context) ([]*SupportedBackupPolicy, *Response, error) {
+	path := fmt.Sprintf("%s/backups/supported_policies", dropletBasePath)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(dropletSupportedBackupPoliciesRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.SupportedBackupPolicies, resp, nil
 }

@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"testing"
@@ -20,7 +21,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "simple_works",
 			input: "1-compactor-1-10-ff.tsdb",
 			id: SingleTenantTSDBIdentifier{
-				exportTSInSecs: true,
+				ExportTSInSecs: true,
 				TS:             time.Unix(1, 0),
 				From:           1,
 				Through:        10,
@@ -32,7 +33,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "simple_works_with_nanosecond",
 			input: "1712534400000000000-compactor-1-10-ff.tsdb",
 			id: SingleTenantTSDBIdentifier{
-				exportTSInSecs: false,
+				ExportTSInSecs: false,
 				TS:             time.Unix(0, 1712534400000000000),
 				From:           1,
 				Through:        10,
@@ -44,7 +45,7 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			desc:  "uint32_max_checksum_works",
 			input: fmt.Sprintf("1-compactor-1-10-%x.tsdb", math.MaxUint32),
 			id: SingleTenantTSDBIdentifier{
-				exportTSInSecs: true,
+				ExportTSInSecs: true,
 				TS:             time.Unix(1, 0),
 				From:           1,
 				Through:        10,
@@ -75,6 +76,32 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			if ok {
 				require.Equal(t, tc.input, id.Name())
 			}
+		})
+	}
+}
+
+func TestSingleTenantTSDBIdentifierSerialization(t *testing.T) {
+	for _, tc := range []struct {
+		desc  string
+		input SingleTenantTSDBIdentifier
+	}{
+		{
+			desc:  "simple_works",
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: true, TS: time.Unix(1, 0).UTC(), From: 1, Through: 10, Checksum: 255},
+		},
+		{
+			desc:  "simple_works_with_nanosecond",
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: false, TS: time.Unix(0, 1712534400000000000).UTC(), From: 1, Through: 10, Checksum: 255},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			b, err := json.Marshal(tc.input)
+			require.NoError(t, err)
+
+			var id SingleTenantTSDBIdentifier
+			require.NoError(t, json.Unmarshal(b, &id))
+			require.Equal(t, tc.input.Name(), id.Name())
+			require.Equal(t, tc.input, id)
 		})
 	}
 }

@@ -31,6 +31,11 @@ type ClientCertificateCredentialOptions struct {
 	// application is registered.
 	AdditionallyAllowedTenants []string
 
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
+
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
@@ -41,9 +46,6 @@ type ClientCertificateCredentialOptions struct {
 	// header of each token request's JWT. This is required for Subject Name/Issuer (SNI) authentication.
 	// Defaults to False.
 	SendCertificateChain bool
-
-	// tokenCachePersistenceOptions enables persistent token caching when not nil.
-	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 // ClientCertificateCredential authenticates a service principal with a certificate.
@@ -51,7 +53,8 @@ type ClientCertificateCredential struct {
 	client *confidentialClient
 }
 
-// NewClientCertificateCredential constructs a ClientCertificateCredential. Pass nil for options to accept defaults.
+// NewClientCertificateCredential constructs a ClientCertificateCredential. Pass nil for options to accept defaults. See
+// [ParseCertificates] for help loading a certificate.
 func NewClientCertificateCredential(tenantID string, clientID string, certs []*x509.Certificate, key crypto.PrivateKey, options *ClientCertificateCredentialOptions) (*ClientCertificateCredential, error) {
 	if len(certs) == 0 {
 		return nil, errors.New("at least one certificate is required")
@@ -64,11 +67,11 @@ func NewClientCertificateCredential(tenantID string, clientID string, certs []*x
 		return nil, err
 	}
 	msalOpts := confidentialClientOptions{
-		AdditionallyAllowedTenants:   options.AdditionallyAllowedTenants,
-		ClientOptions:                options.ClientOptions,
-		DisableInstanceDiscovery:     options.DisableInstanceDiscovery,
-		SendX5C:                      options.SendCertificateChain,
-		tokenCachePersistenceOptions: options.tokenCachePersistenceOptions,
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		SendX5C:                    options.SendCertificateChain,
 	}
 	c, err := newConfidentialClient(tenantID, clientID, credNameCert, cred, msalOpts)
 	if err != nil {
@@ -86,8 +89,10 @@ func (c *ClientCertificateCredential) GetToken(ctx context.Context, opts policy.
 	return tk, err
 }
 
-// ParseCertificates loads certificates and a private key, in PEM or PKCS12 format, for use with NewClientCertificateCredential.
-// Pass nil for password if the private key isn't encrypted. This function can't decrypt keys in PEM format.
+// ParseCertificates loads certificates and a private key, in PEM or PKCS#12 format, for use with [NewClientCertificateCredential].
+// Pass nil for password if the private key isn't encrypted. This function has limitations, for example it can't decrypt keys in
+// PEM format or PKCS#12 certificates that use SHA256 for message authentication. If you encounter such limitations, consider
+// using another module to load the certificate and private key.
 func ParseCertificates(certData []byte, password []byte) ([]*x509.Certificate, crypto.PrivateKey, error) {
 	var blocks []*pem.Block
 	var err error

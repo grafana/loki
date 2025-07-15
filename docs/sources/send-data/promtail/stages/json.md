@@ -9,6 +9,8 @@ weight:
 
 # json
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `json` stage is a parsing stage that reads the log line as JSON and accepts
 [JMESPath](http://jmespath.org/) expressions to extract data.
 
@@ -38,7 +40,7 @@ This stage uses the Go JSON unmarshaler, which means non-string types like
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
-as necessary. Please refer to the [the `template` stage]({{< relref "./template" >}}) for how
+as necessary. Please refer to the [the `template` stage](../template/) for how
 to do this.
 
 If the value extracted is a complex type, such as an array or a JSON object, it
@@ -134,7 +136,7 @@ The following key-value pairs would be created in the set of extracted data:
 - `stream`: `stderr`
 - `timestamp`: `2019-04-30T02:12:41.8443515`
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Referring to `grpc.stream` without the combination of double quotes
 wrapped in single quotes will not work properly.
-{{% /admonition %}}
+{{< /admonition >}}

@@ -307,10 +307,16 @@ type Taskstats struct {
 	Ac_nice                   uint8
 	Cpu_count                 uint64
 	Cpu_delay_total           uint64
+	Cpu_delay_max             uint64
+	Cpu_delay_min             uint64
 	Blkio_count               uint64
 	Blkio_delay_total         uint64
+	Blkio_delay_max           uint64
+	Blkio_delay_min           uint64
 	Swapin_count              uint64
 	Swapin_delay_total        uint64
+	Swapin_delay_max          uint64
+	Swapin_delay_min          uint64
 	Cpu_run_real_total        uint64
 	Cpu_run_virtual_total     uint64
 	Ac_comm                   [32]uint8
@@ -345,19 +351,29 @@ type Taskstats struct {
 	Cpu_scaled_run_real_total uint64
 	Freepages_count           uint64
 	Freepages_delay_total     uint64
+	Freepages_delay_max       uint64
+	Freepages_delay_min       uint64
 	Thrashing_count           uint64
 	Thrashing_delay_total     uint64
+	Thrashing_delay_max       uint64
+	Thrashing_delay_min       uint64
 	Ac_btime64                uint64
 	Compact_count             uint64
 	Compact_delay_total       uint64
+	Compact_delay_max         uint64
+	Compact_delay_min         uint64
 	Ac_tgid                   uint32
 	Ac_tgetime                uint64
 	Ac_exe_dev                uint64
 	Ac_exe_inode              uint64
 	Wpcopy_count              uint64
 	Wpcopy_delay_total        uint64
+	Wpcopy_delay_max          uint64
+	Wpcopy_delay_min          uint64
 	Irq_count                 uint64
 	Irq_delay_total           uint64
+	Irq_delay_max             uint64
+	Irq_delay_min             uint64
 }
 
 type cpuMask uint64
@@ -498,15 +514,6 @@ type BlkpgPartition struct {
 const (
 	BLKPG = 0x1269
 )
-
-type XDPUmemReg struct {
-	Addr     uint64
-	Len      uint64
-	Size     uint32
-	Headroom uint32
-	Flags    uint32
-	_        [4]byte
-}
 
 type CryptoUserAlg struct {
 	Name        [64]uint8
@@ -736,6 +743,37 @@ const (
 	RISCV_HWPROBE_EXT_ZBA                = 0x8
 	RISCV_HWPROBE_EXT_ZBB                = 0x10
 	RISCV_HWPROBE_EXT_ZBS                = 0x20
+	RISCV_HWPROBE_EXT_ZICBOZ             = 0x40
+	RISCV_HWPROBE_EXT_ZBC                = 0x80
+	RISCV_HWPROBE_EXT_ZBKB               = 0x100
+	RISCV_HWPROBE_EXT_ZBKC               = 0x200
+	RISCV_HWPROBE_EXT_ZBKX               = 0x400
+	RISCV_HWPROBE_EXT_ZKND               = 0x800
+	RISCV_HWPROBE_EXT_ZKNE               = 0x1000
+	RISCV_HWPROBE_EXT_ZKNH               = 0x2000
+	RISCV_HWPROBE_EXT_ZKSED              = 0x4000
+	RISCV_HWPROBE_EXT_ZKSH               = 0x8000
+	RISCV_HWPROBE_EXT_ZKT                = 0x10000
+	RISCV_HWPROBE_EXT_ZVBB               = 0x20000
+	RISCV_HWPROBE_EXT_ZVBC               = 0x40000
+	RISCV_HWPROBE_EXT_ZVKB               = 0x80000
+	RISCV_HWPROBE_EXT_ZVKG               = 0x100000
+	RISCV_HWPROBE_EXT_ZVKNED             = 0x200000
+	RISCV_HWPROBE_EXT_ZVKNHA             = 0x400000
+	RISCV_HWPROBE_EXT_ZVKNHB             = 0x800000
+	RISCV_HWPROBE_EXT_ZVKSED             = 0x1000000
+	RISCV_HWPROBE_EXT_ZVKSH              = 0x2000000
+	RISCV_HWPROBE_EXT_ZVKT               = 0x4000000
+	RISCV_HWPROBE_EXT_ZFH                = 0x8000000
+	RISCV_HWPROBE_EXT_ZFHMIN             = 0x10000000
+	RISCV_HWPROBE_EXT_ZIHINTNTL          = 0x20000000
+	RISCV_HWPROBE_EXT_ZVFH               = 0x40000000
+	RISCV_HWPROBE_EXT_ZVFHMIN            = 0x80000000
+	RISCV_HWPROBE_EXT_ZFA                = 0x100000000
+	RISCV_HWPROBE_EXT_ZTSO               = 0x200000000
+	RISCV_HWPROBE_EXT_ZACAS              = 0x400000000
+	RISCV_HWPROBE_EXT_ZICOND             = 0x800000000
+	RISCV_HWPROBE_EXT_ZIHINTPAUSE        = 0x1000000000
 	RISCV_HWPROBE_KEY_CPUPERF_0          = 0x5
 	RISCV_HWPROBE_MISALIGNED_UNKNOWN     = 0x0
 	RISCV_HWPROBE_MISALIGNED_EMULATED    = 0x1
@@ -743,4 +781,6 @@ const (
 	RISCV_HWPROBE_MISALIGNED_FAST        = 0x3
 	RISCV_HWPROBE_MISALIGNED_UNSUPPORTED = 0x4
 	RISCV_HWPROBE_MISALIGNED_MASK        = 0x7
+	RISCV_HWPROBE_KEY_ZICBOZ_BLOCK_SIZE  = 0x6
+	RISCV_HWPROBE_WHICH_CPUS             = 0x1
 )

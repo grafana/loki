@@ -9,6 +9,8 @@ weight:
 
 # docker
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `docker` stage is a parsing stage that reads log lines in the standard
 format of Docker log files.
 

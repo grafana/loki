@@ -9,6 +9,8 @@ weight:
 
 # template
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `template` stage is a transform stage that lets use manipulate the values in
 the extracted map using [Go's template
 syntax](https://golang.org/pkg/text/template/).

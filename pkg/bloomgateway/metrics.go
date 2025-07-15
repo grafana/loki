@@ -18,12 +18,14 @@ type metrics struct {
 const (
 	typeSuccess = "success"
 	typeError   = "error"
+
+	routeFilterChunks  = "FilterChunks"
+	routePrefectBlocks = "PrefetchBloomBlocks"
 )
 
 type clientMetrics struct {
 	clientRequests *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
-	clients        prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
@@ -33,7 +35,7 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Subsystem: "bloom_gateway_client",
 			Name:      "requests_total",
 			Help:      "Total number of requests made to the bloom gateway",
-		}, []string{"type"}),
+		}, []string{"route", "type"}),
 		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",
@@ -41,12 +43,6 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
 			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
-		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Subsystem: "bloom_gateway",
-			Name:      "clients",
-			Help:      "The current number of bloom gateway clients.",
-		}),
 	}
 }
 
@@ -56,7 +52,8 @@ type serverMetrics struct {
 	filteredSeries   prometheus.Histogram
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
-	receivedFilters  prometheus.Histogram
+	receivedMatchers prometheus.Histogram
+	prefetchedBlocks *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -105,13 +102,19 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Help:      "Total amount of chunk refs filtered by bloom-gateway",
 			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
 		}),
-		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		receivedMatchers: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "request_filters",
-			Help:      "Number of filters per request.",
+			Name:      "request_matchers",
+			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
+		prefetchedBlocks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "prefetched_blocks_total",
+			Help:      "Total amount of blocks prefetched by the bloom-gateway",
+		}, []string{"status"}),
 	}
 }
 
@@ -119,7 +122,7 @@ type workerMetrics struct {
 	dequeueDuration    *prometheus.HistogramVec
 	queueDuration      *prometheus.HistogramVec
 	processDuration    *prometheus.HistogramVec
-	tasksDequeued      *prometheus.CounterVec
+	tasksDequeued      *prometheus.HistogramVec
 	tasksProcessed     *prometheus.CounterVec
 	blocksNotAvailable *prometheus.CounterVec
 	blockQueryLatency  *prometheus.HistogramVec
@@ -147,11 +150,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "process_duration_seconds",
 			Help:      "Time spent processing tasks in seconds",
 		}, append(labels, "status")),
-		tasksDequeued: r.NewCounterVec(prometheus.CounterOpts{
+		tasksDequeued: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "tasks_dequeued_total",
-			Help:      "Total amount of tasks that the worker dequeued from the queue",
+			Name:      "tasks_dequeued",
+			Help:      "Total amount of tasks that the worker dequeued from the queue at once",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8), // [1, 2, ..., 128]
 		}, append(labels, "status")),
 		tasksProcessed: r.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,

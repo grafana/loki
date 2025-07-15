@@ -21,22 +21,16 @@ The Loki Operator uses client-go to communicate with Kubernetes clusters. The su
 
 Due to the use of CustomResourceDefinitions Kubernetes >= v1.7.0 is required.
 
-Due to the use of apiextensions.k8s.io/v1 CustomResourceDefinitions, requires Kubernetes >= v1.16.0.
+Due to the use of apiextensions.k8s.io/v1 CustomResourceDefinitions, requires Kubernetes >= v1.21.0.
 
 ## Loki
 
 The versions of Loki compatible to be run with the Loki Operator are:
 
-* v2.7.1
-* v2.7.2
-* v2.7.3
-* v2.7.4
-* v2.8.0
-* v2.8.3
-* v2.9.0
-* v2.9.1
-* v2.9.2
-* v2.9.3
-* v2.9.4
-* v2.9.6
-* v2.9.8
+* v3.1.0
+* v3.1.1
+* v3.2.0
+* v3.2.1
+* v3.3.2
+* v3.4.2
+* v3.4.3

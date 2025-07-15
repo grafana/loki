@@ -45,10 +45,10 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
 	}
 
-	tailResponse := new(loghttp.TailResponse)
 	lastReceivedTimestamp := q.Start
 
 	for {
+		tailResponse := new(loghttp.TailResponse)
 		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
 			// Check if the websocket connection closed unexpectedly. If so, retry.

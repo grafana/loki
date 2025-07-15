@@ -7,6 +7,8 @@ import (
 	"github.com/aws/smithy-go/encoding/httpbinding"
 )
 
+const keySeparator = "."
+
 // Value represents a Query Value type.
 type Value struct {
 	// The query values to add the value to.
@@ -24,6 +26,15 @@ func newValue(values url.Values, key string, flat bool) Value {
 		key:        key,
 		flat:       flat,
 		queryValue: httpbinding.NewQueryValue(values, key, false),
+	}
+}
+
+func newAppendValue(values url.Values, key string, flat bool) Value {
+	return Value{
+		values:     values,
+		key:        key,
+		flat:       flat,
+		queryValue: httpbinding.NewQueryValue(values, key, true),
 	}
 }
 

@@ -25,5 +25,5 @@ func add100Continue(r *request.Request) {
 		return
 	}
 
-	r.HTTPRequest.Header.Set("Expect", "100-Continue")
+	r.HTTPRequest.Header.Set("Expect", "100-continue")
 }

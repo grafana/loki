@@ -30,13 +30,17 @@ type UnmarshalTypeError struct {
 	Value string
 }
 
-func newUnmarshalTypeError(value any, rType reflect.Type) UnmarshalTypeError {
+func newUnmarshalTypeStrError(value string, rType reflect.Type) UnmarshalTypeError {
 	return UnmarshalTypeError{
-		Value: fmt.Sprintf("%v", value),
 		Type:  rType,
+		Value: value,
 	}
 }
 
+func newUnmarshalTypeError(value any, rType reflect.Type) UnmarshalTypeError {
+	return newUnmarshalTypeStrError(fmt.Sprintf("%v (%T)", value, value), rType)
+}
+
 func (e UnmarshalTypeError) Error() string {
-	return fmt.Sprintf("maxminddb: cannot unmarshal %s into type %s", e.Value, e.Type.String())
+	return fmt.Sprintf("maxminddb: cannot unmarshal %s into type %s", e.Value, e.Type)
 }

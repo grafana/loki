@@ -10,10 +10,13 @@ metadata:
     {{- with .Values.ingester.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .Values.loki.serviceAnnotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.ingester.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
 spec:
   clusterIP: None
   ports:
@@ -30,6 +33,6 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
-    name: ingester-zone-c
-    rollout-group: ingester
+    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-c
+    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
 {{- end -}}

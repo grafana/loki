@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
-	v1udpaudpatypepb "github.com/cncf/udpa/go/udpa/type/v1"
+	v1xdsudpatypepb "github.com/cncf/xds/go/udpa/type/v1"
 	v3xdsxdstypepb "github.com/cncf/xds/go/xds/type/v3"
 	v3listenerpb "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -39,7 +39,7 @@ func unmarshalListenerResource(r *anypb.Any) (string, ListenerUpdate, error) {
 	}
 
 	if !IsListenerResource(r.GetTypeUrl()) {
-		return "", ListenerUpdate{}, fmt.Errorf("unexpected resource type: %q ", r.GetTypeUrl())
+		return "", ListenerUpdate{}, fmt.Errorf("unexpected listener resource type: %q ", r.GetTypeUrl())
 	}
 	lis := &v3listenerpb.Listener{}
 	if err := proto.Unmarshal(r.GetValue(), lis); err != nil {
@@ -68,11 +68,11 @@ func processClientSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 
 	apiLisAny := lis.GetApiListener().GetApiListener()
 	if !IsHTTPConnManagerResource(apiLisAny.GetTypeUrl()) {
-		return nil, fmt.Errorf("unexpected resource type: %q", apiLisAny.GetTypeUrl())
+		return nil, fmt.Errorf("unexpected http connection manager resource type: %q", apiLisAny.GetTypeUrl())
 	}
 	apiLis := &v3httppb.HttpConnectionManager{}
 	if err := proto.Unmarshal(apiLisAny.GetValue(), apiLis); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal api_listner: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal api_listener: %v", err)
 	}
 	// "HttpConnectionManager.xff_num_trusted_hops must be unset or zero and
 	// HttpConnectionManager.original_ip_detection_extensions must be empty. If
@@ -127,9 +127,9 @@ func unwrapHTTPFilterConfig(config *anypb.Any) (proto.Message, string, error) {
 			return nil, "", fmt.Errorf("error unmarshalling TypedStruct filter config: %v", err)
 		}
 		return s, s.GetTypeUrl(), nil
-	case config.MessageIs(&v1udpaudpatypepb.TypedStruct{}):
+	case config.MessageIs(&v1xdsudpatypepb.TypedStruct{}):
 		// The real type name is inside the old TypedStruct message.
-		s := new(v1udpaudpatypepb.TypedStruct)
+		s := new(v1xdsudpatypepb.TypedStruct)
 		if err := config.UnmarshalTo(s); err != nil {
 			return nil, "", fmt.Errorf("error unmarshalling TypedStruct filter config: %v", err)
 		}
@@ -250,7 +250,7 @@ func processServerSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 	if n := len(lis.ListenerFilters); n != 0 {
 		return nil, fmt.Errorf("unsupported field 'listener_filters' contains %d entries", n)
 	}
-	if useOrigDst := lis.GetUseOriginalDst(); useOrigDst != nil && useOrigDst.GetValue() {
+	if lis.GetUseOriginalDst().GetValue() {
 		return nil, errors.New("unsupported field 'use_original_dst' is present and set to true")
 	}
 	addr := lis.GetAddress()

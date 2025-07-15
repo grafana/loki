@@ -30,9 +30,9 @@ type azdTokenProvider func(ctx context.Context, scopes []string, tenant string) 
 
 // AzureDeveloperCLICredentialOptions contains optional parameters for AzureDeveloperCLICredential.
 type AzureDeveloperCLICredentialOptions struct {
-	// AdditionallyAllowedTenants specifies tenants for which the credential may acquire tokens, in addition
-	// to TenantID. Add the wildcard value "*" to allow the credential to acquire tokens for any tenant the
-	// logged in account can access.
+	// AdditionallyAllowedTenants specifies tenants to which the credential may authenticate, in addition to
+	// TenantID. When TenantID is empty, this option has no effect and the credential will authenticate to
+	// any requested tenant. Add the wildcard value "*" to allow the credential to authenticate to any tenant.
 	AdditionallyAllowedTenants []string
 
 	// TenantID identifies the tenant the credential should authenticate in. Defaults to the azd environment,
@@ -130,7 +130,14 @@ var defaultAzdTokenProvider azdTokenProvider = func(ctx context.Context, scopes 
 	cliCmd.Env = os.Environ()
 	var stderr bytes.Buffer
 	cliCmd.Stderr = &stderr
-	output, err := cliCmd.Output()
+	cliCmd.WaitDelay = 100 * time.Millisecond
+
+	stdout, err := cliCmd.Output()
+	if errors.Is(err, exec.ErrWaitDelay) && len(stdout) > 0 {
+		// The child process wrote to stdout and exited without closing it.
+		// Swallow this error and return stdout because it may contain a token.
+		return stdout, nil
+	}
 	if err != nil {
 		msg := stderr.String()
 		var exErr *exec.ExitError
@@ -144,7 +151,7 @@ var defaultAzdTokenProvider azdTokenProvider = func(ctx context.Context, scopes 
 		}
 		return nil, newCredentialUnavailableError(credNameAzureDeveloperCLI, msg)
 	}
-	return output, nil
+	return stdout, nil
 }
 
 func (c *AzureDeveloperCLICredential) createAccessToken(tk []byte) (azcore.AccessToken, error) {

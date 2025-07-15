@@ -179,6 +179,11 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		return e, nil
 	case *syntax.VectorExpr:
 		return e, nil
+	case *syntax.MultiVariantExpr:
+		// TODO(twhitney): we should be able to handle multi-variant expressions but creating
+		// multiple expression with of() statements that match the sub-range and concatenating
+		// the result
+		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
@@ -191,11 +196,12 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 // Example: expression `count_over_time({app="foo"}[10m])` returns 10m
 func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	var rangeInterval time.Duration
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			rangeInterval = concrete.Left.Interval
 		}
+		return true
 	})
 	return rangeInterval
 }
@@ -204,17 +210,18 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 // such as `| json` or `| logfmt`, that would result in an exploding amount of series in downstream queries.
 func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	found := false
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch concrete := e.(type) {
 		case *syntax.LogfmtParserExpr:
 			found = true
-		case *syntax.LabelParserExpr:
+		case *syntax.LineParserExpr:
 			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
 			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
 			if concrete.Op == syntax.OpParserTypeJSON {
 				found = true
 			}
 		}
+		return true
 	})
 	return found
 }
@@ -292,7 +299,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
 	sampleExpr := syntax.MustClone(expr)
-	sampleExpr.Walk(func(e syntax.Expr) {
+	sampleExpr.Walk(func(e syntax.Expr) bool {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
@@ -300,6 +307,7 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 				concrete.Left.Offset = offset
 			}
 		}
+		return true
 	})
 	downstreams = &ConcatSampleExpr{
 		DownstreamSampleExpr: DownstreamSampleExpr{
@@ -314,11 +322,12 @@ func getOffsets(expr syntax.SampleExpr) []time.Duration {
 	// Expect to always find at most 1 offset, so preallocate it accordingly
 	offsets := make([]time.Duration, 0, 1)
 
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			offsets = append(offsets, concrete.Left.Offset)
 		}
+		return true
 	})
 	return offsets
 }

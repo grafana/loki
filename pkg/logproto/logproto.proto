@@ -6,6 +6,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 
@@ -351,6 +352,7 @@ message GetChunkRefRequest {
 
 message GetChunkRefResponse {
   repeated ChunkRef refs = 1;
+  stats.Index stats = 2 [(gogoproto.nullable) = false];
 }
 
 message GetSeriesRequest {
@@ -434,6 +436,7 @@ message VolumeRequest {
   int64 step = 5;
   repeated string targetLabels = 6;
   string aggregateBy = 7;
+  resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
 }
 
 message VolumeResponse {
@@ -457,13 +460,16 @@ message DetectedFieldsRequest {
   ];
   string query = 3; // Naming this query instead of match because this should be with queryrangebase.Request interface
   uint32 lineLimit = 4;
-  uint32 fieldLimit = 5;
+  uint32 limit = 5;
   int64 step = 6;
+  bool values = 7; // True to fetch detected field values, false for fetch detected field label names.
+  string name = 8; // Name of the detected field to fetch values for.
 }
 
 message DetectedFieldsResponse {
-  repeated DetectedField fields = 1;
-  uint32 fieldLimit = 2 [(gogoproto.jsontag) = "fieldLimit,omitempty"];
+  repeated DetectedField fields = 1 [(gogoproto.jsontag) = "fields,omitempty"];
+  uint32 limit = 2 [(gogoproto.jsontag) = "limit,omitempty"];
+  repeated string values = 3 [(gogoproto.jsontag) = "values,omitempty"];
 }
 
 // TODO: make the detected field include the serialized sketch
@@ -472,8 +478,9 @@ message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
-  repeated string parsers = 4;
+  repeated string parsers = 4 [(gogoproto.jsontag) = "parsers"];
   bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
+  repeated string jsonPath = 6 [(gogoproto.jsontag) = "jsonPath,omitempty"]; // Array representing original JSON path (e.g., ["user", "id"] for field "user_id")
 }
 
 message DetectedLabelsRequest {

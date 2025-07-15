@@ -65,7 +65,6 @@ func TestNewDocker(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := NewDocker(util_log.Logger, prometheus.DefaultRegisterer)
@@ -123,7 +122,7 @@ func TestCRI_tags(t *testing.T) {
 			},
 			expected: []string{
 				"partial line 1 log finished",     // belongs to stream `{foo="bar"}`
-				"partial line 2 another full log", // belongs to stream `{foo="bar2"}
+				"partial line 2 another full log", // belongs to stream `{foo="bar2"}`
 			},
 		},
 		{
@@ -268,7 +267,6 @@ func TestNewCri(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			cfg := map[string]interface{}{}

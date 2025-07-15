@@ -1,0 +1,149 @@
+// filemd.proto holds file-level metadata for a data object. Data objects are
+// split into multiple distinct "sections," each of which contains independent
+// data related to storing logs.
+//
+// Each section has its own metadata; the file-level metadata points to the
+// metadata of each section stored within the data object.
+syntax = "proto3";
+
+package dataobj.metadata.file.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd";
+
+// Metadata for the overall data object.
+message Metadata {
+  // Sections within the data object.
+  repeated SectionInfo sections = 1;
+
+  // A list of strings used to resolve type name references.
+  repeated string dictionary = 2;
+
+  // A list of types used by sections. The zero index is reserved for an
+  // invalid type.
+  repeated SectionType types = 3;
+}
+
+// SectionType specifies a namespaced type of section within a data object.
+// Applications are responsible for interpreting SectionType for decoding.
+message SectionType {
+  // NameRef is a tuple of references into the Metadata.dictionary which
+  // specifies the fully-qualified name of this type.
+  //
+  // Two data objects may have the same NameRef which refer to different names
+  // when resolved. Applications must resolve the name before interpreting the
+  // type.
+  message NameRef {
+    // An index into Metadata.dictionary specifying the namespace string of
+    // this type (e.g., "github.com/grafana/loki").
+    uint32 namespace_ref = 1;
+
+    // An index into Metadata.dictionary specifying the kind of this type
+    // (e.g., "logs").
+    uint32 kind_ref = 2;
+  }
+
+  // The reference to the type name.
+  NameRef name_ref = 1;
+}
+
+// SectionInfo describes a section within the data object. Each section is an
+// independent unit of the data object.
+message SectionInfo {
+  // Kind of the section within the data object.
+  //
+  // Deprecated: Use type_index to refer to the type of a section.
+  SectionKind kind = 1 [deprecated = true];
+
+  // Byte offset of the section's metadata from the start of the data object.
+  //
+  // Deprecated: Use layout to describe the location of regions of a section.
+  uint64 metadata_offset = 2 [deprecated = true];
+
+  // Size of the section's metadata in bytes.
+  //
+  // Deprecated: Use layout to describe the location of regions of a section.
+  uint64 metadata_size = 3 [deprecated = true];
+
+  // The physical layout of the section within the data object. Setting
+  // layout is mutually exclusive with specifying the metadata_offset and
+  // metadata_size fields.
+  //
+  // For backwards compatibility with older versions of data objects where
+  // layout isn't provided, implementations must assume that:
+  //
+  //   - A section has data, but its offset and length are unknown.
+  //
+  //   - Range reads of section data are done relative to the start of the
+  //     data object.
+  //
+  // If the SectionLayout is specified for a section, range reads are instead
+  // relative to the start of the data region. If the data region is undefined,
+  // then the section has no data.
+  //
+  // Setting the layout is mutually exclusive with specifying the
+  // metadata_offset and metadata_size fields, and readers must reject data
+  // objects that set both.
+  SectionLayout layout = 4;
+
+  // An index into Metadata.types specifying the type of this section.
+  //
+  // This field supersedes the deprecated kind field. Either this or the kind
+  // field must be set to a non-zero value.
+  uint32 type_ref = 5;
+}
+
+// SectionLayout describes the physical placement of the regions that form a
+// complete section: its data and its metadata.
+//
+// The metadata of a section is intended to be lightweight and is typically
+// used to aid reading the section's data in smaller chunks.
+//
+// There are no guarantees about the placement or ordering of a section's
+// regions; they may be contiguous, disjoint, or interleaved with regions from
+// other sections.
+//
+// Implementations can use region information to ensure that a section does not
+// access bytes outside of its layout.
+message SectionLayout {
+  // The region covering the data of a section. If the data region is
+  // undefined, implementations must assume that the section has no data.
+  Region data = 1;
+
+  // The region covering the metadata of a section. If the metadata region is
+  // undefined, implementations must assume that the section has no metadata.
+  Region metadata = 2;
+}
+
+// Region describes a contiguous range of bytes within a data object.
+message Region {
+  // Byte offset of the region from the start of the data object.
+  uint64 offset = 1;
+
+  // Length of the region in bytes.
+  uint64 length = 2;
+}
+
+// SectionKind describes the kind of section stored within a data object.
+//
+// Deprecated: Types are now specified as values in the Metadata's types field
+// instead of structurally.
+enum SectionKind {
+  // SECTION_KIND_UNSPECIFIED is an invalid section kind.
+  SECTION_KIND_UNSPECIFIED = 0;
+
+  // SECTION_KIND_STREAMS is a section containing references to streams that
+  // exist within the data object. SECTION_KIND_STREAMS does not contain any
+  // actual log data.
+  SECTION_KIND_STREAMS = 1;
+
+  // SECTION_KIND_LOGS is a section containing log records across multiple
+  // streams. Each log record contains a stream ID which refers to a stream
+  // from SECTION_KIND_STREAMS.
+  SECTION_KIND_LOGS = 2;
+
+// DO NOT ADD NEW VALUES HERE!
+//
+// Types can now be specified as values in the Metadata's types field. This
+// avoids the need for every new section to centrally register itself by
+// updating the file-wide protobuf.
+}

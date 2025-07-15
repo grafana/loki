@@ -1,0 +1,22 @@
+name: Test UI
+on:
+  pull_request:
+    paths:
+      - "pkg/ui/frontend/**"
+permissions: {}
+jobs:
+  build:
+    name: Build UI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node.JS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Make ui-assets
+        run: make ui-assets

@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"math"
 	"net"
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/alicebob/miniredis/v2/fpconv"
 )
 
 func errUnknownCommand(cmd string, args []string) string {
@@ -215,6 +216,10 @@ func (s *Server) Dispatch(c *Peer, args []string) {
 	s.infoCmds++
 	s.mu.Unlock()
 	cb(c, cmdUp, args)
+	if c.SwitchResp3 != nil {
+		c.Resp3 = *c.SwitchResp3
+		c.SwitchResp3 = nil
+	}
 }
 
 // TotalCommands is total (known) commands since this the server started
@@ -244,9 +249,11 @@ type Peer struct {
 	w            *bufio.Writer
 	closed       bool
 	Resp3        bool
+	SwitchResp3  *bool       // we'll switch to this version _after_ the command
 	Ctx          interface{} // anything goes, server won't touch this
 	onDisconnect []func()    // list of callbacks
 	mu           sync.Mutex  // for Block()
+	ClientName   string      // client name set by CLIENT SETNAME
 }
 
 func NewPeer(w *bufio.Writer) *Peer {
@@ -476,29 +483,8 @@ func (w *Writer) Flush() {
 	w.w.Flush()
 }
 
-// formatFloat formats a float the way redis does (sort-of)
+// formatFloat formats a float the way redis does.
+// Redis uses a method called "grisu2", which we ported from C.
 func formatFloat(v float64) string {
-	if math.IsInf(v, 1) {
-		return "inf"
-	}
-	if math.IsInf(v, -1) {
-		return "-inf"
-	}
-	return stripZeros(fmt.Sprintf("%.12f", v))
-}
-
-func stripZeros(sv string) string {
-	for strings.Contains(sv, ".") {
-		if sv[len(sv)-1] != '0' {
-			break
-		}
-		// Remove trailing 0s.
-		sv = sv[:len(sv)-1]
-		// Ends with a '.'.
-		if sv[len(sv)-1] == '.' {
-			sv = sv[:len(sv)-1]
-			break
-		}
-	}
-	return sv
+	return fpconv.Dtoa(v)
 }

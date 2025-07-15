@@ -106,7 +106,6 @@ func TestEventLogMessage_simple(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		testData.extractedValues[testData.sourcekey] = testData.msgdata
 
 		t.Run(testName, func(t *testing.T) {
@@ -151,7 +150,6 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 		},
 	}
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			_, err := newEventLogMessageStage(util_log.Logger, tt.config)
 			if tt.err != nil {
@@ -262,7 +260,6 @@ func TestEventLogMessage_Real(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		testData.extractedValues[testData.sourcekey] = testData.msgdata
 
 		t.Run(testName, func(t *testing.T) {
@@ -318,7 +315,6 @@ func TestEventLogMessage_invalid(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		testData.extractedValues[testData.sourcekey] = testData.msgdata
 
 		t.Run(testName, func(t *testing.T) {

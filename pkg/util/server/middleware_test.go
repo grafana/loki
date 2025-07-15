@@ -12,7 +12,7 @@ import (
 )
 
 func TestPrepopulate(t *testing.T) {
-	success := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	success := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("ok"))
 		require.Nil(t, err)
 	})

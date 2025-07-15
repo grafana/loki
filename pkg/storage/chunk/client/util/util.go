@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
-	ot "github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // DoSingleQuery is the interface for indexes that don't support batching yet.
@@ -31,12 +29,12 @@ func DoParallelQueries(
 
 	queue := make(chan index.Query)
 	incomingErrors := make(chan error)
-	n := math.Min(len(queries), QueryParallelism)
+	n := min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {
-			sp, ctx := ot.StartSpanFromContext(ctx, "DoParallelQueries-worker")
-			defer sp.Finish()
+			ctx, sp := tracer.Start(ctx, "DoParallelQueries-worker")
+			defer sp.End()
 			for {
 				query, ok := <-queue
 				if !ok {
@@ -67,15 +65,29 @@ func DoParallelQueries(
 
 // EnsureDirectory makes sure directory is there, if not creates it if not
 func EnsureDirectory(dir string) error {
+	return EnsureDirectoryWithDefaultPermissions(dir, 0o777)
+}
+
+func EnsureDirectoryWithDefaultPermissions(dir string, mode fs.FileMode) error {
 	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0o777)
+		return os.MkdirAll(dir, mode)
 	} else if err == nil && !info.IsDir() {
 		return fmt.Errorf("not a directory: %s", dir)
-	} else if err == nil && info.Mode()&0700 != 0700 {
-		return fmt.Errorf("insufficient permissions: %s %s", dir, info.Mode())
 	}
 	return err
+}
+
+func RequirePermissions(path string, required fs.FileMode) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	if mode := info.Mode(); mode&required != required {
+		return fmt.Errorf("insufficient permissions for path %s: required %s but found %s", path, required.String(), mode.String())
+	}
+	return nil
 }
 
 // ReadCloserWithContextCancelFunc helps with cancelling the context when closing a ReadCloser.

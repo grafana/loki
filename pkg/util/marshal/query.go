@@ -1,8 +1,11 @@
 package marshal
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
@@ -18,6 +21,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+)
+
+var (
+	// The rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -77,6 +90,9 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	ret := make([]loghttp.Stream, len(s))
 
 	for i, stream := range s {
+		if strings.ContainsRune(stream.Labels, utf8.RuneError) {
+			stream.Labels = string(bytes.Map(removeInvalidUtf, []byte(stream.Labels)))
+		}
 		ret[i], err = NewStream(stream)
 
 		if err != nil {
@@ -97,7 +113,7 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	// Avoid a nil entries slice to be consistent with the decoding
 	entries := []loghttp.Entry{}
 	if len(s.Entries) > 0 {
-		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries)) //#nosec G103 -- Just preventing an allocation, safe. Entry types are the same.
 	}
 
 	ret := loghttp.Stream{
@@ -169,9 +185,9 @@ func NewSampleStream(s promql.Series) model.SampleStream {
 func NewMetric(l labels.Labels) model.Metric {
 	ret := make(map[model.LabelName]model.LabelValue)
 
-	for _, label := range l {
+	l.Range(func(label labels.Label) {
 		ret[model.LabelName(label.Name)] = model.LabelValue(label.Value)
-	}
+	})
 
 	return ret
 }
@@ -492,14 +508,16 @@ func encodeValue(T int64, V float64, s *jsoniter.Stream) {
 
 func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
 	s.WriteObjectStart()
-	for i, label := range l {
+	i := 0
+	l.Range(func(label labels.Label) {
 		if i > 0 {
 			s.WriteMore()
 		}
 
 		s.WriteObjectField(label.Name)
 		s.WriteString(label.Value)
-	}
+		i++
+	})
 	s.WriteObjectEnd()
 }
 

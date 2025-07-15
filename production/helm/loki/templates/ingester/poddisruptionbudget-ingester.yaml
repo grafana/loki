@@ -19,7 +19,7 @@ spec:
       - key: rollout-group
         operator: NotIn
         values:
-          - "ingester"
+          - '{{ include "loki.prefixRolloutGroup" . }}ingester'
   {{- with .Values.ingester.maxUnavailable }}
   maxUnavailable: {{ . }}
   {{- end }}

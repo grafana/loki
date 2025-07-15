@@ -143,7 +143,7 @@ func NewTestStorageClient(cfg Config, schemaCfg config.SchemaConfig) (*StorageCl
 
 //***********************  gRPC mock server *********************************//
 
-// NewTableClient returns a new TableClient.
+// NewTestTableClient returns a new TableClient.
 func NewTestTableClient(cfg Config) (*TableClient, error) {
 	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {
@@ -155,7 +155,7 @@ func NewTestTableClient(cfg Config) (*TableClient, error) {
 	return client, nil
 }
 
-// NewStorageClient returns a new StorageClient.
+// newTestStorageServer returns a new StorageServer.
 func newTestStorageServer(cfg Config) *server {
 	client := &server{
 		Cfg: cfg,

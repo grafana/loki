@@ -26,26 +26,65 @@ import (
 	"strings"
 	"time"
 
+	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
 	btopt "cloud.google.com/go/bigtable/internal/option"
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/longrunning"
 	lroauto "cloud.google.com/go/longrunning/autogen"
-	"github.com/golang/protobuf/ptypes"
-	durpb "github.com/golang/protobuf/ptypes/duration"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	gtransport "google.golang.org/api/transport/grpc"
-	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
 	"google.golang.org/genproto/googleapis/rpc/status"
-	"google.golang.org/genproto/protobuf/field_mask"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
+	field_mask "google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const adminAddr = "bigtableadmin.googleapis.com:443"
 const mtlsAdminAddr = "bigtableadmin.mtls.googleapis.com:443"
+
+var (
+	errExpiryMissing  = errors.New("WithExpiry is a required option")
+	adminRetryOptions = []gax.CallOption{
+		gax.WithRetry(func() gax.Retryer {
+			return &bigtableAdminRetryer{
+				Backoff: defaultBackoff,
+			}
+		}),
+	}
+)
+
+// bigtableAdminRetryer extends the generic gax Retryer, but also checks
+// error messages to check if operation can be retried
+//
+// Retry is made if :
+// - error code is one of the `idempotentRetryCodes` OR
+// - error code is internal and error message is one of the `retryableInternalErrMsgs`
+type bigtableAdminRetryer struct {
+	gax.Backoff
+}
+
+func (r *bigtableAdminRetryer) Retry(err error) (time.Duration, bool) {
+	// Similar to gax.OnCodes but shares the backoff with INTERNAL retry messages check
+	st, ok := grpcstatus.FromError(err)
+	if !ok {
+		return 0, false
+	}
+	c := st.Code()
+	_, isIdempotent := isIdempotentRetryCode[c]
+	if isIdempotent ||
+		(grpcstatus.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs)) {
+		pause := r.Backoff.Pause()
+		return pause, true
+	}
+	return 0, false
+}
 
 // ErrPartiallyUnavailable is returned when some locations (clusters) are
 // unavailable. Both partial results (retrieved from available locations)
@@ -113,11 +152,31 @@ func (ac *AdminClient) Close() error {
 }
 
 func (ac *AdminClient) instancePrefix() string {
-	return fmt.Sprintf("projects/%s/instances/%s", ac.project, ac.instance)
+	return instancePrefix(ac.project, ac.instance)
+}
+
+func instancePrefix(project, instance string) string {
+	return fmt.Sprintf("projects/%s/instances/%s", project, instance)
 }
 
 func (ac *AdminClient) backupPath(cluster, instance, backup string) string {
 	return fmt.Sprintf("projects/%s/instances/%s/clusters/%s/backups/%s", ac.project, instance, cluster, backup)
+}
+
+func (ac *AdminClient) authorizedViewPath(table, authorizedView string) string {
+	return fmt.Sprintf("%s/tables/%s/authorizedViews/%s", ac.instancePrefix(), table, authorizedView)
+}
+
+func logicalViewPath(project, instance, logicalView string) string {
+	return fmt.Sprintf("%s/logicalViews/%s", instancePrefix(project, instance), logicalView)
+}
+
+func materializedlViewPath(project, instance, materializedView string) string {
+	return fmt.Sprintf("%s/materializedViews/%s", instancePrefix(project, instance), materializedView)
+}
+
+func appProfilePath(project, instance, appProfile string) string {
+	return fmt.Sprintf("%s/appProfiles/%s", instancePrefix(project, instance), appProfile)
 }
 
 // EncryptionInfo represents the encryption info of a table.
@@ -199,7 +258,7 @@ func (ac *AdminClient) Tables(ctx context.Context) ([]string, error) {
 		var err error
 		res, err = ac.tClient.ListTables(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -211,9 +270,15 @@ func (ac *AdminClient) Tables(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// DeletionProtection indicates whether the table is protected against data loss
-// i.e. when set to protected, deleting the table, the column families in the table,
-// and the instance containing the table would be prohibited.
+// ChangeStreamRetention indicates how long bigtable should retain change data.
+// Minimum is 1 day. Maximum is 7. nil to not change the retention period. 0 to
+// disable change stream retention.
+type ChangeStreamRetention optional.Duration
+
+// DeletionProtection indicates whether the table, authorized view, logical view or
+// materialized view is protected against data loss i.e. when set to protected,
+// deleting the view, the table, the column families in the table,
+// and the instance containing the table or view would be prohibited.
 type DeletionProtection int
 
 // None indicates that deletion protection is unset
@@ -225,21 +290,92 @@ const (
 	Unprotected
 )
 
-// TableConf contains all of the information necessary to create a table with column families.
+// TableAutomatedBackupConfig generalizes automated backup configurations.
+// Currently, the only supported type of automated backup configuration
+// is TableAutomatedBackupPolicy.
+type TableAutomatedBackupConfig interface {
+	isTableAutomatedBackupConfig()
+}
+
+// TableAutomatedBackupPolicy defines an automated backup policy for a table.
+// Use nil TableAutomatedBackupPolicy to disable Automated Backups on a table.
+// Use nil for a specific field to ignore that field when updating the policy on a table.
+type TableAutomatedBackupPolicy struct {
+	// How long the automated backups should be retained. The only
+	// supported value at this time is 3 days.
+	RetentionPeriod optional.Duration
+	// How frequently automated backups should occur. The only
+	// supported value at this time is 24 hours.
+	Frequency optional.Duration
+}
+
+func (*TableAutomatedBackupPolicy) isTableAutomatedBackupConfig() {}
+
+func toAutomatedBackupConfigProto(automatedBackupConfig TableAutomatedBackupConfig) (*btapb.Table_AutomatedBackupPolicy_, error) {
+	if automatedBackupConfig == nil {
+		return nil, nil
+	}
+	switch backupConfig := automatedBackupConfig.(type) {
+	case *TableAutomatedBackupPolicy:
+		return backupConfig.toProto()
+	default:
+		return nil, fmt.Errorf("error: Unknown type of automated backup configuration")
+	}
+}
+
+func (abp *TableAutomatedBackupPolicy) toProto() (*btapb.Table_AutomatedBackupPolicy_, error) {
+	pbAutomatedBackupPolicy := &btapb.Table_AutomatedBackupPolicy{
+		RetentionPeriod: durationpb.New(0),
+		Frequency:       durationpb.New(0),
+	}
+	if abp.RetentionPeriod == nil && abp.Frequency == nil {
+		return nil, errors.New("at least one of RetentionPeriod and Frequency must be set")
+	}
+	if abp.RetentionPeriod != nil {
+		pbAutomatedBackupPolicy.RetentionPeriod = durationpb.New(optional.ToDuration(abp.RetentionPeriod))
+	}
+	if abp.Frequency != nil {
+		pbAutomatedBackupPolicy.Frequency = durationpb.New(optional.ToDuration(abp.Frequency))
+	}
+	return &btapb.Table_AutomatedBackupPolicy_{
+		AutomatedBackupPolicy: pbAutomatedBackupPolicy,
+	}, nil
+}
+
+// Family represents a column family with its optional GC policy and value type.
+type Family struct {
+	GCPolicy  GCPolicy
+	ValueType Type
+}
+
+// UpdateTableConf is unused
+type UpdateTableConf struct{}
+
+// TableConf contains all the information necessary to create a table with column families.
 type TableConf struct {
 	TableID   string
 	SplitKeys []string
-	// Families is a map from family name to GCPolicy
+	// DEPRECATED: Use ColumnFamilies instead.
+	// Families is a map from family name to GCPolicy.
+	// Only one of Families or ColumnFamilies may be set.
 	Families map[string]GCPolicy
+	// ColumnFamilies is a map from family name to family configuration.
+	// Only one of Families or ColumnFamilies may be set.
+	ColumnFamilies map[string]Family
 	// DeletionProtection can be none, protected or unprotected
 	// set to protected to make the table protected against data loss
-	DeletionProtection DeletionProtection
+	DeletionProtection    DeletionProtection
+	ChangeStreamRetention ChangeStreamRetention
+	// Configure an automated backup policy for the table
+	AutomatedBackupConfig TableAutomatedBackupConfig
+	// Configure a row key schema for the table
+	RowKeySchema *StructType
 }
 
 // CreateTable creates a new table in the instance.
 // This method may return before the table's creation is complete.
 func (ac *AdminClient) CreateTable(ctx context.Context, table string) error {
-	return ac.CreateTableFromConf(ctx, &TableConf{TableID: table, DeletionProtection: None})
+	return ac.CreateTableFromConf(ctx, &TableConf{TableID: table, ChangeStreamRetention: nil, DeletionProtection: None})
 }
 
 // CreatePresplitTable creates a new table in the instance.
@@ -248,7 +384,7 @@ func (ac *AdminClient) CreateTable(ctx context.Context, table string) error {
 // spanning the key ranges: [, s1), [s1, s2), [s2, ).
 // This method may return before the table's creation is complete.
 func (ac *AdminClient) CreatePresplitTable(ctx context.Context, table string, splitKeys []string) error {
-	return ac.CreateTableFromConf(ctx, &TableConf{TableID: table, SplitKeys: splitKeys, DeletionProtection: None})
+	return ac.CreateTableFromConf(ctx, &TableConf{TableID: table, SplitKeys: splitKeys, ChangeStreamRetention: nil, DeletionProtection: None})
 }
 
 // CreateTableFromConf creates a new table in the instance from the given configuration.
@@ -269,7 +405,45 @@ func (ac *AdminClient) CreateTableFromConf(ctx context.Context, conf *TableConf)
 	} else if conf.DeletionProtection == Unprotected {
 		tbl.DeletionProtection = false
 	}
-	if conf.Families != nil {
+	if conf.ChangeStreamRetention != nil && conf.ChangeStreamRetention.(time.Duration) != 0 {
+		tbl.ChangeStreamConfig = &btapb.ChangeStreamConfig{}
+		tbl.ChangeStreamConfig.RetentionPeriod = durationpb.New(conf.ChangeStreamRetention.(time.Duration))
+	}
+
+	if conf.AutomatedBackupConfig != nil {
+		proto, err := toAutomatedBackupConfigProto(conf.AutomatedBackupConfig)
+		if err != nil {
+			return err
+		}
+		tbl.AutomatedBackupConfig = proto
+	}
+
+	if conf.RowKeySchema != nil {
+		tbl.RowKeySchema = conf.RowKeySchema.proto().GetStructType()
+	}
+
+	if conf.Families != nil && conf.ColumnFamilies != nil {
+		return errors.New("only one of Families or ColumnFamilies may be set, not both")
+	}
+
+	if conf.ColumnFamilies != nil {
+		tbl.ColumnFamilies = make(map[string]*btapb.ColumnFamily)
+		for fam, config := range conf.ColumnFamilies {
+			var gcPolicy *btapb.GcRule
+			if config.GCPolicy != nil {
+				gcPolicy = config.GCPolicy.proto()
+			} else {
+				gcPolicy = &btapb.GcRule{}
+			}
+
+			var typeProto *btapb.Type = nil
+			if config.ValueType != nil {
+				typeProto = config.ValueType.proto()
+			}
+
+			tbl.ColumnFamilies[fam] = &btapb.ColumnFamily{GcRule: gcPolicy, ValueType: typeProto}
+		}
+	} else if conf.Families != nil {
 		tbl.ColumnFamilies = make(map[string]*btapb.ColumnFamily)
 		for fam, policy := range conf.Families {
 			tbl.ColumnFamilies[fam] = &btapb.ColumnFamily{GcRule: policy.proto()}
@@ -302,62 +476,164 @@ func (ac *AdminClient) CreateColumnFamily(ctx context.Context, table, family str
 	return err
 }
 
-// UpdateTableConf contains all of the information necessary to update a table with column families.
-type UpdateTableConf struct {
-	tableID string
-	// deletionProtection can be unset, true or false
-	// set to true to make the table protected against data loss
-	deletionProtection DeletionProtection
-}
-
-// UpdateTableWithDeletionProtection updates a table with the given table ID and deletion protection parameter.
-func (ac *AdminClient) UpdateTableWithDeletionProtection(ctx context.Context, tableID string, deletionProtection DeletionProtection) error {
-	return ac.updateTableWithConf(ctx, &UpdateTableConf{tableID, deletionProtection})
-}
-
-// updateTableWithConf updates a table in the instance from the given configuration.
-// only deletion protection can be updated at this period.
-// table ID is required.
-func (ac *AdminClient) updateTableWithConf(ctx context.Context, conf *UpdateTableConf) error {
-	if conf.tableID == "" {
-		return errors.New("TableID is required")
-	}
-
-	if conf.deletionProtection == None {
-		return errors.New("deletion protection is required")
-	}
-
+// CreateColumnFamilyWithConfig creates a new column family in a table with an optional GC policy and value type.
+func (ac *AdminClient) CreateColumnFamilyWithConfig(ctx context.Context, table, family string, config Family) error {
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
-
-	updateMask := &field_mask.FieldMask{
-		Paths: []string{
-			"deletion_protection",
-		},
-	}
-
-	deletionProtection := true
-	if conf.deletionProtection == Unprotected {
-		deletionProtection = false
-	}
 	prefix := ac.instancePrefix()
+
+	cf := &btapb.ColumnFamily{}
+	if config.GCPolicy != nil {
+		cf.GcRule = config.GCPolicy.proto()
+	}
+	if config.ValueType != nil {
+		cf.ValueType = config.ValueType.proto()
+	}
+
+	req := &btapb.ModifyColumnFamiliesRequest{
+		Name: prefix + "/tables/" + table,
+		Modifications: []*btapb.ModifyColumnFamiliesRequest_Modification{{
+			Id:  family,
+			Mod: &btapb.ModifyColumnFamiliesRequest_Modification_Create{Create: cf},
+		}},
+	}
+	_, err := ac.tClient.ModifyColumnFamilies(ctx, req)
+	return err
+}
+
+const (
+	deletionProtectionFieldMask    = "deletion_protection"
+	changeStreamConfigFieldMask    = "change_stream_config"
+	automatedBackupPolicyFieldMask = "automated_backup_policy"
+	retentionPeriodFieldMaskPath   = "retention_period"
+	frequencyFieldMaskPath         = "frequency"
+	rowKeySchemaMaskPath           = "row_key_schema"
+)
+
+func (ac *AdminClient) newUpdateTableRequestProto(tableID string) (*btapb.UpdateTableRequest, error) {
+	if tableID == "" {
+		return nil, errors.New("TableID is required")
+	}
+	updateMask := &field_mask.FieldMask{
+		Paths: []string{},
+	}
 	req := &btapb.UpdateTableRequest{
 		Table: &btapb.Table{
-			Name:               prefix + "/tables/" + conf.tableID,
-			DeletionProtection: deletionProtection,
+			Name: ac.instancePrefix() + "/tables/" + tableID,
 		},
 		UpdateMask: updateMask,
 	}
-	lro, err := ac.tClient.UpdateTable(ctx, req)
+	return req, nil
+}
+
+func (ac *AdminClient) updateTableAndWait(ctx context.Context, updateTableRequest *btapb.UpdateTableRequest) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+
+	lro, err := ac.tClient.UpdateTable(ctx, updateTableRequest)
 	if err != nil {
 		return fmt.Errorf("error from update: %w", err)
 	}
+
 	var tbl btapb.Table
 	op := longrunning.InternalNewOperation(ac.lroClient, lro)
 	err = op.Wait(ctx, &tbl)
 	if err != nil {
 		return fmt.Errorf("error from operation: %v", err)
 	}
+
 	return nil
+}
+
+// UpdateTableDisableChangeStream updates a table to disable change stream for table ID.
+func (ac *AdminClient) UpdateTableDisableChangeStream(ctx context.Context, tableID string) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = []string{changeStreamConfigFieldMask}
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableWithChangeStream updates a table to with the given table ID and change stream config.
+func (ac *AdminClient) UpdateTableWithChangeStream(ctx context.Context, tableID string, changeStreamRetention ChangeStreamRetention) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = []string{changeStreamConfigFieldMask + "." + retentionPeriodFieldMaskPath}
+	req.Table.ChangeStreamConfig = &btapb.ChangeStreamConfig{}
+	req.Table.ChangeStreamConfig.RetentionPeriod = durationpb.New(changeStreamRetention.(time.Duration))
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableWithDeletionProtection updates a table with the given table ID and deletion protection parameter.
+func (ac *AdminClient) UpdateTableWithDeletionProtection(ctx context.Context, tableID string, deletionProtection DeletionProtection) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = []string{deletionProtectionFieldMask}
+	req.Table.DeletionProtection = deletionProtection != Unprotected
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableDisableAutomatedBackupPolicy updates a table to disable automated backups for table ID.
+func (ac *AdminClient) UpdateTableDisableAutomatedBackupPolicy(ctx context.Context, tableID string) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = []string{automatedBackupPolicyFieldMask}
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableWithAutomatedBackupPolicy updates a table to with the given table ID and automated backup policy config.
+func (ac *AdminClient) UpdateTableWithAutomatedBackupPolicy(ctx context.Context, tableID string, automatedBackupPolicy TableAutomatedBackupPolicy) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	abc, err := toAutomatedBackupConfigProto(&automatedBackupPolicy)
+	if err != nil {
+		return err
+	}
+	// If the AutomatedBackupPolicy is not at least partially specified, or if both fields are 0, then this is an
+	// incorrect configuration for updating the table, and should be rejected. Both fields could be zero if (1)
+	// they are set to zero, or (2) neither field was set and the policy was constructed using toProto().
+	if abc.AutomatedBackupPolicy.RetentionPeriod.Seconds == 0 && abc.AutomatedBackupPolicy.Frequency.Seconds == 0 {
+		return errors.New("Invalid automated backup policy. If you're intending to disable automated backups, please use the UpdateTableDisableAutomatedBackupPolicy method instead")
+	}
+	if abc.AutomatedBackupPolicy.RetentionPeriod.Seconds != 0 {
+		// Update Retention Period
+		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+retentionPeriodFieldMaskPath)
+	}
+	if abc.AutomatedBackupPolicy.Frequency.Seconds != 0 {
+		// Update Frequency
+		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+frequencyFieldMaskPath)
+	}
+	req.Table.AutomatedBackupConfig = abc
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableWithRowKeySchema updates a table with RowKeySchema.
+func (ac *AdminClient) UpdateTableWithRowKeySchema(ctx context.Context, tableID string, rowKeySchema StructType) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = append(req.UpdateMask.Paths, rowKeySchemaMaskPath)
+	req.Table.RowKeySchema = rowKeySchema.proto().GetStructType()
+	return ac.updateTableAndWait(ctx, req)
+}
+
+// UpdateTableRemoveRowKeySchema removes a RowKeySchema from a table.
+func (ac *AdminClient) UpdateTableRemoveRowKeySchema(ctx context.Context, tableID string) error {
+	req, err := ac.newUpdateTableRequestProto(tableID)
+	if err != nil {
+		return err
+	}
+	req.UpdateMask.Paths = append(req.UpdateMask.Paths, rowKeySchemaMaskPath)
+	req.IgnoreWarnings = true
+	return ac.updateTableAndWait(ctx, req)
 }
 
 // DeleteTable deletes a table and all of its data.
@@ -394,7 +670,10 @@ type TableInfo struct {
 	// DeletionProtection indicates whether the table is protected against data loss
 	// DeletionProtection could be None depending on the table view
 	// for example when using NAME_ONLY, the response does not contain DeletionProtection and the value should be None
-	DeletionProtection DeletionProtection
+	DeletionProtection    DeletionProtection
+	ChangeStreamRetention ChangeStreamRetention
+	AutomatedBackupConfig TableAutomatedBackupConfig
+	RowKeySchema          *StructType
 }
 
 // FamilyInfo represents information about a column family.
@@ -402,6 +681,7 @@ type FamilyInfo struct {
 	Name         string
 	GCPolicy     string
 	FullGCPolicy GCPolicy
+	ValueType    Type
 }
 
 func (ac *AdminClient) getTable(ctx context.Context, table string, view btapb.Table_View) (*btapb.Table, error) {
@@ -418,7 +698,7 @@ func (ac *AdminClient) getTable(ctx context.Context, table string, view btapb.Ta
 		var err error
 		res, err = ac.tClient.GetTable(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -441,6 +721,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 			Name:         name,
 			GCPolicy:     GCRuleToString(fam.GcRule),
 			FullGCPolicy: gcRuleToPolicy(fam.GcRule),
+			ValueType:    ProtoToType(fam.ValueType),
 		})
 	}
 	// we expect DeletionProtection to be in the response because Table_SCHEMA_VIEW is being used in this function
@@ -450,21 +731,106 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 	} else {
 		ti.DeletionProtection = Unprotected
 	}
+	if res.ChangeStreamConfig != nil && res.ChangeStreamConfig.RetentionPeriod != nil {
+		ti.ChangeStreamRetention = res.ChangeStreamConfig.RetentionPeriod.AsDuration()
+	}
+	if res.AutomatedBackupConfig != nil {
+		switch res.AutomatedBackupConfig.(type) {
+		case *btapb.Table_AutomatedBackupPolicy_:
+			ti.AutomatedBackupConfig = &TableAutomatedBackupPolicy{
+				RetentionPeriod: res.GetAutomatedBackupPolicy().GetRetentionPeriod().AsDuration(),
+				Frequency:       res.GetAutomatedBackupPolicy().GetFrequency().AsDuration(),
+			}
+		default:
+			return nil, fmt.Errorf("error: Unknown type of automated backup configuration")
+		}
+	}
+	if res.RowKeySchema != nil {
+		structType := structProtoToType(res.RowKeySchema).(StructType)
+		ti.RowKeySchema = &structType
+	}
+
 	return ti, nil
+}
+
+type updateFamilyOption struct {
+	ignoreWarnings bool
+}
+
+// GCPolicyOption is deprecated, kept for backwards compatibility, use UpdateFamilyOption in new code
+type GCPolicyOption interface {
+	apply(s *updateFamilyOption)
+}
+
+// UpdateFamilyOption is the interface to update family settings
+type UpdateFamilyOption GCPolicyOption
+
+type ignoreWarnings bool
+
+func (w ignoreWarnings) apply(s *updateFamilyOption) {
+	s.ignoreWarnings = bool(w)
+}
+
+// IgnoreWarnings returns a updateFamilyOption that ignores safety checks when modifying the column families
+func IgnoreWarnings() GCPolicyOption {
+	return ignoreWarnings(true)
 }
 
 // SetGCPolicy specifies which cells in a column family should be garbage collected.
 // GC executes opportunistically in the background; table reads may return data
 // matching the GC policy.
 func (ac *AdminClient) SetGCPolicy(ctx context.Context, table, family string, policy GCPolicy) error {
+	return ac.UpdateFamily(ctx, table, family, Family{GCPolicy: policy})
+}
+
+// SetGCPolicyWithOptions is similar to SetGCPolicy but allows passing options
+func (ac *AdminClient) SetGCPolicyWithOptions(ctx context.Context, table, family string, policy GCPolicy, opts ...GCPolicyOption) error {
+	familyOpts := []UpdateFamilyOption{}
+	for _, opt := range opts {
+		if opt != nil {
+			familyOpts = append(familyOpts, opt.(UpdateFamilyOption))
+		}
+	}
+	return ac.UpdateFamily(ctx, table, family, Family{GCPolicy: policy}, familyOpts...)
+}
+
+// UpdateFamily updates column families' garbage collection policies and value type.
+func (ac *AdminClient) UpdateFamily(ctx context.Context, table, familyName string, family Family, opts ...UpdateFamilyOption) error {
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
 	prefix := ac.instancePrefix()
+
+	s := updateFamilyOption{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt.apply(&s)
+		}
+	}
+
+	cf := &btapb.ColumnFamily{}
+	mask := &field_mask.FieldMask{}
+	if family.GCPolicy != nil {
+		cf.GcRule = family.GCPolicy.proto()
+		mask.Paths = append(mask.Paths, "gc_rule")
+
+	}
+	if family.ValueType != nil {
+		cf.ValueType = family.ValueType.proto()
+		mask.Paths = append(mask.Paths, "value_type")
+	}
+
+	// No update
+	if len(mask.Paths) == 0 {
+		return nil
+	}
+
 	req := &btapb.ModifyColumnFamiliesRequest{
 		Name: prefix + "/tables/" + table,
 		Modifications: []*btapb.ModifyColumnFamiliesRequest_Modification{{
-			Id:  family,
-			Mod: &btapb.ModifyColumnFamiliesRequest_Modification_Update{Update: &btapb.ColumnFamily{GcRule: policy.proto()}},
+			Id:         familyName,
+			Mod:        &btapb.ModifyColumnFamiliesRequest_Modification_Update{Update: cf},
+			UpdateMask: mask,
 		}},
+		IgnoreWarnings: s.ignoreWarnings,
 	}
 	_, err := ac.tClient.ModifyColumnFamilies(ctx, req)
 	return err
@@ -534,10 +900,10 @@ func (ac *AdminClient) SnapshotTable(ctx context.Context, table, cluster, snapsh
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
 	prefix := ac.instancePrefix()
 
-	var ttlProto *durpb.Duration
+	var ttlProto *durationpb.Duration
 
 	if ttl > 0 {
-		ttlProto = ptypes.DurationProto(ttl)
+		ttlProto = durationpb.New(ttl)
 	}
 
 	req := &btapb.SnapshotTableRequest{
@@ -585,7 +951,7 @@ func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotI
 			var err error
 			resp, err = ac.tClient.ListSnapshots(ctx, req)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -612,15 +978,15 @@ func newSnapshotInfo(snapshot *btapb.Snapshot) (*SnapshotInfo, error) {
 	tablePathParts := strings.Split(snapshot.SourceTable.Name, "/")
 	tableID := tablePathParts[len(tablePathParts)-1]
 
-	createTime, err := ptypes.Timestamp(snapshot.CreateTime)
-	if err != nil {
+	if err := snapshot.CreateTime.CheckValid(); err != nil {
 		return nil, fmt.Errorf("invalid createTime: %w", err)
 	}
+	createTime := snapshot.GetCreateTime().AsTime()
 
-	deleteTime, err := ptypes.Timestamp(snapshot.DeleteTime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid deleteTime: %w", err)
+	if err := snapshot.DeleteTime.CheckValid(); err != nil {
+		return nil, fmt.Errorf("invalid deleteTime: %v", err)
 	}
+	deleteTime := snapshot.GetDeleteTime().AsTime()
 
 	return &SnapshotInfo{
 		Name:        name,
@@ -690,7 +1056,7 @@ func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot strin
 		var err error
 		resp, err = ac.tClient.GetSnapshot(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -742,7 +1108,7 @@ func (ac *AdminClient) isConsistent(ctx context.Context, tableName, token string
 		var err error
 		resp, err = ac.tClient.CheckConsistency(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return false, err
 	}
@@ -789,6 +1155,11 @@ func (ac *AdminClient) TableIAM(tableID string) *iam.Handle {
 // BackupIAM creates an IAM Handle specific to a given Cluster and Backup.
 func (ac *AdminClient) BackupIAM(cluster, backup string) *iam.Handle {
 	return iam.InternalNewHandleGRPCClient(ac.tClient, ac.backupPath(cluster, ac.instance, backup))
+}
+
+// AuthorizedViewIAM creates an IAM Handle specific to a given Table and AuthorizedView.
+func (ac *AdminClient) AuthorizedViewIAM(table, authorizedView string) *iam.Handle {
+	return iam.InternalNewHandleGRPCClient(ac.tClient, ac.authorizedViewPath(table, authorizedView))
 }
 
 const instanceAdminAddr = "bigtableadmin.googleapis.com:443"
@@ -913,6 +1284,12 @@ type InstanceConf struct {
 	// AutoscalingConfig configures the autoscaling properties on the cluster
 	// created with the instance. It is optional.
 	AutoscalingConfig *AutoscalingConfig
+
+	// NodeScalingFactor controls the scaling factor of the cluster (i.e. the
+	// increment in which NumNodes can be set). Node scaling delivers better
+	// latency and more throughput by removing node boundaries. It is optional,
+	// with the default being 1X.
+	NodeScalingFactor NodeScalingFactor
 }
 
 // InstanceWithClustersConfig contains the information necessary to create an Instance
@@ -942,6 +1319,7 @@ func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *Instan
 				NumNodes:          conf.NumNodes,
 				StorageType:       conf.StorageType,
 				AutoscalingConfig: conf.AutoscalingConfig,
+				NodeScalingFactor: conf.NodeScalingFactor,
 			},
 		},
 	}
@@ -1061,7 +1439,7 @@ func (iac *InstanceAdminClient) UpdateInstanceWithClusters(ctx context.Context, 
 				return fmt.Errorf("UpdateCluster %q failed %w; however UpdateInstance succeeded",
 					cluster.ClusterID, clusterErr)
 			}
-			return err
+			return clusterErr
 		}
 	}
 
@@ -1090,7 +1468,7 @@ func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo,
 		var err error
 		res, err = iac.iClient.ListInstances(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1128,7 +1506,7 @@ func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID str
 		var err error
 		res, err = iac.iClient.GetInstance(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1149,7 +1527,7 @@ func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID str
 // AutoscalingConfig contains autoscaling configuration for a cluster.
 // For details, see https://cloud.google.com/bigtable/docs/autoscaling.
 type AutoscalingConfig struct {
-	// MinNodes sets the minumum number of nodes in a cluster. MinNodes must
+	// MinNodes sets the minimum number of nodes in a cluster. MinNodes must
 	// be 1 or greater.
 	MinNodes int
 	// MaxNodes sets the maximum number of nodes in a cluster. MaxNodes must be
@@ -1179,6 +1557,44 @@ func (a *AutoscalingConfig) proto() *btapb.Cluster_ClusterAutoscalingConfig {
 			CpuUtilizationPercent:        int32(a.CPUTargetPercent),
 			StorageUtilizationGibPerNode: int32(a.StorageUtilizationPerNode),
 		},
+	}
+}
+
+// NodeScalingFactor controls the scaling factor of the cluster (i.e. the
+// increment in which NumNodes can be set). Node scaling delivers better
+// latency and more throughput by removing node boundaries.
+type NodeScalingFactor int32
+
+const (
+	// NodeScalingFactorUnspecified default to 1X.
+	NodeScalingFactorUnspecified NodeScalingFactor = iota
+	// NodeScalingFactor1X runs the cluster with a scaling factor of 1.
+	NodeScalingFactor1X
+	// NodeScalingFactor2X runs the cluster with a scaling factor of 2.
+	// All node count values must be in increments of 2 with this scaling
+	// factor enabled, otherwise an INVALID_ARGUMENT error will be returned.
+	NodeScalingFactor2X
+)
+
+func (nsf NodeScalingFactor) proto() btapb.Cluster_NodeScalingFactor {
+	switch nsf {
+	case NodeScalingFactor1X:
+		return btapb.Cluster_NODE_SCALING_FACTOR_1X
+	case NodeScalingFactor2X:
+		return btapb.Cluster_NODE_SCALING_FACTOR_2X
+	default:
+		return btapb.Cluster_NODE_SCALING_FACTOR_UNSPECIFIED
+	}
+}
+
+func nodeScalingFactorFromProto(nsf btapb.Cluster_NodeScalingFactor) NodeScalingFactor {
+	switch nsf {
+	case btapb.Cluster_NODE_SCALING_FACTOR_1X:
+		return NodeScalingFactor1X
+	case btapb.Cluster_NODE_SCALING_FACTOR_2X:
+		return NodeScalingFactor2X
+	default:
+		return NodeScalingFactorUnspecified
 	}
 }
 
@@ -1223,6 +1639,12 @@ type ClusterConfig struct {
 	// AutoscalingConfig configures the autoscaling properties on a cluster.
 	// One of NumNodes or AutoscalingConfig is required.
 	AutoscalingConfig *AutoscalingConfig
+
+	// NodeScalingFactor controls the scaling factor of the cluster (i.e. the
+	// increment in which NumNodes can be set). Node scaling delivers better
+	// latency and more throughput by removing node boundaries. It is optional,
+	// with the default being 1X.
+	NodeScalingFactor NodeScalingFactor
 }
 
 func (cc *ClusterConfig) proto(project string) *btapb.Cluster {
@@ -1233,6 +1655,7 @@ func (cc *ClusterConfig) proto(project string) *btapb.Cluster {
 		EncryptionConfig: &btapb.Cluster_EncryptionConfig{
 			KmsKeyName: cc.KMSKeyName,
 		},
+		NodeScalingFactor: cc.NodeScalingFactor.proto(),
 	}
 
 	if asc := cc.AutoscalingConfig; asc != nil {
@@ -1267,6 +1690,9 @@ type ClusterInfo struct {
 
 	// AutoscalingConfig are the configured values for a cluster.
 	AutoscalingConfig *AutoscalingConfig
+
+	// NodeScalingFactor controls the scaling factor of the cluster.
+	NodeScalingFactor NodeScalingFactor
 }
 
 // CreateCluster creates a new cluster in an instance.
@@ -1297,7 +1723,7 @@ func (iac *InstanceAdminClient) DeleteCluster(ctx context.Context, instanceID, c
 }
 
 // SetAutoscaling enables autoscaling on a cluster. To remove autoscaling, use
-// UpdateCluster. See AutoscalingConfig documentation for deatils.
+// UpdateCluster. See AutoscalingConfig documentation for details.
 func (iac *InstanceAdminClient) SetAutoscaling(ctx context.Context, instanceID, clusterID string, conf AutoscalingConfig) error {
 	ctx = mergeOutgoingMetadata(ctx, iac.md)
 	cluster := &btapb.Cluster{
@@ -1356,7 +1782,7 @@ func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string)
 		var err error
 		res, err = iac.iClient.ListClusters(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1370,12 +1796,13 @@ func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string)
 			kmsKeyName = c.EncryptionConfig.KmsKeyName
 		}
 		ci := &ClusterInfo{
-			Name:        nameParts[len(nameParts)-1],
-			Zone:        locParts[len(locParts)-1],
-			ServeNodes:  int(c.ServeNodes),
-			State:       c.State.String(),
-			StorageType: storageTypeFromProto(c.DefaultStorageType),
-			KMSKeyName:  kmsKeyName,
+			Name:              nameParts[len(nameParts)-1],
+			Zone:              locParts[len(locParts)-1],
+			ServeNodes:        int(c.ServeNodes),
+			State:             c.State.String(),
+			StorageType:       storageTypeFromProto(c.DefaultStorageType),
+			KMSKeyName:        kmsKeyName,
+			NodeScalingFactor: nodeScalingFactorFromProto(c.NodeScalingFactor),
 		}
 		if cfg := c.GetClusterConfig(); cfg != nil {
 			if asc := fromClusterConfigProto(cfg); asc != nil {
@@ -1403,7 +1830,7 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 		var err error
 		c, err = iac.iClient.GetCluster(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1415,12 +1842,13 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 	nameParts := strings.Split(c.Name, "/")
 	locParts := strings.Split(c.Location, "/")
 	ci := &ClusterInfo{
-		Name:        nameParts[len(nameParts)-1],
-		Zone:        locParts[len(locParts)-1],
-		ServeNodes:  int(c.ServeNodes),
-		State:       c.State.String(),
-		StorageType: storageTypeFromProto(c.DefaultStorageType),
-		KMSKeyName:  kmsKeyName,
+		Name:              nameParts[len(nameParts)-1],
+		Zone:              locParts[len(locParts)-1],
+		ServeNodes:        int(c.ServeNodes),
+		State:             c.State.String(),
+		StorageType:       storageTypeFromProto(c.DefaultStorageType),
+		KMSKeyName:        kmsKeyName,
+		NodeScalingFactor: nodeScalingFactorFromProto(c.NodeScalingFactor),
 	}
 	// Use type assertion to handle protobuf oneof type
 	if cfg := c.GetClusterConfig(); cfg != nil {
@@ -1457,31 +1885,123 @@ func (iac *InstanceAdminClient) InstanceIAM(instanceID string) *iam.Handle {
 
 // Routing policies.
 const (
+	// Deprecated: Use MultiClusterRoutingUseAnyConfig instead.
 	// MultiClusterRouting is a policy that allows read/write requests to be
 	// routed to any cluster in the instance. Requests will will fail over to
 	// another cluster in the event of transient errors or delays. Choosing
 	// this option sacrifices read-your-writes consistency to improve
 	// availability.
 	MultiClusterRouting = "multi_cluster_routing_use_any"
+	// Deprecated: Use SingleClusterRoutingConfig instead.
 	// SingleClusterRouting is a policy that unconditionally routes all
 	// read/write requests to a specific cluster. This option preserves
 	// read-your-writes consistency, but does not improve availability.
 	SingleClusterRouting = "single_cluster_routing"
 )
 
-// ProfileConf contains the information necessary to create an profile
+// ProfileConf contains the information necessary to create a profile
 type ProfileConf struct {
-	Name                     string
-	ProfileID                string
-	InstanceID               string
-	Etag                     string
-	Description              string
-	RoutingPolicy            string
-	ClusterID                string
+	Name        string
+	ProfileID   string
+	InstanceID  string
+	Etag        string
+	Description string
+
+	RoutingConfig RoutingPolicyConfig
+	Isolation     AppProfileIsolation
+
+	// Deprecated: Use RoutingConfig instead.
+	// Ignored when RoutingConfig is set.
+	RoutingPolicy string
+	// Deprecated: Use RoutingConfig with SingleClusterRoutingConfig instead.
+	// Ignored when RoutingConfig is set.
+	// To use with RoutingPolicy field while specifying SingleClusterRouting.
+	ClusterID string
+	// Deprecated: Use RoutingConfig with SingleClusterRoutingConfig instead.
+	// Ignored when RoutingConfig is set.
+	// To use with RoutingPolicy field while specifying SingleClusterRouting.
 	AllowTransactionalWrites bool
 
 	// If true, warnings are ignored
 	IgnoreWarnings bool
+}
+
+func setIsolation(profile *btapb.AppProfile, isolation AppProfileIsolation) error {
+	if isolation != nil {
+		switch cfg := isolation.(type) {
+		case *StandardIsolation:
+			profile.Isolation = &btapb.AppProfile_StandardIsolation_{
+				StandardIsolation: &btapb.AppProfile_StandardIsolation{
+					Priority: btapb.AppProfile_Priority(cfg.Priority),
+				},
+			}
+		case *DataBoostIsolationReadOnly:
+			dataBoostProto := &btapb.AppProfile_DataBoostIsolationReadOnly{}
+			cbo := btapb.AppProfile_DataBoostIsolationReadOnly_ComputeBillingOwner(cfg.ComputeBillingOwner)
+			dataBoostProto.ComputeBillingOwner = &cbo
+			profile.Isolation = &btapb.AppProfile_DataBoostIsolationReadOnly_{DataBoostIsolationReadOnly: dataBoostProto}
+		default:
+			return fmt.Errorf("bigtable: unknown isolation config type: %T", cfg)
+		}
+	}
+	return nil
+}
+
+func setRoutingPolicy(appProfile *btapb.AppProfile, rpc RoutingPolicyConfig, routingPolicy optional.String,
+	clusterID string, allowTransactionalWrites bool, allowNil bool) error {
+	if allowNil && routingPolicy == nil && rpc == nil {
+		return nil
+	}
+	if rpc != nil {
+		switch cfg := rpc.(type) {
+		case *MultiClusterRoutingUseAnyConfig:
+			appProfile.RoutingPolicy = &btapb.AppProfile_MultiClusterRoutingUseAny_{
+				MultiClusterRoutingUseAny: &btapb.AppProfile_MultiClusterRoutingUseAny{
+					ClusterIds: cfg.ClusterIDs,
+				},
+			}
+			if cfg.Affinity != nil {
+				switch cfg.Affinity.(type) {
+				case *RowAffinity:
+					appProfile.GetMultiClusterRoutingUseAny().Affinity = &btapb.AppProfile_MultiClusterRoutingUseAny_RowAffinity_{
+						RowAffinity: &btapb.AppProfile_MultiClusterRoutingUseAny_RowAffinity{},
+					}
+				default:
+					return errors.New("bigtable: invalid affinity in MultiClusterRoutingUseAnyConfig")
+				}
+			}
+		case *SingleClusterRoutingConfig:
+			appProfile.RoutingPolicy = &btapb.AppProfile_SingleClusterRouting_{
+				SingleClusterRouting: &btapb.AppProfile_SingleClusterRouting{
+					ClusterId:                cfg.ClusterID,
+					AllowTransactionalWrites: cfg.AllowTransactionalWrites,
+				},
+			}
+		default:
+			return fmt.Errorf("bigtable: unknown RoutingConfig type: %T", cfg)
+		}
+	} else { // Fallback to deprecated fields
+		if routingPolicy == nil {
+			return errors.New("bigtable: at least one of RoutingPolicy or RoutingConfig must be set")
+		}
+
+		switch routingPolicy {
+		case MultiClusterRouting:
+			appProfile.RoutingPolicy = &btapb.AppProfile_MultiClusterRoutingUseAny_{
+				MultiClusterRoutingUseAny: &btapb.AppProfile_MultiClusterRoutingUseAny{},
+			}
+		case SingleClusterRouting:
+			appProfile.RoutingPolicy = &btapb.AppProfile_SingleClusterRouting_{
+				SingleClusterRouting: &btapb.AppProfile_SingleClusterRouting{
+					ClusterId:                clusterID,
+					AllowTransactionalWrites: allowTransactionalWrites,
+				},
+			}
+		default:
+			return errors.New("bigtable: invalid RoutingPolicy " + optional.ToString(routingPolicy))
+		}
+	}
+	return nil
 }
 
 // ProfileIterator iterates over profiles.
@@ -1496,11 +2016,22 @@ type ProfileAttrsToUpdate struct {
 	// If set, updates the description.
 	Description optional.String
 
-	//If set, updates the routing policy.
+	// If set, updates the routing policy.
+	// Takes precedence over deprecated RoutingPolicy, ClusterID and AllowTransactionalWrites.
+	RoutingConfig RoutingPolicyConfig
+
+	// If set, updates the isolation options.
+	Isolation AppProfileIsolation
+
+	// If set, updates the routing policy.
+	// Deprecated: Use RoutingConfig instead.
 	RoutingPolicy optional.String
 
-	//If RoutingPolicy is updated to SingleClusterRouting, set these fields as well.
-	ClusterID                string
+	// If RoutingPolicy is updated to SingleClusterRouting, set this field as well.
+	// Deprecated: Use RoutingConfig with SingleClusterRoutingConfig instead
+	ClusterID string
+	// If RoutingPolicy is updated to SingleClusterRouting, set this field as well.
+	// Deprecated: Use RoutingConfig with SingleClusterRoutingConfig instead
 	AllowTransactionalWrites bool
 
 	// If true, warnings are ignored
@@ -1514,11 +2045,130 @@ func (p *ProfileAttrsToUpdate) GetFieldMaskPath() []string {
 		path = append(path, "description")
 	}
 
-	if p.RoutingPolicy != nil {
+	if p.RoutingConfig != nil {
+		path = append(path, p.RoutingConfig.getFieldMaskPath())
+	} else if p.RoutingPolicy != nil {
 		path = append(path, optional.ToString(p.RoutingPolicy))
 	}
+	if p.Isolation != nil {
+		path = append(path, p.Isolation.getFieldMaskPath())
+	}
+
 	return path
 }
+
+// RoutingPolicyConfig represents the configuration for a specific routing policy.
+type RoutingPolicyConfig interface {
+	isRoutingPolicyConfig()
+	getFieldMaskPath() string
+}
+
+// SingleClusterRoutingConfig is a policy that unconditionally routes all
+// read/write requests to a specific cluster. This option preserves
+// read-your-writes consistency, but does not improve availability.
+type SingleClusterRoutingConfig struct {
+	// The cluster to which read/write requests should be routed.
+	ClusterID string
+	// Whether or not `CheckAndMutateRow` and `ReadModifyWriteRow` requests are
+	// allowed by this app profile. It is unsafe to send these requests to
+	// the same table/row/column in multiple clusters.
+	AllowTransactionalWrites bool
+}
+
+func (*SingleClusterRoutingConfig) isRoutingPolicyConfig()   {}
+func (*SingleClusterRoutingConfig) getFieldMaskPath() string { return "single_cluster_routing" }
+
+// MultiClusterRoutingUseAnyConfig is a policy whererin read/write requests are
+// routed to the nearest cluster in the instance, and
+// will fail over to the nearest cluster that is available in the event of
+// transient errors or delays. Clusters in a region are considered
+// equidistant. Choosing this option sacrifices read-your-writes consistency
+// to improve availability.
+type MultiClusterRoutingUseAnyConfig struct {
+	// The set of clusters to route to. The order is ignored; clusters will be
+	// tried in order of distance. If left empty, all clusters are eligible.
+	ClusterIDs []string
+
+	// Possible algorithms for routing affinity. If enabled, Bigtable will
+	// route between equidistant clusters in a deterministic order rather than
+	// choosing randomly.
+	Affinity MultiClusterRoutingUseAnyAffinity
+}
+
+func (*MultiClusterRoutingUseAnyConfig) isRoutingPolicyConfig() {}
+func (*MultiClusterRoutingUseAnyConfig) getFieldMaskPath() string {
+	return "multi_cluster_routing_use_any"
+}
+
+// MultiClusterRoutingUseAnyAffinity represents the configuration for a specific affinity strategy.
+type MultiClusterRoutingUseAnyAffinity interface {
+	isMultiClusterRoutingUseAnyAffinity()
+}
+
+// RowAffinity enables row-based affinity.
+// If enabled, Bigtable will route the request based on the row key of the
+// request, rather than randomly. Instead, each row key will be assigned
+// to a cluster, and will stick to that cluster.
+type RowAffinity struct{}
+
+func (*RowAffinity) isMultiClusterRoutingUseAnyAffinity() {}
+
+// AppProfileIsolation represents the configuration for a specific traffic isolation policy.
+type AppProfileIsolation interface {
+	isAppProfileIsolation()
+	getFieldMaskPath() string
+}
+
+// StandardIsolation configures standard traffic isolation.
+type StandardIsolation struct {
+	Priority AppProfilePriority
+}
+
+func (*StandardIsolation) isAppProfileIsolation()   {}
+func (*StandardIsolation) getFieldMaskPath() string { return "standard_isolation" }
+
+// AppProfilePriority represents possible priorities for an app profile.
+type AppProfilePriority int32
+
+const (
+	// AppProfilePriorityUnspecified is the default value. Mapped to PRIORITY_HIGH (the legacy behavior) on creation.
+	AppProfilePriorityUnspecified AppProfilePriority = AppProfilePriority(btapb.AppProfile_PRIORITY_UNSPECIFIED)
+	// AppProfilePriorityLow represents the lowest priority.
+	AppProfilePriorityLow AppProfilePriority = AppProfilePriority(btapb.AppProfile_PRIORITY_LOW)
+	// AppProfilePriorityMedium represents the medium priority.
+	AppProfilePriorityMedium AppProfilePriority = AppProfilePriority(btapb.AppProfile_PRIORITY_MEDIUM)
+	// AppProfilePriorityHigh represents the highest priority.
+	AppProfilePriorityHigh AppProfilePriority = AppProfilePriority(btapb.AppProfile_PRIORITY_HIGH)
+)
+
+// DataBoostIsolationReadOnly configures Data Boost isolation.
+// Data Boost is a serverless compute capability that lets you run
+// high-throughput read jobs and queries on your Bigtable data, without
+// impacting the performance of the clusters that handle your application
+// traffic. Data Boost supports read-only use cases with single-cluster
+// routing.
+type DataBoostIsolationReadOnly struct {
+	// Compute Billing Owner specifies how usage should be accounted when using
+	// Data Boost. Compute Billing Owner also configures which Cloud Project is
+	// charged for relevant quota.
+	ComputeBillingOwner IsolationComputeBillingOwner
+}
+
+func (*DataBoostIsolationReadOnly) isAppProfileIsolation()   {}
+func (*DataBoostIsolationReadOnly) getFieldMaskPath() string { return "data_boost_isolation_read_only" }
+
+// IsolationComputeBillingOwner specifies how usage should be accounted when using
+// Data Boost. Compute Billing Owner also configures which Cloud Project is
+// charged for relevant quota.
+type IsolationComputeBillingOwner int32
+
+const (
+	// ComputeBillingOwnerUnspecified is the default value.
+	ComputeBillingOwnerUnspecified IsolationComputeBillingOwner = IsolationComputeBillingOwner(btapb.AppProfile_DataBoostIsolationReadOnly_COMPUTE_BILLING_OWNER_UNSPECIFIED)
+	// HostPays indicates that the host Cloud Project containing the targeted Bigtable Instance /
+	// Table pays for compute.
+	HostPays IsolationComputeBillingOwner = IsolationComputeBillingOwner(btapb.AppProfile_DataBoostIsolationReadOnly_HOST_PAYS)
+)
 
 // PageInfo supports pagination. See https://godoc.org/google.golang.org/api/iterator package for details.
 func (it *ProfileIterator) PageInfo() *iterator.PageInfo {
@@ -1546,24 +2196,14 @@ func (iac *InstanceAdminClient) CreateAppProfile(ctx context.Context, profile Pr
 		Description: profile.Description,
 	}
 
-	if profile.RoutingPolicy == "" {
-		return nil, errors.New("invalid routing policy")
+	err := setRoutingPolicy(appProfile, profile.RoutingConfig, optional.String(profile.RoutingPolicy), profile.ClusterID, profile.AllowTransactionalWrites, false)
+	if err != nil {
+		return nil, err
 	}
 
-	switch profile.RoutingPolicy {
-	case MultiClusterRouting:
-		appProfile.RoutingPolicy = &btapb.AppProfile_MultiClusterRoutingUseAny_{
-			MultiClusterRoutingUseAny: &btapb.AppProfile_MultiClusterRoutingUseAny{},
-		}
-	case SingleClusterRouting:
-		appProfile.RoutingPolicy = &btapb.AppProfile_SingleClusterRouting_{
-			SingleClusterRouting: &btapb.AppProfile_SingleClusterRouting{
-				ClusterId:                profile.ClusterID,
-				AllowTransactionalWrites: profile.AllowTransactionalWrites,
-			},
-		}
-	default:
-		return nil, errors.New("invalid routing policy")
+	err = setIsolation(appProfile, profile.Isolation)
+	if err != nil {
+		return nil, err
 	}
 
 	return iac.iClient.CreateAppProfile(ctx, &btapb.CreateAppProfileRequest{
@@ -1585,7 +2225,7 @@ func (iac *InstanceAdminClient) GetAppProfile(ctx context.Context, instanceID, n
 		var err error
 		ap, err = iac.iClient.GetAppProfile(ctx, profileRequest)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1607,7 +2247,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 			var err error
 			profileRes, err = iac.iClient.ListAppProfiles(ctx, listRequest)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -1629,29 +2269,24 @@ func (iac *InstanceAdminClient) UpdateAppProfile(ctx context.Context, instanceID
 	ctx = mergeOutgoingMetadata(ctx, iac.md)
 
 	profile := &btapb.AppProfile{
-		Name: "projects/" + iac.project + "/instances/" + instanceID + "/appProfiles/" + profileID,
+		Name: appProfilePath(iac.project, instanceID, profileID),
 	}
 
 	if updateAttrs.Description != nil {
 		profile.Description = optional.ToString(updateAttrs.Description)
 	}
-	if updateAttrs.RoutingPolicy != nil {
-		switch optional.ToString(updateAttrs.RoutingPolicy) {
-		case MultiClusterRouting:
-			profile.RoutingPolicy = &btapb.AppProfile_MultiClusterRoutingUseAny_{
-				MultiClusterRoutingUseAny: &btapb.AppProfile_MultiClusterRoutingUseAny{},
-			}
-		case SingleClusterRouting:
-			profile.RoutingPolicy = &btapb.AppProfile_SingleClusterRouting_{
-				SingleClusterRouting: &btapb.AppProfile_SingleClusterRouting{
-					ClusterId:                updateAttrs.ClusterID,
-					AllowTransactionalWrites: updateAttrs.AllowTransactionalWrites,
-				},
-			}
-		default:
-			return errors.New("invalid routing policy")
-		}
+
+	err := setRoutingPolicy(profile, updateAttrs.RoutingConfig, updateAttrs.RoutingPolicy,
+		updateAttrs.ClusterID, updateAttrs.AllowTransactionalWrites, true)
+	if err != nil {
+		return err
 	}
+
+	err = setIsolation(profile, updateAttrs.Isolation)
+	if err != nil {
+		return err
+	}
+
 	patchRequest := &btapb.UpdateAppProfileRequest{
 		AppProfile: profile,
 		UpdateMask: &field_mask.FieldMask{
@@ -1764,7 +2399,7 @@ func UpdateInstanceAndSyncClusters(ctx context.Context, iac *InstanceAdminClient
 			continue
 		}
 
-		// We update teh clusters autoscaling config, or its number of serve
+		// We update the clusters autoscaling config, or its number of serve
 		// nodes.
 		var updateErr error
 		if cluster.AutoscalingConfig != nil {
@@ -1855,7 +2490,7 @@ func (ac *AdminClient) RestoreTableFrom(ctx context.Context, sourceInstance, tab
 	req := &btapb.RestoreTableRequest{
 		Parent:  parent,
 		TableId: table,
-		Source:  &btapb.RestoreTableRequest_Backup{sourceBackupPath},
+		Source:  &btapb.RestoreTableRequest_Backup{Backup: sourceBackupPath},
 	}
 	op, err := ac.tClient.RestoreTable(ctx, req)
 	if err != nil {
@@ -1865,16 +2500,68 @@ func (ac *AdminClient) RestoreTableFrom(ctx context.Context, sourceInstance, tab
 	return longrunning.InternalNewOperation(ac.lroClient, op).Wait(ctx, &resp)
 }
 
+type backupOptions struct {
+	backupType        *BackupType
+	hotToStandardTime *time.Time
+	expireTime        *time.Time
+}
+
+// BackupOption can be used to specify parameters for backup operations.
+type BackupOption func(*backupOptions)
+
+// WithHotToStandardBackup option can be used to create backup with
+// type [BackupTypeHot] and specify time at which the hot backup will be
+// converted to a standard backup. Once the 'hotToStandardTime' has passed,
+// Cloud Bigtable will convert the hot backup to a standard backup.
+// This value must be greater than the backup creation time by at least 24 hours
+func WithHotToStandardBackup(hotToStandardTime time.Time) BackupOption {
+	return func(bo *backupOptions) {
+		btHot := BackupTypeHot
+		bo.backupType = &btHot
+		bo.hotToStandardTime = &hotToStandardTime
+	}
+}
+
+// WithExpiry option can be used to create backup
+// that expires after time 'expireTime'.
+// Once the 'expireTime' has passed, Cloud Bigtable will delete the backup.
+func WithExpiry(expireTime time.Time) BackupOption {
+	return func(bo *backupOptions) {
+		bo.expireTime = &expireTime
+	}
+}
+
+// WithHotBackup option can be used to create backup
+// with type [BackupTypeHot]
+func WithHotBackup() BackupOption {
+	return func(bo *backupOptions) {
+		btHot := BackupTypeHot
+		bo.backupType = &btHot
+	}
+}
+
 // CreateBackup creates a new backup in the specified cluster from the
 // specified source table with the user-provided expire time.
 func (ac *AdminClient) CreateBackup(ctx context.Context, table, cluster, backup string, expireTime time.Time) error {
+	return ac.CreateBackupWithOptions(ctx, table, cluster, backup, WithExpiry(expireTime))
+}
+
+// CreateBackupWithOptions is similar to CreateBackup but lets the user specify additional options.
+func (ac *AdminClient) CreateBackupWithOptions(ctx context.Context, table, cluster, backup string, opts ...BackupOption) error {
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
 	prefix := ac.instancePrefix()
 
-	parsedExpireTime, err := ptypes.TimestampProto(expireTime)
-	if err != nil {
-		return err
+	o := backupOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
 	}
+
+	if o.expireTime == nil {
+		return errExpiryMissing
+	}
+	parsedExpireTime := timestamppb.New(*o.expireTime)
 
 	req := &btapb.CreateBackupRequest{
 		Parent:   prefix + "/clusters/" + cluster,
@@ -1885,7 +2572,34 @@ func (ac *AdminClient) CreateBackup(ctx context.Context, table, cluster, backup 
 		},
 	}
 
+	if o.backupType != nil {
+		req.Backup.BackupType = btapb.Backup_BackupType(*o.backupType)
+	}
+	if o.hotToStandardTime != nil {
+		req.Backup.HotToStandardTime = timestamppb.New(*o.hotToStandardTime)
+	}
 	op, err := ac.tClient.CreateBackup(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp := btapb.Backup{}
+	return longrunning.InternalNewOperation(ac.lroClient, op).Wait(ctx, &resp)
+}
+
+// CopyBackup copies the specified source backup with the user-provided expire time.
+func (ac *AdminClient) CopyBackup(ctx context.Context, sourceCluster, sourceBackup,
+	destProject, destInstance, destCluster, destBackup string, expireTime time.Time) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	sourceBackupPath := ac.backupPath(sourceCluster, ac.instance, sourceBackup)
+	destPrefix := instancePrefix(destProject, destInstance)
+	req := &btapb.CopyBackupRequest{
+		Parent:       destPrefix + "/clusters/" + destCluster,
+		BackupId:     destBackup,
+		SourceBackup: sourceBackupPath,
+		ExpireTime:   timestamppb.New(expireTime),
+	}
+
+	op, err := ac.tClient.CopyBackup(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -1918,7 +2632,7 @@ func (ac *AdminClient) Backups(ctx context.Context, cluster string) *BackupItera
 			var err error
 			resp, err = ac.tClient.ListBackups(ctx, req)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -1946,30 +2660,43 @@ func newBackupInfo(backup *btapb.Backup) (*BackupInfo, error) {
 	tablePathParts := strings.Split(backup.SourceTable, "/")
 	tableID := tablePathParts[len(tablePathParts)-1]
 
-	startTime, err := ptypes.Timestamp(backup.StartTime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid startTime: %w", err)
+	if err := backup.StartTime.CheckValid(); err != nil {
+		return nil, fmt.Errorf("invalid startTime: %v", err)
+	}
+	startTime := backup.GetStartTime().AsTime()
+
+	if err := backup.EndTime.CheckValid(); err != nil {
+		return nil, fmt.Errorf("invalid endTime: %v", err)
+	}
+	endTime := backup.GetEndTime().AsTime()
+
+	if err := backup.ExpireTime.CheckValid(); err != nil {
+		return nil, fmt.Errorf("invalid expireTime: %v", err)
+	}
+	expireTime := backup.GetExpireTime().AsTime()
+
+	var htsTimePtr *time.Time
+	if backup.GetHotToStandardTime() != nil {
+		if err := backup.GetHotToStandardTime().CheckValid(); err != nil {
+			return nil, fmt.Errorf("invalid HotToStandardTime: %v", err)
+		}
+		htsTime := backup.GetHotToStandardTime().AsTime()
+		htsTimePtr = &htsTime
 	}
 
-	endTime, err := ptypes.Timestamp(backup.EndTime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid endTime: %w", err)
-	}
-
-	expireTime, err := ptypes.Timestamp(backup.ExpireTime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid expireTime: %w", err)
-	}
 	encryptionInfo := newEncryptionInfo(backup.EncryptionInfo)
 	bi := BackupInfo{
-		Name:           name,
-		SourceTable:    tableID,
-		SizeBytes:      backup.SizeBytes,
-		StartTime:      startTime,
-		EndTime:        endTime,
-		ExpireTime:     expireTime,
-		State:          backup.State.String(),
-		EncryptionInfo: encryptionInfo,
+		Name:              name,
+		SourceTable:       tableID,
+		SourceBackup:      backup.SourceBackup,
+		SizeBytes:         backup.SizeBytes,
+		StartTime:         startTime,
+		EndTime:           endTime,
+		ExpireTime:        expireTime,
+		State:             backup.State.String(),
+		EncryptionInfo:    encryptionInfo,
+		BackupType:        BackupType(backup.GetBackupType()),
+		HotToStandardTime: htsTimePtr,
 	}
 
 	return &bi, nil
@@ -1999,16 +2726,45 @@ func (it *BackupIterator) Next() (*BackupInfo, error) {
 	return item, nil
 }
 
+// BackupType denotes the type of the backup.
+type BackupType int32
+
+const (
+	// BackupTypeUnspecified denotes that backup type has not been specified.
+	BackupTypeUnspecified BackupType = 0
+
+	// BackupTypeStandard is the default type for Cloud Bigtable managed backups. Supported for
+	// backups created in both HDD and SSD instances. Requires optimization when
+	// restored to a table in an SSD instance.
+	BackupTypeStandard BackupType = 1
+
+	// BackupTypeHot is a backup type with faster restore to SSD performance. Only supported for
+	// backups created in SSD instances. A new SSD table restored from a hot
+	// backup reaches production performance more quickly than a standard
+	// backup.
+	BackupTypeHot BackupType = 2
+)
+
 // BackupInfo contains backup metadata. This struct is read-only.
 type BackupInfo struct {
 	Name           string
 	SourceTable    string
+	SourceBackup   string
 	SizeBytes      int64
 	StartTime      time.Time
 	EndTime        time.Time
 	ExpireTime     time.Time
 	State          string
 	EncryptionInfo *EncryptionInfo
+	BackupType     BackupType
+
+	// The time at which the hot backup will be converted to a standard backup.
+	// Once the `hot_to_standard_time` has passed, Cloud Bigtable will convert the
+	// hot backup to a standard backup. This value must be greater than the backup
+	// creation time by at least 24 hours
+	//
+	// This field only applies for hot backups.
+	HotToStandardTime *time.Time
 }
 
 // BackupInfo gets backup metadata.
@@ -2025,7 +2781,7 @@ func (ac *AdminClient) BackupInfo(ctx context.Context, cluster, backup string) (
 		var err error
 		resp, err = ac.tClient.GetBackup(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -2050,10 +2806,7 @@ func (ac *AdminClient) UpdateBackup(ctx context.Context, cluster, backup string,
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
 	backupPath := ac.backupPath(cluster, ac.instance, backup)
 
-	expireTimestamp, err := ptypes.TimestampProto(expireTime)
-	if err != nil {
-		return err
-	}
+	expireTimestamp := timestamppb.New(expireTime)
 
 	updateMask := &field_mask.FieldMask{}
 	updateMask.Paths = append(updateMask.Paths, "expire_time")
@@ -2065,6 +2818,606 @@ func (ac *AdminClient) UpdateBackup(ctx context.Context, cluster, backup string,
 		},
 		UpdateMask: updateMask,
 	}
-	_, err = ac.tClient.UpdateBackup(ctx, req)
+	_, err := ac.tClient.UpdateBackup(ctx, req)
+	return err
+}
+
+// UpdateBackupHotToStandardTime updates the HotToStandardTime of a hot backup.
+func (ac *AdminClient) UpdateBackupHotToStandardTime(ctx context.Context, cluster, backup string, hotToStandardTime time.Time) error {
+	return ac.updateBackupHotToStandardTime(ctx, cluster, backup, &hotToStandardTime)
+}
+
+// UpdateBackupRemoveHotToStandardTime removes the HotToStandardTime of a hot backup.
+func (ac *AdminClient) UpdateBackupRemoveHotToStandardTime(ctx context.Context, cluster, backup string) error {
+	return ac.updateBackupHotToStandardTime(ctx, cluster, backup, nil)
+}
+
+func (ac *AdminClient) updateBackupHotToStandardTime(ctx context.Context, cluster, backup string, hotToStandardTime *time.Time) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	backupPath := ac.backupPath(cluster, ac.instance, backup)
+
+	updateMask := &field_mask.FieldMask{}
+	updateMask.Paths = append(updateMask.Paths, "hot_to_standard_time")
+
+	req := &btapb.UpdateBackupRequest{
+		Backup: &btapb.Backup{
+			Name: backupPath,
+		},
+		UpdateMask: updateMask,
+	}
+
+	if hotToStandardTime != nil {
+		req.Backup.HotToStandardTime = timestamppb.New(*hotToStandardTime)
+	}
+
+	_, err := ac.tClient.UpdateBackup(ctx, req)
+	return err
+}
+
+// AuthorizedViewConf contains information about an authorized view.
+type AuthorizedViewConf struct {
+	TableID          string
+	AuthorizedViewID string
+
+	// Types that are valid to be assigned to AuthorizedView:
+	//  *SubsetViewConf
+	AuthorizedView     isAuthorizedView
+	DeletionProtection DeletionProtection
+}
+
+// A private interface that currently only implemented by SubsetViewConf, ensuring that only SubsetViewConf instances are accepted as an AuthorizedView.
+// In the future if a new type of AuthorizedView is introduced, it should also implements this interface.
+type isAuthorizedView interface {
+	isAuthorizedView()
+}
+
+func (av AuthorizedViewConf) proto() *btapb.AuthorizedView {
+	var avp btapb.AuthorizedView
+
+	switch dp := av.DeletionProtection; dp {
+	case Protected:
+		avp.DeletionProtection = true
+	case Unprotected:
+		avp.DeletionProtection = false
+	default:
+		break
+	}
+
+	switch avt := av.AuthorizedView.(type) {
+	case *SubsetViewConf:
+		avp.AuthorizedView = &btapb.AuthorizedView_SubsetView_{
+			SubsetView: avt.proto(),
+		}
+	default:
+		break
+	}
+	return &avp
+}
+
+// FamilySubset represents a subset of a column family.
+type FamilySubset struct {
+	Qualifiers        [][]byte
+	QualifierPrefixes [][]byte
+}
+
+// SubsetViewConf contains configuration specific to an authorized view of subset view type.
+type SubsetViewConf struct {
+	RowPrefixes   [][]byte
+	FamilySubsets map[string]FamilySubset
+}
+
+func (*SubsetViewConf) isAuthorizedView() {}
+
+// AddRowPrefix adds a new row prefix to the subset view.
+func (s *SubsetViewConf) AddRowPrefix(prefix []byte) {
+	s.RowPrefixes = append(s.RowPrefixes, prefix)
+}
+
+func (s *SubsetViewConf) getOrCreateFamilySubset(familyName string) FamilySubset {
+	if s.FamilySubsets == nil {
+		s.FamilySubsets = make(map[string]FamilySubset)
+	}
+	if _, ok := s.FamilySubsets[familyName]; !ok {
+		s.FamilySubsets[familyName] = FamilySubset{}
+	}
+	return s.FamilySubsets[familyName]
+}
+
+func (s SubsetViewConf) proto() *btapb.AuthorizedView_SubsetView {
+	var p btapb.AuthorizedView_SubsetView
+	p.RowPrefixes = append(p.RowPrefixes, s.RowPrefixes...)
+	if p.FamilySubsets == nil {
+		p.FamilySubsets = make(map[string]*btapb.AuthorizedView_FamilySubsets)
+	}
+	for familyName, subset := range s.FamilySubsets {
+		p.FamilySubsets[familyName] = &btapb.AuthorizedView_FamilySubsets{
+			Qualifiers:        subset.Qualifiers,
+			QualifierPrefixes: subset.QualifierPrefixes,
+		}
+	}
+	return &p
+}
+
+// AddFamilySubsetQualifier adds an individual column qualifier to be included in a subset view.
+func (s *SubsetViewConf) AddFamilySubsetQualifier(familyName string, qualifier []byte) {
+	fs := s.getOrCreateFamilySubset(familyName)
+	fs.Qualifiers = append(fs.Qualifiers, qualifier)
+	s.FamilySubsets[familyName] = fs
+}
+
+// AddFamilySubsetQualifierPrefix adds a prefix for column qualifiers to be included in a subset view.
+func (s *SubsetViewConf) AddFamilySubsetQualifierPrefix(familyName string, qualifierPrefix []byte) {
+	fs := s.getOrCreateFamilySubset(familyName)
+	fs.QualifierPrefixes = append(fs.QualifierPrefixes, qualifierPrefix)
+	s.FamilySubsets[familyName] = fs
+}
+
+// Authorized Views
+
+// CreateAuthorizedView creates a new authorized view in a table.
+func (ac *AdminClient) CreateAuthorizedView(ctx context.Context, conf *AuthorizedViewConf) error {
+	if conf.TableID == "" || conf.AuthorizedViewID == "" {
+		return errors.New("both AuthorizedViewID and TableID are required")
+	}
+	if _, ok := conf.AuthorizedView.(*SubsetViewConf); !ok {
+		return errors.New("SubsetView must be specified in AuthorizedViewConf")
+	}
+
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.CreateAuthorizedViewRequest{
+		Parent:           fmt.Sprintf("%s/tables/%s", ac.instancePrefix(), conf.TableID),
+		AuthorizedViewId: conf.AuthorizedViewID,
+		AuthorizedView:   conf.proto(),
+	}
+	_, err := ac.tClient.CreateAuthorizedView(ctx, req)
+	return err
+}
+
+// AuthorizedViewInfo contains authorized view metadata. This struct is read-only.
+type AuthorizedViewInfo struct {
+	TableID          string
+	AuthorizedViewID string
+
+	AuthorizedView     isAuthorizedViewInfo
+	DeletionProtection DeletionProtection
+}
+
+type isAuthorizedViewInfo interface {
+	isAuthorizedViewInfo()
+}
+
+// SubsetViewInfo contains read-only SubsetView metadata.
+type SubsetViewInfo struct {
+	RowPrefixes   [][]byte
+	FamilySubsets map[string]FamilySubset
+}
+
+func (*SubsetViewInfo) isAuthorizedViewInfo() {}
+
+func (s *SubsetViewInfo) fillInfo(internal *btapb.AuthorizedView_SubsetView) {
+	s.RowPrefixes = [][]byte{}
+	s.RowPrefixes = append(s.RowPrefixes, internal.RowPrefixes...)
+	if s.FamilySubsets == nil {
+		s.FamilySubsets = make(map[string]FamilySubset)
+	}
+	for k, v := range internal.FamilySubsets {
+		s.FamilySubsets[k] = FamilySubset{
+			Qualifiers:        v.Qualifiers,
+			QualifierPrefixes: v.QualifierPrefixes,
+		}
+	}
+}
+
+// AuthorizedViewInfo retrieves information about an authorized view.
+func (ac *AdminClient) AuthorizedViewInfo(ctx context.Context, tableID, authorizedViewID string) (*AuthorizedViewInfo, error) {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.GetAuthorizedViewRequest{
+		Name: fmt.Sprintf("%s/tables/%s/authorizedViews/%s", ac.instancePrefix(), tableID, authorizedViewID),
+	}
+	var res *btapb.AuthorizedView
+
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = ac.tClient.GetAuthorizedView(ctx, req)
+		return err
+	}, adminRetryOptions...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	av := &AuthorizedViewInfo{TableID: tableID, AuthorizedViewID: authorizedViewID}
+	if res.DeletionProtection {
+		av.DeletionProtection = Protected
+	} else {
+		av.DeletionProtection = Unprotected
+	}
+	if res.GetSubsetView() != nil {
+		s := SubsetViewInfo{}
+		s.fillInfo(res.GetSubsetView())
+		av.AuthorizedView = &s
+	}
+	return av, nil
+}
+
+// AuthorizedViews returns a list of the authorized views in the table.
+func (ac *AdminClient) AuthorizedViews(ctx context.Context, tableID string) ([]string, error) {
+	names := []string{}
+	prefix := fmt.Sprintf("%s/tables/%s", ac.instancePrefix(), tableID)
+
+	req := &btapb.ListAuthorizedViewsRequest{
+		Parent: prefix,
+		View:   btapb.AuthorizedView_NAME_ONLY,
+	}
+	var res *btapb.ListAuthorizedViewsResponse
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = ac.tClient.ListAuthorizedViews(ctx, req)
+		return err
+	}, adminRetryOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, av := range res.AuthorizedViews {
+		names = append(names, strings.TrimPrefix(av.Name, prefix+"/authorizedViews/"))
+	}
+	return names, nil
+}
+
+// UpdateAuthorizedViewConf contains all the information necessary to update or partial update an authorized view.
+type UpdateAuthorizedViewConf struct {
+	AuthorizedViewConf AuthorizedViewConf
+	IgnoreWarnings     bool
+}
+
+// UpdateAuthorizedView updates an authorized view in a table according to the given configuration.
+func (ac *AdminClient) UpdateAuthorizedView(ctx context.Context, conf UpdateAuthorizedViewConf) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	if conf.AuthorizedViewConf.TableID == "" || conf.AuthorizedViewConf.AuthorizedViewID == "" {
+		return errors.New("both AuthorizedViewID and TableID is required")
+	}
+	av := conf.AuthorizedViewConf.proto()
+	av.Name = ac.authorizedViewPath(conf.AuthorizedViewConf.TableID, conf.AuthorizedViewConf.AuthorizedViewID)
+
+	updateMask := &field_mask.FieldMask{
+		Paths: []string{},
+	}
+	if conf.AuthorizedViewConf.DeletionProtection != None {
+		updateMask.Paths = append(updateMask.Paths, "deletion_protection")
+	}
+	if _, ok := conf.AuthorizedViewConf.AuthorizedView.(*SubsetViewConf); ok {
+		updateMask.Paths = append(updateMask.Paths, "subset_view")
+	}
+	req := &btapb.UpdateAuthorizedViewRequest{
+		AuthorizedView: av,
+		UpdateMask:     updateMask,
+		IgnoreWarnings: conf.IgnoreWarnings,
+	}
+	lro, err := ac.tClient.UpdateAuthorizedView(ctx, req)
+	if err != nil {
+		return fmt.Errorf("error from update authorized view: %w", err)
+	}
+	var res btapb.AuthorizedView
+	op := longrunning.InternalNewOperation(ac.lroClient, lro)
+	if err = op.Wait(ctx, &res); err != nil {
+		return fmt.Errorf("error from operation: %v", err)
+	}
+	return nil
+}
+
+// DeleteAuthorizedView deletes an authorized view in a table.
+func (ac *AdminClient) DeleteAuthorizedView(ctx context.Context, tableID, authorizedViewID string) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.DeleteAuthorizedViewRequest{
+		Name: ac.authorizedViewPath(tableID, authorizedViewID),
+	}
+	_, err := ac.tClient.DeleteAuthorizedView(ctx, req)
+	return err
+}
+
+// Logical Views
+
+// CreateLogicalView creates a new logical view in an instance.
+func (iac *InstanceAdminClient) CreateLogicalView(ctx context.Context, instanceID string, conf *LogicalViewInfo) error {
+	if conf.LogicalViewID == "" {
+		return errors.New("LogicalViewID is required")
+	}
+
+	lv := &btapb.LogicalView{
+		Query: conf.Query,
+	}
+	if conf.DeletionProtection != None {
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			lv.DeletionProtection = true
+		case Unprotected:
+			lv.DeletionProtection = false
+		default:
+			break
+		}
+	}
+
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	req := &btapb.CreateLogicalViewRequest{
+		Parent:        instancePrefix(iac.project, instanceID),
+		LogicalViewId: conf.LogicalViewID,
+		LogicalView:   lv,
+	}
+
+	op, err := iac.iClient.CreateLogicalView(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp := btapb.LogicalView{}
+	return longrunning.InternalNewOperation(iac.lroClient, op).Wait(ctx, &resp)
+}
+
+// LogicalViewInfo contains logical view metadata. This struct is read-only.
+type LogicalViewInfo struct {
+	LogicalViewID string
+
+	Query              string
+	DeletionProtection DeletionProtection
+}
+
+// LogicalViewInfo retrieves information about a logical view.
+func (iac *InstanceAdminClient) LogicalViewInfo(ctx context.Context, instanceID, logicalViewID string) (*LogicalViewInfo, error) {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	prefix := instancePrefix(iac.project, instanceID)
+	req := &btapb.GetLogicalViewRequest{
+		Name: logicalViewPath(iac.project, instanceID, logicalViewID),
+	}
+	var res *btapb.LogicalView
+
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = iac.iClient.GetLogicalView(ctx, req)
+		return err
+	}, adminRetryOptions...)
+
+	if err != nil {
+		return nil, err
+	}
+	lv := &LogicalViewInfo{LogicalViewID: strings.TrimPrefix(res.Name, prefix+"/logicalViews/"), Query: res.Query}
+	if res.DeletionProtection {
+		lv.DeletionProtection = Protected
+	} else {
+		lv.DeletionProtection = Unprotected
+	}
+	return lv, nil
+}
+
+// LogicalViews returns a list of the logical views in the instance.
+func (iac *InstanceAdminClient) LogicalViews(ctx context.Context, instanceID string) ([]LogicalViewInfo, error) {
+	views := []LogicalViewInfo{}
+	prefix := instancePrefix(iac.project, instanceID)
+	req := &btapb.ListLogicalViewsRequest{
+		Parent: prefix,
+	}
+	var res *btapb.ListLogicalViewsResponse
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = iac.iClient.ListLogicalViews(ctx, req)
+		return err
+	}, adminRetryOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, lView := range res.LogicalViews {
+		lv := LogicalViewInfo{LogicalViewID: strings.TrimPrefix(lView.Name, prefix+"/logicalViews/"), Query: lView.Query}
+		if lView.DeletionProtection {
+			lv.DeletionProtection = Protected
+		} else {
+			lv.DeletionProtection = Unprotected
+		}
+		views = append(views, lv)
+	}
+	return views, nil
+}
+
+// UpdateLogicalView updates a logical view in an instance according to the given configuration.
+func (iac *InstanceAdminClient) UpdateLogicalView(ctx context.Context, instanceID string, conf LogicalViewInfo) error {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	if conf.LogicalViewID == "" {
+		return errors.New("LogicalViewID is required")
+	}
+	lv := &btapb.LogicalView{}
+	lv.Name = logicalViewPath(iac.project, instanceID, conf.LogicalViewID)
+
+	updateMask := &field_mask.FieldMask{
+		Paths: []string{},
+	}
+	if conf.Query != "" {
+		updateMask.Paths = append(updateMask.Paths, "query")
+		lv.Query = conf.Query
+	}
+	if conf.DeletionProtection != None {
+		updateMask.Paths = append(updateMask.Paths, "deletion_protection")
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			lv.DeletionProtection = true
+		case Unprotected:
+			lv.DeletionProtection = false
+		default:
+			break
+		}
+	}
+	req := &btapb.UpdateLogicalViewRequest{
+		LogicalView: lv,
+		UpdateMask:  updateMask,
+	}
+	lro, err := iac.iClient.UpdateLogicalView(ctx, req)
+	if err != nil {
+		return fmt.Errorf("error from update logical view: %w", err)
+	}
+	var res btapb.LogicalView
+	op := longrunning.InternalNewOperation(iac.lroClient, lro)
+	if err = op.Wait(ctx, &res); err != nil {
+		return fmt.Errorf("error from operation: %v", err)
+	}
+	return nil
+}
+
+// DeleteLogicalView deletes a logical view in an instance.
+func (iac *InstanceAdminClient) DeleteLogicalView(ctx context.Context, instanceID, logicalViewID string) error {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	req := &btapb.DeleteLogicalViewRequest{
+		Name: logicalViewPath(iac.project, instanceID, logicalViewID),
+	}
+	_, err := iac.iClient.DeleteLogicalView(ctx, req)
+	return err
+}
+
+// Materialized Views
+
+// CreateMaterializedView creates a new materialized view in an instance.
+func (iac *InstanceAdminClient) CreateMaterializedView(ctx context.Context, instanceID string, conf *MaterializedViewInfo) error {
+	if conf.MaterializedViewID == "" {
+		return errors.New("MaterializedViewID is required")
+	}
+
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	mv := &btapb.MaterializedView{
+		Query: conf.Query,
+	}
+	if conf.DeletionProtection != None {
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			mv.DeletionProtection = true
+		case Unprotected:
+			mv.DeletionProtection = false
+		default:
+			break
+		}
+	}
+	req := &btapb.CreateMaterializedViewRequest{
+		Parent:             instancePrefix(iac.project, instanceID),
+		MaterializedViewId: conf.MaterializedViewID,
+		MaterializedView:   mv,
+	}
+	op, err := iac.iClient.CreateMaterializedView(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp := btapb.MaterializedView{}
+	return longrunning.InternalNewOperation(iac.lroClient, op).Wait(ctx, &resp)
+}
+
+// MaterializedViewInfo contains materialized view metadata. This struct is read-only.
+type MaterializedViewInfo struct {
+	MaterializedViewID string
+
+	Query              string
+	DeletionProtection DeletionProtection
+}
+
+// MaterializedViewInfo retrieves information about a materialized view.
+func (iac *InstanceAdminClient) MaterializedViewInfo(ctx context.Context, instanceID, materializedViewID string) (*MaterializedViewInfo, error) {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	prefix := instancePrefix(iac.project, instanceID)
+	req := &btapb.GetMaterializedViewRequest{
+		Name: materializedlViewPath(iac.project, instanceID, materializedViewID),
+	}
+	var res *btapb.MaterializedView
+
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = iac.iClient.GetMaterializedView(ctx, req)
+		return err
+	}, adminRetryOptions...)
+
+	if err != nil {
+		return nil, err
+	}
+	mv := &MaterializedViewInfo{MaterializedViewID: strings.TrimPrefix(res.Name, prefix+"/materializedViews/"), Query: res.Query}
+	if res.DeletionProtection {
+		mv.DeletionProtection = Protected
+	} else {
+		mv.DeletionProtection = Unprotected
+	}
+	return mv, nil
+}
+
+// MaterializedViews returns a list of the materialized views in the instance.
+func (iac *InstanceAdminClient) MaterializedViews(ctx context.Context, instanceID string) ([]MaterializedViewInfo, error) {
+	views := []MaterializedViewInfo{}
+	prefix := instancePrefix(iac.project, instanceID)
+	req := &btapb.ListMaterializedViewsRequest{
+		Parent: prefix,
+	}
+	var res *btapb.ListMaterializedViewsResponse
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = iac.iClient.ListMaterializedViews(ctx, req)
+		return err
+	}, adminRetryOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, mView := range res.MaterializedViews {
+		mv := MaterializedViewInfo{MaterializedViewID: strings.TrimPrefix(mView.Name, prefix+"/materializedViews/"), Query: mView.Query}
+		if mView.DeletionProtection {
+			mv.DeletionProtection = Protected
+		} else {
+			mv.DeletionProtection = Unprotected
+		}
+		views = append(views, mv)
+	}
+	return views, nil
+}
+
+// UpdateMaterializedView updates a materialized view in an instance according to the given configuration.
+func (iac *InstanceAdminClient) UpdateMaterializedView(ctx context.Context, instanceID string, conf MaterializedViewInfo) error {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	if conf.MaterializedViewID == "" {
+		return errors.New("MaterializedViewID is required")
+	}
+	mv := &btapb.MaterializedView{}
+	mv.Name = materializedlViewPath(iac.project, instanceID, conf.MaterializedViewID)
+
+	updateMask := &field_mask.FieldMask{
+		Paths: []string{},
+	}
+	if conf.Query != "" {
+		updateMask.Paths = append(updateMask.Paths, "query")
+		mv.Query = conf.Query
+	}
+	if conf.DeletionProtection != None {
+		updateMask.Paths = append(updateMask.Paths, "deletion_protection")
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			mv.DeletionProtection = true
+		case Unprotected:
+			mv.DeletionProtection = false
+		default:
+			break
+		}
+	}
+	req := &btapb.UpdateMaterializedViewRequest{
+		MaterializedView: mv,
+		UpdateMask:       updateMask,
+	}
+	lro, err := iac.iClient.UpdateMaterializedView(ctx, req)
+	if err != nil {
+		return fmt.Errorf("error from update materialized view: %w", err)
+	}
+	var res btapb.MaterializedView
+	op := longrunning.InternalNewOperation(iac.lroClient, lro)
+	if err = op.Wait(ctx, &res); err != nil {
+		return fmt.Errorf("error from operation: %v", err)
+	}
+	return nil
+}
+
+// DeleteMaterializedView deletes a materialized view in an instance.
+func (iac *InstanceAdminClient) DeleteMaterializedView(ctx context.Context, instanceID, materializedViewID string) error {
+	ctx = mergeOutgoingMetadata(ctx, iac.md)
+	req := &btapb.DeleteMaterializedViewRequest{
+		Name: materializedlViewPath(iac.project, instanceID, materializedViewID),
+	}
+	_, err := iac.iClient.DeleteMaterializedView(ctx, req)
 	return err
 }

@@ -22,10 +22,25 @@ To use a Server, create it, and then connect to it with no security:
 
 	srv, err := bttest.NewServer("localhost:0")
 	...
-	conn, err := grpc.Dial(srv.Addr, grpc.WithInsecure())
+	conn, err := grpc.Dial(
+		srv.Addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	...
 	client, err := bigtable.NewClient(ctx, proj, instance,
 	        option.WithGRPCConn(conn))
+	...
+
+To use a Server with an in-memory connection, provide a bufconn listener:
+
+	l := bufconn.Listen(1024 * 1024)
+	srv, err := bttest.NewServerWithListener(l)
+	...
+	conn, err := grpc.Dial(
+		"bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return l.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	...
 */
 package bttest // import "cloud.google.com/go/bigtable/bttest"
@@ -33,31 +48,36 @@ package bttest // import "cloud.google.com/go/bigtable/bttest"
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"net"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	emptypb "github.com/golang/protobuf/ptypes/empty"
-	"github.com/golang/protobuf/ptypes/wrappers"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
+
+	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	longrunning "cloud.google.com/go/longrunning/autogen/longrunningpb"
 	"github.com/google/btree"
-	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
-	btpb "google.golang.org/genproto/googleapis/bigtable/v2"
-	"google.golang.org/genproto/googleapis/longrunning"
 	statpb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"rsc.io/binaryregexp"
 )
 
@@ -78,9 +98,10 @@ var validLabelTransformer = regexp.MustCompile(`[a-z0-9\-]{1,15}`)
 type Server struct {
 	Addr string
 
-	l   net.Listener
-	srv *grpc.Server
-	s   *server
+	l            net.Listener
+	srv          *grpc.Server
+	s            *server
+	ownsListener bool
 }
 
 // server is the real implementation of the fake.
@@ -98,15 +119,35 @@ type server struct {
 	btpb.BigtableServer
 }
 
+// noopCloserListener wraps a net.Listener, but its Close method is a no-op.
+// This is used to prevent the gRPC server from closing a listener that was
+// provided by a user.
+type noopCloserListener struct {
+	net.Listener
+}
+
+func (n *noopCloserListener) Close() error { return nil }
+
 // NewServer creates a new Server.
 // The Server will be listening for gRPC connections, without TLS,
 // on the provided address. The resolved address is named by the Addr field.
 func NewServer(laddr string, opt ...grpc.ServerOption) (*Server, error) {
-	l, err := net.Listen("tcp", laddr)
+	var l net.Listener
+	var err error
+
+	// If the address contains slashes, listen on a unix domain socket instead.
+	if strings.Contains(laddr, "/") {
+		l, err = net.Listen("unix", laddr)
+	} else {
+		l, err = net.Listen("tcp", laddr)
+	}
 	if err != nil {
 		return nil, err
 	}
+	return newServer(l, true, opt...), nil
+}
 
+func newServer(l net.Listener, ownsListener bool, opt ...grpc.ServerOption) *Server {
 	s := &Server{
 		Addr: l.Addr().String(),
 		l:    l,
@@ -115,14 +156,29 @@ func NewServer(laddr string, opt ...grpc.ServerOption) (*Server, error) {
 			tables:    make(map[string]*table),
 			instances: make(map[string]*btapb.Instance),
 		},
+		ownsListener: ownsListener,
 	}
 	btapb.RegisterBigtableInstanceAdminServer(s.srv, s.s)
 	btapb.RegisterBigtableTableAdminServer(s.srv, s.s)
 	btpb.RegisterBigtableServer(s.srv, s.s)
 
-	go s.srv.Serve(s.l)
+	listenerForGRPC := l
+	if !ownsListener {
+		// If the user owns the listener, wrap it so srv.Stop() doesn't close it.
+		listenerForGRPC = &noopCloserListener{Listener: l}
+	}
+	go s.srv.Serve(listenerForGRPC)
+	return s
+}
 
-	return s, nil
+// NewServerWithListener creates a new Server using the provided listener.
+// The Addr field of the returned Server will be the listener's address.
+//
+// The caller is responsible for closing the listener. The server's Close method
+// will not close the provided listener, nor will it clean up any underlying
+// resources like unix socket files.
+func NewServerWithListener(l net.Listener, opt ...grpc.ServerOption) (*Server, error) {
+	return newServer(l, false, opt...), nil
 }
 
 // Close shuts down the server.
@@ -134,7 +190,14 @@ func (s *Server) Close() {
 	s.s.mu.Unlock()
 
 	s.srv.Stop()
-	s.l.Close()
+	if s.ownsListener {
+		s.l.Close()
+	}
+
+	// clean up unix socket
+	if s.ownsListener && strings.Contains(s.Addr, "/") {
+		_ = os.Remove(s.Addr)
+	}
 }
 
 func (s *server) CreateTable(ctx context.Context, req *btapb.CreateTableRequest) (*btapb.Table, error) {
@@ -295,11 +358,7 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 			if _, ok := tbl.families[mod.Id]; ok {
 				return nil, status.Errorf(codes.AlreadyExists, "family %q already exists", mod.Id)
 			}
-			newcf := &columnFamily{
-				name:   req.Name + "/columnFamilies/" + mod.Id,
-				order:  tbl.counter,
-				gcRule: create.GcRule,
-			}
+			newcf := newColumnFamily(req.Name+"/columnFamilies/"+mod.Id, tbl.counter, create)
 			tbl.counter++
 			tbl.families[mod.Id] = newcf
 		} else if mod.GetDrop() {
@@ -317,16 +376,44 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 				return true
 			})
 		} else if modify := mod.GetUpdate(); modify != nil {
-			if _, ok := tbl.families[mod.Id]; !ok {
+			newcf := newColumnFamily(req.Name+"/columnFamilies/"+mod.Id, 0, modify)
+			updateMask := mod.GetUpdateMask()
+			paths := updateMask.GetPaths()
+
+			cf, ok := tbl.families[mod.Id]
+			if !ok {
 				return nil, fmt.Errorf("no such family %q", mod.Id)
 			}
-			newcf := &columnFamily{
-				name:   req.Name + "/columnFamilies/" + mod.Id,
-				gcRule: modify.GcRule,
+
+			var utr *btapb.ColumnFamily
+			if len(paths) > 0 &&
+				!updateMask.IsValid(utr) {
+				return nil, status.Errorf(codes.InvalidArgument,
+					"incorrect path in UpdateMask; got: %v",
+					updateMask)
 			}
-			// assume that we ALWAYS want to replace by the new setting
-			// we may need partial update through
-			tbl.families[mod.Id] = newcf
+
+			if len(paths) == 0 {
+				// Assume that the update is only modifying the GC policy.
+				cf.gcRule = newcf.gcRule
+			}
+
+			for _, path := range paths {
+				switch path {
+				case "value_type":
+					if cf.valueType != nil &&
+						cf.valueType.GetAggregateType() != nil {
+						// The existing column family is an aggregate type, and the update
+						// is attempting to modify its immutable type.
+						return nil, status.Errorf(codes.InvalidArgument,
+							"Immutable fields 'value_type.aggregate_type' cannot be updated")
+					}
+
+					cf.valueType = newcf.valueType
+				case "gc_rule":
+					cf.gcRule = newcf.gcRule
+				}
+			}
 		}
 	}
 
@@ -423,7 +510,31 @@ func (s *server) DeleteSnapshot(context.Context, *btapb.DeleteSnapshotRequest) (
 	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support snapshots")
 }
 
+func featureFlagsFromContext(context context.Context) *btpb.FeatureFlags {
+	ff := &btpb.FeatureFlags{}
+
+	var md, ok = metadata.FromIncomingContext(context)
+	if !ok {
+		return ff
+	}
+
+	features := md.Get("bigtable-features")
+	if len(features) == 0 {
+		return ff
+	}
+
+	dec, err := base64.URLEncoding.DecodeString(features[0])
+	if err != nil {
+		return ff
+	}
+
+	_ = proto.Unmarshal(dec, ff)
+	return ff
+}
+
 func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRowsServer) error {
+	featureFlags := featureFlagsFromContext(stream.Context())
+
 	start := time.Now()
 	s.mu.Lock()
 	tbl, ok := s.tables[req.TableName]
@@ -499,7 +610,15 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 			rows = append(rows, r)
 		}
 	}
-	sort.Sort(byRowKey(rows))
+	if req.Reversed {
+		if !featureFlags.ReverseScans {
+			return status.Errorf(codes.Unimplemented, "Client doesn't support reverse scans yet")
+		}
+
+		sort.Sort(sort.Reverse(byRowKey(rows)))
+	} else {
+		sort.Sort(byRowKey(rows))
+	}
 
 	limit := int(req.RowsLimit)
 	if limit == 0 {
@@ -513,7 +632,7 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 			break
 		}
 
-		if err := streamRow(stream, r, req.Filter, iterStats); err != nil {
+		if err := streamRow(stream, r, req.Filter, iterStats, featureFlags); err != nil {
 			return err
 		}
 	}
@@ -537,17 +656,29 @@ func (s *server) ReadRows(req *btpb.ReadRowsRequest, stream btpb.Bigtable_ReadRo
 	return nil
 }
 
+func (s *server) GetPartitionsByTableName(name string) []*btpb.RowRange {
+	table, ok := s.tables[name]
+	if !ok {
+		return nil
+	}
+	return table.rowRanges()
+
+}
+
 // streamRow filters the given row and sends it via the given stream.
 // Returns true if at least one cell matched the filter and was streamed, false otherwise.
-func streamRow(stream btpb.Bigtable_ReadRowsServer, r *row, f *btpb.RowFilter, s *btpb.ReadIterationStats) error {
+func streamRow(stream btpb.Bigtable_ReadRowsServer, r *row, f *btpb.RowFilter, s *btpb.ReadIterationStats, ff *btpb.FeatureFlags) error {
 	r.mu.Lock()
 	nr := r.copy()
 	r.mu.Unlock()
 	r = nr
 
 	s.RowsSeenCount++
-	for _, f := range r.families {
-		s.CellsSeenCount += int64(len(f.cells))
+	// Count cells in the row before filtering for CellsSeenCount.
+	for _, fam := range r.families {
+		for _, colName := range fam.colNames {
+			s.CellsSeenCount += int64(len(fam.cells[colName]))
+		}
 	}
 
 	match, err := filterRow(f, r)
@@ -555,13 +686,18 @@ func streamRow(stream btpb.Bigtable_ReadRowsServer, r *row, f *btpb.RowFilter, s
 		return err
 	}
 	if !match {
+		// if the client requested it, send last_scanned_row responses for rows that didn't match a filter
+		if ff.LastScannedRowResponses {
+			rrr := &btpb.ReadRowsResponse{
+				LastScannedRowKey: []byte(r.key),
+			}
+			return stream.Send(rrr)
+		}
+
 		return nil
 	}
 
 	s.RowsReturnedCount++
-	for _, f := range r.families {
-		s.CellsReturnedCount += int64(len(f.cells))
-	}
 
 	rrr := &btpb.ReadRowsResponse{}
 	families := r.sortedFamilies()
@@ -571,11 +707,12 @@ func streamRow(stream btpb.Bigtable_ReadRowsServer, r *row, f *btpb.RowFilter, s
 			if len(cells) == 0 {
 				continue
 			}
+			s.CellsReturnedCount += int64(len(cells))
 			for _, cell := range cells {
 				rrr.Chunks = append(rrr.Chunks, &btpb.ReadRowsResponse_CellChunk{
 					RowKey:          []byte(r.key),
-					FamilyName:      &wrappers.StringValue{Value: fam.name},
-					Qualifier:       &wrappers.BytesValue{Value: []byte(colName)},
+					FamilyName:      &wrapperspb.StringValue{Value: fam.name},
+					Qualifier:       &wrapperspb.BytesValue{Value: []byte(colName)},
 					TimestampMicros: cell.ts,
 					Value:           cell.value,
 					Labels:          cell.labels,
@@ -862,10 +999,6 @@ func includeCell(f *btpb.RowFilter, fam, col string, cell cell) (bool, error) {
 		}
 		return inRangeStart() && inRangeEnd(), nil
 	case *btpb.RowFilter_TimestampRangeFilter:
-		// Server should only support millisecond precision.
-		if f.TimestampRangeFilter.StartTimestampMicros%int64(time.Millisecond/time.Microsecond) != 0 || f.TimestampRangeFilter.EndTimestampMicros%int64(time.Millisecond/time.Microsecond) != 0 {
-			return false, status.Errorf(codes.InvalidArgument, "Error in field 'timestamp_range_filter'. Maximum precision allowed in filter is millisecond.\nGot:\nStart: %v\nEnd: %v", f.TimestampRangeFilter.StartTimestampMicros, f.TimestampRangeFilter.EndTimestampMicros)
-		}
 		// Lower bound is inclusive and defaults to 0, upper bound is exclusive and defaults to infinity.
 		return cell.ts >= f.TimestampRangeFilter.StartTimestampMicros &&
 			(f.TimestampRangeFilter.EndTimestampMicros == 0 || cell.ts < f.TimestampRangeFilter.EndTimestampMicros), nil
@@ -1038,13 +1171,21 @@ func (s *server) PingAndWarm(ctx context.Context, req *btpb.PingAndWarmRequest) 
 // fam should be a snapshot of the keys of tbl.families.
 // It assumes r.mu is locked.
 func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*columnFamily) error {
+	if len(r.key) == 0 {
+		return status.Errorf(
+			codes.InvalidArgument,
+			"Row keys must be non-empty",
+		)
+	}
+
 	for _, mut := range muts {
 		switch mut := mut.Mutation.(type) {
 		default:
 			return fmt.Errorf("can't handle mutation type %T", mut)
 		case *btpb.Mutation_SetCell_:
 			set := mut.SetCell
-			if _, ok := fs[set.FamilyName]; !ok {
+			var cf, ok = fs[set.FamilyName]
+			if !ok {
 				return fmt.Errorf("unknown family %q", set.FamilyName)
 			}
 			ts := set.TimestampMicros
@@ -1059,7 +1200,65 @@ func applyMutations(tbl *table, r *row, muts []*btpb.Mutation, fs map[string]*co
 
 			newCell := cell{ts: ts, value: set.Value}
 			f := r.getOrCreateFamily(fam, fs[fam].order)
-			f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell)
+			f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell, cf)
+		case *btpb.Mutation_AddToCell_:
+			add := mut.AddToCell
+			var cf, ok = fs[add.FamilyName]
+			if !ok {
+				return fmt.Errorf("unknown family %q", add.FamilyName)
+			}
+			if cf.valueType == nil || cf.valueType.GetAggregateType() == nil {
+				return fmt.Errorf("illegal attempt to use AddToCell on non-aggregate cell")
+			}
+			ts := add.Timestamp.GetRawTimestampMicros()
+			if ts < 0 {
+				return fmt.Errorf("AddToCell must set timestamp >= 0")
+			}
+
+			fam := add.FamilyName
+			col := string(add.GetColumnQualifier().GetRawValue())
+
+			var value []byte
+			switch v := add.Input.Kind.(type) {
+			case *btpb.Value_IntValue:
+				value = binary.BigEndian.AppendUint64(value, uint64(v.IntValue))
+			default:
+				return fmt.Errorf("only int64 values are supported")
+			}
+
+			newCell := cell{ts: ts, value: value}
+			f := r.getOrCreateFamily(fam, fs[fam].order)
+			f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell, cf)
+
+		case *btpb.Mutation_MergeToCell_:
+			add := mut.MergeToCell
+			var cf, ok = fs[add.FamilyName]
+			if !ok {
+				return fmt.Errorf("unknown family %q", add.FamilyName)
+			}
+			if cf.valueType == nil || cf.valueType.GetAggregateType() == nil {
+				return fmt.Errorf("illegal attempt to use MergeToCell on non-aggregate cell")
+			}
+			ts := add.Timestamp.GetRawTimestampMicros()
+			if ts < 0 {
+				return fmt.Errorf("MergeToCell must set timestamp >= 0")
+			}
+
+			fam := add.FamilyName
+			col := string(add.GetColumnQualifier().GetRawValue())
+
+			var value []byte
+			switch v := add.Input.Kind.(type) {
+			case *btpb.Value_RawValue:
+				value = v.RawValue
+			default:
+				return fmt.Errorf("only []bytes values are supported")
+			}
+
+			newCell := cell{ts: ts, value: value}
+			f := r.getOrCreateFamily(fam, fs[fam].order)
+			f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell, cf)
+
 		case *btpb.Mutation_DeleteFromColumn_:
 			del := mut.DeleteFromColumn
 			if _, ok := fs[del.FamilyName]; !ok {
@@ -1135,16 +1334,18 @@ func newTimestamp() int64 {
 	return ts
 }
 
-func appendOrReplaceCell(cs []cell, newCell cell) []cell {
+func appendOrReplaceCell(cs []cell, newCell cell, cf *columnFamily) []cell {
 	replaced := false
 	for i, cell := range cs {
 		if cell.ts == newCell.ts {
+			newCell.value = cf.updateFn(cs[i].value, newCell.value)
 			cs[i] = newCell
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
+		newCell.value = cf.initFn(newCell.value)
 		cs = append(cs, newCell)
 	}
 	sort.Sort(byDescTS(cs))
@@ -1171,7 +1372,8 @@ func (s *server) ReadModifyWriteRow(ctx context.Context, req *btpb.ReadModifyWri
 	// Assume all mutations apply to the most recent version of the cell.
 	// TODO(dsymonds): Verify this assumption and document it in the proto.
 	for _, rule := range req.Rules {
-		if _, ok := fs[rule.FamilyName]; !ok {
+		var cf, ok = fs[rule.FamilyName]
+		if !ok {
 			return nil, fmt.Errorf("unknown family %q", rule.FamilyName)
 		}
 
@@ -1214,7 +1416,7 @@ func (s *server) ReadModifyWriteRow(ctx context.Context, req *btpb.ReadModifyWri
 		}
 
 		// Store the new cell
-		f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell)
+		f.cells[col] = appendOrReplaceCell(f.cellsByColumn(col), newCell, cf)
 
 		// Store a copy for the result row
 		resultFamily := resultRow.getOrCreateFamily(fam, fs[fam].order)
@@ -1281,7 +1483,22 @@ func (s *server) SampleRowKeys(req *btpb.SampleRowKeysRequest, stream btpb.Bigta
 		i++
 		return true
 	})
+	if err == nil {
+		// The last response should be an empty string, indicating the end of the table
+		stream.Send(&btpb.SampleRowKeysResponse{
+			RowKey:      []byte{},
+			OffsetBytes: offset,
+		})
+	}
 	return err
+}
+
+func (s *server) PrepareQuery(context.Context, *btpb.PrepareQueryRequest) (*btpb.PrepareQueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support PrepareQuery")
+}
+
+func (s *server) ExecuteQuery(*btpb.ExecuteQueryRequest, btpb.Bigtable_ExecuteQueryServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support ExecuteQuery")
 }
 
 // needGC is invoked whenever the server needs gcloop running.
@@ -1327,6 +1544,7 @@ type table struct {
 	counter     uint64                   // increment by 1 when a new family is created
 	families    map[string]*columnFamily // keyed by plain family name
 	rows        *btree.BTree             // indexed by row key
+	partitions  []*btpb.RowRange         // partitions used in change stream
 	isProtected bool                     // whether this table has deletion protection
 }
 
@@ -1337,18 +1555,60 @@ func newTable(ctr *btapb.CreateTableRequest) *table {
 	c := uint64(0)
 	if ctr.Table != nil {
 		for id, cf := range ctr.Table.ColumnFamilies {
-			fams[id] = &columnFamily{
-				name:   ctr.Parent + "/columnFamilies/" + id,
-				order:  c,
-				gcRule: cf.GcRule,
-			}
+			fams[id] = newColumnFamily(ctr.Parent+"/columnFamilies/"+id, c, cf)
 			c++
 		}
 	}
+
+	// Hard code the partitions for testing purpose.
+	rowRanges := []*btpb.RowRange{
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("a")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("b")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("c")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("d")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("e")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("f")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("g")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("h")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("i")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("j")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("k")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("l")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("m")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("n")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("o")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("p")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("q")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("r")},
+		},
+		{
+			StartKey: &btpb.RowRange_StartKeyClosed{StartKeyClosed: []byte("s")},
+			EndKey:   &btpb.RowRange_EndKeyClosed{EndKeyClosed: []byte("z")},
+		},
+	}
+
 	return &table{
 		families:    fams,
 		counter:     c,
 		rows:        btree.New(btreeDegree),
+		partitions:  rowRanges,
 		isProtected: ctr.GetTable().GetDeletionProtection(),
 	}
 }
@@ -1395,6 +1655,27 @@ func (t *table) mutableRow(key string) *row {
 }
 
 func (t *table) gc() {
+	toDelete := t.gcReadOnly()
+	if len(toDelete) == 0 {
+		return
+	}
+
+	// We delete rows that no longer have any cells
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, i := range toDelete {
+		r := i.(*row)
+		// Make sure the row still has no cells. We've not been holding a lock
+		// so it could have changed since we checked it.
+		r.mu.Lock()
+		if len(r.families) == 0 {
+			t.rows.Delete(i)
+		}
+		r.mu.Unlock()
+	}
+}
+
+func (t *table) gcReadOnly() (toDelete []btree.Item) {
 	// This method doesn't add or remove rows, so we only need a read lock for the table.
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -1407,16 +1688,27 @@ func (t *table) gc() {
 		}
 	}
 	if len(rules) == 0 {
-		return
+		return nil
 	}
 
+	// It isn't clear whether it's safe to delete within the iterator, so we do
+	// not
 	t.rows.Ascend(func(i btree.Item) bool {
 		r := i.(*row)
 		r.mu.Lock()
 		r.gc(rules)
+		if len(r.families) == 0 {
+			toDelete = append(toDelete, i)
+		}
 		r.mu.Unlock()
 		return true
 	})
+
+	return toDelete
+}
+
+func (t *table) rowRanges() []*btpb.RowRange {
+	return t.partitions
 }
 
 type byRowKey []*row
@@ -1502,7 +1794,15 @@ func (r *row) gc(rules map[string]*btapb.GcRule) {
 			continue
 		}
 		for col, cs := range fam.cells {
-			r.families[fam.name].cells[col] = applyGC(cs, rule)
+			cs = applyGC(cs, rule)
+			if len(cs) == 0 {
+				delete(fam.cells, col)
+			} else {
+				fam.cells[col] = cs
+			}
+		}
+		if len(fam.cells) == 0 {
+			delete(r.families, fam.name)
 		}
 	}
 }
@@ -1604,15 +1904,49 @@ func (b byDescTS) Len() int           { return len(b) }
 func (b byDescTS) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byDescTS) Less(i, j int) bool { return b[i].ts > b[j].ts }
 
+func newColumnFamily(name string, order uint64, cf *btapb.ColumnFamily) *columnFamily {
+	var updateFn = func(_, newVal []byte) []byte {
+		return newVal
+	}
+	if cf.ValueType != nil {
+		switch v := cf.ValueType.Kind.(type) {
+		case *btapb.Type_AggregateType:
+			switch v.AggregateType.Aggregator.(type) {
+			case *btapb.Type_Aggregate_Sum_:
+				updateFn = func(existing, newVal []byte) []byte {
+					existingInt := int64(binary.BigEndian.Uint64(existing))
+					newInt := int64(binary.BigEndian.Uint64(newVal))
+					return binary.BigEndian.AppendUint64([]byte{}, uint64(existingInt+newInt))
+				}
+			}
+		default:
+		}
+	}
+	return &columnFamily{
+		name:      name,
+		order:     order,
+		gcRule:    cf.GcRule,
+		valueType: cf.ValueType,
+		updateFn:  updateFn,
+		initFn: func(newVal []byte) []byte {
+			return newVal
+		},
+	}
+}
+
 type columnFamily struct {
-	name   string
-	order  uint64 // Creation order of column family
-	gcRule *btapb.GcRule
+	name      string
+	order     uint64 // Creation order of column family
+	gcRule    *btapb.GcRule
+	valueType *btapb.Type
+	updateFn  func(existing, newVal []byte) []byte
+	initFn    func(newVal []byte) []byte
 }
 
 func (c *columnFamily) proto() *btapb.ColumnFamily {
 	return &btapb.ColumnFamily{
-		GcRule: c.gcRule,
+		GcRule:    c.gcRule,
+		ValueType: c.valueType,
 	}
 }
 
@@ -1622,4 +1956,24 @@ func toColumnFamilies(families map[string]*columnFamily) map[string]*btapb.Colum
 		fs[k] = v.proto()
 	}
 	return fs
+}
+
+func (s *server) CreateAuthorizedView(context.Context, *btapb.CreateAuthorizedViewRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support authorized views")
+}
+
+func (s *server) GetAuthorizedView(context.Context, *btapb.GetAuthorizedViewRequest) (*btapb.AuthorizedView, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support authorized views")
+}
+
+func (s *server) ListAuthorizedViews(context.Context, *btapb.ListAuthorizedViewsRequest) (*btapb.ListAuthorizedViewsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support authorized views")
+}
+
+func (s *server) DeleteAuthorizedView(context.Context, *btapb.DeleteAuthorizedViewRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support authorized views")
+}
+
+func (s *server) UpdateAuthorizedView(context.Context, *btapb.UpdateAuthorizedViewRequest) (*longrunning.Operation, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support authorized views")
 }

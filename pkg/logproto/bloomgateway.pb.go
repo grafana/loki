@@ -178,6 +178,9 @@ type GroupedChunkRefs struct {
 	Fingerprint uint64      `protobuf:"varint,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
 	Tenant      string      `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Refs        []*ShortRef `protobuf:"bytes,3,rep,name=refs,proto3" json:"refs,omitempty"`
+	// Labels are only populated on FilterChunkRefRequest. They are not returned on FilterChunkRefResponse
+	// TODO(salvacorts): Consider two different messages for FilterChunkRefRequest and FilterChunkRefResponse
+	Labels *IndexSeries `protobuf:"bytes,4,opt,name=labels,proto3" json:"labels,omitempty"`
 }
 
 func (m *GroupedChunkRefs) Reset()      { *m = GroupedChunkRefs{} }
@@ -233,49 +236,141 @@ func (m *GroupedChunkRefs) GetRefs() []*ShortRef {
 	return nil
 }
 
+func (m *GroupedChunkRefs) GetLabels() *IndexSeries {
+	if m != nil {
+		return m.Labels
+	}
+	return nil
+}
+
+type PrefetchBloomBlocksRequest struct {
+	Blocks []string `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
+}
+
+func (m *PrefetchBloomBlocksRequest) Reset()      { *m = PrefetchBloomBlocksRequest{} }
+func (*PrefetchBloomBlocksRequest) ProtoMessage() {}
+func (*PrefetchBloomBlocksRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a50b5dd1dbcd1415, []int{4}
+}
+func (m *PrefetchBloomBlocksRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PrefetchBloomBlocksRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PrefetchBloomBlocksRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PrefetchBloomBlocksRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrefetchBloomBlocksRequest.Merge(m, src)
+}
+func (m *PrefetchBloomBlocksRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *PrefetchBloomBlocksRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrefetchBloomBlocksRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PrefetchBloomBlocksRequest proto.InternalMessageInfo
+
+func (m *PrefetchBloomBlocksRequest) GetBlocks() []string {
+	if m != nil {
+		return m.Blocks
+	}
+	return nil
+}
+
+type PrefetchBloomBlocksResponse struct {
+}
+
+func (m *PrefetchBloomBlocksResponse) Reset()      { *m = PrefetchBloomBlocksResponse{} }
+func (*PrefetchBloomBlocksResponse) ProtoMessage() {}
+func (*PrefetchBloomBlocksResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a50b5dd1dbcd1415, []int{5}
+}
+func (m *PrefetchBloomBlocksResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PrefetchBloomBlocksResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PrefetchBloomBlocksResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PrefetchBloomBlocksResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrefetchBloomBlocksResponse.Merge(m, src)
+}
+func (m *PrefetchBloomBlocksResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *PrefetchBloomBlocksResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrefetchBloomBlocksResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PrefetchBloomBlocksResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*FilterChunkRefRequest)(nil), "logproto.FilterChunkRefRequest")
 	proto.RegisterType((*FilterChunkRefResponse)(nil), "logproto.FilterChunkRefResponse")
 	proto.RegisterType((*ShortRef)(nil), "logproto.ShortRef")
 	proto.RegisterType((*GroupedChunkRefs)(nil), "logproto.GroupedChunkRefs")
+	proto.RegisterType((*PrefetchBloomBlocksRequest)(nil), "logproto.PrefetchBloomBlocksRequest")
+	proto.RegisterType((*PrefetchBloomBlocksResponse)(nil), "logproto.PrefetchBloomBlocksResponse")
 }
 
 func init() { proto.RegisterFile("pkg/logproto/bloomgateway.proto", fileDescriptor_a50b5dd1dbcd1415) }
 
 var fileDescriptor_a50b5dd1dbcd1415 = []byte{
-	// 504 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x53, 0xcd, 0x6e, 0xd3, 0x40,
-	0x10, 0xf6, 0x36, 0x21, 0x24, 0x1b, 0xfe, 0xb4, 0x82, 0xca, 0x0a, 0xd2, 0xc6, 0xca, 0x81, 0xfa,
-	0xe4, 0x95, 0x52, 0x21, 0x71, 0xe1, 0x92, 0x4a, 0x54, 0xdc, 0x60, 0x41, 0x1c, 0x90, 0x38, 0x38,
-	0xee, 0xfa, 0x47, 0xb6, 0x77, 0xdc, 0xf5, 0x1a, 0xd4, 0x1b, 0x8f, 0xc0, 0x63, 0xf0, 0x04, 0x3c,
-	0x43, 0x8f, 0x11, 0xa7, 0x8a, 0x43, 0x45, 0x9c, 0x0b, 0xc7, 0x3e, 0x02, 0xb2, 0x1d, 0x37, 0x4d,
-	0x05, 0xaa, 0xc4, 0x89, 0x93, 0x77, 0x76, 0xbe, 0x19, 0x7f, 0xf3, 0x7d, 0x3b, 0x78, 0x9c, 0xc5,
-	0x01, 0x4b, 0x20, 0xc8, 0x14, 0x68, 0x60, 0xf3, 0x04, 0x20, 0x0d, 0x5c, 0x2d, 0x3e, 0xb9, 0x27,
-	0x4e, 0x7d, 0x45, 0xfa, 0x6d, 0x72, 0xf4, 0x30, 0x80, 0x00, 0x1a, 0x5c, 0x75, 0x6a, 0xf2, 0xa3,
-	0xc7, 0x5b, 0x0d, 0xda, 0x43, 0x93, 0x9c, 0x7c, 0xdf, 0xc1, 0x8f, 0x5e, 0x44, 0x89, 0x16, 0xea,
-	0x20, 0x2c, 0x64, 0xcc, 0x85, 0xcf, 0xc5, 0x71, 0x21, 0x72, 0x4d, 0x0e, 0x70, 0xd7, 0x57, 0x90,
-	0x9a, 0xc8, 0x42, 0x76, 0x67, 0xc6, 0x4e, 0xcf, 0xc7, 0xc6, 0x8f, 0xf3, 0xf1, 0x5e, 0x10, 0xe9,
-	0xb0, 0x98, 0x3b, 0x1e, 0xa4, 0x2c, 0x53, 0x90, 0x0a, 0x1d, 0x8a, 0x22, 0x67, 0x1e, 0xa4, 0x29,
-	0x48, 0x96, 0xc2, 0x91, 0x48, 0x9c, 0xb7, 0x51, 0x2a, 0x78, 0x5d, 0x4c, 0x5e, 0xe2, 0xdb, 0x3a,
-	0x54, 0x50, 0x04, 0xa1, 0xb9, 0xf3, 0x6f, 0x7d, 0xda, 0x7a, 0xe2, 0xe0, 0xae, 0x12, 0x7e, 0x6e,
-	0x76, 0xac, 0x8e, 0x3d, 0x9c, 0x8e, 0x9c, 0xcb, 0x41, 0x0e, 0x15, 0x14, 0x99, 0x38, 0x6a, 0xf9,
-	0xe7, 0xbc, 0xc6, 0x11, 0x17, 0x77, 0xb3, 0xc4, 0x95, 0xe6, 0x2d, 0x0b, 0xd9, 0xc3, 0xe9, 0xbd,
-	0x0d, 0xfe, 0x55, 0xe2, 0xca, 0xd9, 0xf3, 0x35, 0x8f, 0xa7, 0x57, 0x78, 0x04, 0xca, 0xf5, 0x5d,
-	0xe9, 0xb2, 0x04, 0xe2, 0x88, 0x7d, 0xdc, 0x67, 0x95, 0x6e, 0xc7, 0x85, 0x50, 0x91, 0x50, 0xac,
-	0x6a, 0xe5, 0xbc, 0x2e, 0x84, 0x3a, 0xa9, 0xca, 0x79, 0xdd, 0x9a, 0xec, 0xe2, 0xde, 0x3c, 0x01,
-	0x2f, 0xce, 0xcd, 0x9e, 0xd5, 0xb1, 0x07, 0x7c, 0x1d, 0x4d, 0x38, 0xde, 0xbd, 0xae, 0x69, 0x9e,
-	0x81, 0xcc, 0x05, 0x79, 0x86, 0x07, 0x5e, 0xcb, 0xd3, 0x44, 0x37, 0x4e, 0xb2, 0x01, 0x4f, 0xbe,
-	0x21, 0xdc, 0x7f, 0x13, 0x82, 0xd2, 0x5c, 0xf8, 0xff, 0x9d, 0x37, 0x23, 0xdc, 0xf7, 0x42, 0xe1,
-	0xc5, 0x79, 0x91, 0x9a, 0x1d, 0x0b, 0xd9, 0x77, 0xf9, 0x65, 0x3c, 0xd1, 0xf8, 0xc1, 0xf5, 0xb9,
-	0x88, 0x85, 0x87, 0x7e, 0x24, 0x03, 0xa1, 0x32, 0x15, 0x49, 0x5d, 0x8f, 0xd1, 0xe5, 0x57, 0xaf,
-	0x2a, 0x69, 0xb5, 0x90, 0xae, 0xd4, 0x35, 0xb7, 0x01, 0x5f, 0x47, 0xe4, 0xc9, 0xd6, 0x2b, 0x20,
-	0x1b, 0xed, 0x5a, 0x6d, 0x1a, 0xf7, 0xa7, 0x3e, 0xbe, 0x33, 0xab, 0x56, 0xe5, 0xb0, 0x59, 0x15,
-	0xf2, 0x0e, 0xdf, 0xdf, 0xb6, 0x24, 0x27, 0xe3, 0x4d, 0xf1, 0x1f, 0x37, 0x60, 0x64, 0xfd, 0x1d,
-	0xd0, 0xd8, 0x39, 0x31, 0x66, 0x1f, 0x16, 0x4b, 0x6a, 0x9c, 0x2d, 0xa9, 0x71, 0xb1, 0xa4, 0xe8,
-	0x73, 0x49, 0xd1, 0xd7, 0x92, 0xa2, 0xd3, 0x92, 0xa2, 0x45, 0x49, 0xd1, 0xcf, 0x92, 0xa2, 0x5f,
-	0x25, 0x35, 0x2e, 0x4a, 0x8a, 0xbe, 0xac, 0xa8, 0xb1, 0x58, 0x51, 0xe3, 0x6c, 0x45, 0x8d, 0xf7,
-	0x7b, 0x37, 0xbc, 0xba, 0xf6, 0xbf, 0xf3, 0x5e, 0xfd, 0xd9, 0xff, 0x1d, 0x00, 0x00, 0xff, 0xff,
-	0x30, 0x14, 0xc6, 0xc9, 0x05, 0x04, 0x00, 0x00,
+	// 581 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x53, 0xbd, 0x6e, 0xd4, 0x40,
+	0x10, 0xf6, 0xe6, 0x8e, 0x23, 0xd9, 0xf0, 0xa7, 0x85, 0x44, 0x96, 0x23, 0xf6, 0x2c, 0x0b, 0xc8,
+	0x35, 0xd8, 0x52, 0x02, 0x12, 0x0d, 0xcd, 0x45, 0x22, 0x4a, 0x17, 0x36, 0x88, 0x02, 0x89, 0xc2,
+	0xe7, 0x1b, 0xff, 0xe8, 0x6c, 0xaf, 0xb3, 0x5e, 0x03, 0xe9, 0x78, 0x04, 0xde, 0x81, 0x86, 0x27,
+	0xe0, 0x19, 0x52, 0x50, 0x44, 0x54, 0x11, 0x45, 0x44, 0x7c, 0x0d, 0x65, 0x1e, 0x01, 0xd9, 0x3e,
+	0xc7, 0x77, 0xd1, 0x45, 0x27, 0x51, 0x51, 0xd9, 0x3b, 0xf3, 0xcd, 0xcc, 0x37, 0xf3, 0xcd, 0xe0,
+	0x6e, 0x32, 0xf2, 0xac, 0x90, 0x7b, 0x89, 0xe0, 0x92, 0x5b, 0x83, 0x90, 0xf3, 0xc8, 0xb3, 0x25,
+	0x7c, 0xb4, 0x8f, 0xcc, 0xd2, 0x44, 0x96, 0x6b, 0xa7, 0xf6, 0xc0, 0xe3, 0x1e, 0xaf, 0x70, 0xc5,
+	0x5f, 0xe5, 0xd7, 0x36, 0x66, 0x12, 0xd4, 0x3f, 0x95, 0xd3, 0xf8, 0xb9, 0x84, 0xd7, 0x5e, 0x05,
+	0xa1, 0x04, 0xb1, 0xe3, 0x67, 0xf1, 0x88, 0x81, 0xcb, 0xe0, 0x30, 0x83, 0x54, 0x92, 0x1d, 0xdc,
+	0x76, 0x05, 0x8f, 0x54, 0xa4, 0xa3, 0x5e, 0xab, 0x6f, 0x1d, 0x9f, 0x75, 0x95, 0x5f, 0x67, 0xdd,
+	0x4d, 0x2f, 0x90, 0x7e, 0x36, 0x30, 0x1d, 0x1e, 0x59, 0x89, 0xe0, 0x11, 0x48, 0x1f, 0xb2, 0xd4,
+	0x72, 0x78, 0x14, 0xf1, 0xd8, 0x8a, 0xf8, 0x10, 0x42, 0xf3, 0x4d, 0x10, 0x01, 0x2b, 0x83, 0xc9,
+	0x1e, 0xbe, 0x29, 0x7d, 0xc1, 0x33, 0xcf, 0x57, 0x97, 0xfe, 0x2d, 0x4f, 0x1d, 0x4f, 0x4c, 0xdc,
+	0x16, 0xe0, 0xa6, 0x6a, 0x4b, 0x6f, 0xf5, 0x56, 0xb7, 0x34, 0xf3, 0xb2, 0x91, 0x5d, 0xc1, 0xb3,
+	0x04, 0x86, 0x35, 0xff, 0x94, 0x95, 0x38, 0x62, 0xe3, 0x76, 0x12, 0xda, 0xb1, 0x7a, 0x43, 0x47,
+	0xbd, 0xd5, 0xad, 0x3b, 0x0d, 0x7e, 0x3f, 0xb4, 0xe3, 0xfe, 0xcb, 0x09, 0x8f, 0xe7, 0x53, 0x3c,
+	0x3c, 0x61, 0xbb, 0x76, 0x6c, 0x5b, 0x21, 0x1f, 0x05, 0xd6, 0x87, 0x6d, 0xab, 0x98, 0xdb, 0x61,
+	0x06, 0x22, 0x00, 0x61, 0x15, 0xa9, 0xcc, 0xd7, 0x19, 0x88, 0xa3, 0x22, 0x9c, 0x95, 0xa9, 0xc9,
+	0x3a, 0xee, 0x0c, 0x42, 0xee, 0x8c, 0x52, 0xb5, 0xa3, 0xb7, 0x7a, 0x2b, 0x6c, 0xf2, 0x32, 0x18,
+	0x5e, 0xbf, 0x3a, 0xd3, 0x34, 0xe1, 0x71, 0x0a, 0xe4, 0x05, 0x5e, 0x71, 0x6a, 0x9e, 0x2a, 0x5a,
+	0xd8, 0x49, 0x03, 0x36, 0xbe, 0x23, 0xbc, 0x7c, 0xe0, 0x73, 0x21, 0x19, 0xb8, 0xff, 0x9d, 0x36,
+	0x1a, 0x5e, 0x76, 0x7c, 0x70, 0x46, 0x69, 0x16, 0xa9, 0x2d, 0x1d, 0xf5, 0x6e, 0xb3, 0xcb, 0xb7,
+	0xf1, 0x15, 0xe1, 0x7b, 0x57, 0x1b, 0x23, 0x3a, 0x5e, 0x75, 0x83, 0xd8, 0x03, 0x91, 0x88, 0x20,
+	0x96, 0x65, 0x1f, 0x6d, 0x36, 0x6d, 0x2a, 0x66, 0x2b, 0x21, 0xb6, 0x63, 0x59, 0x92, 0x5b, 0x61,
+	0x93, 0x17, 0x79, 0x32, 0xb3, 0x06, 0xa4, 0x19, 0x5e, 0x3d, 0x9c, 0x89, 0xfc, 0x4f, 0x71, 0x27,
+	0xb4, 0x07, 0x10, 0xa6, 0x6a, 0xbb, 0x5c, 0x80, 0xb5, 0x06, 0xb9, 0x17, 0x0f, 0xe1, 0xd3, 0x41,
+	0xa1, 0x6b, 0xca, 0x26, 0x20, 0xe3, 0x19, 0xd6, 0xf6, 0x05, 0xb8, 0x20, 0x1d, 0xbf, 0x5f, 0x9c,
+	0x58, 0xbf, 0x54, 0xb2, 0xbe, 0x85, 0x46, 0x68, 0x34, 0x23, 0xf4, 0x43, 0xbc, 0x31, 0x37, 0xaa,
+	0x52, 0x7b, 0xeb, 0x07, 0xc2, 0xb7, 0x4a, 0xfb, 0x6e, 0x75, 0xb0, 0xe4, 0x2d, 0xbe, 0x3b, 0xbb,
+	0x18, 0x29, 0xe9, 0x36, 0xbc, 0xe6, 0xde, 0xa1, 0xa6, 0x5f, 0x0f, 0xa8, 0xca, 0x18, 0x0a, 0x19,
+	0xe2, 0xfb, 0x73, 0x78, 0x90, 0x47, 0x53, 0x4b, 0x7f, 0x6d, 0x73, 0xda, 0xe3, 0x05, 0xa8, 0xba,
+	0x4a, 0xff, 0xfd, 0xc9, 0x39, 0x55, 0x4e, 0xcf, 0xa9, 0x72, 0x71, 0x4e, 0xd1, 0xe7, 0x9c, 0xa2,
+	0x6f, 0x39, 0x45, 0xc7, 0x39, 0x45, 0x27, 0x39, 0x45, 0xbf, 0x73, 0x8a, 0xfe, 0xe4, 0x54, 0xb9,
+	0xc8, 0x29, 0xfa, 0x32, 0xa6, 0xca, 0xc9, 0x98, 0x2a, 0xa7, 0x63, 0xaa, 0xbc, 0xdb, 0x5c, 0x70,
+	0x61, 0x75, 0xf1, 0x41, 0xa7, 0xfc, 0x6c, 0xff, 0x0d, 0x00, 0x00, 0xff, 0xff, 0x3b, 0x6b, 0x23,
+	0x31, 0xf1, 0x04, 0x00, 0x00,
 }
 
 func (this *FilterChunkRefRequest) Equal(that interface{}) bool {
@@ -416,6 +511,59 @@ func (this *GroupedChunkRefs) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.Labels.Equal(that1.Labels) {
+		return false
+	}
+	return true
+}
+func (this *PrefetchBloomBlocksRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrefetchBloomBlocksRequest)
+	if !ok {
+		that2, ok := that.(PrefetchBloomBlocksRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Blocks) != len(that1.Blocks) {
+		return false
+	}
+	for i := range this.Blocks {
+		if this.Blocks[i] != that1.Blocks[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *PrefetchBloomBlocksResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrefetchBloomBlocksResponse)
+	if !ok {
+		that2, ok := that.(PrefetchBloomBlocksResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
 	return true
 }
 func (this *FilterChunkRefRequest) GoString() string {
@@ -462,13 +610,35 @@ func (this *GroupedChunkRefs) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&logproto.GroupedChunkRefs{")
 	s = append(s, "Fingerprint: "+fmt.Sprintf("%#v", this.Fingerprint)+",\n")
 	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
 	if this.Refs != nil {
 		s = append(s, "Refs: "+fmt.Sprintf("%#v", this.Refs)+",\n")
 	}
+	if this.Labels != nil {
+		s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PrefetchBloomBlocksRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&logproto.PrefetchBloomBlocksRequest{")
+	s = append(s, "Blocks: "+fmt.Sprintf("%#v", this.Blocks)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PrefetchBloomBlocksResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&logproto.PrefetchBloomBlocksResponse{")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -494,6 +664,7 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type BloomGatewayClient interface {
 	FilterChunkRefs(ctx context.Context, in *FilterChunkRefRequest, opts ...grpc.CallOption) (*FilterChunkRefResponse, error)
+	PrefetchBloomBlocks(ctx context.Context, in *PrefetchBloomBlocksRequest, opts ...grpc.CallOption) (*PrefetchBloomBlocksResponse, error)
 }
 
 type bloomGatewayClient struct {
@@ -513,9 +684,19 @@ func (c *bloomGatewayClient) FilterChunkRefs(ctx context.Context, in *FilterChun
 	return out, nil
 }
 
+func (c *bloomGatewayClient) PrefetchBloomBlocks(ctx context.Context, in *PrefetchBloomBlocksRequest, opts ...grpc.CallOption) (*PrefetchBloomBlocksResponse, error) {
+	out := new(PrefetchBloomBlocksResponse)
+	err := c.cc.Invoke(ctx, "/logproto.BloomGateway/PrefetchBloomBlocks", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BloomGatewayServer is the server API for BloomGateway service.
 type BloomGatewayServer interface {
 	FilterChunkRefs(context.Context, *FilterChunkRefRequest) (*FilterChunkRefResponse, error)
+	PrefetchBloomBlocks(context.Context, *PrefetchBloomBlocksRequest) (*PrefetchBloomBlocksResponse, error)
 }
 
 // UnimplementedBloomGatewayServer can be embedded to have forward compatible implementations.
@@ -524,6 +705,9 @@ type UnimplementedBloomGatewayServer struct {
 
 func (*UnimplementedBloomGatewayServer) FilterChunkRefs(ctx context.Context, req *FilterChunkRefRequest) (*FilterChunkRefResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FilterChunkRefs not implemented")
+}
+func (*UnimplementedBloomGatewayServer) PrefetchBloomBlocks(ctx context.Context, req *PrefetchBloomBlocksRequest) (*PrefetchBloomBlocksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PrefetchBloomBlocks not implemented")
 }
 
 func RegisterBloomGatewayServer(s *grpc.Server, srv BloomGatewayServer) {
@@ -548,6 +732,24 @@ func _BloomGateway_FilterChunkRefs_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BloomGateway_PrefetchBloomBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PrefetchBloomBlocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BloomGatewayServer).PrefetchBloomBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/logproto.BloomGateway/PrefetchBloomBlocks",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BloomGatewayServer).PrefetchBloomBlocks(ctx, req.(*PrefetchBloomBlocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _BloomGateway_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "logproto.BloomGateway",
 	HandlerType: (*BloomGatewayServer)(nil),
@@ -555,6 +757,10 @@ var _BloomGateway_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FilterChunkRefs",
 			Handler:    _BloomGateway_FilterChunkRefs_Handler,
+		},
+		{
+			MethodName: "PrefetchBloomBlocks",
+			Handler:    _BloomGateway_PrefetchBloomBlocks_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -722,6 +928,18 @@ func (m *GroupedChunkRefs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Labels != nil {
+		{
+			size, err := m.Labels.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintBloomgateway(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Refs) > 0 {
 		for iNdEx := len(m.Refs) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -748,6 +966,61 @@ func (m *GroupedChunkRefs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x8
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PrefetchBloomBlocksRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PrefetchBloomBlocksRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrefetchBloomBlocksRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Blocks) > 0 {
+		for iNdEx := len(m.Blocks) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Blocks[iNdEx])
+			copy(dAtA[i:], m.Blocks[iNdEx])
+			i = encodeVarintBloomgateway(dAtA, i, uint64(len(m.Blocks[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PrefetchBloomBlocksResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PrefetchBloomBlocksResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrefetchBloomBlocksResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
 	return len(dAtA) - i, nil
 }
 
@@ -843,6 +1116,34 @@ func (m *GroupedChunkRefs) Size() (n int) {
 			n += 1 + l + sovBloomgateway(uint64(l))
 		}
 	}
+	if m.Labels != nil {
+		l = m.Labels.Size()
+		n += 1 + l + sovBloomgateway(uint64(l))
+	}
+	return n
+}
+
+func (m *PrefetchBloomBlocksRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Blocks) > 0 {
+		for _, s := range m.Blocks {
+			l = len(s)
+			n += 1 + l + sovBloomgateway(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *PrefetchBloomBlocksResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	return n
 }
 
@@ -911,6 +1212,26 @@ func (this *GroupedChunkRefs) String() string {
 		`Fingerprint:` + fmt.Sprintf("%v", this.Fingerprint) + `,`,
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`Refs:` + repeatedStringForRefs + `,`,
+		`Labels:` + strings.Replace(fmt.Sprintf("%v", this.Labels), "IndexSeries", "IndexSeries", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PrefetchBloomBlocksRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&PrefetchBloomBlocksRequest{`,
+		`Blocks:` + fmt.Sprintf("%v", this.Blocks) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PrefetchBloomBlocksResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&PrefetchBloomBlocksResponse{`,
 		`}`,
 	}, "")
 	return s
@@ -1424,6 +1745,180 @@ func (m *GroupedChunkRefs) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBloomgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Labels == nil {
+				m.Labels = &IndexSeries{}
+			}
+			if err := m.Labels.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipBloomgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PrefetchBloomBlocksRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowBloomgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PrefetchBloomBlocksRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PrefetchBloomBlocksRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Blocks", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowBloomgateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Blocks = append(m.Blocks, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipBloomgateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthBloomgateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PrefetchBloomBlocksResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowBloomgateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PrefetchBloomBlocksResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PrefetchBloomBlocksResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipBloomgateway(dAtA[iNdEx:])

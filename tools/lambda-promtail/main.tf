@@ -148,15 +148,46 @@ resource "aws_cloudwatch_log_group" "this" {
   retention_in_days = 14
 }
 
+locals {
+  binary_path  = "${path.module}/lambda-promtail/bootstrap"
+  archive_path = "${path.module}/lambda-promtail/${var.name}.zip"
+}
+
+resource "null_resource" "function_binary" {
+  count = var.lambda_promtail_image == "" ? 1 : 0
+  triggers = {
+    always_run = timestamp()
+  }
+
+  provisioner "local-exec" {
+    command     = "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOFLAGS=-trimpath go build -mod=readonly -ldflags='-s -w' -o bootstrap"
+    working_dir = format("%s/%s", path.module, "lambda-promtail")
+  }
+}
+
+data "archive_file" "lambda" {
+  count      = var.lambda_promtail_image == "" ? 1 : 0
+  depends_on = [null_resource.function_binary[0]]
+
+  type        = "zip"
+  source_file = local.binary_path
+  output_path = local.archive_path
+}
+
 resource "aws_lambda_function" "this" {
-  image_uri     = var.lambda_promtail_image
   function_name = var.name
   role          = aws_iam_role.this.arn
   kms_key_arn   = var.kms_key_arn
 
+  image_uri        = var.lambda_promtail_image == "" ? null : var.lambda_promtail_image
+  filename         = var.lambda_promtail_image == "" ? local.archive_path : null
+  source_code_hash = var.lambda_promtail_image == "" ? data.archive_file.lambda[0].output_base64sha256 : null
+  runtime          = var.lambda_promtail_image == "" ? "provided.al2023" : null
+  handler          = var.lambda_promtail_image == "" ? local.binary_path : null
+
   timeout      = 60
   memory_size  = 128
-  package_type = "Image"
+  package_type = var.lambda_promtail_image == "" ? "Zip" : "Image"
 
   # From the Terraform AWS Lambda docs: If both subnet_ids and security_group_ids are empty then vpc_config is considered to be empty or unset.
   vpc_config {
@@ -250,8 +281,8 @@ resource "aws_s3_bucket_notification" "this" {
   lambda_function {
     lambda_function_arn = aws_lambda_function.this.arn
     events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "AWSLogs/"
-    filter_suffix       = ".log.gz"
+    filter_prefix       = var.filter_prefix
+    filter_suffix       = var.filter_suffix
   }
 
   depends_on = [

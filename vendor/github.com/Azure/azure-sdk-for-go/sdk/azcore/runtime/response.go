@@ -40,7 +40,7 @@ func UnmarshalAsByteArray(resp *http.Response, v *[]byte, format Base64Encoding)
 }
 
 // UnmarshalAsJSON calls json.Unmarshal() to unmarshal the received payload into the value pointed to by v.
-func UnmarshalAsJSON(resp *http.Response, v interface{}) error {
+func UnmarshalAsJSON(resp *http.Response, v any) error {
 	payload, err := Payload(resp)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func UnmarshalAsJSON(resp *http.Response, v interface{}) error {
 }
 
 // UnmarshalAsXML calls xml.Unmarshal() to unmarshal the received payload into the value pointed to by v.
-func UnmarshalAsXML(resp *http.Response, v interface{}) error {
+func UnmarshalAsXML(resp *http.Response, v any) error {
 	payload, err := Payload(resp)
 	if err != nil {
 		return err

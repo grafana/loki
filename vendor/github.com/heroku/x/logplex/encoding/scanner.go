@@ -3,9 +3,9 @@ package encoding
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -48,17 +48,14 @@ func Decode(raw []byte, hasStructuredData bool) (Message, error) {
 	if len(privalVersion) != 1 || len(privalVersion[0]) != 3 {
 		return msg, ErrInvalidPriVal
 	}
-	prio, err := strconv.ParseUint(string(privalVersion[0][1]), 10, 8)
-	if err != nil {
-		return msg, err
-	}
-	msg.Priority = uint8(prio)
 
-	version, err := strconv.ParseUint(string(privalVersion[0][2]), 10, 16)
-	if err != nil {
+	if _, err := fmt.Sscan(string(privalVersion[0][1]), &msg.Priority); err != nil {
 		return msg, err
 	}
-	msg.Version = uint16(version)
+
+	if _, err := fmt.Sscan(string(privalVersion[0][2]), &msg.Version); err != nil {
+		return msg, err
+	}
 
 	rawTime, err := syslogField(b)
 	if err != nil {

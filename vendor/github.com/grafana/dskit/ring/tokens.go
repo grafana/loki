@@ -7,6 +7,8 @@ import (
 	"sort"
 )
 
+type Token uint32
+
 // Tokens is a simple list of tokens.
 type Tokens []uint32
 

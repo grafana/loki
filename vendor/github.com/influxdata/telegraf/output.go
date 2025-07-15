@@ -24,6 +24,6 @@ type AggregatingOutput interface {
 	Add(in Metric)
 	// Push returns the aggregated metrics and is called every flush interval.
 	Push() []Metric
-	// Reset signals the the aggregator period is completed.
+	// Reset signals that the aggregator period is completed.
 	Reset()
 }

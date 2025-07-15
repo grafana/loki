@@ -1,5 +1,32 @@
 # Release History
 
+## 5.7.0 (2024-04-26)
+### Features Added
+
+- New value `DiffDiskPlacementNvmeDisk` added to enum type `DiffDiskPlacement`
+- New value `DiskCreateOptionTypesCopy`, `DiskCreateOptionTypesRestore` added to enum type `DiskCreateOptionTypes`
+- New enum type `ResourceIDOptionsForGetCapacityReservationGroups` with values `ResourceIDOptionsForGetCapacityReservationGroupsAll`, `ResourceIDOptionsForGetCapacityReservationGroupsCreatedInSubscription`, `ResourceIDOptionsForGetCapacityReservationGroupsSharedWithSubscription`
+- New struct `EventGridAndResourceGraph`
+- New struct `ScheduledEventsAdditionalPublishingTargets`
+- New struct `ScheduledEventsPolicy`
+- New struct `UserInitiatedReboot`
+- New struct `UserInitiatedRedeploy`
+- New field `ResourceIDsOnly` in struct `CapacityReservationGroupsClientListBySubscriptionOptions`
+- New field `SourceResource` in struct `DataDisk`
+- New field `Caching`, `DeleteOption`, `DiskEncryptionSet`, `WriteAcceleratorEnabled` in struct `DataDisksToAttach`
+- New field `ScheduledEventsPolicy` in struct `VirtualMachineProperties`
+- New field `ScheduledEventsPolicy` in struct `VirtualMachineScaleSetProperties`
+- New field `ForceUpdateOSDiskForEphemeral` in struct `VirtualMachineScaleSetReimageParameters`
+- New field `DiffDiskSettings` in struct `VirtualMachineScaleSetUpdateOSDisk`
+- New field `ForceUpdateOSDiskForEphemeral` in struct `VirtualMachineScaleSetVMReimageParameters`
+
+
+## 5.6.0 (2024-03-22)
+### Features Added
+
+- New field `VirtualMachineID` in struct `GalleryArtifactVersionFullSource`
+
+
 ## 5.5.0 (2024-01-26)
 ### Features Added
 

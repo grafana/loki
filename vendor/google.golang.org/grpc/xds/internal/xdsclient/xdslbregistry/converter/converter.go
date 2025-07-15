@@ -27,14 +27,15 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/leastrequest"
+	"google.golang.org/grpc/balancer/pickfirst"
+	"google.golang.org/grpc/balancer/ringhash"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/internal/envconfig"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/balancer/wrrlocality"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/protobuf/proto"
@@ -83,7 +84,7 @@ func convertRingHashProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessag
 		maxSize = max.GetValue()
 	}
 
-	rhCfg := &ringhash.LBConfig{
+	rhCfg := &iringhash.LBConfig{
 		MinRingSize: minSize,
 		MaxRingSize: maxSize,
 	}
@@ -110,7 +111,7 @@ func convertPickFirstProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessa
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling JSON for type %T: %v", pfCfg, err)
 	}
-	return makeBalancerConfigJSON(grpc.PickFirstBalancerName, js), nil
+	return makeBalancerConfigJSON(pickfirst.Name, js), nil
 }
 
 func convertRoundRobinProtoToServiceConfig([]byte, int) (json.RawMessage, error) {

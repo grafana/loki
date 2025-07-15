@@ -1,9 +1,10 @@
-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_java//java:defs.bzl", "java_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 
 package(
     default_visibility =
@@ -27,8 +28,7 @@ cc_proto_library(
 
 py_proto_library(
     name = "validate_py",
-    srcs = ["validate.proto"],
-    deps = ["@com_google_protobuf//:protobuf_python"],
+    deps = [":validate_proto"],
 )
 
 go_proto_library(

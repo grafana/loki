@@ -50,7 +50,13 @@ const (
 // NewPollerOptions contains the optional parameters for NewPoller.
 type NewPollerOptions[T any] struct {
 	// FinalStateVia contains the final-state-via value for the LRO.
+	// NOTE: used only for Azure-AsyncOperation and Operation-Location LROs.
 	FinalStateVia FinalStateVia
+
+	// OperationLocationResultPath contains the JSON path to the result's
+	// payload when it's included with the terminal success response.
+	// NOTE: only used for Operation-Location LROs.
+	OperationLocationResultPath string
 
 	// Response contains a preconstructed response type.
 	// The final payload will be unmarshaled into it and returned.
@@ -98,7 +104,7 @@ func NewPoller[T any](resp *http.Response, pl exported.Pipeline, options *NewPol
 		opr, err = async.New[T](pl, resp, options.FinalStateVia)
 	} else if op.Applicable(resp) {
 		// op poller must be checked before loc as it can also have a location header
-		opr, err = op.New[T](pl, resp, options.FinalStateVia)
+		opr, err = op.New[T](pl, resp, options.FinalStateVia, options.OperationLocationResultPath)
 	} else if loc.Applicable(resp) {
 		opr, err = loc.New[T](pl, resp)
 	} else if body.Applicable(resp) {
@@ -154,7 +160,7 @@ func NewPollerFromResumeToken[T any](token string, pl exported.Pipeline, options
 	if err != nil {
 		return nil, err
 	}
-	var asJSON map[string]interface{}
+	var asJSON map[string]any
 	if err := json.Unmarshal(raw, &asJSON); err != nil {
 		return nil, err
 	}
@@ -172,7 +178,7 @@ func NewPollerFromResumeToken[T any](token string, pl exported.Pipeline, options
 	} else if loc.CanResume(asJSON) {
 		opr, _ = loc.New[T](pl, nil)
 	} else if op.CanResume(asJSON) {
-		opr, _ = op.New[T](pl, nil, "")
+		opr, _ = op.New[T](pl, nil, "", "")
 	} else {
 		return nil, fmt.Errorf("unhandled poller token %s", string(raw))
 	}
@@ -200,6 +206,7 @@ type PollingHandler[T any] interface {
 }
 
 // Poller encapsulates a long-running operation, providing polling facilities until the operation reaches a terminal state.
+// Methods on this type are not safe for concurrent use.
 type Poller[T any] struct {
 	op     PollingHandler[T]
 	resp   *http.Response
@@ -240,7 +247,7 @@ func (p *Poller[T]) PollUntilDone(ctx context.Context, options *PollUntilDoneOpt
 	}
 
 	start := time.Now()
-	logPollUntilDoneExit := func(v interface{}) {
+	logPollUntilDoneExit := func(v any) {
 		log.Writef(log.EventLRO, "END PollUntilDone() for %T: %v, total time: %s", p.op, v, time.Since(start))
 	}
 	log.Writef(log.EventLRO, "BEGIN PollUntilDone() for %T", p.op)
@@ -334,6 +341,11 @@ func (p *Poller[T]) Result(ctx context.Context) (res T, err error) {
 	err = p.op.Result(ctx, p.result)
 	var respErr *exported.ResponseError
 	if errors.As(err, &respErr) {
+		if pollers.IsNonTerminalHTTPStatusCode(respErr.RawResponse) {
+			// the request failed in a non-terminal way.
+			// don't cache the error or mark the Poller as done
+			return
+		}
 		// the LRO failed. record the error
 		p.err = err
 	} else if err != nil {

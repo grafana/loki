@@ -8,7 +8,7 @@ valuesSection and component are specified separately because helm prefers camelc
 */}}
 {{- define "loki.memcached.statefulSet" -}}
 {{ with (index $.ctx.Values $.valuesSection) }}
-{{- if .enabled -}}
+{{- if and .enabled ($.ctx.Values.memcached.enabled) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -70,11 +70,9 @@ spec:
       tolerations:
         {{- toYaml .tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds }}
-      {{- if $.ctx.Values.imagePullSecrets }}
+      {{- with $.ctx.Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range $.ctx.Values.image.pullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- if .extraVolumes }}
       volumes:
@@ -104,9 +102,11 @@ spec:
           ports:
             - containerPort: {{ .port }}
               name: client
+          {{- /* Calculate storage size as round(.persistence.storageSize * 0.9). But with integer built-in operators. */}}
+          {{- $persistenceSize := (div (mul (trimSuffix "Gi" .persistence.storageSize | trimSuffix "G") 9) 10 ) }}
           args:
             - -m {{ .allocatedMemory }}
-            - --extended=modern,track_sizes{{ with .extraExtendedOptions }},{{ . }}{{ end }}
+            - --extended=modern,track_sizes{{ if .persistence.enabled }},ext_path={{ .persistence.mountPath }}/file:{{ $persistenceSize }}G,ext_wbuf_size=16{{ end }}{{ with .extraExtendedOptions }},{{ . }}{{ end }}
             - -I {{ .maxItemMemory }}m
             - -c {{ .connectionLimit }}
             - -v
@@ -124,9 +124,19 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
-          {{- if .extraVolumeMounts }}
+          {{- with $.ctx.Values.memcached.readinessProbe }}
+          readinessProbe: 
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
+          {{- if .persistence.enabled }}
+            - name: data
+              mountPath: {{ .persistence.mountPath }}
+          {{- end }}
+          {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
+          {{- end }}
           {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
@@ -153,7 +163,25 @@ spec:
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
       {{- end }}
+  {{- if .persistence.enabled }}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        {{- with .persistence.labels }}
+        labels:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- with .persistence.storageClass }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .persistence.storageSize | quote }}
+  {{- end }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
-

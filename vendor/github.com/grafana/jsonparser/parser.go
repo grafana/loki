@@ -512,10 +512,10 @@ func EachKey(data []byte, cb func(int, []byte, ValueType, error), paths ...[]str
 			}
 
 			for pi, p := range paths {
-				if len(p) < level+1 || pathFlags[pi] || p[level][0] != '[' || !sameTree(p, pathsBuf[:level]) {
+				if len(p) < level+1 || pathFlags[pi] || p[level] == "" || p[level][0] != '[' || !sameTree(p, pathsBuf[:level]) {
 					continue
 				}
-				if len(p[level]) >= 2 {
+				if len(p[level]) > 2 {
 					aIdx, _ := strconv.Atoi(p[level][1 : len(p[level])-1])
 					arrIdxFlags[aIdx] = x
 					pIdxFlags[pi] = true
@@ -712,12 +712,10 @@ func WriteToBuffer(buffer []byte, str string) int {
 }
 
 /*
-
 Del - Receives existing data structure, path to delete.
 
 Returns:
 `data` - return modified data
-
 */
 func Delete(data []byte, keys ...string) []byte {
 	lk := len(keys)
@@ -798,13 +796,11 @@ func Delete(data []byte, keys ...string) []byte {
 }
 
 /*
-
 Set - Receives existing data structure, path to set, and data to set at that key.
 
 Returns:
 `value` - modified byte array
 `err` - On any parsing error
-
 */
 func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error) {
 	// ensure keys are set

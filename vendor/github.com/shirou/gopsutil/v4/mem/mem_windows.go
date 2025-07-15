@@ -9,8 +9,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -36,12 +37,14 @@ func VirtualMemory() (*VirtualMemoryStat, error) {
 	return VirtualMemoryWithContext(context.Background())
 }
 
-func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
+func VirtualMemoryWithContext(_ context.Context) (*VirtualMemoryStat, error) {
 	var memInfo memoryStatusEx
 	memInfo.cbSize = uint32(unsafe.Sizeof(memInfo))
-	mem, _, _ := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memInfo)))
+	// GlobalMemoryStatusEx returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	mem, _, err := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memInfo)))
 	if mem == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
 
 	ret := &VirtualMemoryStat{
@@ -76,27 +79,45 @@ func SwapMemory() (*SwapMemoryStat, error) {
 	return SwapMemoryWithContext(context.Background())
 }
 
-func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
+func SwapMemoryWithContext(_ context.Context) (*SwapMemoryStat, error) {
+	// Use the performance counter to get the swap usage percentage
+	counter, err := common.NewWin32PerformanceCounter("swap_percentage", `\Paging File(_Total)\% Usage`)
+	if err != nil {
+		return nil, err
+	}
+	defer common.PdhCloseQuery.Call(uintptr(counter.Query))
+
+	usedPercent, err := counter.GetValue()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get total memory from performance information
 	var perfInfo performanceInformation
 	perfInfo.cb = uint32(unsafe.Sizeof(perfInfo))
-	mem, _, _ := procGetPerformanceInfo.Call(uintptr(unsafe.Pointer(&perfInfo)), uintptr(perfInfo.cb))
+	// GetPerformanceInfo returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	mem, _, err := procGetPerformanceInfo.Call(uintptr(unsafe.Pointer(&perfInfo)), uintptr(perfInfo.cb))
 	if mem == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
-	tot := perfInfo.commitLimit * perfInfo.pageSize
-	used := perfInfo.commitTotal * perfInfo.pageSize
-	free := tot - used
-	var usedPercent float64
-	if tot == 0 {
-		usedPercent = 0
+	totalPhys := perfInfo.physicalTotal * perfInfo.pageSize
+	totalSys := perfInfo.commitLimit * perfInfo.pageSize
+	total := totalSys - totalPhys
+
+	var used uint64
+	if total > 0 {
+		used = uint64(0.01 * usedPercent * float64(total))
 	} else {
-		usedPercent = float64(used) / float64(tot) * 100
+		usedPercent = 0.0
+		used = 0
 	}
+
 	ret := &SwapMemoryStat{
-		Total:       tot,
+		Total:       total,
 		Used:        used,
-		Free:        free,
-		UsedPercent: usedPercent,
+		Free:        total - used,
+		UsedPercent: common.Round(usedPercent, 1),
 	}
 
 	return ret, nil
@@ -134,7 +155,7 @@ func SwapDevices() ([]*SwapDevice, error) {
 	return SwapDevicesWithContext(context.Background())
 }
 
-func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
+func SwapDevicesWithContext(_ context.Context) ([]*SwapDevice, error) {
 	pageSizeOnce.Do(func() {
 		var sysInfo systemInfo
 		procGetNativeSystemInfo.Call(uintptr(unsafe.Pointer(&sysInfo)))
@@ -144,9 +165,11 @@ func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
 	// the following system call invokes the supplied callback function once for each page file before returning
 	// see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumpagefilesw
 	var swapDevices []*SwapDevice
-	result, _, _ := procEnumPageFilesW.Call(windows.NewCallback(pEnumPageFileCallbackW), uintptr(unsafe.Pointer(&swapDevices)))
+	// EnumPageFilesW returns 0 for error, in which case we check err,
+	// see https://pkg.go.dev/golang.org/x/sys/windows#LazyProc.Call
+	result, _, err := procEnumPageFilesW.Call(windows.NewCallback(pEnumPageFileCallbackW), uintptr(unsafe.Pointer(&swapDevices)))
 	if result == 0 {
-		return nil, windows.GetLastError()
+		return nil, err
 	}
 
 	return swapDevices, nil

@@ -7,7 +7,7 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
@@ -125,7 +125,7 @@ func ApplyDefaultSettings(opts *Options) error {
 	strictOverrides := lokiv1.LokiStackSpec{
 		Template: &lokiv1.LokiTemplateSpec{
 			Compactor: &lokiv1.LokiComponentSpec{
-				// Compactor is a singelton application.
+				// Compactor is a singleton application.
 				// Only one replica allowed!!!
 				Replicas: 1,
 			},
@@ -136,7 +136,11 @@ func ApplyDefaultSettings(opts *Options) error {
 		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
-	opts.ResourceRequirements = internal.ResourceRequirementsTable[opts.Stack.Size]
+	useRequestsAsLimits := false
+	if opts.Stack.Template != nil {
+		useRequestsAsLimits = opts.Stack.Template.UseRequestsAsLimits
+	}
+	opts.ResourceRequirements = internal.ResourceRequirementsForSize(opts.Stack.Size, useRequestsAsLimits)
 	opts.Stack = *spec
 
 	return nil

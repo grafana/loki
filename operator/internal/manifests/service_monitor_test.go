@@ -8,9 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 // Test that all serviceMonitor match the labels of their services so that we know all serviceMonitor
@@ -99,7 +100,6 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -190,7 +190,6 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 	}
 
 	for _, tst := range table {
-		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -204,9 +203,9 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 
 			// Check using built-in PKI
 			c := tst.ServiceMonitor.Spec.Endpoints[0].TLSConfig
-			require.Equal(t, c.CA.ConfigMap.LocalObjectReference.Name, signingCABundleName(opt.Name))
-			require.Equal(t, c.Cert.Secret.LocalObjectReference.Name, tst.Service.Name)
-			require.Equal(t, c.KeySecret.LocalObjectReference.Name, tst.Service.Name)
+			require.Equal(t, c.CA.ConfigMap.Name, signingCABundleName(opt.Name))
+			require.Equal(t, c.Cert.Secret.Name, tst.Service.Name)
+			require.Equal(t, c.KeySecret.Name, tst.Service.Name)
 		})
 	}
 }
@@ -294,7 +293,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -381,7 +380,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -408,7 +407,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -495,7 +494,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -522,7 +521,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -531,7 +530,6 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			sm := NewGatewayServiceMonitor(tc.opts)

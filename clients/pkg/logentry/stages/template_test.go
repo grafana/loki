@@ -105,7 +105,6 @@ func TestTemplateValidation(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, err := validateTemplateConfig(test.config)
@@ -375,7 +374,6 @@ func TestTemplateStage_Process(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			st, err := newTemplateStage(util_log.Logger, test.config)

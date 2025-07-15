@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/containerd/fifo"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/plugins/logdriver"
 	"github.com/docker/docker/daemon/logger"
@@ -20,7 +21,6 @@ import (
 	"github.com/go-kit/log/level"
 	protoio "github.com/gogo/protobuf/io"
 	"github.com/pkg/errors"
-	"github.com/tonistiigi/fifo"
 )
 
 type driver struct {
@@ -88,7 +88,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 
 	var jsonl logger.Logger
 	if !noFile {
-		if err := os.MkdirAll(folder, 0755); err != nil {
+		if err := os.MkdirAll(folder, 0750); err != nil {
 			return errors.Wrap(err, "error setting up logger dir")
 		}
 
@@ -195,7 +195,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 	}
 
 	go func() {
-		watcher := lr.ReadLogs(config)
+		watcher := lr.ReadLogs(context.Background(), config)
 
 		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
 		defer enc.Close()

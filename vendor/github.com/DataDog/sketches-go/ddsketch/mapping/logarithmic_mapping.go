@@ -104,6 +104,12 @@ func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
+func (m *LogarithmicMapping) EncodeProto(builder *sketchpb.IndexMappingBuilder) {
+	builder.SetGamma(m.gamma)
+	builder.SetIndexOffset(m.indexOffset)
+	builder.SetInterpolation(uint64(sketchpb.IndexMapping_NONE))
+}
+
 func (m *LogarithmicMapping) Encode(b *[]byte) {
 	enc.EncodeFlag(b, enc.FlagIndexMappingBaseLogarithmic)
 	enc.EncodeFloat64LE(b, m.gamma)

@@ -45,14 +45,17 @@ type Provider struct {
 
 // NewProvider allows the creation of a custom IBM IAM Provider
 // Parameters:
-//		Provider Name
-//		AWS Config
-//		API Key
-//		IBM IAM Authentication Server Endpoint
-//		Service Instance ID
-//		Token Manager client
+//
+//	Provider Name
+//	AWS Config
+//	API Key
+//	IBM IAM Authentication Server Endpoint
+//	Service Instance ID
+//	Token Manager client
+//
 // Returns:
-//		Provider
+//
+//	Provider
 func NewProvider(providerName string, config *aws.Config, apiKey, authEndPoint, serviceInstanceID string,
 	client tokenmanager.IBMClientDo) (provider *Provider) { //linter complain about (provider *Provider) {
 	provider = new(Provider)
@@ -99,6 +102,7 @@ func NewProvider(providerName string, config *aws.Config, apiKey, authEndPoint, 
 
 // IsValid ...
 // Returns:
+//
 //	Provider validation - boolean
 func (p *Provider) IsValid() bool {
 	return nil == p.ErrorStatus
@@ -106,8 +110,9 @@ func (p *Provider) IsValid() bool {
 
 // Retrieve ...
 // Returns:
-//		Credential values
-//		Error
+//
+//	Credential values
+//	Error
 func (p *Provider) Retrieve() (credentials.Value, error) {
 	if p.ErrorStatus != nil {
 		if p.logLevel.Matches(aws.LogDebug) {
@@ -120,14 +125,9 @@ func (p *Provider) Retrieve() (credentials.Value, error) {
 		var returnErr error
 		if p.logLevel.Matches(aws.LogDebug) {
 			p.logger.Log(debugLog, ibmiamProviderLog, p.providerName, "ERROR ON GET", err)
-			returnErr = awserr.New("TokenManagerRetrieveError", "error retrieving the token", err)
-		} else {
-			returnErr = awserr.New("TokenManagerRetrieveError", "error retrieving the token", nil)
 		}
+		returnErr = awserr.New("TokenManagerRetrieveError", "error retrieving the token", err)
 		return credentials.Value{}, returnErr
-	}
-	if p.logLevel.Matches(aws.LogDebug) {
-		p.logger.Log(debugLog, ibmiamProviderLog, p.providerName, "GET TOKEN", tokenValue)
 	}
 
 	return credentials.Value{Token: *tokenValue, ProviderName: p.providerName, ProviderType: p.providerType,
@@ -135,7 +135,8 @@ func (p *Provider) Retrieve() (credentials.Value, error) {
 }
 
 // IsExpired ...
-//		Provider expired or not - boolean
+//
+//	Provider expired or not - boolean
 func (p *Provider) IsExpired() bool {
 	return true
 }

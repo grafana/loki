@@ -57,6 +57,13 @@ const (
 	// makes a CreateToken request with an invalid grant type.
 	ErrCodeInvalidGrantException = "InvalidGrantException"
 
+	// ErrCodeInvalidRedirectUriException for service response error code
+	// "InvalidRedirectUriException".
+	//
+	// Indicates that one or more redirect URI in the request is not supported for
+	// this operation.
+	ErrCodeInvalidRedirectUriException = "InvalidRedirectUriException"
+
 	// ErrCodeInvalidRequestException for service response error code
 	// "InvalidRequestException".
 	//
@@ -106,6 +113,7 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"InvalidClientException":         newErrorInvalidClientException,
 	"InvalidClientMetadataException": newErrorInvalidClientMetadataException,
 	"InvalidGrantException":          newErrorInvalidGrantException,
+	"InvalidRedirectUriException":    newErrorInvalidRedirectUriException,
 	"InvalidRequestException":        newErrorInvalidRequestException,
 	"InvalidRequestRegionException":  newErrorInvalidRequestRegionException,
 	"InvalidScopeException":          newErrorInvalidScopeException,

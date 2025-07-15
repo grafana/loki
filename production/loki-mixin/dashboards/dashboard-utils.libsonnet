@@ -35,9 +35,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', $._config.per_namespace_label)
         else
-          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', $._config.per_namespace_label),
 
       addTag()::
         self + {
@@ -75,20 +75,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         if multi then
           d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', $._config.per_namespace_label)
         else
           d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', $._config.per_namespace_label),
     },
 
   jobMatcher(job)::
     $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
-    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
-
-  containerLabelMatcher(containerName)::
-    'label_name=~"%s.*"' % containerName,
+    $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '=~"$namespace"',
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
@@ -327,7 +324,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   containerDiskSpaceUtilizationPanel(title, containerName)::
     $.newQueryPanel(title, 'percentunit') +
-    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}'),
+    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s, persistentvolumeclaim=~".*%s.*"} / kubelet_volume_stats_capacity_bytes{%s, persistentvolumeclaim=~".*%s.*"})' % [$.namespaceMatcher(), containerName, $.namespaceMatcher(), containerName], '{{persistentvolumeclaim}}'),
 
   local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
     nullPointMode: 'null as zero',

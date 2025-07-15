@@ -24,7 +24,7 @@ func GetVolumeRange(q *volume.Query, c client.Client, out output.LogOutput, stat
 func do(q *volume.Query, rangeQuery bool, c client.Client, out output.LogOutput, statistics bool) {
 	resp := getVolume(q, rangeQuery, c)
 
-	resultsPrinter := print.NewQueryResultPrinter(nil, nil, q.Quiet, 0, false)
+	resultsPrinter := print.NewQueryResultPrinter(nil, nil, q.Quiet, 0, false, false)
 
 	if statistics {
 		resultsPrinter.PrintStats(resp.Data.Statistics)

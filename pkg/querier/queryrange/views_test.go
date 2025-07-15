@@ -32,7 +32,8 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
+		},
 	}
 	buf, err := p.Marshal()
 	require.NoError(t, err)
@@ -73,6 +74,7 @@ func TestSeriesIdentifierViewHash(t *testing.T) {
 	expected := identifier.Hash(b)
 	require.Equal(t, expected, actual)
 }
+
 func TestSeriesIdentifierViewForEachLabel(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
 		Labels: []logproto.SeriesIdentifier_LabelsEntry{
@@ -185,7 +187,7 @@ func TestMergedViewDeduplication(t *testing.T) {
 	}
 
 	count := 0
-	err := view.ForEachUniqueSeries(func(s *SeriesIdentifierView) error {
+	err := view.ForEachUniqueSeries(func(_ *SeriesIdentifierView) error {
 		count++
 		return nil
 	})
@@ -242,13 +244,13 @@ func TestMergedViewMaterialize(t *testing.T) {
 	require.Len(t, mat.Data, 3)
 	series := make([]string, 0)
 	for _, d := range mat.Data {
-		l := make([]labels.Label, 0, len(d.Labels))
+		l := labels.NewBuilder(labels.EmptyLabels())
 		for _, p := range d.Labels {
-			l = append(l, labels.Label{Name: p.Key, Value: p.Value})
+			l.Set(p.Key, p.Value)
 		}
-		series = append(series, labels.Labels(l).String())
+		series = append(series, l.Labels().String())
 	}
-	expected := []string{`{i="1", baz="woof"}`, `{i="3", baz="woof"}`, `{i="2", foo="bar"}`}
+	expected := []string{`{baz="woof", i="1"}`, `{baz="woof", i="3"}`, `{foo="bar", i="2"}`}
 	require.ElementsMatch(t, series, expected)
 }
 
@@ -360,5 +362,4 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 		require.NoError(b, err)
 		require.Equal(b, "application/json; charset=UTF-8", httpRes.Header.Get("Content-Type"))
 	}
-
 }

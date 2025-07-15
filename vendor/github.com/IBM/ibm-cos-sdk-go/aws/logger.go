@@ -92,9 +92,10 @@ type Logger interface {
 // list of arguments and wrap it so the Logger interface can be used.
 //
 // Example:
-//     s3.New(sess, &aws.Config{Logger: aws.LoggerFunc(func(args ...interface{}) {
-//         fmt.Fprintln(os.Stdout, args...)
-//     })})
+//
+//	s3.New(sess, &aws.Config{Logger: aws.LoggerFunc(func(args ...interface{}) {
+//	    fmt.Fprintln(os.Stdout, args...)
+//	})})
 type LoggerFunc func(...interface{})
 
 // Log calls the wrapped function with the arguments provided

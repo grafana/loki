@@ -1,33 +1,19 @@
 package log
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type KeepLabels struct {
-	keepLabels []KeepLabel
+	labels []NamedLabelMatcher
 }
 
-type KeepLabel struct {
-	Matcher *labels.Matcher
-	Name    string
-}
-
-func NewKeepLabel(matcher *labels.Matcher, name string) KeepLabel {
-	return KeepLabel{
-		Matcher: matcher,
-		Name:    name,
-	}
-}
-
-func NewKeepLabels(kl []KeepLabel) *KeepLabels {
-	return &KeepLabels{keepLabels: kl}
+func NewKeepLabels(labels []NamedLabelMatcher) *KeepLabels {
+	return &KeepLabels{labels: labels}
 }
 
 func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
-	if len(kl.keepLabels) == 0 {
+	if len(kl.labels) == 0 {
 		return line, true
 	}
 
@@ -38,7 +24,7 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		}
 
 		var keep bool
-		for _, keepLabel := range kl.keepLabels {
+		for _, keepLabel := range kl.labels {
 			if keepLabel.Matcher != nil && keepLabel.Matcher.Name == lb.Name && keepLabel.Matcher.Matches(lb.Value) {
 				keep = true
 				break

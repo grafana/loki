@@ -19,12 +19,12 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 
-	v1 "k8s.io/api/authentication/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gentype "k8s.io/client-go/gentype"
 	scheme "k8s.io/client-go/kubernetes/scheme"
-	rest "k8s.io/client-go/rest"
 )
 
 // SelfSubjectReviewsGetter has a method to return a SelfSubjectReviewInterface.
@@ -35,30 +35,25 @@ type SelfSubjectReviewsGetter interface {
 
 // SelfSubjectReviewInterface has methods to work with SelfSubjectReview resources.
 type SelfSubjectReviewInterface interface {
-	Create(ctx context.Context, selfSubjectReview *v1.SelfSubjectReview, opts metav1.CreateOptions) (*v1.SelfSubjectReview, error)
+	Create(ctx context.Context, selfSubjectReview *authenticationv1.SelfSubjectReview, opts metav1.CreateOptions) (*authenticationv1.SelfSubjectReview, error)
 	SelfSubjectReviewExpansion
 }
 
 // selfSubjectReviews implements SelfSubjectReviewInterface
 type selfSubjectReviews struct {
-	client rest.Interface
+	*gentype.Client[*authenticationv1.SelfSubjectReview]
 }
 
 // newSelfSubjectReviews returns a SelfSubjectReviews
 func newSelfSubjectReviews(c *AuthenticationV1Client) *selfSubjectReviews {
 	return &selfSubjectReviews{
-		client: c.RESTClient(),
+		gentype.NewClient[*authenticationv1.SelfSubjectReview](
+			"selfsubjectreviews",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *authenticationv1.SelfSubjectReview { return &authenticationv1.SelfSubjectReview{} },
+			gentype.PrefersProtobuf[*authenticationv1.SelfSubjectReview](),
+		),
 	}
-}
-
-// Create takes the representation of a selfSubjectReview and creates it.  Returns the server's representation of the selfSubjectReview, and an error, if there is any.
-func (c *selfSubjectReviews) Create(ctx context.Context, selfSubjectReview *v1.SelfSubjectReview, opts metav1.CreateOptions) (result *v1.SelfSubjectReview, err error) {
-	result = &v1.SelfSubjectReview{}
-	err = c.client.Post().
-		Resource("selfsubjectreviews").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(selfSubjectReview).
-		Do(ctx).
-		Into(result)
-	return
 }

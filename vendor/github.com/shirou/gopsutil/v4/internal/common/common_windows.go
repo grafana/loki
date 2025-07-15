@@ -17,19 +17,19 @@ import (
 )
 
 // for double values
-type PDH_FMT_COUNTERVALUE_DOUBLE struct {
+type PDH_FMT_COUNTERVALUE_DOUBLE struct { //nolint:revive //FIXME
 	CStatus     uint32
 	DoubleValue float64
 }
 
 // for 64 bit integer values
-type PDH_FMT_COUNTERVALUE_LARGE struct {
+type PDH_FMT_COUNTERVALUE_LARGE struct { //nolint:revive //FIXME
 	CStatus    uint32
 	LargeValue int64
 }
 
 // for long values
-type PDH_FMT_COUNTERVALUE_LONG struct {
+type PDH_FMT_COUNTERVALUE_LONG struct { //nolint:revive //FIXME
 	CStatus   uint32
 	LongValue int32
 	padding   [4]byte
@@ -197,7 +197,7 @@ func ProcessorQueueLengthCounter() (*Win32PerformanceCounter, error) {
 }
 
 // WMIQueryWithContext - wraps wmi.Query with a timed-out context to avoid hanging
-func WMIQueryWithContext(ctx context.Context, query string, dst interface{}, connectServerArgs ...interface{}) error {
+func WMIQueryWithContext(ctx context.Context, query string, dst any, connectServerArgs ...any) error {
 	if _, ok := ctx.Deadline(); !ok {
 		ctxTimeout, cancel := context.WithTimeout(ctx, Timeout)
 		defer cancel()
@@ -233,7 +233,7 @@ func ConvertDOSPath(p string) string {
 		ret, _, _ := procQueryDosDeviceW.Call(uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(szDeviceName))),
 			uintptr(unsafe.Pointer(&szTarget[0])),
 			uintptr(len(szTarget)))
-		if ret != 0 && windows.UTF16ToString(szTarget[:]) == rawDrive {
+		if ret != 0 && windows.UTF16ToString(szTarget) == rawDrive {
 			return filepath.Join(szDeviceName, p[len(rawDrive):])
 		}
 	}
@@ -273,19 +273,19 @@ type SystemExtendedHandleInformation struct {
 // CallWithExpandingBuffer https://github.com/hillu/go-ntdll
 func CallWithExpandingBuffer(fn func() NtStatus, buf *[]byte, resultLength *uint32) NtStatus {
 	for {
-		if st := fn(); st == STATUS_BUFFER_OVERFLOW || st == STATUS_BUFFER_TOO_SMALL || st == STATUS_INFO_LENGTH_MISMATCH {
+		st := fn()
+		if st == STATUS_BUFFER_OVERFLOW || st == STATUS_BUFFER_TOO_SMALL || st == STATUS_INFO_LENGTH_MISMATCH {
 			if int(*resultLength) <= cap(*buf) {
 				(*reflect.SliceHeader)(unsafe.Pointer(buf)).Len = int(*resultLength)
 			} else {
 				*buf = make([]byte, int(*resultLength))
 			}
 			continue
-		} else {
-			if !st.IsError() {
-				*buf = (*buf)[:int(*resultLength)]
-			}
-			return st
 		}
+		if !st.IsError() {
+			*buf = (*buf)[:int(*resultLength)]
+		}
+		return st
 	}
 }
 

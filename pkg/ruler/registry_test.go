@@ -13,9 +13,10 @@ import (
 	"github.com/grafana/dskit/user"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
+	common_sigv4 "github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
+	prom_sigv4 "github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -167,9 +168,11 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteQueueCapacity: 987,
+				RulerEnableWALReplay:          true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
+				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
@@ -209,7 +212,7 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 				},
 			},
 			sigV4ConfigTenant: {
-				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
+				RulerRemoteWriteSigV4Config: &common_sigv4.SigV4Config{
 					Region: sigV4TenantRegion,
 				},
 			},
@@ -230,9 +233,11 @@ func newFakeLimits() fakeLimits {
 						QueueConfig: config.QueueConfig{Capacity: 987},
 					},
 				},
+				RulerEnableWALReplay: true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
+				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
@@ -282,7 +287,7 @@ func newFakeLimits() fakeLimits {
 			sigV4ConfigTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
 					remote1: {
-						SigV4Config: &sigv4.SigV4Config{
+						SigV4Config: &prom_sigv4.SigV4Config{
 							Region: sigV4TenantRegion,
 						},
 					},
@@ -338,7 +343,7 @@ func setupSigV4Registry(t *testing.T, cfg Config, limits fakeLimits) *walRegistr
 	// Remove the basic auth config and replace with sigv4
 	for id, clt := range reg.config.RemoteWrite.Clients {
 		clt.HTTPClientConfig.BasicAuth = nil
-		clt.SigV4Config = &sigv4.SigV4Config{
+		clt.SigV4Config = &prom_sigv4.SigV4Config{
 			Region: sigV4GlobalRegion,
 		}
 		reg.config.RemoteWrite.Clients[id] = clt
@@ -398,6 +403,30 @@ func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 
 				_, err := reg.getTenantConfig(additionalHeadersRWTenant)
 				require.NoError(t, err)
+			}(reg)
+		}
+
+		wg.Wait()
+	})
+}
+
+func TestAppenderConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
 			}(reg)
 		}
 

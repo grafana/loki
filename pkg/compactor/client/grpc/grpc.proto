@@ -2,12 +2,17 @@ syntax = "proto3";
 
 package grpc;
 
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
 service Compactor {
   rpc GetDeleteRequests(GetDeleteRequestsRequest) returns (GetDeleteRequestsResponse);
   rpc GetCacheGenNumbers(GetCacheGenNumbersRequest) returns (GetCacheGenNumbersResponse);
 }
 
-message GetDeleteRequestsRequest {}
+message GetDeleteRequestsRequest {
+  bool forQuerytimeFiltering = 1;
+}
 
 message GetDeleteRequestsResponse {
   repeated DeleteRequest deleteRequests = 1;
@@ -26,4 +31,37 @@ message GetCacheGenNumbersRequest {}
 
 message GetCacheGenNumbersResponse {
   string resultsCacheGen = 1;
+}
+
+// Job represents a single job in the queue
+message Job {
+  string id = 1;
+  JobType type = 2;
+  bytes payload = 3; // encoded job specific payload
+}
+
+// JobType represents the type of job
+enum JobType {
+  JOB_TYPE_DELETION = 0;
+  // Add more job types as needed
+}
+
+// JobResult is used to report the result of executing a job
+message JobResult {
+  string job_id = 1;
+  JobType job_type = 2;
+  string error = 3; // Empty string indicates success
+  bytes result = 4; // encoded job specific result payload
+}
+
+// ReportJobResultResponse is the response to reporting a job result
+message ReportJobResultResponse {}
+
+// JobQueue provides RPC methods for job queue operations
+service JobQueue {
+  // After calling this method, both Worker and JobQueue enter a loop, in which worker waits for
+  // "Job" messages containing job details and processes them. After processing the job,
+  // worker signals that it is ready to accept another one by sending JobResult message which contains execution result of previous job it finished.
+  // Since the Worker and JobQueue enter the loop when Worker makes the first call so the JobResult with the first call is expected to be empty.
+  rpc Loop(stream JobResult) returns (stream Job) {}
 }

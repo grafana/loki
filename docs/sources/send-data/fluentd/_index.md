@@ -14,6 +14,8 @@ instance or [Grafana Cloud](/products/cloud/).
 
 The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Installation
 
 ### Local
@@ -28,9 +30,9 @@ fluent-gem install fluent-plugin-grafana-loki
 
 The Docker image `grafana/fluent-plugin-loki:main` contains [default configuration files](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd/docker/conf). By default, fluentd containers use that default configuration. You can instead specify your `fluentd.conf` configuration file with a `FLUENTD_CONF` environment variable.
 
-This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
+This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-This image starts an instance of Fluentd that forwards incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin]({{< relref "../docker-driver" >}}) to ship logs without needing Fluentd.
+This image starts an instance of Fluentd that forwards incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin](../docker-driver/) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -69,9 +71,9 @@ services:
 
 ## Usage
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Use either `<label>...</label>` or `extra_labels` to set at least one label.
-{{% /admonition %}}
+{{< /admonition >}}
 
 In your Fluentd configuration, add `@type loki`. Additional configuration is optional. Default values would look like this:
 

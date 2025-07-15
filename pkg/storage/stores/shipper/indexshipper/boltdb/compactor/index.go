@@ -7,8 +7,6 @@ import (
 	"strconv"
 
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/v3/pkg/compactor/retention"
 )
 
 const (
@@ -39,36 +37,44 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
-func parseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
+type chunkRef struct {
+	UserID   []byte
+	SeriesID []byte
+	ChunkID  []byte
+	From     model.Time
+	Through  model.Time
+}
+
+func parseChunkRef(hashKey, rangeKey []byte) (chunkRef, bool, error) {
 	componentsRef := getComponents()
 	defer putComponents(componentsRef)
 	components := componentsRef.components
 
 	components = decodeRangeKey(rangeKey, components)
 	if len(components) == 0 {
-		return retention.ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return chunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 
 	keyType := components[len(components)-1]
 	if len(keyType) == 0 || keyType[0] != chunkTimeRangeKeyV3 {
-		return retention.ChunkRef{}, false, nil
+		return chunkRef{}, false, nil
 	}
 	chunkID := components[len(components)-2]
 
 	userID, hexFrom, hexThrough, ok := parseChunkID(chunkID)
 	if !ok {
-		return retention.ChunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
+		return chunkRef{}, false, newInvalidIndexKeyError(hashKey, rangeKey)
 	}
 	from, err := strconv.ParseInt(unsafeGetString(hexFrom), 16, 64)
 	if err != nil {
-		return retention.ChunkRef{}, false, err
+		return chunkRef{}, false, err
 	}
 	through, err := strconv.ParseInt(unsafeGetString(hexThrough), 16, 64)
 	if err != nil {
-		return retention.ChunkRef{}, false, err
+		return chunkRef{}, false, err
 	}
 
-	return retention.ChunkRef{
+	return chunkRef{
 		UserID:   userID,
 		SeriesID: seriesFromHash(hashKey),
 		From:     model.Time(from),

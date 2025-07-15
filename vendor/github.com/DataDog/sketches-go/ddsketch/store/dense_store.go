@@ -250,6 +250,17 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 	}
 }
 
+func (s *DenseStore) EncodeProto(builder *sketchpb.StoreBuilder) {
+	if s.IsEmpty() {
+		return
+	}
+
+	for i := s.minIndex - s.offset; i < s.maxIndex-s.offset+1; i++ {
+		builder.AddContiguousBinCounts(s.bins[i])
+	}
+	builder.SetContiguousBinIndexOffset(int32(s.minIndex))
+}
+
 func (s *DenseStore) Reweight(w float64) error {
 	if w <= 0 {
 		return errors.New("can't reweight by a negative factor")

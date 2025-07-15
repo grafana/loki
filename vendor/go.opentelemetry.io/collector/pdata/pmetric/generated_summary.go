@@ -41,6 +41,10 @@ func NewSummary() Summary {
 func (ms Summary) MoveTo(dest Summary) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.Summary{}
 }
@@ -53,5 +57,9 @@ func (ms Summary) DataPoints() SummaryDataPointSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Summary) CopyTo(dest Summary) {
 	dest.state.AssertMutable()
-	ms.DataPoints().CopyTo(dest.DataPoints())
+	copyOrigSummary(dest.orig, ms.orig)
+}
+
+func copyOrigSummary(dest, src *otlpmetrics.Summary) {
+	dest.DataPoints = copyOrigSummaryDataPointSlice(dest.DataPoints, src.DataPoints)
 }

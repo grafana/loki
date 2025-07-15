@@ -23,7 +23,7 @@ func getIntField(L *LState, tb *LTable, key string, v int) int {
 		slv := string(lv)
 		slv = strings.TrimLeft(slv, " ")
 		if strings.HasPrefix(slv, "0") && !strings.HasPrefix(slv, "0x") && !strings.HasPrefix(slv, "0X") {
-			//Standard lua interpreter only support decimal and hexadecimal
+			// Standard lua interpreter only support decimal and hexadecimal
 			slv = strings.TrimLeft(slv, "0")
 			if slv == "" {
 				return 0
@@ -106,15 +106,19 @@ func osExit(L *LState) int {
 
 func osDate(L *LState) int {
 	t := time.Now()
+	isUTC := false
 	cfmt := "%c"
 	if L.GetTop() >= 1 {
 		cfmt = L.CheckString(1)
 		if strings.HasPrefix(cfmt, "!") {
-			t = time.Now().UTC()
 			cfmt = strings.TrimLeft(cfmt, "!")
+			isUTC = true
 		}
 		if L.GetTop() >= 2 {
 			t = time.Unix(L.CheckInt64(2), 0)
+		}
+		if isUTC {
+			t = t.UTC()
 		}
 		if strings.HasPrefix(cfmt, "*t") {
 			ret := L.NewTable()

@@ -1,10 +1,10 @@
 ---
-title: Multi-tenancy
-menuTitle:  
-description: Describes how Loki implements multi-tenancy to isolate tenant data and queries.
+title: Manage tenant isolation
+menuTitle: Multi-tenancy
+description: Describes how Grafana Loki implements multi-tenancy to isolate tenant data and queries.
 weight: 
 ---
-# Multi-tenancy
+# Manage tenant isolation
 
 Grafana Loki is a multi-tenant system; requests and data for tenant A are isolated from
 tenant B. Requests to the Loki API should include an HTTP header
@@ -50,3 +50,25 @@ An example of a query that will _not_ work:
 ```
 {app="foo"} | __tenant_id__="1" | logfmt
 ```
+
+## Restrictions
+
+Tenant IDs must not be longer than 150 bytes and can only include the following characters:
+
+- Alphanumeric characters
+  - `0-9`
+  - `a-z`
+  - `A-Z`
+- Special characters
+  - Exclamation point (`!`)
+  - Hyphen (`-`)
+  - Underscore (`_`)
+  - Single period (`.`)
+  - Asterisk (`*`)
+  - Single quote (`'`)
+  - Open parenthesis (`(`)
+  - Close parenthesis (`)`)
+
+{{< admonition type="note" >}}
+For security reasons, `.` and `..` aren't valid tenant IDs.
+{{< /admonition >}}

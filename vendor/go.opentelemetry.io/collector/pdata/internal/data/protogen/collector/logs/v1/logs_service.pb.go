@@ -254,8 +254,6 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type LogsServiceClient interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(ctx context.Context, in *ExportLogsServiceRequest, opts ...grpc.CallOption) (*ExportLogsServiceResponse, error)
 }
 
@@ -278,8 +276,6 @@ func (c *logsServiceClient) Export(ctx context.Context, in *ExportLogsServiceReq
 
 // LogsServiceServer is the server API for LogsService service.
 type LogsServiceServer interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(context.Context, *ExportLogsServiceRequest) (*ExportLogsServiceResponse, error)
 }
 

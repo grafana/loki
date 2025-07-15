@@ -64,7 +64,7 @@ func TestDoParallelQueries(t *testing.T) {
 				queries: map[string]index.Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(_ index.Query, _ index.ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)

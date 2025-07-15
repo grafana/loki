@@ -47,6 +47,22 @@
 
    Commits will be squashed when they're merged.
 
+## Policy on new dependencies
+
+While the Go ecosystem is rich with useful modules, in this project we try to
+minimize the number of direct dependencies we have on modules that are not
+Google-owned.
+
+Adding new third party dependencies can have the following effects:
+* broadens the vulnerability surface
+* increases so called "vanity" import routing infrastructure failure points
+* increases complexity of our own [`third_party`][] imports 
+
+So if you are contributing, please either contribute the full implementation
+directly, or find a Google-owned project that provides the functionality. Of
+course, there may be exceptions to this rule, but those should be well defined
+and agreed upon by the maintainers ahead of time.
+
 ## Testing
 
 We test code against two versions of Go, the minimum and maximum versions
@@ -122,21 +138,38 @@ Finally, in the general project, create an API key for the translate API:
 
 #### Local Setup
 
-Once the three projects are created and configured, set the following environment
-variables:
+Once the three projects are created and configured, set the following
+environment variables:
 
 - `GCLOUD_TESTS_GOLANG_PROJECT_ID`: Developers Console project's ID (e.g.
 bamboo-shift-455) for the general project.
 - `GCLOUD_TESTS_GOLANG_KEY`: The path to the JSON key file of the general
 project's service account.
-- `GCLOUD_TESTS_GOLANG_DATASTORE_DATABASES`: Comma separated list of developer's Datastore databases. If not provided, default database i.e. empty string is used.
+- `GCLOUD_TESTS_GOLANG_DATASTORE_DATABASES`: Comma separated list of developer's
+Datastore databases. If not provided, default database i.e. empty string is used.
 - `GCLOUD_TESTS_GOLANG_FIRESTORE_PROJECT_ID`: Developers Console project's ID
 (e.g. doorway-cliff-677) for the Firestore project.
-- `GCLOUD_TESTS_GOLANG_FIRESTORE_DATABASES` : Comma separated list of developer's Firestore databases. If not provided, default database is used.
+- `GCLOUD_TESTS_GOLANG_FIRESTORE_DATABASES`: Comma separated list of developer's
+Firestore databases. If not provided, default database is used.
 - `GCLOUD_TESTS_GOLANG_FIRESTORE_KEY`: The path to the JSON key file of the
 Firestore project's service account.
 - `GCLOUD_TESTS_API_KEY`: API key for using the Translate API created above.
-- `GCLOUD_TESTS_GOLANG_SECONDARY_BIGTABLE_PROJECT_ID`: Developers Console project's ID (e.g. doorway-cliff-677) for Bigtable optional secondary project. This can be same as Firestore project or any project other than the general project.
+- `GCLOUD_TESTS_GOLANG_SECONDARY_BIGTABLE_PROJECT_ID`: Developers Console
+project's ID (e.g. doorway-cliff-677) for Bigtable optional secondary project.
+This can be same as Firestore project or any project other than the general
+project.
+- `GCLOUD_TESTS_BIGTABLE_CLUSTER`: Cluster ID of Bigtable cluster in general
+project.
+- `GCLOUD_TESTS_BIGTABLE_PRI_PROJ_SEC_CLUSTER`: Optional. Cluster ID of Bigtable
+secondary cluster in general project
+- `TEST_UNIVERSE_DOMAIN`: Optional. Universe domain to test universe domain
+functionality against.
+- `TEST_UNIVERSE_PROJECT_ID`: Optional. Project ID within the universe domain
+for testing.
+- `TEST_UNIVERSE_LOCATION`: Optional. Available location within the universe
+domain.
+- `TEST_UNIVERSE_DOMAIN_CREDENTIAL`: Optional. The path to the JSON key file of
+the universe domain's service account.
 
 As part of the setup that follows, the following variables will be configured:
 
@@ -343,3 +376,4 @@ available at [https://contributor-covenant.org/version/1/2/0/](https://contribut
 [gcloudcli]: https://developers.google.com/cloud/sdk/gcloud/
 [indvcla]: https://developers.google.com/open-source/cla/individual
 [corpcla]: https://developers.google.com/open-source/cla/corporate
+[`third_party`]: https://opensource.google/documentation/reference/thirdparty

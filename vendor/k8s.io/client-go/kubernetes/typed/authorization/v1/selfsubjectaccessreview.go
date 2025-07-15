@@ -19,12 +19,12 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 
-	v1 "k8s.io/api/authorization/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gentype "k8s.io/client-go/gentype"
 	scheme "k8s.io/client-go/kubernetes/scheme"
-	rest "k8s.io/client-go/rest"
 )
 
 // SelfSubjectAccessReviewsGetter has a method to return a SelfSubjectAccessReviewInterface.
@@ -35,30 +35,25 @@ type SelfSubjectAccessReviewsGetter interface {
 
 // SelfSubjectAccessReviewInterface has methods to work with SelfSubjectAccessReview resources.
 type SelfSubjectAccessReviewInterface interface {
-	Create(ctx context.Context, selfSubjectAccessReview *v1.SelfSubjectAccessReview, opts metav1.CreateOptions) (*v1.SelfSubjectAccessReview, error)
+	Create(ctx context.Context, selfSubjectAccessReview *authorizationv1.SelfSubjectAccessReview, opts metav1.CreateOptions) (*authorizationv1.SelfSubjectAccessReview, error)
 	SelfSubjectAccessReviewExpansion
 }
 
 // selfSubjectAccessReviews implements SelfSubjectAccessReviewInterface
 type selfSubjectAccessReviews struct {
-	client rest.Interface
+	*gentype.Client[*authorizationv1.SelfSubjectAccessReview]
 }
 
 // newSelfSubjectAccessReviews returns a SelfSubjectAccessReviews
 func newSelfSubjectAccessReviews(c *AuthorizationV1Client) *selfSubjectAccessReviews {
 	return &selfSubjectAccessReviews{
-		client: c.RESTClient(),
+		gentype.NewClient[*authorizationv1.SelfSubjectAccessReview](
+			"selfsubjectaccessreviews",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *authorizationv1.SelfSubjectAccessReview { return &authorizationv1.SelfSubjectAccessReview{} },
+			gentype.PrefersProtobuf[*authorizationv1.SelfSubjectAccessReview](),
+		),
 	}
-}
-
-// Create takes the representation of a selfSubjectAccessReview and creates it.  Returns the server's representation of the selfSubjectAccessReview, and an error, if there is any.
-func (c *selfSubjectAccessReviews) Create(ctx context.Context, selfSubjectAccessReview *v1.SelfSubjectAccessReview, opts metav1.CreateOptions) (result *v1.SelfSubjectAccessReview, err error) {
-	result = &v1.SelfSubjectAccessReview{}
-	err = c.client.Post().
-		Resource("selfsubjectaccessreviews").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(selfSubjectAccessReview).
-		Do(ctx).
-		Into(result)
-	return
 }

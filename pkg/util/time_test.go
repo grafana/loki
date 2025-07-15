@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -303,4 +304,11 @@ func TestGetFactorOfTime(t *testing.T) {
 			require.Equal(t, tc.exp, factor)
 		})
 	}
+}
+
+func TestRetentionHours(t *testing.T) {
+	require.Equal(t, "24", RetentionHours(24*time.Hour))
+	sevenDays, err := model.ParseDuration("7d")
+	require.NoError(t, err)
+	require.Equal(t, "168", RetentionHours(time.Duration(sevenDays)))
 }

@@ -13,23 +13,22 @@ Active](https://masterminds.github.io/stability/active.svg)](https://masterminds
 [![GoDoc](https://img.shields.io/static/v1?label=godoc&message=reference&color=blue)](https://pkg.go.dev/github.com/Masterminds/semver/v3)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Masterminds/semver)](https://goreportcard.com/report/github.com/Masterminds/semver)
 
-If you are looking for a command line tool for version comparisons please see
-[vert](https://github.com/Masterminds/vert) which uses this library.
-
 ## Package Versions
+
+Note, import `github.com/Masterminds/semver/v3` to use the latest version.
 
 There are three major versions fo the `semver` package.
 
-* 3.x.x is the new stable and active version. This version is focused on constraint
+* 3.x.x is the stable and active version. This version is focused on constraint
   compatibility for range handling in other tools from other languages. It has
   a similar API to the v1 releases. The development of this version is on the master
   branch. The documentation for this version is below.
 * 2.x was developed primarily for [dep](https://github.com/golang/dep). There are
   no tagged releases and the development was performed by [@sdboyer](https://github.com/sdboyer).
   There are API breaking changes from v1. This version lives on the [2.x branch](https://github.com/Masterminds/semver/tree/2.x).
-* 1.x.x is the most widely used version with numerous tagged releases. This is the
-  previous stable and is still maintained for bug fixes. The development, to fix
-  bugs, occurs on the release-1 branch. You can read the documentation [here](https://github.com/Masterminds/semver/blob/release-1/README.md).
+* 1.x.x is the original release. It is no longer maintained. You should use the
+  v3 release instead. You can read the documentation for the 1.x.x release
+  [here](https://github.com/Masterminds/semver/blob/release-1/README.md).
 
 ## Parsing Semantic Versions
 
@@ -78,12 +77,12 @@ There are two methods for comparing versions. One uses comparison methods on
 differences to notes between these two methods of comparison.
 
 1. When two versions are compared using functions such as `Compare`, `LessThan`,
-   and others it will follow the specification and always include prereleases
+   and others it will follow the specification and always include pre-releases
    within the comparison. It will provide an answer that is valid with the
    comparison section of the spec at https://semver.org/#spec-item-11
 2. When constraint checking is used for checks or validation it will follow a
    different set of rules that are common for ranges with tools like npm/js
-   and Rust/Cargo. This includes considering prereleases to be invalid if the
+   and Rust/Cargo. This includes considering pre-releases to be invalid if the
    ranges does not include one. If you want to have it include pre-releases a
    simple solution is to include `-0` in your range.
 3. Constraint ranges can have some complex rules including the shorthand use of
@@ -111,7 +110,7 @@ v, err := semver.NewVersion("1.3")
 if err != nil {
     // Handle version not being parsable.
 }
-// Check if the version meets the constraints. The a variable will be true.
+// Check if the version meets the constraints. The variable a will be true.
 a := c.Check(v)
 ```
 
@@ -135,20 +134,20 @@ The basic comparisons are:
 ### Working With Prerelease Versions
 
 Pre-releases, for those not familiar with them, are used for software releases
-prior to stable or generally available releases. Examples of prereleases include
-development, alpha, beta, and release candidate releases. A prerelease may be
+prior to stable or generally available releases. Examples of pre-releases include
+development, alpha, beta, and release candidate releases. A pre-release may be
 a version such as `1.2.3-beta.1` while the stable release would be `1.2.3`. In the
-order of precedence, prereleases come before their associated releases. In this
+order of precedence, pre-releases come before their associated releases. In this
 example `1.2.3-beta.1 < 1.2.3`.
 
-According to the Semantic Version specification prereleases may not be
+According to the Semantic Version specification, pre-releases may not be
 API compliant with their release counterpart. It says,
 
 > A pre-release version indicates that the version is unstable and might not satisfy the intended compatibility requirements as denoted by its associated normal version.
 
-SemVer comparisons using constraints without a prerelease comparator will skip
-prerelease versions. For example, `>=1.2.3` will skip prereleases when looking
-at a list of releases while `>=1.2.3-0` will evaluate and find prereleases.
+SemVer's comparisons using constraints without a pre-release comparator will skip
+pre-release versions. For example, `>=1.2.3` will skip pre-releases when looking
+at a list of releases while `>=1.2.3-0` will evaluate and find pre-releases.
 
 The reason for the `0` as a pre-release version in the example comparison is
 because pre-releases can only contain ASCII alphanumerics and hyphens (along with
@@ -168,6 +167,9 @@ These look like:
 
 * `1.2 - 1.4.5` which is equivalent to `>= 1.2 <= 1.4.5`
 * `2.3.4 - 4.5` which is equivalent to `>= 2.3.4 <= 4.5`
+
+Note that `1.2-1.4.5` without whitespace is parsed completely differently; it's
+parsed as a single constraint `1.2.0` with _prerelease_ `1.4.5`.
 
 ### Wildcards In Comparisons
 
@@ -242,3 +244,15 @@ for _, m := range msgs {
 
 If you find an issue or want to contribute please file an [issue](https://github.com/Masterminds/semver/issues)
 or [create a pull request](https://github.com/Masterminds/semver/pulls).
+
+## Security
+
+Security is an important consideration for this project. The project currently
+uses the following tools to help discover security issues:
+
+* [CodeQL](https://github.com/Masterminds/semver)
+* [gosec](https://github.com/securego/gosec)
+* Daily Fuzz testing
+
+If you believe you have found a security vulnerability you can privately disclose
+it through the [GitHub security page](https://github.com/Masterminds/semver/security).

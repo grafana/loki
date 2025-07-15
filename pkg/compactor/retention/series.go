@@ -9,7 +9,7 @@ type userSeries struct {
 	seriesIDLen int
 }
 
-func newUserSeries(seriesID []byte, userID []byte) userSeries {
+func newUserSeries(seriesID, userID []byte) userSeries {
 	key := make([]byte, 0, len(seriesID)+len(userID))
 	key = append(key, seriesID...)
 	key = append(key, userID...)
@@ -31,16 +31,6 @@ func (us userSeries) UserID() []byte {
 	return us.key[us.seriesIDLen:]
 }
 
-func (us *userSeries) Reset(seriesID []byte, userID []byte) {
-	if us.key == nil {
-		us.key = make([]byte, 0, len(seriesID)+len(userID))
-	}
-	us.key = us.key[:0]
-	us.key = append(us.key, seriesID...)
-	us.key = append(us.key, userID...)
-	us.seriesIDLen = len(seriesID)
-}
-
 type userSeriesInfo struct {
 	userSeries
 	isDeleted bool
@@ -53,7 +43,7 @@ func newUserSeriesMap() userSeriesMap {
 	return make(userSeriesMap)
 }
 
-func (u userSeriesMap) Add(seriesID []byte, userID []byte, lbls labels.Labels) {
+func (u userSeriesMap) Add(seriesID, userID []byte, lbls labels.Labels) {
 	us := newUserSeries(seriesID, userID)
 	if _, ok := u[us.Key()]; ok {
 		return
@@ -67,7 +57,7 @@ func (u userSeriesMap) Add(seriesID []byte, userID []byte, lbls labels.Labels) {
 }
 
 // MarkSeriesNotDeleted is used to mark series not deleted when it still has some chunks left in the store
-func (u userSeriesMap) MarkSeriesNotDeleted(seriesID []byte, userID []byte) {
+func (u userSeriesMap) MarkSeriesNotDeleted(seriesID, userID []byte) {
 	us := newUserSeries(seriesID, userID)
 	usi := u[us.Key()]
 	usi.isDeleted = false
@@ -81,4 +71,10 @@ func (u userSeriesMap) ForEach(callback func(info userSeriesInfo) error) error {
 		}
 	}
 	return nil
+}
+
+func (u userSeriesMap) HasSeries(seriesID, userID []byte) bool {
+	us := newUserSeries(seriesID, userID)
+	_, ok := u[us.Key()]
+	return ok
 }

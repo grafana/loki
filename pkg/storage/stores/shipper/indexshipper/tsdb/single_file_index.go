@@ -7,9 +7,8 @@ import (
 	"io"
 	"math"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"github.com/opentracing/opentracing-go"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -218,7 +217,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
 
 			res = append(res, ChunkRef{
@@ -268,10 +267,17 @@ func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, mat
 }
 
 func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	if len(matchers) == 0 {
-		return i.reader.LabelValues(name)
+	if len(matchers) != 0 {
+		return labelValuesWithMatchers(i.reader, name, matchers...)
 	}
-	return labelValuesWithMatchers(i.reader, name, matchers...)
+
+	labelValues, err := i.reader.LabelValues(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// cloning the string
+	return cloneStringList(labelValues), nil
 }
 
 func (i *TSDBIndex) Checksum() uint32 {
@@ -293,12 +299,18 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
+		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
 			filterer = i.chunkFilter.ForRequest(ctx)
+			if filterer != nil {
+				for _, k := range filterer.RequiredLabelNames() {
+					by[k] = struct{}{}
+				}
+			}
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return err
 			}
@@ -353,8 +365,8 @@ func (i *TSDBIndex) Volume(
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Index.Volume")
+	defer sp.End()
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
@@ -362,16 +374,29 @@ func (i *TSDBIndex) Volume(
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
+	var by map[string]struct{}
+	var filterer chunk.Filterer
+	if i.chunkFilter != nil {
+		filterer = i.chunkFilter.ForRequest(ctx)
+	}
+	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
+		by = make(map[string]struct{}, len(labelsToMatch))
+		for k := range labelsToMatch {
+			by[k] = struct{}{}
+		}
+
+		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
+		if filterer != nil {
+			for _, k := range filterer.RequiredLabelNames() {
+				by[k] = struct{}{}
+			}
+		}
+	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
-		var filterer chunk.Filterer
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-		}
-
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
@@ -434,4 +459,12 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+}
+
+func cloneStringList(strs []string) []string {
+	res := make([]string, 0, len(strs))
+	for _, str := range strs {
+		res = append(res, strings.Clone(str))
+	}
+	return res
 }

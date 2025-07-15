@@ -88,6 +88,8 @@ type ClientHandshakerOptions struct {
 	TargetServiceAccounts []string
 	// RPCVersions specifies the gRPC versions accepted by the client.
 	RPCVersions *altspb.RpcProtocolVersions
+	// BoundAccessToken is a bound access token to be sent to the server for authentication.
+	BoundAccessToken string
 }
 
 // ServerHandshakerOptions contains the server handshaker options that can
@@ -128,7 +130,7 @@ type altsHandshaker struct {
 // NewClientHandshaker creates a core.Handshaker that performs a client-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewClientHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
+func NewClientHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ClientHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -141,7 +143,7 @@ func NewClientHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn,
 // NewServerHandshaker creates a core.Handshaker that performs a server-side
 // ALTS handshake by acting as a proxy between the peer and the ALTS handshaker
 // service in the metadata server.
-func NewServerHandshaker(ctx context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
+func NewServerHandshaker(_ context.Context, conn *grpc.ClientConn, c net.Conn, opts *ServerHandshakerOptions) (core.Handshaker, error) {
 	return &altsHandshaker{
 		stream:     nil,
 		conn:       c,
@@ -195,7 +197,9 @@ func (h *altsHandshaker) ClientHandshake(ctx context.Context) (net.Conn, credent
 			},
 		},
 	}
-
+	if h.clientOpts.BoundAccessToken != "" {
+		req.GetClientStart().AccessToken = h.clientOpts.BoundAccessToken
+	}
 	conn, result, err := h.doHandshake(req)
 	if err != nil {
 		return nil, nil, err
@@ -308,6 +312,7 @@ func (h *altsHandshaker) accessHandshakerService(req *altspb.HandshakerReq) (*al
 // whatever received from the network and send it to the handshaker service.
 func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []byte) (*altspb.HandshakerResult, []byte, error) {
 	var lastWriteTime time.Time
+	buf := make([]byte, frameLimit)
 	for {
 		if len(resp.OutFrames) > 0 {
 			lastWriteTime = time.Now()
@@ -318,7 +323,6 @@ func (h *altsHandshaker) processUntilDone(resp *altspb.HandshakerResp, extra []b
 		if resp.Result != nil {
 			return resp.Result, extra, nil
 		}
-		buf := make([]byte, frameLimit)
 		n, err := h.conn.Read(buf)
 		if err != nil && err != io.EOF {
 			return nil, nil, err

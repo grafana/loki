@@ -11,6 +11,10 @@ keywords:
 
 v6.x of this chart introduces distributed mode but also introduces breaking changes from v5x.
 
+{{< admonition type="caution" >}}
+If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/), perform that migration before you upgrade your Loki Helm chart to v6.x.
+{{< /admonition >}}
+
 ### Changes
 
 #### BREAKING: `deploymentMode` setting
@@ -48,7 +52,7 @@ Reasons:
   * The Agent Operator is deprecated.
   * The dependency on the Prometheus operator is not one we are able to support well.
 
-The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) is an improvement over the the previous approach because it allows for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or letting you install a monitoring-only local installation of Loki, Mimir, Tempo, and Grafana.
+The [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart) is an improvement over the previous approach because it allows for installing a clustered Grafana Agent which can send metrics, logs, and traces to Grafana Cloud, or letting you install a monitoring-only local installation of Loki, Mimir, Tempo, and Grafana.
 
 The monitoring sections of this chart still exist but are disabled by default.
 

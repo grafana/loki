@@ -59,13 +59,33 @@ func setDefaults(o *policy.RetryOptions) {
 }
 
 func calcDelay(o policy.RetryOptions, try int32) time.Duration { // try is >=1; never 0
-	delay := time.Duration((1<<try)-1) * o.RetryDelay
+	// avoid overflow when shifting left
+	factor := time.Duration(math.MaxInt64)
+	if try < 63 {
+		factor = time.Duration(int64(1<<try) - 1)
+	}
 
-	// Introduce some jitter:  [0.0, 1.0) / 2 = [0.0, 0.5) + 0.8 = [0.8, 1.3)
-	delay = time.Duration(delay.Seconds() * (rand.Float64()/2 + 0.8) * float64(time.Second)) // NOTE: We want math/rand; not crypto/rand
-	if delay > o.MaxRetryDelay {
+	delay := factor * o.RetryDelay
+	if delay < factor {
+		// overflow has happened so set to max value
+		delay = time.Duration(math.MaxInt64)
+	}
+
+	// Introduce jitter:  [0.0, 1.0) / 2 = [0.0, 0.5) + 0.8 = [0.8, 1.3)
+	jitterMultiplier := rand.Float64()/2 + 0.8 // NOTE: We want math/rand; not crypto/rand
+
+	delayFloat := float64(delay) * jitterMultiplier
+	if delayFloat > float64(math.MaxInt64) {
+		// the jitter pushed us over MaxInt64, so just use MaxInt64
+		delay = time.Duration(math.MaxInt64)
+	} else {
+		delay = time.Duration(delayFloat)
+	}
+
+	if delay > o.MaxRetryDelay { // MaxRetryDelay is backfilled with non-negative value
 		delay = o.MaxRetryDelay
 	}
+
 	return delay
 }
 
@@ -102,7 +122,8 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 	try := int32(1)
 	for {
 		resp = nil // reset
-		log.Writef(log.EventRetryPolicy, "=====> Try=%d", try)
+		// unfortunately we don't have access to the custom allow-list of query params, so we'll redact everything but the default allowed QPs
+		log.Writef(log.EventRetryPolicy, "=====> Try=%d for %s %s", try, req.Raw().Method, getSanitizedURL(*req.Raw().URL, getAllowedQueryParams(nil)))
 
 		// For each try, seek to the beginning of the Body stream. We do this even for the 1st try because
 		// the stream may not be at offset 0 when we first get it and we want the same behavior for the

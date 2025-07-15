@@ -18,10 +18,10 @@ import (
 
 var supportedAuthRecordVersions = []string{"1.0"}
 
-// authenticationRecord is non-secret account information about an authenticated user that user credentials such as
+// AuthenticationRecord is non-secret account information about an authenticated user that user credentials such as
 // [DeviceCodeCredential] and [InteractiveBrowserCredential] can use to access previously cached authentication
-// data. Call these credentials' Authenticate method to get an authenticationRecord for a user.
-type authenticationRecord struct {
+// data. Call these credentials' Authenticate method to get an AuthenticationRecord for a user.
+type AuthenticationRecord struct {
 	// Authority is the URL of the authority that issued the token.
 	Authority string `json:"authority"`
 
@@ -42,11 +42,11 @@ type authenticationRecord struct {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for AuthenticationRecord
-func (a *authenticationRecord) UnmarshalJSON(b []byte) error {
+func (a *AuthenticationRecord) UnmarshalJSON(b []byte) error {
 	// Default unmarshaling is fine but we want to return an error if the record's version isn't supported i.e., we
 	// want to inspect the unmarshalled values before deciding whether to return an error. Unmarshaling a formally
 	// different type enables this by assigning all the fields without recursing into this method.
-	type r authenticationRecord
+	type r AuthenticationRecord
 	err := json.Unmarshal(b, (*r)(a))
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (a *authenticationRecord) UnmarshalJSON(b []byte) error {
 }
 
 // account returns the AuthenticationRecord as an MSAL Account. The account is zero-valued when the AuthenticationRecord is zero-valued.
-func (a *authenticationRecord) account() public.Account {
+func (a *AuthenticationRecord) account() public.Account {
 	return public.Account{
 		Environment:       a.Authority,
 		HomeAccountID:     a.HomeAccountID,
@@ -71,10 +71,10 @@ func (a *authenticationRecord) account() public.Account {
 	}
 }
 
-func newAuthenticationRecord(ar public.AuthResult) (authenticationRecord, error) {
+func newAuthenticationRecord(ar public.AuthResult) (AuthenticationRecord, error) {
 	u, err := url.Parse(ar.IDToken.Issuer)
 	if err != nil {
-		return authenticationRecord{}, fmt.Errorf("Authenticate expected a URL issuer but got %q", ar.IDToken.Issuer)
+		return AuthenticationRecord{}, fmt.Errorf("Authenticate expected a URL issuer but got %q", ar.IDToken.Issuer)
 	}
 	tenant := ar.IDToken.TenantID
 	if tenant == "" {
@@ -84,7 +84,7 @@ func newAuthenticationRecord(ar public.AuthResult) (authenticationRecord, error)
 	if username == "" {
 		username = ar.IDToken.UPN
 	}
-	return authenticationRecord{
+	return AuthenticationRecord{
 		Authority:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
 		ClientID:      ar.IDToken.Audience,
 		HomeAccountID: ar.Account.HomeAccountID,

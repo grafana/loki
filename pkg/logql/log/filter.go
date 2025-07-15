@@ -322,16 +322,16 @@ func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 }
 
 // ChainOrMatcherFilterer is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrMatcherFilterer(curr, new MatcherFilterer) MatcherFilterer {
+func ChainOrMatcherFilterer(curr, newFilterer MatcherFilterer) MatcherFilterer {
 	if curr == nil {
-		return new
+		return newFilterer
 	}
-	return newOrFilter(curr, new)
+	return newOrFilter(curr, newFilterer)
 }
 
 // ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrFilter(curr, new Filterer) Filterer {
-	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(new))
+func ChainOrFilter(curr, newFilterer Filterer) Filterer {
+	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(newFilterer))
 }
 
 func (a orFilter) Filter(line []byte) bool {
@@ -421,6 +421,9 @@ func (l equalFilter) String() string {
 }
 
 func newEqualFilter(match []byte, caseInsensitive bool) MatcherFilterer {
+	if caseInsensitive {
+		match = bytes.ToLower(match)
+	}
 	return equalFilter{match, caseInsensitive}
 }
 
@@ -440,6 +443,8 @@ func contains(line, substr []byte, caseInsensitive bool) bool {
 	return containsLower(line, substr)
 }
 
+// containsLower verifies if substr is a substring of line, with case insensitive comparison.
+// substr MUST be in lowercase before calling this function.
 func containsLower(line, substr []byte) bool {
 	if len(substr) == 0 {
 		return true
@@ -447,35 +452,85 @@ func containsLower(line, substr []byte) bool {
 	if len(substr) > len(line) {
 		return false
 	}
-	j := 0
-	for len(line) > 0 {
-		// ascii fast case
-		if c := line[0]; c < utf8.RuneSelf && substr[j] < utf8.RuneSelf {
-			if c == substr[j] || c+'a'-'A' == substr[j] || c == substr[j]+'a'-'A' {
-				j++
-				if j == len(substr) {
-					return true
+
+	// Fast path - try to find first byte of substr
+	firstByte := substr[0]
+	maxIndex := len(line) - len(substr)
+
+	i := 0
+	for i <= maxIndex {
+		// Find potential first byte match
+		c := line[i]
+		// Fast path for ASCII - if c is uppercase letter, convert to lowercase
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != firstByte {
+			i++
+			continue
+		}
+
+		// Found potential match, check rest of substr
+		matched := true
+		linePos := i
+		substrPos := 0
+
+		for linePos < len(line) && substrPos < len(substr) {
+			c := line[linePos]
+			s := substr[substrPos]
+
+			// Fast path for ASCII
+			if c < utf8.RuneSelf && s < utf8.RuneSelf {
+				// Convert line char to lowercase if needed
+				if c >= 'A' && c <= 'Z' {
+					c += 'a' - 'A'
 				}
-				line = line[1:]
+				if c != s {
+					matched = false
+					break
+				}
+				linePos++
+				substrPos++
 				continue
 			}
-			line = line[1:]
-			j = 0
-			continue
-		}
-		// unicode slow case
-		lr, lwid := utf8.DecodeRune(line)
-		mr, mwid := utf8.DecodeRune(substr[j:])
-		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
-			j += mwid
-			if j == len(substr) {
-				return true
+
+			// Slower Unicode path only when needed
+			lr, lineSize := utf8.DecodeRune(line[linePos:])
+			if lr == utf8.RuneError && lineSize == 1 {
+				// Invalid UTF-8, treat as raw bytes
+				if c >= 'A' && c <= 'Z' {
+					c += 'a' - 'A'
+				}
+				if c != s {
+					matched = false
+					break
+				}
+				linePos++
+				substrPos++
+				continue
 			}
-			line = line[lwid:]
-			continue
+
+			mr, substrSize := utf8.DecodeRune(substr[substrPos:])
+			if mr == utf8.RuneError && substrSize == 1 {
+				// Invalid UTF-8 in pattern (shouldn't happen as substr should be valid)
+				matched = false
+				break
+			}
+
+			// Compare line rune converted to lowercase with pattern (which is already lowercase)
+			if unicode.ToLower(lr) != mr {
+				matched = false
+				break
+			}
+
+			linePos += lineSize
+			substrPos += substrSize
 		}
-		line = line[lwid:]
-		j = 0
+
+		if matched && substrPos == len(substr) {
+			return true
+		}
+		i++
 	}
 	return false
 }

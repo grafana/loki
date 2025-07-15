@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestAlertingRuleValidator(t *testing.T) {
@@ -57,6 +57,35 @@ func TestAlertingRuleValidator(t *testing.T) {
 				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: "audit",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: nil,
+		},
+		{
+			desc: "allow infrastructure in openshift-logging without namespace label",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "openshift-logging",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "infrastructure",
 					Groups: []*lokiv1.AlertingRuleGroup{
 						{
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
@@ -511,10 +540,45 @@ func TestAlertingRuleValidator(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "AlertingRule expression using both namespace labels",
+			spec: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "alerting-rule",
+					Namespace: "example",
+				},
+				Spec: lokiv1.AlertingRuleSpec{
+					TenantID: "application",
+					Groups: []*lokiv1.AlertingRuleGroup{
+						{
+							Rules: []*lokiv1.AlertingRuleGroupSpec{
+								{
+									Expr: `sum(rate({kubernetes_namespace_name="example", k8s_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+									Labels: map[string]string{
+										severityLabelName: "warning",
+									},
+									Annotations: map[string]string{
+										summaryAnnotationName:     "alert summary",
+										descriptionAnnotationName: "alert description",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErrors: []*field.Error{
+				{
+					Type:     field.ErrorTypeInvalid,
+					Field:    "spec.groups[0].rules[0].expr",
+					BadValue: `sum(rate({kubernetes_namespace_name="example", k8s_namespace_name="example", level="error"}[5m])) by (job) > 0.1`,
+					Detail:   lokiv1.ErrRuleExclusiveNamespaceLabel.Error(),
+				},
+			},
+		},
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

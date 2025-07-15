@@ -108,7 +108,7 @@ func TestResponseFormat(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
-			handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				return tc.response, nil
 			})
 			httpHandler := NewSerializeHTTPHandler(handler, DefaultCodec)

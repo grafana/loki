@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/alecthomas/kingpin/v2"
 
 	"github.com/prometheus/common/version"
 
@@ -21,7 +21,7 @@ func main() {
 	ruleCommand.Register(app)
 	auditCommand.Register(app)
 
-	app.Command("version", "Get the version of the lokitool CLI").Action(func(k *kingpin.ParseContext) error {
+	app.Command("version", "Get the version of the lokitool CLI").Action(func(_ *kingpin.ParseContext) error {
 		fmt.Println(version.Print("loki"))
 		return nil
 	})

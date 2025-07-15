@@ -59,7 +59,7 @@ func (ex *exampleValidator) isVisited(path string) bool {
 //   - individual property
 //   - responses
 func (ex *exampleValidator) Validate() *Result {
-	errs := poolOfResults.BorrowResult()
+	errs := pools.poolOfResults.BorrowResult()
 
 	if ex == nil || ex.SpecValidator == nil {
 		return errs
@@ -75,7 +75,7 @@ func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
 	// in: schemas, properties, object, items
 	// not in: headers, parameters without schema
 
-	res := poolOfResults.BorrowResult()
+	res := pools.poolOfResults.BorrowResult()
 	s := ex.SpecValidator
 
 	for method, pathItem := range s.expandedAnalyzer().Operations() {
@@ -97,6 +97,8 @@ func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
 					if red.HasErrorsOrWarnings() {
 						res.AddWarnings(exampleValueDoesNotValidateMsg(param.Name, param.In))
 						res.MergeAsWarnings(red)
+					} else if red.wantsRedeemOnMerge {
+						pools.poolOfResults.RedeemResult(red)
 					}
 				}
 
@@ -106,8 +108,8 @@ func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
 					if red.HasErrorsOrWarnings() {
 						res.AddWarnings(exampleValueItemsDoesNotValidateMsg(param.Name, param.In))
 						res.Merge(red)
-					} else {
-						poolOfResults.RedeemResult(red)
+					} else if red.wantsRedeemOnMerge {
+						pools.poolOfResults.RedeemResult(red)
 					}
 				}
 
@@ -117,8 +119,8 @@ func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
 					if red.HasErrorsOrWarnings() {
 						res.AddWarnings(exampleValueDoesNotValidateMsg(param.Name, param.In))
 						res.Merge(red)
-					} else {
-						poolOfResults.RedeemResult(red)
+					} else if red.wantsRedeemOnMerge {
+						pools.poolOfResults.RedeemResult(red)
 					}
 				}
 			}
@@ -144,7 +146,7 @@ func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
 		// reset explored schemas to get depth-first recursive-proof exploration
 		ex.resetVisited()
 		for nm, sch := range s.spec.Spec().Definitions {
-			res.Merge(ex.validateExampleValueSchemaAgainstSchema(fmt.Sprintf("definitions.%s", nm), "body", &sch)) //#nosec
+			res.Merge(ex.validateExampleValueSchemaAgainstSchema("definitions."+nm, "body", &sch)) //#nosec
 		}
 	}
 	return res
@@ -170,6 +172,8 @@ func (ex *exampleValidator) validateExampleInResponse(resp *spec.Response, respo
 				if red.HasErrorsOrWarnings() {
 					res.AddWarnings(exampleValueHeaderDoesNotValidateMsg(operationID, nm, responseName))
 					res.MergeAsWarnings(red)
+				} else if red.wantsRedeemOnMerge {
+					pools.poolOfResults.RedeemResult(red)
 				}
 			}
 
@@ -179,6 +183,8 @@ func (ex *exampleValidator) validateExampleInResponse(resp *spec.Response, respo
 				if red.HasErrorsOrWarnings() {
 					res.AddWarnings(exampleValueHeaderItemsDoesNotValidateMsg(operationID, nm, responseName))
 					res.MergeAsWarnings(red)
+				} else if red.wantsRedeemOnMerge {
+					pools.poolOfResults.RedeemResult(red)
 				}
 			}
 
@@ -198,6 +204,8 @@ func (ex *exampleValidator) validateExampleInResponse(resp *spec.Response, respo
 			// Additional message to make sure the context of the error is not lost
 			res.AddWarnings(exampleValueInDoesNotValidateMsg(operationID, responseName))
 			res.Merge(red)
+		} else if red.wantsRedeemOnMerge {
+			pools.poolOfResults.RedeemResult(red)
 		}
 	}
 
@@ -225,7 +233,7 @@ func (ex *exampleValidator) validateExampleValueSchemaAgainstSchema(path, in str
 	}
 	ex.beingVisited(path)
 	s := ex.SpecValidator
-	res := poolOfResults.BorrowResult()
+	res := pools.poolOfResults.BorrowResult()
 
 	if schema.Example != nil {
 		res.MergeAsWarnings(
@@ -248,7 +256,7 @@ func (ex *exampleValidator) validateExampleValueSchemaAgainstSchema(path, in str
 	}
 	if schema.AdditionalItems != nil && schema.AdditionalItems.Schema != nil {
 		// NOTE: we keep validating values, even though additionalItems is unsupported in Swagger 2.0 (and 3.0 as well)
-		res.Merge(ex.validateExampleValueSchemaAgainstSchema(fmt.Sprintf("%s.additionalItems", path), in, schema.AdditionalItems.Schema))
+		res.Merge(ex.validateExampleValueSchemaAgainstSchema(path+".additionalItems", in, schema.AdditionalItems.Schema))
 	}
 	for propName, prop := range schema.Properties {
 		res.Merge(ex.validateExampleValueSchemaAgainstSchema(path+"."+propName, in, &prop)) //#nosec
@@ -257,7 +265,7 @@ func (ex *exampleValidator) validateExampleValueSchemaAgainstSchema(path, in str
 		res.Merge(ex.validateExampleValueSchemaAgainstSchema(path+"."+propName, in, &prop)) //#nosec
 	}
 	if schema.AdditionalProperties != nil && schema.AdditionalProperties.Schema != nil {
-		res.Merge(ex.validateExampleValueSchemaAgainstSchema(fmt.Sprintf("%s.additionalProperties", path), in, schema.AdditionalProperties.Schema))
+		res.Merge(ex.validateExampleValueSchemaAgainstSchema(path+".additionalProperties", in, schema.AdditionalProperties.Schema))
 	}
 	if schema.AllOf != nil {
 		for i, aoSch := range schema.AllOf {
@@ -271,7 +279,7 @@ func (ex *exampleValidator) validateExampleValueSchemaAgainstSchema(path, in str
 //
 
 func (ex *exampleValidator) validateExampleValueItemsAgainstSchema(path, in string, root interface{}, items *spec.Items) *Result {
-	res := poolOfResults.BorrowResult()
+	res := pools.poolOfResults.BorrowResult()
 	s := ex.SpecValidator
 	if items != nil {
 		if items.Example != nil {

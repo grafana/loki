@@ -279,10 +279,16 @@ type Taskstats struct {
 	Ac_nice                   uint8
 	Cpu_count                 uint64
 	Cpu_delay_total           uint64
+	Cpu_delay_max             uint64
+	Cpu_delay_min             uint64
 	Blkio_count               uint64
 	Blkio_delay_total         uint64
+	Blkio_delay_max           uint64
+	Blkio_delay_min           uint64
 	Swapin_count              uint64
 	Swapin_delay_total        uint64
+	Swapin_delay_max          uint64
+	Swapin_delay_min          uint64
 	Cpu_run_real_total        uint64
 	Cpu_run_virtual_total     uint64
 	Ac_comm                   [32]int8
@@ -317,19 +323,29 @@ type Taskstats struct {
 	Cpu_scaled_run_real_total uint64
 	Freepages_count           uint64
 	Freepages_delay_total     uint64
+	Freepages_delay_max       uint64
+	Freepages_delay_min       uint64
 	Thrashing_count           uint64
 	Thrashing_delay_total     uint64
+	Thrashing_delay_max       uint64
+	Thrashing_delay_min       uint64
 	Ac_btime64                uint64
 	Compact_count             uint64
 	Compact_delay_total       uint64
+	Compact_delay_max         uint64
+	Compact_delay_min         uint64
 	Ac_tgid                   uint32
 	Ac_tgetime                uint64
 	Ac_exe_dev                uint64
 	Ac_exe_inode              uint64
 	Wpcopy_count              uint64
 	Wpcopy_delay_total        uint64
+	Wpcopy_delay_max          uint64
+	Wpcopy_delay_min          uint64
 	Irq_count                 uint64
 	Irq_delay_total           uint64
+	Irq_delay_max             uint64
+	Irq_delay_min             uint64
 }
 
 type cpuMask uint64
@@ -470,15 +486,6 @@ type BlkpgPartition struct {
 const (
 	BLKPG = 0x1269
 )
-
-type XDPUmemReg struct {
-	Addr     uint64
-	Len      uint64
-	Size     uint32
-	Headroom uint32
-	Flags    uint32
-	_        [4]byte
-}
 
 type CryptoUserAlg struct {
 	Name        [64]int8

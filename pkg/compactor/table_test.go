@@ -202,7 +202,9 @@ func TestTable_Compaction(t *testing.T) {
 						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
-					require.NoError(t, table.compact(false))
+					require.NoError(t, table.compact())
+					require.NoError(t, table.done())
+					table.cleanup()
 
 					numUserIndexSets, numCommonIndexSets := 0, 0
 					for _, is := range table.indexSets {
@@ -239,7 +241,9 @@ func TestTable_Compaction(t *testing.T) {
 						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 					require.NoError(t, err)
 
-					require.NoError(t, table.compact(false))
+					require.NoError(t, table.compact())
+					require.NoError(t, table.done())
+					table.cleanup()
 
 					for _, is := range table.indexSets {
 						require.False(t, is.uploadCompactedDB)
@@ -253,8 +257,12 @@ func TestTable_Compaction(t *testing.T) {
 
 type TableMarkerFunc func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error)
 
-func (t TableMarkerFunc) MarkForDelete(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+func (t TableMarkerFunc) FindAndMarkChunksForDeletion(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
 	return t(ctx, tableName, userID, indexFile, logger)
+}
+
+func (t TableMarkerFunc) MarkChunksForDeletion(_ string, _ []string) error {
+	return nil
 }
 
 type IntervalMayHaveExpiredChunksFunc func(interval model.Interval, userID string) bool
@@ -305,7 +313,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					_, err := os.ReadDir(filepath.Join(storagePath, tableName))
 					require.True(t, os.IsNotExist(err))
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return true, true, nil
 				}),
 			},
@@ -325,7 +333,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return false, true, nil
 				}),
 			},
@@ -345,12 +353,11 @@ func TestTable_CompactionRetention(t *testing.T) {
 						require.True(t, strings.HasSuffix(filename, ".gz"))
 					})
 				},
-				tableMarker: TableMarkerFunc(func(ctx context.Context, tableName, userID string, indexFile retention.IndexProcessor, logger log.Logger) (bool, bool, error) {
+				tableMarker: TableMarkerFunc(func(_ context.Context, _, _ string, _ retention.IndexProcessor, _ log.Logger) (bool, bool, error) {
 					return false, false, nil
 				}),
 			},
 		} {
-			tt := tt
 			commonDBsConfig := IndexesConfig{
 				NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
 				NumUnCompactedFiles: tt.dbsSetup.numUnCompactedCommonDBs,
@@ -377,12 +384,17 @@ func TestTable_CompactionRetention(t *testing.T) {
 
 				table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
 					newTestIndexCompactor(), config.PeriodConfig{},
-					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
+					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(_ model.Interval, _ string) bool {
 						return true
 					}), 10)
 				require.NoError(t, err)
 
-				require.NoError(t, table.compact(true))
+				defer table.cleanup()
+
+				require.NoError(t, table.compact())
+				require.NoError(t, table.applyRetention())
+				require.NoError(t, table.done())
+
 				tt.assert(t, objectStoragePath, tableName)
 			})
 		}
@@ -456,7 +468,8 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
-	require.Error(t, table.compact(false))
+	require.Error(t, table.compact())
+	table.cleanup()
 
 	// ensure that files in storage are intact.
 	files, err := os.ReadDir(tablePathInStorage)
@@ -472,8 +485,10 @@ func TestTable_CompactionFailure(t *testing.T) {
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
 		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
 	require.NoError(t, err)
-	require.NoError(t, table.compact(false))
+	require.NoError(t, table.compact())
+	require.NoError(t, table.done())
+	table.cleanup()
 
-	// ensure that we have cleanup the local working directory after successful compaction.
+	// ensure that cleanup removes the local working directory.
 	require.NoFileExists(t, tableWorkingDirectory)
 }

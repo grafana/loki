@@ -32,6 +32,8 @@ type Field struct {
 // Metric is the type of data that is processed by Telegraf.  Input plugins,
 // and to a lesser degree, Processor and Aggregator plugins create new Metrics
 // and Output plugins write them.
+//
+//nolint:interfacebloat // conditionally allow to contain more methods
 type Metric interface {
 	// Name is the primary identifier for the Metric and corresponds to the
 	// measurement in the InfluxDB data model.
@@ -57,9 +59,7 @@ type Metric interface {
 	Time() time.Time
 
 	// Type returns a general type for the entire metric that describes how you
-	// might interpret, aggregate the values.
-	//
-	// This method may be removed in the future and its use is discouraged.
+	// might interpret, aggregate the values. Used by prometheus and statsd.
 	Type() ValueType
 
 	// SetName sets the metric name.
@@ -106,6 +106,9 @@ type Metric interface {
 	// SetTime sets the timestamp of the Metric.
 	SetTime(t time.Time)
 
+	// SetType sets the value-type of the Metric.
+	SetType(t ValueType)
+
 	// HashID returns an unique identifier for the series.
 	HashID() uint64
 
@@ -122,14 +125,30 @@ type Metric interface {
 	// Drop marks the metric as processed successfully without being written
 	// to any output.
 	Drop()
+}
 
-	// SetAggregate indicates the metric is an aggregated value.
-	//
-	// This method may be removed in the future and its use is discouraged.
-	SetAggregate(bool)
+// TemplateMetric is an interface to use in templates (e.g text/template)
+// to generate complex strings from metric properties
+// e.g. '{{.Name}}-{{.Tag "foo"}}-{{.Field "bar"}}'
+type TemplateMetric interface {
+	Name() string
+	Field(key string) interface{}
+	Fields() map[string]interface{}
+	Tag(key string) string
+	Tags() map[string]string
+	Time() time.Time
+	String() string
+}
 
-	// IsAggregate returns true if the Metric is an aggregate.
-	//
-	// This method may be removed in the future and its use is discouraged.
-	IsAggregate() bool
+type UnwrappableMetric interface {
+	// Unwrap allows to access the underlying raw metric if an implementation
+	// wraps it in the first place.
+	Unwrap() Metric
+}
+
+type TrackingMetric interface {
+	// TrackingID returns the ID used for tracking the metric
+	TrackingID() TrackingID
+	TrackingData() TrackingData
+	UnwrappableMetric
 }

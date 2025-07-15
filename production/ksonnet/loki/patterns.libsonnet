@@ -30,7 +30,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('1', '7Gi') +
     k.util.resourcesLimits('2', '14Gi') +
-    container.withEnvMixin($._config.commonEnvs),
+    container.withEnvMixin($._config.commonEnvs) +
+    $.jaeger_mixin,
 
 
   pattern_ingester_statefulset:

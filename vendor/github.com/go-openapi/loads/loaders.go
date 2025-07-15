@@ -21,7 +21,7 @@ var (
 func init() {
 	jsonLoader := &loader{
 		DocLoaderWithMatch: DocLoaderWithMatch{
-			Match: func(pth string) bool {
+			Match: func(_ string) bool {
 				return true
 			},
 			Fn: JSONDoc,

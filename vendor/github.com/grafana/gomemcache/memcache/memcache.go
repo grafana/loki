@@ -175,14 +175,6 @@ type Client struct {
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
 
-	// WriteBufferSizeBytes specifies the size of the write buffer (in bytes). The buffer
-	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
-	WriteBufferSizeBytes int
-
-	// ReadBufferSizeBytes specifies the size of the read buffer (in bytes). The buffer
-	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
-	ReadBufferSizeBytes int
-
 	// recentlyUsedConnsThreshold is the default grace period given to an
 	// idle connection to consider it "recently used". Recently used connections
 	// are never closed even if idle.
@@ -425,19 +417,8 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 		return nil, err
 	}
 
-	// Init buffered writer.
-	if c.WriteBufferSizeBytes > 0 {
-		writer = bufio.NewWriterSize(nc, c.WriteBufferSizeBytes)
-	} else {
-		writer = bufio.NewWriter(nc)
-	}
-
-	// Init buffered reader.
-	if c.ReadBufferSizeBytes > 0 {
-		reader = bufio.NewReaderSize(nc, c.ReadBufferSizeBytes)
-	} else {
-		reader = bufio.NewReader(nc)
-	}
+	writer = bufio.NewWriter(nc)
+	reader = bufio.NewReader(nc)
 
 	cn = &conn{
 		nc:   nc,
@@ -619,7 +600,7 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 	options := newOptions(opts...)
 
 	var lk sync.Mutex
-	m := make(map[string]*Item)
+	m := make(map[string]*Item, len(keys))
 	addItemToMap := func(it *Item) {
 		lk.Lock()
 		defer lk.Unlock()

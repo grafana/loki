@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/grafana/dskit/middleware"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // NOTE(kavi): Why new type?
@@ -40,6 +43,12 @@ func ExtractQueryTagsFromHTTP(req *http.Request) string {
 	return safeQueryTags.ReplaceAllString(tags, "_")
 }
 
+func ExtractQueryTagsFromContext(ctx context.Context) string {
+	// if the cast fails then v will be an empty string
+	v, _ := ctx.Value(QueryTagsHTTPHeader).(string)
+	return v
+}
+
 func InjectQueryTags(ctx context.Context, tags string) context.Context {
 	tags = safeQueryTags.ReplaceAllString(tags, "_")
 	return context.WithValue(ctx, QueryTagsHTTPHeader, tags)
@@ -62,4 +71,59 @@ func ExtractQueryMetricsMiddleware() middleware.Interface {
 			next.ServeHTTP(w, req)
 		})
 	})
+}
+
+// TagsToKeyValues converts QueryTags to form that is easy to log.
+// e.g: `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
+// so that we could log nicely!
+// If queryTags is not in canonical form then its completely ignored (e.g: `key1=value1,key2=value`)
+func TagsToKeyValues(queryTags string) []interface{} {
+	toks := strings.FieldsFunc(queryTags, func(r rune) bool {
+		return r == ','
+	})
+
+	vals := make([]string, 0)
+
+	for _, tok := range toks {
+		val := strings.FieldsFunc(tok, func(r rune) bool {
+			return r == '='
+		})
+
+		if len(val) != 2 {
+			continue
+		}
+		vals = append(vals, strings.ToLower(val[0]), val[1])
+	}
+
+	res := make([]interface{}, 0, len(vals))
+
+	for _, val := range vals {
+		res = append(res, val)
+	}
+
+	return res
+}
+
+// IsLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header
+func IsLogsDrilldownRequest(ctx context.Context) bool {
+	tags := ExtractQueryTagsFromContext(ctx)
+	kvs := TagsToKeyValues(tags)
+
+	// KVs is an []interface{} of key value pairs, so iterate by keys
+	for i := 0; i < len(kvs); i += 2 {
+		current, ok := kvs[i].(string)
+		if !ok {
+			continue
+		}
+
+		next, ok := kvs[i+1].(string)
+		if !ok {
+			continue
+		}
+
+		if current == "source" && strings.EqualFold(next, constants.LogsDrilldownAppName) {
+			return true
+		}
+	}
+	return false
 }

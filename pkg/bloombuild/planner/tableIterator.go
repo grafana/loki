@@ -13,8 +13,8 @@ type dayRangeIterator struct {
 	err           error
 }
 
-func newDayRangeIterator(min, max config.DayTime, schemaCfg config.SchemaConfig) *dayRangeIterator {
-	return &dayRangeIterator{min: min, max: max, cur: min.Dec(), schemaCfg: schemaCfg}
+func newDayRangeIterator(minVal, maxVal config.DayTime, schemaCfg config.SchemaConfig) *dayRangeIterator {
+	return &dayRangeIterator{min: minVal, max: maxVal, cur: minVal.Dec(), schemaCfg: schemaCfg}
 }
 
 func (r *dayRangeIterator) TotalDays() int {

@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC.
+// Copyright 2025 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -57,11 +57,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/googleapis/gax-go/v2/internallog"
 	googleapi "google.golang.org/api/googleapi"
 	internal "google.golang.org/api/internal"
 	gensupport "google.golang.org/api/internal/gensupport"
@@ -85,6 +87,7 @@ var _ = strings.Replace
 var _ = context.Canceled
 var _ = internaloption.WithDefaultEndpoint
 var _ = internal.Version
+var _ = internallog.New
 
 const apiId = "iamcredentials:v1"
 const apiName = "iamcredentials"
@@ -92,12 +95,11 @@ const apiVersion = "v1"
 const basePath = "https://iamcredentials.googleapis.com/"
 const basePathTemplate = "https://iamcredentials.UNIVERSE_DOMAIN/"
 const mtlsBasePath = "https://iamcredentials.mtls.googleapis.com/"
-const defaultUniverseDomain = "googleapis.com"
 
 // OAuth2 scopes used by this API.
 const (
-	// See, edit, configure, and delete your Google Cloud data and see the
-	// email address for your Google Account.
+	// See, edit, configure, and delete your Google Cloud data and see the email
+	// address for your Google Account.
 	CloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 )
 
@@ -111,15 +113,14 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	opts = append(opts, internaloption.WithDefaultEndpoint(basePath))
 	opts = append(opts, internaloption.WithDefaultEndpointTemplate(basePathTemplate))
 	opts = append(opts, internaloption.WithDefaultMTLSEndpoint(mtlsBasePath))
-	opts = append(opts, internaloption.WithDefaultUniverseDomain(defaultUniverseDomain))
+	opts = append(opts, internaloption.EnableNewAuthLibrary())
 	client, endpoint, err := htransport.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(client)
-	if err != nil {
-		return nil, err
-	}
+	s := &Service{client: client, BasePath: basePath, logger: internaloption.GetLogger(opts)}
+	s.Locations = NewLocationsService(s)
+	s.Projects = NewProjectsService(s)
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -135,15 +136,16 @@ func New(client *http.Client) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
 	}
-	s := &Service{client: client, BasePath: basePath}
-	s.Projects = NewProjectsService(s)
-	return s, nil
+	return NewService(context.TODO(), option.WithHTTPClient(client))
 }
 
 type Service struct {
 	client    *http.Client
+	logger    *slog.Logger
 	BasePath  string // API endpoint base URL
 	UserAgent string // optional additional User-Agent fragment
+
+	Locations *LocationsService
 
 	Projects *ProjectsService
 }
@@ -155,8 +157,30 @@ func (s *Service) userAgent() string {
 	return googleapi.UserAgent + " " + s.UserAgent
 }
 
+func NewLocationsService(s *Service) *LocationsService {
+	rs := &LocationsService{s: s}
+	rs.WorkforcePools = NewLocationsWorkforcePoolsService(s)
+	return rs
+}
+
+type LocationsService struct {
+	s *Service
+
+	WorkforcePools *LocationsWorkforcePoolsService
+}
+
+func NewLocationsWorkforcePoolsService(s *Service) *LocationsWorkforcePoolsService {
+	rs := &LocationsWorkforcePoolsService{s: s}
+	return rs
+}
+
+type LocationsWorkforcePoolsService struct {
+	s *Service
+}
+
 func NewProjectsService(s *Service) *ProjectsService {
 	rs := &ProjectsService{s: s}
+	rs.Locations = NewProjectsLocationsService(s)
 	rs.ServiceAccounts = NewProjectsServiceAccountsService(s)
 	return rs
 }
@@ -164,7 +188,30 @@ func NewProjectsService(s *Service) *ProjectsService {
 type ProjectsService struct {
 	s *Service
 
+	Locations *ProjectsLocationsService
+
 	ServiceAccounts *ProjectsServiceAccountsService
+}
+
+func NewProjectsLocationsService(s *Service) *ProjectsLocationsService {
+	rs := &ProjectsLocationsService{s: s}
+	rs.WorkloadIdentityPools = NewProjectsLocationsWorkloadIdentityPoolsService(s)
+	return rs
+}
+
+type ProjectsLocationsService struct {
+	s *Service
+
+	WorkloadIdentityPools *ProjectsLocationsWorkloadIdentityPoolsService
+}
+
+func NewProjectsLocationsWorkloadIdentityPoolsService(s *Service) *ProjectsLocationsWorkloadIdentityPoolsService {
+	rs := &ProjectsLocationsWorkloadIdentityPoolsService{s: s}
+	return rs
+}
+
+type ProjectsLocationsWorkloadIdentityPoolsService struct {
+	s *Service
 }
 
 func NewProjectsServiceAccountsService(s *Service) *ProjectsServiceAccountsService {
@@ -177,353 +224,600 @@ type ProjectsServiceAccountsService struct {
 }
 
 type GenerateAccessTokenRequest struct {
-	// Delegates: The sequence of service accounts in a delegation chain.
-	// This field is required for delegated requests
-	// (https://cloud.google.com/iam/help/credentials/delegated-request).
-	// For direct requests
-	// (https://cloud.google.com/iam/help/credentials/direct-request), which
-	// are more common, do not specify this field. Each service account must
-	// be granted the `roles/iam.serviceAccountTokenCreator` role on its
-	// next service account in the chain. The last service account in the
-	// chain must be granted the `roles/iam.serviceAccountTokenCreator` role
-	// on the service account that is specified in the `name` field of the
-	// request. The delegates must have the following format:
-	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-	// wildcard character is required; replacing it with a project ID is
+	// Delegates: The sequence of service accounts in a delegation chain. This
+	// field is required for delegated requests
+	// (https://cloud.google.com/iam/help/credentials/delegated-request). For
+	// direct requests
+	// (https://cloud.google.com/iam/help/credentials/direct-request), which are
+	// more common, do not specify this field. Each service account must be granted
+	// the `roles/iam.serviceAccountTokenCreator` role on its next service account
+	// in the chain. The last service account in the chain must be granted the
+	// `roles/iam.serviceAccountTokenCreator` role on the service account that is
+	// specified in the `name` field of the request. The delegates must have the
+	// following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`.
+	// The `-` wildcard character is required; replacing it with a project ID is
 	// invalid.
 	Delegates []string `json:"delegates,omitempty"`
-
-	// Lifetime: The desired lifetime duration of the access token in
-	// seconds. By default, the maximum allowed value is 1 hour. To set a
-	// lifetime of up to 12 hours, you can add the service account as an
-	// allowed value in an Organization Policy that enforces the
-	// `constraints/iam.allowServiceAccountCredentialLifetimeExtension`
-	// constraint. See detailed instructions at
-	// https://cloud.google.com/iam/help/credentials/lifetime If a value is
-	// not specified, the token's lifetime will be set to a default value of
-	// 1 hour.
+	// Lifetime: The desired lifetime duration of the access token in seconds. By
+	// default, the maximum allowed value is 1 hour. To set a lifetime of up to 12
+	// hours, you can add the service account as an allowed value in an
+	// Organization Policy that enforces the
+	// `constraints/iam.allowServiceAccountCredentialLifetimeExtension` constraint.
+	// See detailed instructions at
+	// https://cloud.google.com/iam/help/credentials/lifetime If a value is not
+	// specified, the token's lifetime will be set to a default value of 1 hour.
 	Lifetime string `json:"lifetime,omitempty"`
-
-	// Scope: Required. Code to identify the scopes to be included in the
-	// OAuth 2.0 access token. See
-	// https://developers.google.com/identity/protocols/googlescopes for
-	// more information. At least one value required.
+	// Scope: Required. Code to identify the scopes to be included in the OAuth 2.0
+	// access token. See
+	// https://developers.google.com/identity/protocols/googlescopes for more
+	// information. At least one value required.
 	Scope []string `json:"scope,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Delegates") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Delegates") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Delegates") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *GenerateAccessTokenRequest) MarshalJSON() ([]byte, error) {
+func (s GenerateAccessTokenRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod GenerateAccessTokenRequest
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type GenerateAccessTokenResponse struct {
 	// AccessToken: The OAuth 2.0 access token.
 	AccessToken string `json:"accessToken,omitempty"`
-
 	// ExpireTime: Token expiration time. The expiration time is always set.
 	ExpireTime string `json:"expireTime,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
 	// ForceSendFields is a list of field names (e.g. "AccessToken") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "AccessToken") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "AccessToken") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *GenerateAccessTokenResponse) MarshalJSON() ([]byte, error) {
+func (s GenerateAccessTokenResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod GenerateAccessTokenResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type GenerateIdTokenRequest struct {
-	// Audience: Required. The audience for the token, such as the API or
-	// account that this token grants access to.
+	// Audience: Required. The audience for the token, such as the API or account
+	// that this token grants access to.
 	Audience string `json:"audience,omitempty"`
-
-	// Delegates: The sequence of service accounts in a delegation chain.
-	// Each service account must be granted the
-	// `roles/iam.serviceAccountTokenCreator` role on its next service
-	// account in the chain. The last service account in the chain must be
-	// granted the `roles/iam.serviceAccountTokenCreator` role on the
-	// service account that is specified in the `name` field of the request.
+	// Delegates: The sequence of service accounts in a delegation chain. Each
+	// service account must be granted the `roles/iam.serviceAccountTokenCreator`
+	// role on its next service account in the chain. The last service account in
+	// the chain must be granted the `roles/iam.serviceAccountTokenCreator` role on
+	// the service account that is specified in the `name` field of the request.
 	// The delegates must have the following format:
-	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-	// wildcard character is required; replacing it with a project ID is
-	// invalid.
+	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+	// character is required; replacing it with a project ID is invalid.
 	Delegates []string `json:"delegates,omitempty"`
-
-	// IncludeEmail: Include the service account email in the token. If set
-	// to `true`, the token will contain `email` and `email_verified`
-	// claims.
+	// IncludeEmail: Include the service account email in the token. If set to
+	// `true`, the token will contain `email` and `email_verified` claims.
 	IncludeEmail bool `json:"includeEmail,omitempty"`
-
+	// OrganizationNumberIncluded: Include the organization number of the service
+	// account in the token. If set to `true`, the token will contain a
+	// `google.organization_number` claim. The value of the claim will be `null` if
+	// the service account isn't associated with an organization.
+	OrganizationNumberIncluded bool `json:"organizationNumberIncluded,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Audience") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Audience") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Audience") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *GenerateIdTokenRequest) MarshalJSON() ([]byte, error) {
+func (s GenerateIdTokenRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod GenerateIdTokenRequest
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type GenerateIdTokenResponse struct {
-	// Token: The OpenId Connect ID token.
+	// Token: The OpenId Connect ID token. The token is a JSON Web Token (JWT) that
+	// contains a payload with claims. See the JSON Web Token spec
+	// (https://tools.ietf.org/html/rfc7519) for more information. Here is an
+	// example of a decoded JWT payload: ``` { "iss":
+	// "https://accounts.google.com", "iat": 1496953245, "exp": 1496953245, "aud":
+	// "https://www.example.com", "sub": "107517467455664443765", "azp":
+	// "107517467455664443765", "email":
+	// "my-iam-account@my-project.iam.gserviceaccount.com", "email_verified": true,
+	// "google": { "organization_number": 123456 } } ```
 	Token string `json:"token,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Token") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Token") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Token") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *GenerateIdTokenResponse) MarshalJSON() ([]byte, error) {
+func (s GenerateIdTokenResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod GenerateIdTokenResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ServiceAccountAllowedLocations: Represents a list of allowed locations for
+// given service account.
+type ServiceAccountAllowedLocations struct {
+	// EncodedLocations: Output only. The hex encoded bitmap of the trust boundary
+	// locations
+	EncodedLocations string `json:"encodedLocations,omitempty"`
+	// Locations: Output only. The human readable trust boundary locations. For
+	// example, ["us-central1", "europe-west1"]
+	Locations []string `json:"locations,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "EncodedLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EncodedLocations") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ServiceAccountAllowedLocations) MarshalJSON() ([]byte, error) {
+	type NoMethod ServiceAccountAllowedLocations
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type SignBlobRequest struct {
-	// Delegates: The sequence of service accounts in a delegation chain.
-	// Each service account must be granted the
-	// `roles/iam.serviceAccountTokenCreator` role on its next service
-	// account in the chain. The last service account in the chain must be
-	// granted the `roles/iam.serviceAccountTokenCreator` role on the
-	// service account that is specified in the `name` field of the request.
+	// Delegates: The sequence of service accounts in a delegation chain. Each
+	// service account must be granted the `roles/iam.serviceAccountTokenCreator`
+	// role on its next service account in the chain. The last service account in
+	// the chain must be granted the `roles/iam.serviceAccountTokenCreator` role on
+	// the service account that is specified in the `name` field of the request.
 	// The delegates must have the following format:
-	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-	// wildcard character is required; replacing it with a project ID is
-	// invalid.
+	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+	// character is required; replacing it with a project ID is invalid.
 	Delegates []string `json:"delegates,omitempty"`
-
 	// Payload: Required. The bytes to sign.
 	Payload string `json:"payload,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Delegates") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Delegates") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Delegates") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *SignBlobRequest) MarshalJSON() ([]byte, error) {
+func (s SignBlobRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod SignBlobRequest
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type SignBlobResponse struct {
-	// KeyId: The ID of the key used to sign the blob. The key used for
-	// signing will remain valid for at least 12 hours after the blob is
-	// signed. To verify the signature, you can retrieve the public key in
-	// several formats from the following endpoints: - RSA public key
-	// wrapped in an X.509 v3 certificate:
-	// `https://www.googleapis.com/service_accounts/v1/metadata/x509/{ACCOUNT
-	// _EMAIL}` - Raw key in JSON format:
-	// `https://www.googleapis.com/service_accounts/v1/metadata/raw/{ACCOUNT_
-	// EMAIL}` - JSON Web Key (JWK):
-	// `https://www.googleapis.com/service_accounts/v1/metadata/jwk/{ACCOUNT_
-	// EMAIL}`
+	// KeyId: The ID of the key used to sign the blob. The key used for signing
+	// will remain valid for at least 12 hours after the blob is signed. To verify
+	// the signature, you can retrieve the public key in several formats from the
+	// following endpoints: - RSA public key wrapped in an X.509 v3 certificate:
+	// `https://www.googleapis.com/service_accounts/v1/metadata/x509/{ACCOUNT_EMAIL}
+	// ` - Raw key in JSON format:
+	// `https://www.googleapis.com/service_accounts/v1/metadata/raw/{ACCOUNT_EMAIL}`
+	//  - JSON Web Key (JWK):
+	// `https://www.googleapis.com/service_accounts/v1/metadata/jwk/{ACCOUNT_EMAIL}`
 	KeyId string `json:"keyId,omitempty"`
-
-	// SignedBlob: The signature for the blob. Does not include the original
-	// blob. After the key pair referenced by the `key_id` response field
-	// expires, Google no longer exposes the public key that can be used to
-	// verify the blob. As a result, the receiver can no longer verify the
-	// signature.
+	// SignedBlob: The signature for the blob. Does not include the original blob.
+	// After the key pair referenced by the `key_id` response field expires, Google
+	// no longer exposes the public key that can be used to verify the blob. As a
+	// result, the receiver can no longer verify the signature.
 	SignedBlob string `json:"signedBlob,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "KeyId") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "KeyId") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "KeyId") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *SignBlobResponse) MarshalJSON() ([]byte, error) {
+func (s SignBlobResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod SignBlobResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type SignJwtRequest struct {
-	// Delegates: The sequence of service accounts in a delegation chain.
-	// Each service account must be granted the
-	// `roles/iam.serviceAccountTokenCreator` role on its next service
-	// account in the chain. The last service account in the chain must be
-	// granted the `roles/iam.serviceAccountTokenCreator` role on the
-	// service account that is specified in the `name` field of the request.
+	// Delegates: The sequence of service accounts in a delegation chain. Each
+	// service account must be granted the `roles/iam.serviceAccountTokenCreator`
+	// role on its next service account in the chain. The last service account in
+	// the chain must be granted the `roles/iam.serviceAccountTokenCreator` role on
+	// the service account that is specified in the `name` field of the request.
 	// The delegates must have the following format:
-	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-	// wildcard character is required; replacing it with a project ID is
-	// invalid.
+	// `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+	// character is required; replacing it with a project ID is invalid.
 	Delegates []string `json:"delegates,omitempty"`
-
-	// Payload: Required. The JWT payload to sign. Must be a serialized JSON
-	// object that contains a JWT Claims Set. For example: `{"sub":
-	// "user@example.com", "iat": 313435}` If the JWT Claims Set contains an
-	// expiration time (`exp`) claim, it must be an integer timestamp that
-	// is not in the past and no more than 12 hours in the future.
+	// Payload: Required. The JWT payload to sign. Must be a serialized JSON object
+	// that contains a JWT Claims Set. For example: `{"sub": "user@example.com",
+	// "iat": 313435}` If the JWT Claims Set contains an expiration time (`exp`)
+	// claim, it must be an integer timestamp that is not in the past and no more
+	// than 12 hours in the future.
 	Payload string `json:"payload,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Delegates") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Delegates") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Delegates") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *SignJwtRequest) MarshalJSON() ([]byte, error) {
+func (s SignJwtRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod SignJwtRequest
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type SignJwtResponse struct {
-	// KeyId: The ID of the key used to sign the JWT. The key used for
-	// signing will remain valid for at least 12 hours after the JWT is
-	// signed. To verify the signature, you can retrieve the public key in
-	// several formats from the following endpoints: - RSA public key
-	// wrapped in an X.509 v3 certificate:
-	// `https://www.googleapis.com/service_accounts/v1/metadata/x509/{ACCOUNT
-	// _EMAIL}` - Raw key in JSON format:
-	// `https://www.googleapis.com/service_accounts/v1/metadata/raw/{ACCOUNT_
-	// EMAIL}` - JSON Web Key (JWK):
-	// `https://www.googleapis.com/service_accounts/v1/metadata/jwk/{ACCOUNT_
-	// EMAIL}`
+	// KeyId: The ID of the key used to sign the JWT. The key used for signing will
+	// remain valid for at least 12 hours after the JWT is signed. To verify the
+	// signature, you can retrieve the public key in several formats from the
+	// following endpoints: - RSA public key wrapped in an X.509 v3 certificate:
+	// `https://www.googleapis.com/service_accounts/v1/metadata/x509/{ACCOUNT_EMAIL}
+	// ` - Raw key in JSON format:
+	// `https://www.googleapis.com/service_accounts/v1/metadata/raw/{ACCOUNT_EMAIL}`
+	//  - JSON Web Key (JWK):
+	// `https://www.googleapis.com/service_accounts/v1/metadata/jwk/{ACCOUNT_EMAIL}`
 	KeyId string `json:"keyId,omitempty"`
-
-	// SignedJwt: The signed JWT. Contains the automatically generated
-	// header; the client-supplied payload; and the signature, which is
-	// generated using the key referenced by the `kid` field in the header.
-	// After the key pair referenced by the `key_id` response field expires,
-	// Google no longer exposes the public key that can be used to verify
-	// the JWT. As a result, the receiver can no longer verify the
-	// signature.
+	// SignedJwt: The signed JWT. Contains the automatically generated header; the
+	// client-supplied payload; and the signature, which is generated using the key
+	// referenced by the `kid` field in the header. After the key pair referenced
+	// by the `key_id` response field expires, Google no longer exposes the public
+	// key that can be used to verify the JWT. As a result, the receiver can no
+	// longer verify the signature.
 	SignedJwt string `json:"signedJwt,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "KeyId") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "KeyId") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "KeyId") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *SignJwtResponse) MarshalJSON() ([]byte, error) {
+func (s SignJwtResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod SignJwtResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// method id "iamcredentials.projects.serviceAccounts.generateAccessToken":
+// WorkforcePoolAllowedLocations: Represents a list of allowed locations for
+// given workforce pool.
+type WorkforcePoolAllowedLocations struct {
+	// EncodedLocations: Output only. The hex encoded bitmap of the trust boundary
+	// locations
+	EncodedLocations string `json:"encodedLocations,omitempty"`
+	// Locations: Output only. The human readable trust boundary locations. For
+	// example, ["us-central1", "europe-west1"]
+	Locations []string `json:"locations,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "EncodedLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EncodedLocations") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WorkforcePoolAllowedLocations) MarshalJSON() ([]byte, error) {
+	type NoMethod WorkforcePoolAllowedLocations
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// WorkloadIdentityPoolAllowedLocations: Represents a list of allowed locations
+// for given workload identity pool.
+type WorkloadIdentityPoolAllowedLocations struct {
+	// EncodedLocations: Output only. The hex encoded bitmap of the trust boundary
+	// locations
+	EncodedLocations string `json:"encodedLocations,omitempty"`
+	// Locations: Output only. The human readable trust boundary locations. For
+	// example, ["us-central1", "europe-west1"]
+	Locations []string `json:"locations,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "EncodedLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EncodedLocations") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s WorkloadIdentityPoolAllowedLocations) MarshalJSON() ([]byte, error) {
+	type NoMethod WorkloadIdentityPoolAllowedLocations
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type LocationsWorkforcePoolsGetAllowedLocationsCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// GetAllowedLocations: Returns the trust boundary info for a given workforce
+// pool.
+//
+// - name: Resource name of workforce pool.
+func (r *LocationsWorkforcePoolsService) GetAllowedLocations(name string) *LocationsWorkforcePoolsGetAllowedLocationsCall {
+	c := &LocationsWorkforcePoolsGetAllowedLocationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) Fields(s ...googleapi.Field) *LocationsWorkforcePoolsGetAllowedLocationsCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) IfNoneMatch(entityTag string) *LocationsWorkforcePoolsGetAllowedLocationsCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) Context(ctx context.Context) *LocationsWorkforcePoolsGetAllowedLocationsCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/allowedLocations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.locations.workforcePools.getAllowedLocations", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "iamcredentials.locations.workforcePools.getAllowedLocations" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *WorkforcePoolAllowedLocations.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *LocationsWorkforcePoolsGetAllowedLocationsCall) Do(opts ...googleapi.CallOption) (*WorkforcePoolAllowedLocations, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &WorkforcePoolAllowedLocations{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.locations.workforcePools.getAllowedLocations", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// GetAllowedLocations: Returns the trust boundary info for a given workload
+// identity pool.
+//
+// - name: Resource name of workload identity pool.
+func (r *ProjectsLocationsWorkloadIdentityPoolsService) GetAllowedLocations(name string) *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall {
+	c := &ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) Fields(s ...googleapi.Field) *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) IfNoneMatch(entityTag string) *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) Context(ctx context.Context) *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/allowedLocations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.locations.workloadIdentityPools.getAllowedLocations", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "iamcredentials.projects.locations.workloadIdentityPools.getAllowedLocations" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *WorkloadIdentityPoolAllowedLocations.ServerResponse.Header or (if a
+// response was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsLocationsWorkloadIdentityPoolsGetAllowedLocationsCall) Do(opts ...googleapi.CallOption) (*WorkloadIdentityPoolAllowedLocations, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &WorkloadIdentityPoolAllowedLocations{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.locations.workloadIdentityPools.getAllowedLocations", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type ProjectsServiceAccountsGenerateAccessTokenCall struct {
 	s                          *Service
@@ -534,14 +828,13 @@ type ProjectsServiceAccountsGenerateAccessTokenCall struct {
 	header_                    http.Header
 }
 
-// GenerateAccessToken: Generates an OAuth 2.0 access token for a
-// service account.
+// GenerateAccessToken: Generates an OAuth 2.0 access token for a service
+// account.
 //
-//   - name: The resource name of the service account for which the
-//     credentials are requested, in the following format:
-//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-//     wildcard character is required; replacing it with a project ID is
-//     invalid.
+//   - name: The resource name of the service account for which the credentials
+//     are requested, in the following format:
+//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+//     character is required; replacing it with a project ID is invalid.
 func (r *ProjectsServiceAccountsService) GenerateAccessToken(name string, generateaccesstokenrequest *GenerateAccessTokenRequest) *ProjectsServiceAccountsGenerateAccessTokenCall {
 	c := &ProjectsServiceAccountsGenerateAccessTokenCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -550,23 +843,21 @@ func (r *ProjectsServiceAccountsService) GenerateAccessToken(name string, genera
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountsGenerateAccessTokenCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Context(ctx context.Context) *ProjectsServiceAccountsGenerateAccessTokenCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -575,18 +866,11 @@ func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Header() http.Header {
 }
 
 func (c *ProjectsServiceAccountsGenerateAccessTokenCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.generateaccesstokenrequest)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.generateaccesstokenrequest)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:generateAccessToken")
@@ -599,16 +883,16 @@ func (c *ProjectsServiceAccountsGenerateAccessTokenCall) doRequest(alt string) (
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.generateAccessToken", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "iamcredentials.projects.serviceAccounts.generateAccessToken" call.
-// Exactly one of *GenerateAccessTokenResponse or error will be non-nil.
 // Any non-2xx status code is an error. Response headers are in either
-// *GenerateAccessTokenResponse.ServerResponse.Header or (if a response
-// was returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// *GenerateAccessTokenResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
 func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Do(opts ...googleapi.CallOption) (*GenerateAccessTokenResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -635,42 +919,13 @@ func (c *ProjectsServiceAccountsGenerateAccessTokenCall) Do(opts ...googleapi.Ca
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.generateAccessToken", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Generates an OAuth 2.0 access token for a service account.",
-	//   "flatPath": "v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:generateAccessToken",
-	//   "httpMethod": "POST",
-	//   "id": "iamcredentials.projects.serviceAccounts.generateAccessToken",
-	//   "parameterOrder": [
-	//     "name"
-	//   ],
-	//   "parameters": {
-	//     "name": {
-	//       "description": "Required. The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid.",
-	//       "location": "path",
-	//       "pattern": "^projects/[^/]+/serviceAccounts/[^/]+$",
-	//       "required": true,
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "v1/{+name}:generateAccessToken",
-	//   "request": {
-	//     "$ref": "GenerateAccessTokenRequest"
-	//   },
-	//   "response": {
-	//     "$ref": "GenerateAccessTokenResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform"
-	//   ]
-	// }
-
 }
-
-// method id "iamcredentials.projects.serviceAccounts.generateIdToken":
 
 type ProjectsServiceAccountsGenerateIdTokenCall struct {
 	s                      *Service
@@ -681,14 +936,12 @@ type ProjectsServiceAccountsGenerateIdTokenCall struct {
 	header_                http.Header
 }
 
-// GenerateIdToken: Generates an OpenID Connect ID token for a service
-// account.
+// GenerateIdToken: Generates an OpenID Connect ID token for a service account.
 //
-//   - name: The resource name of the service account for which the
-//     credentials are requested, in the following format:
-//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-//     wildcard character is required; replacing it with a project ID is
-//     invalid.
+//   - name: The resource name of the service account for which the credentials
+//     are requested, in the following format:
+//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+//     character is required; replacing it with a project ID is invalid.
 func (r *ProjectsServiceAccountsService) GenerateIdToken(name string, generateidtokenrequest *GenerateIdTokenRequest) *ProjectsServiceAccountsGenerateIdTokenCall {
 	c := &ProjectsServiceAccountsGenerateIdTokenCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -697,23 +950,21 @@ func (r *ProjectsServiceAccountsService) GenerateIdToken(name string, generateid
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsServiceAccountsGenerateIdTokenCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountsGenerateIdTokenCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsServiceAccountsGenerateIdTokenCall) Context(ctx context.Context) *ProjectsServiceAccountsGenerateIdTokenCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsServiceAccountsGenerateIdTokenCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -722,18 +973,11 @@ func (c *ProjectsServiceAccountsGenerateIdTokenCall) Header() http.Header {
 }
 
 func (c *ProjectsServiceAccountsGenerateIdTokenCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.generateidtokenrequest)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.generateidtokenrequest)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:generateIdToken")
@@ -746,16 +990,16 @@ func (c *ProjectsServiceAccountsGenerateIdTokenCall) doRequest(alt string) (*htt
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.generateIdToken", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "iamcredentials.projects.serviceAccounts.generateIdToken" call.
-// Exactly one of *GenerateIdTokenResponse or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
+// Any non-2xx status code is an error. Response headers are in either
 // *GenerateIdTokenResponse.ServerResponse.Header or (if a response was
 // returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
 func (c *ProjectsServiceAccountsGenerateIdTokenCall) Do(opts ...googleapi.CallOption) (*GenerateIdTokenResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -782,42 +1026,124 @@ func (c *ProjectsServiceAccountsGenerateIdTokenCall) Do(opts ...googleapi.CallOp
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.generateIdToken", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Generates an OpenID Connect ID token for a service account.",
-	//   "flatPath": "v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:generateIdToken",
-	//   "httpMethod": "POST",
-	//   "id": "iamcredentials.projects.serviceAccounts.generateIdToken",
-	//   "parameterOrder": [
-	//     "name"
-	//   ],
-	//   "parameters": {
-	//     "name": {
-	//       "description": "Required. The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid.",
-	//       "location": "path",
-	//       "pattern": "^projects/[^/]+/serviceAccounts/[^/]+$",
-	//       "required": true,
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "v1/{+name}:generateIdToken",
-	//   "request": {
-	//     "$ref": "GenerateIdTokenRequest"
-	//   },
-	//   "response": {
-	//     "$ref": "GenerateIdTokenResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform"
-	//   ]
-	// }
-
 }
 
-// method id "iamcredentials.projects.serviceAccounts.signBlob":
+type ProjectsServiceAccountsGetAllowedLocationsCall struct {
+	s            *Service
+	name         string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// GetAllowedLocations: Returns the trust boundary info for a given service
+// account.
+//
+// - name: Resource name of service account.
+func (r *ProjectsServiceAccountsService) GetAllowedLocations(name string) *ProjectsServiceAccountsGetAllowedLocationsCall {
+	c := &ProjectsServiceAccountsGetAllowedLocationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.name = name
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountsGetAllowedLocationsCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) IfNoneMatch(entityTag string) *ProjectsServiceAccountsGetAllowedLocationsCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) Context(ctx context.Context) *ProjectsServiceAccountsGetAllowedLocationsCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}/allowedLocations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"name": c.name,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.getAllowedLocations", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "iamcredentials.projects.serviceAccounts.getAllowedLocations" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ServiceAccountAllowedLocations.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ProjectsServiceAccountsGetAllowedLocationsCall) Do(opts ...googleapi.CallOption) (*ServiceAccountAllowedLocations, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ServiceAccountAllowedLocations{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.getAllowedLocations", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type ProjectsServiceAccountsSignBlobCall struct {
 	s               *Service
@@ -828,14 +1154,12 @@ type ProjectsServiceAccountsSignBlobCall struct {
 	header_         http.Header
 }
 
-// SignBlob: Signs a blob using a service account's system-managed
-// private key.
+// SignBlob: Signs a blob using a service account's system-managed private key.
 //
-//   - name: The resource name of the service account for which the
-//     credentials are requested, in the following format:
-//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-//     wildcard character is required; replacing it with a project ID is
-//     invalid.
+//   - name: The resource name of the service account for which the credentials
+//     are requested, in the following format:
+//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+//     character is required; replacing it with a project ID is invalid.
 func (r *ProjectsServiceAccountsService) SignBlob(name string, signblobrequest *SignBlobRequest) *ProjectsServiceAccountsSignBlobCall {
 	c := &ProjectsServiceAccountsSignBlobCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -844,23 +1168,21 @@ func (r *ProjectsServiceAccountsService) SignBlob(name string, signblobrequest *
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsServiceAccountsSignBlobCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountsSignBlobCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsServiceAccountsSignBlobCall) Context(ctx context.Context) *ProjectsServiceAccountsSignBlobCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsServiceAccountsSignBlobCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -869,18 +1191,11 @@ func (c *ProjectsServiceAccountsSignBlobCall) Header() http.Header {
 }
 
 func (c *ProjectsServiceAccountsSignBlobCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.signblobrequest)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.signblobrequest)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:signBlob")
@@ -893,16 +1208,16 @@ func (c *ProjectsServiceAccountsSignBlobCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.signBlob", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "iamcredentials.projects.serviceAccounts.signBlob" call.
-// Exactly one of *SignBlobResponse or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *SignBlobResponse.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *SignBlobResponse.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ProjectsServiceAccountsSignBlobCall) Do(opts ...googleapi.CallOption) (*SignBlobResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -929,42 +1244,13 @@ func (c *ProjectsServiceAccountsSignBlobCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.signBlob", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Signs a blob using a service account's system-managed private key.",
-	//   "flatPath": "v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signBlob",
-	//   "httpMethod": "POST",
-	//   "id": "iamcredentials.projects.serviceAccounts.signBlob",
-	//   "parameterOrder": [
-	//     "name"
-	//   ],
-	//   "parameters": {
-	//     "name": {
-	//       "description": "Required. The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid.",
-	//       "location": "path",
-	//       "pattern": "^projects/[^/]+/serviceAccounts/[^/]+$",
-	//       "required": true,
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "v1/{+name}:signBlob",
-	//   "request": {
-	//     "$ref": "SignBlobRequest"
-	//   },
-	//   "response": {
-	//     "$ref": "SignBlobResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform"
-	//   ]
-	// }
-
 }
-
-// method id "iamcredentials.projects.serviceAccounts.signJwt":
 
 type ProjectsServiceAccountsSignJwtCall struct {
 	s              *Service
@@ -975,14 +1261,12 @@ type ProjectsServiceAccountsSignJwtCall struct {
 	header_        http.Header
 }
 
-// SignJwt: Signs a JWT using a service account's system-managed private
-// key.
+// SignJwt: Signs a JWT using a service account's system-managed private key.
 //
-//   - name: The resource name of the service account for which the
-//     credentials are requested, in the following format:
-//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-`
-//     wildcard character is required; replacing it with a project ID is
-//     invalid.
+//   - name: The resource name of the service account for which the credentials
+//     are requested, in the following format:
+//     `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard
+//     character is required; replacing it with a project ID is invalid.
 func (r *ProjectsServiceAccountsService) SignJwt(name string, signjwtrequest *SignJwtRequest) *ProjectsServiceAccountsSignJwtCall {
 	c := &ProjectsServiceAccountsSignJwtCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.name = name
@@ -991,23 +1275,21 @@ func (r *ProjectsServiceAccountsService) SignJwt(name string, signjwtrequest *Si
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsServiceAccountsSignJwtCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountsSignJwtCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsServiceAccountsSignJwtCall) Context(ctx context.Context) *ProjectsServiceAccountsSignJwtCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsServiceAccountsSignJwtCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -1016,18 +1298,11 @@ func (c *ProjectsServiceAccountsSignJwtCall) Header() http.Header {
 }
 
 func (c *ProjectsServiceAccountsSignJwtCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.signjwtrequest)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.signjwtrequest)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "v1/{+name}:signJwt")
@@ -1040,16 +1315,16 @@ func (c *ProjectsServiceAccountsSignJwtCall) doRequest(alt string) (*http.Respon
 	googleapi.Expand(req.URL, map[string]string{
 		"name": c.name,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.signJwt", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "iamcredentials.projects.serviceAccounts.signJwt" call.
-// Exactly one of *SignJwtResponse or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *SignJwtResponse.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *SignJwtResponse.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ProjectsServiceAccountsSignJwtCall) Do(opts ...googleapi.CallOption) (*SignJwtResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -1076,37 +1351,10 @@ func (c *ProjectsServiceAccountsSignJwtCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "iamcredentials.projects.serviceAccounts.signJwt", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Signs a JWT using a service account's system-managed private key.",
-	//   "flatPath": "v1/projects/{projectsId}/serviceAccounts/{serviceAccountsId}:signJwt",
-	//   "httpMethod": "POST",
-	//   "id": "iamcredentials.projects.serviceAccounts.signJwt",
-	//   "parameterOrder": [
-	//     "name"
-	//   ],
-	//   "parameters": {
-	//     "name": {
-	//       "description": "Required. The resource name of the service account for which the credentials are requested, in the following format: `projects/-/serviceAccounts/{ACCOUNT_EMAIL_OR_UNIQUEID}`. The `-` wildcard character is required; replacing it with a project ID is invalid.",
-	//       "location": "path",
-	//       "pattern": "^projects/[^/]+/serviceAccounts/[^/]+$",
-	//       "required": true,
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "v1/{+name}:signJwt",
-	//   "request": {
-	//     "$ref": "SignJwtRequest"
-	//   },
-	//   "response": {
-	//     "$ref": "SignJwtResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform"
-	//   ]
-	// }
-
 }

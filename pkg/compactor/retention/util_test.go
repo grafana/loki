@@ -92,7 +92,7 @@ var (
 				From:       dayFromTime(start.Add(125 * time.Hour)),
 				IndexType:  "tsdb",
 				ObjectType: "filesystem",
-				Schema:     "v12",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
@@ -111,57 +111,60 @@ var (
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
-		{"v13", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[4]},
+		{"v13", schemaCfg.Configs[4].From.Time, schemaCfg.Configs[4]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
 )
 
-func newChunkEntry(userID, labels string, from, through model.Time) ChunkEntry {
+func mustParseLabels(labels string) labels.Labels {
 	lbs, err := syntax.ParseLabels(labels)
 	if err != nil {
 		panic(err)
 	}
-	return ChunkEntry{
-		ChunkRef: ChunkRef{
-			UserID:   []byte(userID),
-			SeriesID: labelsSeriesID(lbs),
-			From:     from,
-			Through:  through,
-		},
-		Labels: lbs,
-	}
+
+	return lbs
 }
 
 type table struct {
 	name   string
-	chunks map[string][]chunk.Chunk
+	chunks map[string]map[string][]logproto.ChunkRef
 }
 
-func (t *table) ForEachChunk(ctx context.Context, callback ChunkEntryCallback) error {
-	for userID, chks := range t.chunks {
-		i := 0
-		for j := 0; j < len(chks) && ctx.Err() == nil; j++ {
-			chk := chks[j]
-			deleteChunk, err := callback(entryFromChunk(chk))
+func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) error {
+	for userID := range t.chunks {
+		for seriesID := range t.chunks[userID] {
+			chunks := make([]Chunk, 0, len(t.chunks[userID][seriesID]))
+			for _, chk := range t.chunks[userID][seriesID] {
+				chunks = append(chunks, Chunk{
+					ChunkID: getChunkID(chk),
+					From:    chk.From,
+					Through: chk.Through,
+				})
+			}
+			series := series{}
+			lbls, err := syntax.ParseLabels(seriesID)
 			if err != nil {
 				return err
 			}
-
-			if !deleteChunk {
-				t.chunks[userID][i] = chk
-				i++
+			series.Reset(
+				[]byte(seriesID),
+				[]byte(userID),
+				labels.NewBuilder(lbls).Del(labels.MetricName).Labels(),
+			)
+			series.AppendChunks(chunks...)
+			if err := callback(&series); err != nil {
+				return err
 			}
 		}
-
-		t.chunks[userID] = t.chunks[userID][:i]
 	}
 
 	return ctx.Err()
 }
 
-func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
-	t.chunks[chunk.UserID] = append(t.chunks[chunk.UserID], chunk)
+func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ uint32, _ uint32) (bool, error) {
+	seriesID := lbls.String()
+	t.chunks[chunkRef.UserID][seriesID] = append(t.chunks[chunkRef.UserID][seriesID], chunkRef)
 	return true, nil
 }
 
@@ -169,36 +172,57 @@ func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
+func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
+	seriesID := labels.NewBuilder(lbls).Set(labels.MetricName, "logs").Labels().String()
+	for i, chk := range t.chunks[string(userID)][seriesID] {
+		if getChunkID(chk) == chunkID {
+			t.chunks[string(userID)][seriesID] = append(t.chunks[string(userID)][seriesID][:i], t.chunks[string(userID)][seriesID][i+1:]...)
+		}
+	}
+
+	return nil
+}
+
 func newTable(name string) *table {
 	return &table{
 		name:   name,
-		chunks: map[string][]chunk.Chunk{},
+		chunks: map[string]map[string][]logproto.ChunkRef{},
 	}
 }
 
 func (t *table) Put(chk chunk.Chunk) {
 	if _, ok := t.chunks[chk.UserID]; !ok {
-		t.chunks[chk.UserID] = []chunk.Chunk{}
+		t.chunks[chk.UserID] = make(map[string][]logproto.ChunkRef)
+	}
+	seriesID := chk.Metric.String()
+	if _, ok := t.chunks[chk.UserID][seriesID]; !ok {
+		t.chunks[chk.UserID][seriesID] = []logproto.ChunkRef{}
 	}
 
-	t.chunks[chk.UserID] = append(t.chunks[chk.UserID], chk)
+	t.chunks[chk.UserID][seriesID] = append(t.chunks[chk.UserID][seriesID], chk.ChunkRef)
 }
 
-func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
-	var chunks []chunk.Chunk
+func (t *table) GetChunks(userID string, from, through model.Time, metric labels.Labels) ([]logproto.ChunkRef, error) {
+	var chunks []logproto.ChunkRef
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 
-	for _, chk := range t.chunks[userID] {
-		if chk.From > through || chk.Through < from || !allMatch(matchers, chk.Metric) {
-			continue
+	for seriesID := range t.chunks[userID] {
+		lbls, err := syntax.ParseLabels(seriesID)
+		if err != nil {
+			return nil, err
 		}
-		chunks = append(chunks, chk)
+		for _, chk := range t.chunks[userID][seriesID] {
+			if chk.From > through || chk.Through < from || !allMatch(matchers, lbls) {
+				continue
+			}
+			chunks = append(chunks, chk)
+		}
 	}
 
-	return chunks
+	return chunks, nil
 }
 
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
@@ -288,7 +312,7 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	t.t.Helper()
-	fetchedChunk := []chunk.Chunk{}
+	fetchedChunks := []chunk.Chunk{}
 	seen := map[string]struct{}{}
 
 	for _, tableName := range tablesInInterval(from, through) {
@@ -297,31 +321,32 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 			continue
 		}
 
-		for _, chk := range table.GetChunks(userID, from, through, metric) {
-			chunkID := getChunkID(chk.ChunkRef)
+		chunkRefs, err := table.GetChunks(userID, from, through, metric)
+		if err != nil {
+			t.t.Fatal(err)
+		}
+		for _, chunkRef := range chunkRefs {
+			chunkID := getChunkID(chunkRef)
 			if _, ok := seen[chunkID]; ok {
 				continue
 			}
 
-			fetchedChunk = append(fetchedChunk, chk)
+			chk, err := chunk.ParseExternalKey(userID, chunkID)
+			if err != nil {
+				t.t.Fatal(err)
+			}
+
+			fetchedChunk, err := t.chunkClient.GetChunks(context.Background(), []chunk.Chunk{chk})
+			if err != nil {
+				t.t.Fatal(err)
+			}
+
+			fetchedChunks = append(fetchedChunks, fetchedChunk...)
 			seen[chunkID] = struct{}{}
 		}
 	}
 
-	return fetchedChunk
-}
-
-func entryFromChunk(c chunk.Chunk) ChunkEntry {
-	return ChunkEntry{
-		ChunkRef: ChunkRef{
-			UserID:   []byte(c.UserID),
-			SeriesID: labelsSeriesID(c.Metric),
-			ChunkID:  []byte(getChunkID(c.ChunkRef)),
-			From:     c.From,
-			Through:  c.Through,
-		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
-	}
+	return fetchedChunks
 }
 
 func getChunkID(c logproto.ChunkRef) string {

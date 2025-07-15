@@ -64,6 +64,15 @@ func TestClone(t *testing.T) {
 		"true filter": {
 			query: `{ foo = "bar" } | foo =~".*"`,
 		},
+		"multiple variants": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with aggregation": {
+			query: `variants(sum by (app) (bytes_over_time({foo="bar"}[5m])), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		},
+		"multiple variants with filters": {
+			query: `variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"} | logfmt[5m])`,
+		},
 	}
 
 	for name, test := range tests {

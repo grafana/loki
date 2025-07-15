@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/distribution/reference"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/errdefs"
+	"github.com/docker/docker/api/types/image"
 )
 
 // ImagePull requests the docker host to pull an image from a remote registry.
@@ -19,14 +19,14 @@ import (
 // FIXME(vdemeester): there is currently used in a few way in docker/docker
 // - if not in trusted content, ref is used to pass the whole reference, and tag is empty
 // - if in trusted content, ref is used to pass the reference name, and tag for the digest
-func (cli *Client) ImagePull(ctx context.Context, refStr string, options types.ImagePullOptions) (io.ReadCloser, error) {
+func (cli *Client) ImagePull(ctx context.Context, refStr string, options image.PullOptions) (io.ReadCloser, error) {
 	ref, err := reference.ParseNormalizedNamed(refStr)
 	if err != nil {
 		return nil, err
 	}
 
 	query := url.Values{}
-	query.Set("fromImage", reference.FamiliarName(ref))
+	query.Set("fromImage", ref.Name())
 	if !options.All {
 		query.Set("tag", getAPITagFromNamedRef(ref))
 	}
@@ -35,8 +35,8 @@ func (cli *Client) ImagePull(ctx context.Context, refStr string, options types.I
 	}
 
 	resp, err := cli.tryImageCreate(ctx, query, options.RegistryAuth)
-	if errdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
-		newAuthHeader, privilegeErr := options.PrivilegeFunc()
+	if cerrdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
+		newAuthHeader, privilegeErr := options.PrivilegeFunc(ctx)
 		if privilegeErr != nil {
 			return nil, privilegeErr
 		}
@@ -45,7 +45,7 @@ func (cli *Client) ImagePull(ctx context.Context, refStr string, options types.I
 	if err != nil {
 		return nil, err
 	}
-	return resp.body, nil
+	return resp.Body, nil
 }
 
 // getAPITagFromNamedRef returns a tag from the specified reference.

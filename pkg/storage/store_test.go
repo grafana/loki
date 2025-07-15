@@ -13,10 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
@@ -126,7 +127,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					_ = iter.Sample()
+					_ = iter.At()
 					sampleCount++
 				}
 				iter.Close()
@@ -168,7 +169,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		for iter.Next() {
 			j++
 			printHeap(b, false)
-			res = append(res, iter.Entry())
+			res = append(res, iter.At())
 			// limit result like the querier would do.
 			if j == query.Limit {
 				break
@@ -541,32 +542,32 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -576,32 +577,32 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -617,7 +618,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -627,7 +628,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -643,33 +644,33 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -685,7 +686,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -695,7 +696,7 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 					},
@@ -727,29 +728,29 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 					},
@@ -781,12 +782,12 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bar\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -796,27 +797,27 @@ func Test_store_SelectSample(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("4")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(4 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("5"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("5")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(5 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("6"),
+							Hash:      util.UniqueSampleHash("{foo=\"bazz\"}", unsafeGetBytes("6")),
 							Value:     1.,
 						},
 					},
@@ -864,6 +865,10 @@ func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
 
 func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 	return metric.Get("foo") == "bazz"
+}
+
+func (f fakeChunkFilterer) RequiredLabelNames() []string {
+	return []string{"foo"}
 }
 
 func Test_ChunkFilterer(t *testing.T) {
@@ -928,7 +933,7 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -959,7 +964,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1013,14 +1018,14 @@ func (p *mockStreamPipeline) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs ...labels.Label) ([]byte, lokilog.LabelsResult, bool) {
+func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs labels.Labels) ([]byte, lokilog.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.Process(ts, line, lbs...)
+	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs ...labels.Label) (string, lokilog.LabelsResult, bool) {
+func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs labels.Labels) (string, lokilog.LabelsResult, bool) {
 	p.called++
-	return p.wrappedSP.ProcessString(ts, line, lbs...)
+	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
 
 func Test_SampleWrapper(t *testing.T) {
@@ -1044,7 +1049,7 @@ func Test_SampleWrapper(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -1074,7 +1079,7 @@ func Test_SampleWrapper_disabled(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1128,14 +1133,14 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs ...labels.Label) (float64, lokilog.LabelsResult, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
 	p.called++
-	return p.wrappedSP.Process(ts, line, lbs...)
+	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs ...labels.Label) (float64, lokilog.LabelsResult, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
 	p.called++
-	return p.wrappedSP.ProcessString(ts, line, lbs...)
+	return p.wrappedSP.ProcessString(ts, line, lbs)
 }
 
 func Test_store_GetSeries(t *testing.T) {
@@ -1249,7 +1254,8 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
 			}
-			require.Equal(t, tt.matchers, ms)
+
+			syntax.AssertMatchers(t, tt.matchers, ms)
 		})
 	}
 }
@@ -1656,13 +1662,13 @@ func Test_OverlappingChunks(t *testing.T) {
 	}
 	defer it.Close()
 	require.True(t, it.Next())
-	require.Equal(t, "4", it.Entry().Line)
+	require.Equal(t, "4", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "3", it.Entry().Line)
+	require.Equal(t, "3", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "2", it.Entry().Line)
+	require.Equal(t, "2", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "1", it.Entry().Line)
+	require.Equal(t, "1", it.At().Line)
 	require.False(t, it.Next())
 }
 
@@ -1765,7 +1771,6 @@ func Test_GetSeries(t *testing.T) {
 			[]logproto.SeriesIdentifier{},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
 				tt.req.Plan = &plan.QueryPlan{
@@ -1888,6 +1893,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
 	store.Stop()
+	ResetBoltDBIndexClientsWithShipper()
 
 	// there should be 2 index tables in the object storage
 	indexTables, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index"))
@@ -2030,11 +2036,12 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		metric := labelsBuilder.Labels()
 		fp := client.Fingerprint(lbs)
 
-		chunkEnc := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncLZ4_4M, headfmt, 262144, 1572864)
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)
 		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
 			entry := logproto.Entry{
 				Timestamp: ts,
 				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+				Parsed:    logproto.EmptyLabelAdapters(),
 			}
 
 			if withStructuredMetadata {
@@ -2048,8 +2055,12 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 						Value: "1",
 					},
 				}
+			} else {
+				entry.StructuredMetadata = logproto.EmptyLabelAdapters()
 			}
-			require.NoError(t, chunkEnc.Append(&entry))
+			dup, err := chunkEnc.Append(&entry)
+			require.False(t, dup)
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, chunkEnc.Close())
@@ -2078,6 +2089,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			expectedEntry := logproto.Entry{
 				Timestamp: ts.Truncate(0),
 				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+				Parsed:    logproto.EmptyLabelAdapters(),
 			}
 
 			if withStructuredMetadata {
@@ -2091,8 +2103,10 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 						Value: "1",
 					},
 				}
+			} else {
+				expectedEntry.StructuredMetadata = logproto.EmptyLabelAdapters()
 			}
-			require.Equal(t, expectedEntry, it.Entry())
+			require.Equal(t, expectedEntry, it.At())
 		}
 
 		require.False(t, it.Next())

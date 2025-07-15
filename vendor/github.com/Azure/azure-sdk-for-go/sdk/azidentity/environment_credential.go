@@ -57,21 +57,16 @@ type EnvironmentCredentialOptions struct {
 //
 // AZURE_CLIENT_CERTIFICATE_PASSWORD: (optional) password for the certificate file.
 //
-// # User with username and password
-//
-// AZURE_TENANT_ID: (optional) tenant to authenticate in. Defaults to "organizations".
-//
-// AZURE_CLIENT_ID: client ID of the application the user will authenticate to
-//
-// AZURE_USERNAME: a username (usually an email address)
-//
-// AZURE_PASSWORD: the user's password
+// Note that this credential uses [ParseCertificates] to load the certificate and key from the file. If this
+// function isn't able to parse your certificate, use [ClientCertificateCredential] instead.
 //
 // # Configuration for multitenant applications
 //
 // To enable multitenant authentication, set AZURE_ADDITIONALLY_ALLOWED_TENANTS with a semicolon delimited list of tenants
 // the credential may request tokens from in addition to the tenant specified by AZURE_TENANT_ID. Set
 // AZURE_ADDITIONALLY_ALLOWED_TENANTS to "*" to enable the credential to request a token from any tenant.
+//
+// [Entra ID documentation]: https://aka.ms/azsdk/identity/mfa
 type EnvironmentCredential struct {
 	cred azcore.TokenCredential
 }
@@ -121,7 +116,7 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 		}
 		certs, key, err := ParseCertificates(certData, password)
 		if err != nil {
-			return nil, fmt.Errorf(`failed to load certificate from "%s": %v`, certPath, err)
+			return nil, fmt.Errorf("failed to parse %q due to error %q. This may be due to a limitation of this module's certificate loader. Consider calling NewClientCertificateCredential instead", certPath, err.Error())
 		}
 		o := &ClientCertificateCredentialOptions{
 			AdditionallyAllowedTenants: additionalTenants,

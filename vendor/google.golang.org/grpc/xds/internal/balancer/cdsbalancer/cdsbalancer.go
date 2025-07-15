@@ -19,6 +19,7 @@ package cdsbalancer
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -63,6 +64,10 @@ var (
 		return builder.Build(cc, opts), nil
 	}
 	buildProvider = buildProviderFunc
+
+	// x509SystemCertPoolFunc is used for mocking the system cert pool for
+	// tests.
+	x509SystemCertPoolFunc = x509.SystemCertPool
 )
 
 func init() {
@@ -180,7 +185,7 @@ type cdsBalancer struct {
 
 // handleSecurityConfig processes the security configuration received from the
 // management server, creates appropriate certificate provider plugins, and
-// updates the HandhakeInfo which is added as an address attribute in
+// updates the HandshakeInfo which is added as an address attribute in
 // NewSubConn() calls.
 //
 // Only executed in the context of a serializer callback.
@@ -207,10 +212,16 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 	}
 
 	// A root provider is required whether we are using TLS or mTLS.
-	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs
-	rootProvider, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
-	if err != nil {
-		return err
+	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
+	var rootProvider certprovider.Provider
+	if config.UseSystemRootCerts {
+		rootProvider = systemRootCertsProvider{}
+	} else {
+		rp, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
+		if err != nil {
+			return err
+		}
+		rootProvider = rp
 	}
 
 	// The identity provider is only present when using mTLS.
@@ -309,8 +320,8 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 	b.lbCfg = lbCfg
 
 	// Handle the update in a blocking fashion.
-	done := make(chan struct{})
-	ok = b.serializer.Schedule(func(context.Context) {
+	errCh := make(chan error, 1)
+	callback := func(context.Context) {
 		// A config update with a changed top-level cluster name means that none
 		// of our old watchers make any sense any more.
 		b.closeAllWatchers()
@@ -319,24 +330,28 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 		// could end up creating more watchers if turns out to be an aggregate
 		// cluster.
 		b.createAndAddWatcherForCluster(lbCfg.ClusterName)
-		close(done)
-	})
-	if !ok {
+		errCh <- nil
+	}
+	onFailure := func() {
 		// The call to Schedule returns false *only* if the serializer has been
 		// closed, which happens only when we receive an update after close.
-		return errBalancerClosed
+		errCh <- errBalancerClosed
 	}
-	<-done
-	return nil
+	b.serializer.ScheduleOr(callback, onFailure)
+	return <-errCh
 }
 
 // ResolverError handles errors reported by the xdsResolver.
 func (b *cdsBalancer) ResolverError(err error) {
-	b.serializer.Schedule(func(context.Context) {
-		// Resource not found error is reported by the resolver when the
-		// top-level cluster resource is removed by the management server.
+	b.serializer.TrySchedule(func(context.Context) {
+		// Missing Listener or RouteConfiguration on the management server
+		// results in a 'resource not found' error from the xDS resolver. In
+		// these cases, we should stap watching all of the current clusters
+		// being watched.
 		if xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
 			b.closeAllWatchers()
+			b.closeChildPolicyAndReportTF(err)
+			return
 		}
 		var root string
 		if b.lbCfg != nil {
@@ -351,7 +366,7 @@ func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.Sub
 	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
-// Closes all registered cluster wathers and removes them from the internal map.
+// Closes all registered cluster watchers and removes them from the internal map.
 //
 // Only executed in the context of a serializer callback.
 func (b *cdsBalancer) closeAllWatchers() {
@@ -361,10 +376,26 @@ func (b *cdsBalancer) closeAllWatchers() {
 	}
 }
 
+// closeChildPolicyAndReportTF closes the child policy, if it exists, and
+// updates the connectivity state of the channel to TransientFailure with an
+// error picker.
+//
+// Only executed in the context of a serializer callback.
+func (b *cdsBalancer) closeChildPolicyAndReportTF(err error) {
+	if b.childLB != nil {
+		b.childLB.Close()
+		b.childLB = nil
+	}
+	b.ccw.UpdateState(balancer.State{
+		ConnectivityState: connectivity.TransientFailure,
+		Picker:            base.NewErrPicker(err),
+	})
+}
+
 // Close cancels the CDS watch, closes the child policy and closes the
 // cdsBalancer.
 func (b *cdsBalancer) Close() {
-	b.serializer.Schedule(func(ctx context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		b.closeAllWatchers()
 
 		if b.childLB != nil {
@@ -384,7 +415,7 @@ func (b *cdsBalancer) Close() {
 }
 
 func (b *cdsBalancer) ExitIdle() {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		if b.childLB == nil {
 			b.logger.Warningf("Received ExitIdle with no child policy")
 			return
@@ -397,6 +428,21 @@ func (b *cdsBalancer) ExitIdle() {
 			ei.ExitIdle()
 		}
 	})
+}
+
+// Node ID needs to be manually added to errors generated in the following
+// scenarios:
+//   - resource-does-not-exist: since the xDS watch API uses a separate callback
+//     instead of returning an error value. TODO(gRFC A88): Once A88 is
+//     implemented, the xDS client will be able to add the node ID to
+//     resource-does-not-exist errors as well, and we can get rid of this
+//     special handling.
+//   - received a good update from the xDS client, but the update either contains
+//     an invalid security configuration or contains invalid aggragate cluster
+//     config.
+func (b *cdsBalancer) annotateErrorWithNodeID(err error) error {
+	nodeID := b.xdsClient.BootstrapConfig().Node().GetId()
+	return fmt.Errorf("[xDS node id: %v]: %w", nodeID, err)
 }
 
 // Handles a good Cluster update from the xDS client. Kicks off the discovery
@@ -428,7 +474,7 @@ func (b *cdsBalancer) onClusterUpdate(name string, update xdsresource.ClusterUpd
 			// If the security config is invalid, for example, if the provider
 			// instance is not found in the bootstrap config, we need to put the
 			// channel in transient failure.
-			b.onClusterError(name, fmt.Errorf("received Cluster resource contains invalid security config: %v", err))
+			b.onClusterError(name, b.annotateErrorWithNodeID(fmt.Errorf("received Cluster resource contains invalid security config: %v", err)))
 			return
 		}
 	}
@@ -436,12 +482,12 @@ func (b *cdsBalancer) onClusterUpdate(name string, update xdsresource.ClusterUpd
 	clustersSeen := make(map[string]bool)
 	dms, ok, err := b.generateDMsForCluster(b.lbCfg.ClusterName, 0, nil, clustersSeen)
 	if err != nil {
-		b.onClusterError(b.lbCfg.ClusterName, fmt.Errorf("failed to generate discovery mechanisms: %v", err))
+		b.onClusterError(b.lbCfg.ClusterName, b.annotateErrorWithNodeID(fmt.Errorf("failed to generate discovery mechanisms: %v", err)))
 		return
 	}
 	if ok {
 		if len(dms) == 0 {
-			b.onClusterError(b.lbCfg.ClusterName, fmt.Errorf("aggregate cluster graph has no leaf clusters"))
+			b.onClusterError(b.lbCfg.ClusterName, b.annotateErrorWithNodeID(fmt.Errorf("aggregate cluster graph has no leaf clusters")))
 			return
 		}
 		// Child policy is built the first time we resolve the cluster graph.
@@ -496,46 +542,28 @@ func (b *cdsBalancer) onClusterUpdate(name string, update xdsresource.ClusterUpd
 	}
 }
 
-// Handles an error Cluster update from the xDS client. Propagates the error
-// down to the child policy if one exists, or puts the channel in
-// TRANSIENT_FAILURE.
+// Handles an ambient error Cluster update from the xDS client to not stop
+// using the previously seen resource.
 //
 // Only executed in the context of a serializer callback.
-func (b *cdsBalancer) onClusterError(name string, err error) {
-	b.logger.Warningf("Cluster resource %q received error update: %v", name, err)
+func (b *cdsBalancer) onClusterAmbientError(name string, err error) {
+	b.logger.Warningf("Cluster resource %q received ambient error update: %v", name, err)
 
-	if b.childLB != nil {
-		if xdsresource.ErrType(err) != xdsresource.ErrorTypeConnection {
-			// Connection errors will be sent to the child balancers directly.
-			// There's no need to forward them.
-			b.childLB.ResolverError(err)
-		}
-	} else {
-		// If child balancer was never created, fail the RPCs with
-		// errors.
-		b.ccw.UpdateState(balancer.State{
-			ConnectivityState: connectivity.TransientFailure,
-			Picker:            base.NewErrPicker(fmt.Errorf("%q: %v", name, err)),
-		})
+	if xdsresource.ErrType(err) != xdsresource.ErrorTypeConnection && b.childLB != nil {
+		// Connection errors will be sent to the child balancers directly.
+		// There's no need to forward them.
+		b.childLB.ResolverError(err)
 	}
 }
 
-// Handles a resource-not-found error from the xDS client. Propagates the error
-// down to the child policy if one exists, or puts the channel in
-// TRANSIENT_FAILURE.
+// Handles an error Cluster update from the xDS client to stop using the
+// previously seen resource. Propagates the error down to the child policy
+// if one exists, and puts the channel in TRANSIENT_FAILURE.
 //
 // Only executed in the context of a serializer callback.
-func (b *cdsBalancer) onClusterResourceNotFound(name string) {
-	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type Cluster not found in received response", name)
-	if b.childLB != nil {
-		b.childLB.ResolverError(err)
-	} else {
-		// If child balancer was never created, fail the RPCs with errors.
-		b.ccw.UpdateState(balancer.State{
-			ConnectivityState: connectivity.TransientFailure,
-			Picker:            base.NewErrPicker(err),
-		})
-	}
+func (b *cdsBalancer) onClusterResourceError(name string, err error) {
+	b.logger.Warningf("CDS watch for resource %q reported resource error", name)
+	b.closeChildPolicyAndReportTF(err)
 }
 
 // Generates discovery mechanisms for the cluster graph rooted at `name`. This
@@ -609,27 +637,15 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 			Cluster:               cluster.ClusterName,
 			EDSServiceName:        cluster.EDSServiceName,
 			MaxConcurrentRequests: cluster.MaxRequests,
-		}
-		if cluster.LRSServerConfig == xdsresource.ClusterLRSServerSelf {
-			bootstrapConfig := b.xdsClient.BootstrapConfig()
-			parsedName := xdsresource.ParseName(cluster.ClusterName)
-			if parsedName.Scheme == xdsresource.FederationScheme {
-				// Is a federation resource name, find the corresponding
-				// authority server config.
-				if cfg, ok := bootstrapConfig.Authorities[parsedName.Authority]; ok {
-					dm.LoadReportingServer = cfg.XDSServer
-				}
-			} else {
-				// Not a federation resource name, use the default
-				// authority.
-				dm.LoadReportingServer = bootstrapConfig.XDSServer
-			}
+			LoadReportingServer:   cluster.LRSServerConfig,
 		}
 	case xdsresource.ClusterTypeLogicalDNS:
 		dm = clusterresolver.DiscoveryMechanism{
-			Type:        clusterresolver.DiscoveryMechanismTypeLogicalDNS,
-			Cluster:     cluster.ClusterName,
-			DNSHostname: cluster.DNSHostName,
+			Type:                  clusterresolver.DiscoveryMechanismTypeLogicalDNS,
+			Cluster:               cluster.ClusterName,
+			DNSHostname:           cluster.DNSHostName,
+			MaxConcurrentRequests: cluster.MaxRequests,
+			LoadReportingServer:   cluster.LRSServerConfig,
 		}
 	}
 	odJSON := cluster.OutlierDetection
@@ -645,7 +661,17 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 	}
 	dm.OutlierDetection = odJSON
 
+	dm.TelemetryLabels = cluster.TelemetryLabels
+
 	return append(dms, dm), true, nil
+}
+
+func (b *cdsBalancer) onClusterError(name string, err error) {
+	if b.childLB != nil {
+		b.onClusterAmbientError(name, err)
+	} else {
+		b.onClusterResourceError(name, err)
+	}
 }
 
 // ccWrapper wraps the balancer.ClientConn passed to the CDS balancer at
@@ -680,4 +706,20 @@ func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Addr
 		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
 	}
 	ccw.ClientConn.UpdateAddresses(sc, newAddrs)
+}
+
+// systemRootCertsProvider implements a certprovider.Provider that returns the
+// system default root certificates for validation.
+type systemRootCertsProvider struct{}
+
+func (systemRootCertsProvider) Close() {}
+
+func (systemRootCertsProvider) KeyMaterial(context.Context) (*certprovider.KeyMaterial, error) {
+	rootCAs, err := x509SystemCertPoolFunc()
+	if err != nil {
+		return nil, err
+	}
+	return &certprovider.KeyMaterial{
+		Roots: rootCAs,
+	}, nil
 }

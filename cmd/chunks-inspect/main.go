@@ -108,7 +108,11 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 
 		if printLines {
 			for _, l := range b.entries {
-				fmt.Printf("%v\t%s\n", time.Unix(0, l.timestamp).In(timezone).Format(format), strings.TrimSpace(l.line))
+				fmt.Printf("TS(%v) LINE(%s) STRUCTURED_METADATA(", time.Unix(0, l.timestamp).In(timezone).Format(format), strings.TrimSpace(l.line))
+				for _, s := range l.structuredMetadata {
+					fmt.Printf("%s=%s ", s.name, s.val)
+				}
+				fmt.Println(")")
 			}
 		}
 
@@ -122,7 +126,7 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 }
 
 func writeBlockToFile(data []byte, blockIndex int, filename string) {
-	err := os.WriteFile(filename, data, 0644)
+	err := os.WriteFile(filename, data, 0640) // #nosec G306 -- this is fencing off the "other" permissions
 	if err != nil {
 		log.Println("Failed to store block", blockIndex, "to file", filename, "due to error:", err)
 	} else {

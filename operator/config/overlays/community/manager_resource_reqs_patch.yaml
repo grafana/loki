@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+        - name: kube-rbac-proxy
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi

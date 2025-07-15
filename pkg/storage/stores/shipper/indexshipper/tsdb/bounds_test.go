@@ -28,6 +28,12 @@ func TestOverlap(t *testing.T) {
 			// ensure [start,end) inclusivity works as expected
 			a:       newBounds(1, 5),
 			b:       newBounds(5, 6),
+			overlap: true,
+		},
+		{
+			// ensure [start,end) inclusivity works as expected
+			a:       newBounds(5, 6),
+			b:       newBounds(1, 5),
 			overlap: false,
 		},
 	} {

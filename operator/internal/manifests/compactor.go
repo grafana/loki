@@ -171,7 +171,7 @@ func NewCompactorStatefulSet(opts Options) *appsv1.StatefulSet {
 							// TODO: should we verify that this is possible with the given storage class first?
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceStorage: opts.ResourceRequirements.Compactor.PVCSize,
 							},

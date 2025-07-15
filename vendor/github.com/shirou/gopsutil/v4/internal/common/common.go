@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
@@ -30,8 +31,9 @@ import (
 )
 
 var (
-	Timeout    = 3 * time.Second
-	ErrTimeout = errors.New("command timed out")
+	Timeout                = 3 * time.Second
+	ErrNotImplementedError = errors.New("not implemented yet")
+	ErrTimeout             = errors.New("command timed out")
 )
 
 type Invoker interface {
@@ -92,11 +94,9 @@ func (i FakeInvoke) Command(name string, arg ...string) ([]byte, error) {
 	return []byte{}, fmt.Errorf("could not find testdata: %s", fpath)
 }
 
-func (i FakeInvoke) CommandWithContext(ctx context.Context, name string, arg ...string) ([]byte, error) {
+func (i FakeInvoke) CommandWithContext(_ context.Context, name string, arg ...string) ([]byte, error) {
 	return i.Command(name, arg...)
 }
-
-var ErrNotImplementedError = errors.New("not implemented yet")
 
 // ReadFile reads contents from a file
 func ReadFile(filename string) (string, error) {
@@ -115,7 +115,7 @@ func ReadLines(filename string) ([]string, error) {
 }
 
 // ReadLine reads a file and returns the first occurrence of a line that is prefixed with prefix.
-func ReadLine(filename string, prefix string) (string, error) {
+func ReadLine(filename, prefix string) (string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return "", err
@@ -153,15 +153,15 @@ func ReadLinesOffsetN(filename string, offset uint, n int) ([]string, error) {
 	var ret []string
 
 	r := bufio.NewReader(f)
-	for i := 0; i < n+int(offset) || n < 0; i++ {
+	for i := uint(0); i < uint(n)+offset || n < 0; i++ {
 		line, err := r.ReadString('\n')
 		if err != nil {
-			if err == io.EOF && len(line) > 0 {
+			if err == io.EOF && line != "" {
 				ret = append(ret, strings.Trim(line, "\n"))
 			}
 			break
 		}
-		if i < int(offset) {
+		if i < offset {
 			continue
 		}
 		ret = append(ret, strings.Trim(line, "\n"))
@@ -310,7 +310,7 @@ func IntContains(target []int, src int) bool {
 
 // get struct attributes.
 // This method is used only for debugging platform dependent code.
-func attributes(m interface{}) map[string]reflect.Type {
+func attributes(m any) map[string]reflect.Type {
 	typ := reflect.TypeOf(m)
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
@@ -349,7 +349,7 @@ func PathExistsWithContents(filename string) bool {
 
 // GetEnvWithContext retrieves the environment variable key. If it does not exist it returns the default.
 // The context may optionally contain a map superseding os.EnvKey.
-func GetEnvWithContext(ctx context.Context, key string, dfault string, combineWith ...string) string {
+func GetEnvWithContext(ctx context.Context, key, dfault string, combineWith ...string) string {
 	var value string
 	if env, ok := ctx.Value(common.EnvKey).(common.EnvMap); ok {
 		value = env[common.EnvKeyType(key)]
@@ -365,7 +365,7 @@ func GetEnvWithContext(ctx context.Context, key string, dfault string, combineWi
 }
 
 // GetEnv retrieves the environment variable key. If it does not exist it returns the default.
-func GetEnv(key string, dfault string, combineWith ...string) string {
+func GetEnv(key, dfault string, combineWith ...string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		value = dfault
@@ -462,4 +462,12 @@ func getSysctrlEnv(env []string) []string {
 		env = append(env, "LC_ALL=C")
 	}
 	return env
+}
+
+// Round places rounds the number 'val' to 'n' decimal places
+func Round(val float64, n int) float64 {
+	// Calculate the power of 10 to the n
+	pow10 := math.Pow(10, float64(n))
+	// Multiply the value by pow10, round it, then divide it by pow10
+	return math.Round(val*pow10) / pow10
 }

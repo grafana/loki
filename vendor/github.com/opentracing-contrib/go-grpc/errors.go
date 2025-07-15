@@ -21,7 +21,7 @@ const (
 	ServerError Class = "5xx"
 )
 
-// ErrorClass returns the class of the given error
+// ErrorClass returns the class of the given error.
 func ErrorClass(err error) Class {
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() {

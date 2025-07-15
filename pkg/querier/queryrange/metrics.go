@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 type Metrics struct {
@@ -46,15 +47,15 @@ func NewMetrics(registerer prometheus.Registerer, metricsNamespace string) *Metr
 }
 
 type QueryMetrics struct {
-	receivedFilters prometheus.Histogram
+	receivedLabelFilters prometheus.Histogram
 }
 
 func NewMiddlewareQueryMetrics(registerer prometheus.Registerer, metricsNamespace string) *QueryMetrics {
 	return &QueryMetrics{
-		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		receivedLabelFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
-			Name:      "query_frontend_query_filters",
-			Help:      "Number of filters per query.",
+			Name:      "query_frontend_query_label_filters",
+			Help:      "Number of label matcher expressions per query.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}
@@ -87,8 +88,8 @@ func QueryMetricsMiddleware(metrics *QueryMetrics) queryrangebase.Middleware {
 				}
 			}
 
-			filters := syntax.ExtractLineFilters(expr)
-			metrics.receivedFilters.Observe(float64(len(filters)))
+			filters := v1.ExtractTestableLabelMatchers(expr)
+			metrics.receivedLabelFilters.Observe(float64(len(filters)))
 
 			return next.Do(ctx, req)
 		})

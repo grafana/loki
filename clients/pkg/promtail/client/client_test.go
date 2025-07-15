@@ -727,7 +727,7 @@ func Test_Tripperware(t *testing.T) {
 	var called bool
 	c, err := NewWithTripperware(metrics, Config{
 		URL: flagext.URLValue{URL: url},
-	}, 0, 0, false, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
+	}, 0, 0, false, log.NewNopLogger(), func(_ http.RoundTripper) http.RoundTripper {
 		return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			require.Equal(t, r.URL.String(), "http://foo.com")
 			called = true

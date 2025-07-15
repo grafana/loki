@@ -1,13 +1,14 @@
 package ingester
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
@@ -88,7 +89,7 @@ func (r *ingesterRecoverer) Series(series *Series) error {
 		// TODO(owen-d): create another fn to avoid unnecessary label type conversions.
 		stream, err := inst.getOrCreateStream(context.Background(), logproto.Stream{
 			Labels: logproto.FromLabelAdaptersToLabels(series.Labels).String(),
-		}, nil)
+		}, nil, "loki")
 
 		if err != nil {
 			return err
@@ -142,6 +143,7 @@ func (r *ingesterRecoverer) SetStream(ctx context.Context, userID string, series
 			Labels: series.Labels.String(),
 		},
 		nil,
+		"loki",
 	)
 	if err != nil {
 		return err
@@ -159,16 +161,16 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
-			return errors.Errorf("user (%s) not set during WAL replay", userID)
+			return fmt.Errorf("user (%s) not set during WAL replay", userID)
 		}
 
 		s, ok := out.(*sync.Map).Load(entries.Ref)
 		if !ok {
-			return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
+			return fmt.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker)
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))
@@ -194,9 +196,6 @@ func (r *ingesterRecoverer) Close() {
 		inst.forAllStreams(context.Background(), func(s *stream) error {
 			s.chunkMtx.Lock()
 			defer s.chunkMtx.Unlock()
-
-			// reset all the incrementing stream counters after a successful WAL replay.
-			s.resetCounter()
 
 			if len(s.chunks) == 0 {
 				inst.removeStream(s)
@@ -273,7 +272,7 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 				entries, ok := next.data.(wal.RefEntries)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
 				}
 				if err == nil {
 					err = recoverer.Push(next.userID, entries)
@@ -323,7 +322,7 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 				series, ok := next.data.(*Series)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
 				}
 				if err == nil {
 					err = recoverer.Series(series)

@@ -41,6 +41,10 @@ func NewExportPartialSuccess() ExportPartialSuccess {
 func (ms ExportPartialSuccess) MoveTo(dest ExportPartialSuccess) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpcollectorlog.ExportLogsPartialSuccess{}
 }
@@ -70,6 +74,10 @@ func (ms ExportPartialSuccess) SetErrorMessage(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExportPartialSuccess) CopyTo(dest ExportPartialSuccess) {
 	dest.state.AssertMutable()
-	dest.SetRejectedLogRecords(ms.RejectedLogRecords())
-	dest.SetErrorMessage(ms.ErrorMessage())
+	copyOrigExportPartialSuccess(dest.orig, ms.orig)
+}
+
+func copyOrigExportPartialSuccess(dest, src *otlpcollectorlog.ExportLogsPartialSuccess) {
+	dest.RejectedLogRecords = src.RejectedLogRecords
+	dest.ErrorMessage = src.ErrorMessage
 }

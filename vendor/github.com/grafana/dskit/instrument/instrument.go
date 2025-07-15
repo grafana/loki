@@ -10,9 +10,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/dskit/grpcutil"
@@ -75,7 +72,7 @@ func ObserveWithExemplar(ctx context.Context, histogram prometheus.Observer, sec
 	if traceID, ok := tracing.ExtractSampledTraceID(ctx); ok {
 		histogram.(prometheus.ExemplarObserver).ObserveWithExemplar(
 			seconds,
-			prometheus.Labels{"traceID": traceID},
+			prometheus.Labels{"trace_id": traceID, "traceID": traceID},
 		)
 		return
 	}
@@ -158,8 +155,8 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	if toStatusCode == nil {
 		toStatusCode = ErrorCode
 	}
-	sp, newCtx := opentracing.StartSpanFromContext(ctx, method)
-	ext.SpanKindRPCClient.Set(sp)
+	sp, newCtx := tracing.StartSpanFromContext(ctx, method, tracing.SpanKindRPCClient{})
+	defer sp.Finish()
 	if userID, err := user.ExtractUserID(ctx); err == nil {
 		sp.SetTag("user", userID)
 	}
@@ -174,12 +171,10 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 
 	if err != nil {
 		if !grpcutil.IsCanceled(err) {
-			ext.Error.Set(sp, true)
+			sp.SetError()
 		}
-		sp.LogFields(otlog.Error(err))
+		sp.LogError(err)
 	}
-	sp.Finish()
-
 	return err
 }
 

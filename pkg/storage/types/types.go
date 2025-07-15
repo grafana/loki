@@ -29,6 +29,7 @@ var SupportedStorageTypes = []string{
 	StorageTypeGCS,
 	StorageTypeS3,
 	StorageTypeSwift,
+	StorageTypeNoop,
 }
 
 var DeprecatedStorageTypes = []string{
@@ -65,6 +66,7 @@ const (
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 	StorageTypeCOS            = "cos"
+	StorageTypeNoop           = "noop"
 
 	BoltDBShipperType = "boltdb-shipper"
 	TSDBType          = "tsdb"

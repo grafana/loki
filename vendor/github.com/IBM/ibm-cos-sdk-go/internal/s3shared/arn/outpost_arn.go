@@ -17,15 +17,14 @@ type OutpostARN interface {
 //
 // Currently supported outpost ARN formats:
 // * Outpost AccessPoint ARN format:
-//		- ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/accesspoint/{accesspointName}
-//		- example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/accesspoint/myaccesspoint
+//   - ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/accesspoint/{accesspointName}
+//   - example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/accesspoint/myaccesspoint
 //
 // * Outpost Bucket ARN format:
-// 		- ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/bucket/{bucketName}
-//		- example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/bucket/mybucket
+//   - ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/bucket/{bucketName}
+//   - example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/bucket/mybucket
 //
 // Other outpost ARN formats may be supported and added in the future.
-//
 func ParseOutpostARNResource(a arn.ARN, resParts []string) (OutpostARN, error) {
 	if len(a.Region) == 0 {
 		return nil, InvalidARNError{ARN: a, Reason: "region not set"}
@@ -109,7 +108,6 @@ func (o OutpostBucketARN) GetARN() arn.ARN {
 // bucket resource id.
 //
 // parseBucketResource only parses the bucket resource id.
-//
 func parseBucketResource(a arn.ARN, resParts []string) (bucketName string, err error) {
 	if len(resParts) == 0 {
 		return bucketName, InvalidARNError{ARN: a, Reason: "bucket resource-id not set"}

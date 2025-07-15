@@ -22,19 +22,20 @@ package resolver
 import (
 	"context"
 	"fmt"
+	rand "math/rand/v2"
 	"sync/atomic"
 
+	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/wrr"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
 	rinternal "google.golang.org/grpc/xds/internal/resolver/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -44,38 +45,76 @@ import (
 // xdsresolver.Scheme
 const Scheme = "xds"
 
-// newBuilderForTesting creates a new xds resolver builder using a specific xds
-// bootstrap config, so tests can use multiple xds clients in different
-// ClientConns at the same time.
-func newBuilderForTesting(config []byte) (resolver.Builder, error) {
+// newBuilderWithConfigForTesting creates a new xds resolver builder using a
+// specific xds bootstrap config, so tests can use multiple xDS clients in
+// different ClientConns at the same time. The builder creates a new pool with
+// the provided config and a new xDS client in that pool.
+func newBuilderWithConfigForTesting(config []byte) (resolver.Builder, error) {
 	return &xdsResolverBuilder{
-		newXDSClient: func() (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewWithBootstrapContentsForTesting(config)
+		newXDSClient: func(name string, mr estats.MetricsRecorder) (xdsclient.XDSClient, func(), error) {
+			config, err := bootstrap.NewConfigFromContents(config)
+			if err != nil {
+				return nil, nil, err
+			}
+			pool := xdsclient.NewPool(config)
+			return pool.NewClientForTesting(xdsclient.OptionsForTesting{
+				Name:            name,
+				MetricsRecorder: mr,
+			})
+		},
+	}, nil
+}
+
+// newBuilderWithPoolForTesting creates a new xds resolver builder using the
+// specific xds client pool, so that tests have complete control over the exact
+// specific xds client pool being used.
+func newBuilderWithPoolForTesting(pool *xdsclient.Pool) (resolver.Builder, error) {
+	return &xdsResolverBuilder{
+		newXDSClient: func(name string, mr estats.MetricsRecorder) (xdsclient.XDSClient, func(), error) {
+			return pool.NewClientForTesting(xdsclient.OptionsForTesting{
+				Name:            name,
+				MetricsRecorder: mr,
+			})
+		},
+	}, nil
+}
+
+// newBuilderWithClientForTesting creates a new xds resolver builder using the
+// specific xDS client, so that tests have complete control over the exact
+// specific xDS client being used.
+func newBuilderWithClientForTesting(client xdsclient.XDSClient) (resolver.Builder, error) {
+	return &xdsResolverBuilder{
+		newXDSClient: func(string, estats.MetricsRecorder) (xdsclient.XDSClient, func(), error) {
+			// Returning an empty close func here means that the responsibility
+			// of closing the client lies with the caller.
+			return client, func() {}, nil
 		},
 	}, nil
 }
 
 func init() {
 	resolver.Register(&xdsResolverBuilder{})
-	internal.NewXDSResolverWithConfigForTesting = newBuilderForTesting
+	internal.NewXDSResolverWithConfigForTesting = newBuilderWithConfigForTesting
+	internal.NewXDSResolverWithPoolForTesting = newBuilderWithPoolForTesting
+	internal.NewXDSResolverWithClientForTesting = newBuilderWithClientForTesting
 
 	rinternal.NewWRR = wrr.NewRandom
-	rinternal.NewXDSClient = xdsclient.New
+	rinternal.NewXDSClient = xdsclient.DefaultPool.NewClient
 }
 
 type xdsResolverBuilder struct {
-	newXDSClient func() (xdsclient.XDSClient, func(), error)
+	newXDSClient func(string, estats.MetricsRecorder) (xdsclient.XDSClient, func(), error)
 }
 
 // Build helps implement the resolver.Builder interface.
 //
-// The xds bootstrap process is performed (and a new xds client is built) every
+// The xds bootstrap process is performed (and a new xDS client is built) every
 // time an xds resolver is built.
 func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (_ resolver.Resolver, retErr error) {
 	r := &xdsResolver{
 		cc:             cc,
 		activeClusters: make(map[string]*clusterInfo),
-		channelID:      grpcrand.Uint64(),
+		channelID:      rand.Uint64(),
 	}
 	defer func() {
 		if retErr != nil {
@@ -97,16 +136,16 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 	r.serializerCancel = cancel
 
 	// Initialize the xDS client.
-	newXDSClient := rinternal.NewXDSClient.(func() (xdsclient.XDSClient, func(), error))
+	newXDSClient := rinternal.NewXDSClient.(func(string, estats.MetricsRecorder) (xdsclient.XDSClient, func(), error))
 	if b.newXDSClient != nil {
 		newXDSClient = b.newXDSClient
 	}
-	client, close, err := newXDSClient()
+	client, closeFn, err := newXDSClient(target.String(), opts.MetricsRecorder)
 	if err != nil {
 		return nil, fmt.Errorf("xds: failed to create xds-client: %v", err)
 	}
 	r.xdsClient = client
-	r.xdsClientClose = close
+	r.xdsClientClose = closeFn
 
 	// Determine the listener resource name and start a watcher for it.
 	template, err := r.sanityChecksOnBootstrapConfig(target, opts, r.xdsClient)
@@ -128,7 +167,7 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 //
 // Returns the listener resource name template to use. If any of the above
 // validations fail, a non-nil error is returned.
-func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, opts resolver.BuildOptions, client xdsclient.XDSClient) (string, error) {
+func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, _ resolver.BuildOptions, client xdsclient.XDSClient) (string, error) {
 	bootstrapConfig := client.BootstrapConfig()
 	if bootstrapConfig == nil {
 		// This is never expected to happen after a successful xDS client
@@ -139,9 +178,13 @@ func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, opts
 	// Find the client listener template to use from the bootstrap config:
 	// - If authority is not set in the target, use the top level template
 	// - If authority is set, use the template from the authority map.
-	template := bootstrapConfig.ClientDefaultListenerResourceNameTemplate
+	template := bootstrapConfig.ClientDefaultListenerResourceNameTemplate()
 	if authority := target.URL.Host; authority != "" {
-		a := bootstrapConfig.Authorities[authority]
+		authorities := bootstrapConfig.Authorities()
+		if authorities == nil {
+			return "", fmt.Errorf("xds: authority %q specified in dial target %q is not found in the bootstrap file", authority, target)
+		}
+		a := authorities[authority]
 		if a == nil {
 			return "", fmt.Errorf("xds: authority %q specified in dial target %q is not found in the bootstrap file", authority, target)
 		}
@@ -206,11 +249,11 @@ type xdsResolver struct {
 	// cluster that includes a ref count and load balancing configuration.
 	activeClusters map[string]*clusterInfo
 
-	curConfigSelector *configSelector
+	curConfigSelector stoppableConfigSelector
 }
 
 // ResolveNow is a no-op at this point.
-func (*xdsResolver) ResolveNow(o resolver.ResolveNowOptions) {}
+func (*xdsResolver) ResolveNow(resolver.ResolveNowOptions) {}
 
 func (r *xdsResolver) Close() {
 	// Cancel the context passed to the serializer and wait for any scheduled
@@ -238,38 +281,45 @@ func (r *xdsResolver) Close() {
 // sendNewServiceConfig prunes active clusters, generates a new service config
 // based on the current set of active clusters, and sends an update to the
 // channel with that service config and the provided config selector.  Returns
-// false if an error occurs while generating the service config and the update
-// cannot be sent.
+// false if an error occurs while sending an update to the channel.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) sendNewServiceConfig(cs *configSelector) bool {
+func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
 	// Delete entries from r.activeClusters with zero references;
 	// otherwise serviceConfigJSON will generate a config including
 	// them.
 	r.pruneActiveClusters()
 
-	if cs == nil && len(r.activeClusters) == 0 {
+	errCS, ok := cs.(*erroringConfigSelector)
+	if ok && len(r.activeClusters) == 0 {
 		// There are no clusters and we are sending a failing configSelector.
 		// Send an empty config, which picks pick-first, with no address, and
 		// puts the ClientConn into transient failure.
+		//
+		// This call to UpdateState is expected to return ErrBadResolverState
+		// since pick_first doesn't like an update with no addresses.
 		r.cc.UpdateState(resolver.State{ServiceConfig: r.cc.ParseServiceConfig("{}")})
+
+		// Send a resolver error to pick_first so that RPCs will fail with a
+		// more meaningful error, as opposed to one that says that pick_first
+		// received no addresses.
+		r.cc.ReportError(errCS.err)
 		return true
 	}
 
-	sc, err := serviceConfigJSON(r.activeClusters)
-	if err != nil {
-		// JSON marshal error; should never happen.
-		r.logger.Errorf("For Listener resource %q and RouteConfiguration resource %q, failed to marshal newly built service config: %v", r.ldsResourceName, r.rdsResourceName, err)
-		r.cc.ReportError(err)
-		return false
-	}
+	sc := serviceConfigJSON(r.activeClusters)
 	r.logger.Infof("For Listener resource %q and RouteConfiguration resource %q, generated service config: %v", r.ldsResourceName, r.rdsResourceName, pretty.FormatJSON(sc))
 
 	// Send the update to the ClientConn.
 	state := iresolver.SetConfigSelector(resolver.State{
 		ServiceConfig: r.cc.ParseServiceConfig(string(sc)),
 	}, cs)
-	r.cc.UpdateState(xdsclient.SetClient(state, r.xdsClient))
+	if err := r.cc.UpdateState(xdsclient.SetClient(state, r.xdsClient)); err != nil {
+		if r.logger.V(2) {
+			r.logger.Infof("Channel rejected new state: %+v with error: %v", state, err)
+		}
+		return false
+	}
 	return true
 }
 
@@ -278,9 +328,10 @@ func (r *xdsResolver) sendNewServiceConfig(cs *configSelector) bool {
 // r.activeClusters for previously-unseen clusters.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
+func (r *xdsResolver) newConfigSelector() *configSelector {
 	cs := &configSelector{
-		r: r,
+		r:         r,
+		xdsNodeID: r.xdsClient.BootstrapConfig().Node().GetId(),
 		virtualHost: virtualHost{
 			httpFilterConfigOverride: r.currentVirtualHost.HTTPFilterConfigOverride,
 			retryConfig:              r.currentVirtualHost.RetryConfig,
@@ -314,11 +365,7 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		}
 		cs.routes[i].clusters = clusters
 
-		var err error
-		cs.routes[i].m, err = xdsresource.RouteToMatcher(rt)
-		if err != nil {
-			return nil, err
-		}
+		cs.routes[i].m = xdsresource.RouteToMatcher(rt)
 		cs.routes[i].actionType = rt.ActionType
 		if rt.MaxStreamDuration == nil {
 			cs.routes[i].maxStreamDuration = r.currentListener.MaxStreamDuration
@@ -338,7 +385,7 @@ func (r *xdsResolver) newConfigSelector() (*configSelector, error) {
 		atomic.AddInt32(&ci.refCount, 1)
 	}
 
-	return cs, nil
+	return cs
 }
 
 // pruneActiveClusters deletes entries in r.activeClusters with zero
@@ -394,29 +441,28 @@ func (r *xdsResolver) onResolutionComplete() {
 		return
 	}
 
-	cs, err := r.newConfigSelector()
-	if err != nil {
-		r.logger.Warningf("Failed to build a config selector for resource %q: %v", r.ldsResourceName, err)
-		r.cc.ReportError(err)
-		return
-	}
-
+	cs := r.newConfigSelector()
 	if !r.sendNewServiceConfig(cs) {
-		// JSON error creating the service config (unexpected); erase
+		// Channel didn't like the update we provided (unexpected); erase
 		// this config selector and ignore this update, continuing with
 		// the previous config selector.
 		cs.stop()
 		return
 	}
 
-	r.curConfigSelector.stop()
+	if r.curConfigSelector != nil {
+		r.curConfigSelector.stop()
+	}
 	r.curConfigSelector = cs
 }
 
 func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdate) {
 	matchVh := xdsresource.FindBestMatchingVirtualHost(r.dataplaneAuthority, update.VirtualHosts)
 	if matchVh == nil {
-		r.onError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
+		// TODO(purnesh42h): Should this be a resource or ambient error? Note
+		// that its being called only from resource update methods when we have
+		// finished removing the previous update.
+		r.onAmbientError(fmt.Errorf("no matching virtual host found for %q", r.dataplaneAuthority))
 		return
 	}
 	r.currentRouteConfig = update
@@ -426,12 +472,12 @@ func (r *xdsResolver) applyRouteConfigUpdate(update xdsresource.RouteConfigUpdat
 	r.onResolutionComplete()
 }
 
-// onError propagates the error up to the channel. And since this is invoked
-// only for non resource-not-found errors, we don't have to update resolver
+// onAmbientError propagates the error up to the channel. And since this is
+// invoked only for non resource errors, we don't have to update resolver
 // state and we can keep using the old config.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onError(err error) {
+func (r *xdsResolver) onAmbientError(err error) {
 	r.cc.ReportError(err)
 }
 
@@ -439,20 +485,23 @@ func (r *xdsResolver) onError(err error) {
 // are removed.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onResourceNotFound() {
+func (r *xdsResolver) onResourceError(err error) {
 	// We cannot remove clusters from the service config that have ongoing RPCs.
-	// Instead, what we can do is to send an erroring (nil) config selector
+	// Instead, what we can do is to send an erroring config selector
 	// along with normal service config. This will ensure that new RPCs will
 	// fail, and once the active RPCs complete, the reference counts on the
 	// clusters will come down to zero. At that point, we will send an empty
 	// service config with no addresses. This results in the pick-first
 	// LB policy being configured on the channel, and since there are no
 	// address, pick-first will put the channel in TRANSIENT_FAILURE.
-	r.sendNewServiceConfig(nil)
+	cs := newErroringConfigSelector(err, r.xdsClient.BootstrapConfig().Node().GetId())
+	r.sendNewServiceConfig(cs)
 
 	// Stop and dereference the active config selector, if one exists.
-	r.curConfigSelector.stop()
-	r.curConfigSelector = nil
+	if r.curConfigSelector != nil {
+		r.curConfigSelector.stop()
+	}
+	r.curConfigSelector = cs
 }
 
 // Only executed in the context of a serializer callback.
@@ -500,21 +549,20 @@ func (r *xdsResolver) onListenerResourceUpdate(update xdsresource.ListenerUpdate
 	r.routeConfigWatcher = newRouteConfigWatcher(r.rdsResourceName, r)
 }
 
-func (r *xdsResolver) onListenerResourceError(err error) {
+func (r *xdsResolver) onListenerResourceAmbientError(err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received error for Listener resource %q: %v", r.ldsResourceName, err)
+		r.logger.Infof("Received ambient error for Listener resource %q: %v", r.ldsResourceName, err)
 	}
-	r.onError(err)
+	r.onAmbientError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onListenerResourceNotFound() {
+func (r *xdsResolver) onListenerResourceError(err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received resource-not-found-error for Listener resource %q", r.ldsResourceName)
+		r.logger.Infof("Received resource error for Listener resource %q: %v", r.ldsResourceName, err)
 	}
 
 	r.listenerUpdateRecvd = false
-
 	if r.routeConfigWatcher != nil {
 		r.routeConfigWatcher.stop()
 	}
@@ -523,7 +571,7 @@ func (r *xdsResolver) onListenerResourceNotFound() {
 	r.routeConfigUpdateRecvd = false
 	r.routeConfigWatcher = nil
 
-	r.onResourceNotFound()
+	r.onResourceError(err)
 }
 
 // Only executed in the context of a serializer callback.
@@ -541,23 +589,23 @@ func (r *xdsResolver) onRouteConfigResourceUpdate(name string, update xdsresourc
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
+func (r *xdsResolver) onRouteConfigResourceAmbientError(name string, err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received error for RouteConfiguration resource %q: %v", name, err)
+		r.logger.Infof("Received ambient error for RouteConfiguration resource %q: %v", name, err)
 	}
-	r.onError(err)
+	r.onAmbientError(err)
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onRouteConfigResourceNotFound(name string) {
+func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
 	if r.logger.V(2) {
-		r.logger.Infof("Received resource-not-found-error for RouteConfiguration resource %q", name)
+		r.logger.Infof("Received resource error for RouteConfiguration resource %q: %v", name, err)
 	}
 
 	if r.rdsResourceName != name {
 		return
 	}
-	r.onResourceNotFound()
+	r.onResourceError(err)
 }
 
 // Only executed in the context of a serializer callback.

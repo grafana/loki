@@ -48,7 +48,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 	for _, test := range tests {
 		removedEntriesCount := atomic.NewInt64(0)
-		onEntryRemoved := func(key string, value []byte) {
+		onEntryRemoved := func(_ string, _ []byte) {
 			removedEntriesCount.Inc()
 		}
 		c := NewTypedEmbeddedCache[string, []byte](test.name, test.cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
@@ -187,7 +187,7 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	}
 
 	removedEntriesCount := atomic.NewInt64(0)
-	onEntryRemoved := func(key string, value []byte) {
+	onEntryRemoved := func(_ string, _ []byte) {
 		removedEntriesCount.Inc()
 	}
 	c := NewTypedEmbeddedCache[string, []byte]("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)

@@ -22,11 +22,13 @@ import (
 	"bytes"
 	_ "embed"
 	"net/http"
+	"strings"
 	"text/template"
 )
 
 // Config represents the configuration of the web listener.
 type LandingConfig struct {
+	RoutePrefix string         // The route prefix for the exporter.
 	HeaderColor string         // Used for the landing page header.
 	CSS         string         // CSS style tag for the landing page.
 	Name        string         // The name of the exporter, generally suffixed by _exporter.
@@ -62,6 +64,7 @@ type LandingLinks struct {
 
 type LandingPageHandler struct {
 	landingPage []byte
+	routePrefix string
 }
 
 var (
@@ -93,6 +96,15 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 		}
 		c.CSS = buf.String()
 	}
+	if c.RoutePrefix == "" {
+		c.RoutePrefix = "/"
+	} else if !strings.HasSuffix(c.RoutePrefix, "/") {
+		c.RoutePrefix += "/"
+	}
+	// Strip leading '/' from Links if present
+	for i, link := range c.Links {
+		c.Links[i].Address = strings.TrimPrefix(link.Address, "/")
+	}
 	t := template.Must(template.New("landing page").Parse(landingPagehtmlContent))
 
 	buf.Reset()
@@ -102,10 +114,15 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 
 	return &LandingPageHandler{
 		landingPage: buf.Bytes(),
+		routePrefix: c.RoutePrefix,
 	}, nil
 }
 
 func (h *LandingPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != h.routePrefix {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Add("Content-Type", "text/html; charset=UTF-8")
 	w.Write(h.landingPage)
 }

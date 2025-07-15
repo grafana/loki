@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 func TestAccumulatedStreams(t *testing.T) {
@@ -149,6 +151,22 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 	}
 }
 
+func TestQuantileSketchDownstreamAccumulatorSimple(t *testing.T) {
+	acc := newQuantileSketchAccumulator()
+	downstreamResult := newQuantileSketchResults()[0]
+
+	require.Nil(t, acc.Accumulate(context.Background(), downstreamResult, 0))
+
+	res := acc.Result()[0]
+	got, ok := res.Data.(ProbabilisticQuantileMatrix)
+	require.Equal(t, true, ok)
+	require.Equal(t, 10, len(got), "correct number of vectors")
+
+	require.Equal(t, res.Headers[0].Name, "HeaderA")
+	require.Equal(t, res.Warnings, []string{"warning"})
+	require.Equal(t, int64(33), res.Statistics.Summary.Shards)
+}
+
 func BenchmarkAccumulator(b *testing.B) {
 
 	// dummy params. Only need to populate direction & limit
@@ -172,7 +190,7 @@ func BenchmarkAccumulator(b *testing.B) {
 		},
 		"quantile sketches": {
 			newQuantileSketchResults(),
-			func(p Params, _ []logqlmodel.Result) Accumulator {
+			func(_ Params, _ []logqlmodel.Result) Accumulator {
 				return newQuantileSketchAccumulator()
 			},
 			params,
@@ -218,6 +236,9 @@ func newStreamResults() []logqlmodel.Result {
 
 func newQuantileSketchResults() []logqlmodel.Result {
 	results := make([]logqlmodel.Result, 100)
+	statistics := stats.Result{
+		Summary: stats.Summary{Shards: 33},
+	}
 
 	for r := range results {
 		vectors := make([]ProbabilisticQuantileVector, 10)
@@ -227,11 +248,11 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				vectors[i][j] = ProbabilisticQuantileSample{
 					T:      int64(i),
 					F:      newRandomSketch(),
-					Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+					Metric: labels.FromStrings("foo", fmt.Sprintf("bar-%d", j)),
 				}
 			}
 		}
-		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors)}
+		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}, Warnings: []string{"warning"}, Statistics: statistics}
 	}
 
 	return results

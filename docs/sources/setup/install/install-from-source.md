@@ -13,7 +13,7 @@ to build Loki from source.
 
 ## Prerequisites
 
-- [Go](https://golang.org/), version 1.14 or later;
+- [Go](https://golang.org/), version 1.23 or later;
 set your `$GOPATH` environment variable
 - `make`
 - Docker (for updating protobuf and yacc files)

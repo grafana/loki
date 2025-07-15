@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -22,13 +23,15 @@ type IntervalFilter struct {
 }
 
 type ExpirationChecker interface {
-	Expired(ref ChunkEntry, now model.Time) (bool, filter.Func)
+	Expired(userID []byte, chk Chunk, lbls labels.Labels, seriesID []byte, tableName string, now model.Time) (bool, filter.Func)
 	IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool
 	MarkPhaseStarted()
 	MarkPhaseFailed()
 	MarkPhaseTimedOut()
 	MarkPhaseFinished()
-	DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool
+	DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool
+	CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool
+	MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error
 }
 
 type expirationChecker struct {
@@ -41,6 +44,7 @@ type Limits interface {
 	StreamRetention(userID string) []validation.StreamRetention
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
+	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
@@ -50,22 +54,22 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
-func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
-	userID := unsafeGetString(ref.UserID)
-	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels, _ []byte, _ string, now model.Time) (bool, filter.Func) {
+	userIDStr := unsafeGetString(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, lbls)
 	// The 0 value should disable retention
 	if period <= 0 {
 		return false, nil
 	}
-	return now.Sub(ref.Through) > period, nil
+	return now.Sub(chk.Through) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
 // We check if tableEndTime is out of retention period, calculated using the labels from the chunk.
 // If the tableEndTime is out of retention then we can drop the chunk entry without removing the chunk from the store.
-func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
-	userID := unsafeGetString(ref.UserID)
-	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+func (e *expirationChecker) DropFromIndex(userID []byte, _ Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
+	userIDStr := unsafeGetString(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, labels)
 	// The 0 value should disable retention
 	if period <= 0 {
 		return false
@@ -82,6 +86,20 @@ func (e *expirationChecker) MarkPhaseStarted() {
 func (e *expirationChecker) MarkPhaseFailed()   {}
 func (e *expirationChecker) MarkPhaseTimedOut() {}
 func (e *expirationChecker) MarkPhaseFinished() {}
+func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, _ []byte, seriesStart model.Time, _ string, now model.Time) bool {
+	userIDStr := unsafeGetString(userID)
+	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, lbls)
+	// The 0 value should disable retention
+	if period <= 0 {
+		return true
+	}
+
+	return now.Sub(seriesStart) < period
+}
+
+func (e *expirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
+}
 
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	// when userID is empty, it means we are checking for common index table. In this case we use e.overallLatestRetentionStartTime.
@@ -107,7 +125,7 @@ func NeverExpiringExpirationChecker(_ Limits) ExpirationChecker {
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(_ ChunkEntry, _ model.Time) (bool, filter.Func) {
+func (e *neverExpiringExpirationChecker) Expired(_ []byte, _ Chunk, _ labels.Labels, _ []byte, _ string, _ model.Time) (bool, filter.Func) {
 	return false, nil
 }
 func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(_ model.Interval, _ string) bool {
@@ -117,8 +135,14 @@ func (e *neverExpiringExpirationChecker) MarkPhaseStarted()  {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFailed()   {}
 func (e *neverExpiringExpirationChecker) MarkPhaseTimedOut() {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
-func (e *neverExpiringExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
+func (e *neverExpiringExpirationChecker) DropFromIndex(_ []byte, _ Chunk, _ labels.Labels, _ model.Time, _ model.Time) bool {
 	return false
+}
+func (e *neverExpiringExpirationChecker) CanSkipSeries(_ []byte, _ labels.Labels, _ []byte, _ model.Time, _ string, _ model.Time) bool {
+	return true
+}
+func (e *neverExpiringExpirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
 }
 
 type TenantsRetention struct {
@@ -131,15 +155,41 @@ func NewTenantsRetention(l Limits) *TenantsRetention {
 	}
 }
 
+func (tr *TenantsRetention) RetentionHoursFor(userID string, lbs labels.Labels) string {
+	return NewTenantRetentionSnapshot(tr.limits, userID).RetentionHoursFor(lbs)
+}
+
 func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
-	streamRetentions := tr.limits.StreamRetention(userID)
-	globalRetention := tr.limits.RetentionPeriod(userID)
+	return NewTenantRetentionSnapshot(tr.limits, userID).RetentionPeriodFor(lbs)
+}
+
+// TenantRetentionSnapshot is a snapshot of retention rules for a tenant.
+// The underlying retention rules may change on the original limits object passed to
+// NewTenantRetentionSnapshot, but the snapshot is immutable.
+type TenantRetentionSnapshot struct {
+	streamRetentions []validation.StreamRetention
+	globalRetention  time.Duration
+}
+
+func NewTenantRetentionSnapshot(limits Limits, userID string) *TenantRetentionSnapshot {
+	return &TenantRetentionSnapshot{
+		streamRetentions: limits.StreamRetention(userID),
+		globalRetention:  limits.RetentionPeriod(userID),
+	}
+}
+
+func (r *TenantRetentionSnapshot) RetentionHoursFor(lbs labels.Labels) string {
+	period := r.RetentionPeriodFor(lbs)
+	return util.RetentionHours(period)
+}
+
+func (r *TenantRetentionSnapshot) RetentionPeriodFor(lbs labels.Labels) time.Duration {
 	var (
 		matchedRule validation.StreamRetention
 		found       bool
 	)
 Outer:
-	for _, streamRetention := range streamRetentions {
+	for _, streamRetention := range r.streamRetentions {
 		for _, m := range streamRetention.Matchers {
 			if !m.Matches(lbs.Get(m.Name)) {
 				continue Outer
@@ -159,10 +209,12 @@ Outer:
 		found = true
 		matchedRule = streamRetention
 	}
+
 	if found {
 		return time.Duration(matchedRule.Period)
 	}
-	return globalRetention
+
+	return r.globalRetention
 }
 
 type latestRetentionStartTime struct {

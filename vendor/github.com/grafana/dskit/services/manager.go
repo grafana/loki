@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
+
+	"go.uber.org/atomic"
 )
 
 type managerState int
@@ -31,6 +34,11 @@ type ManagerListener interface {
 // Manager can start them, and observe their state as a group.
 // Once all services are running, Manager is said to be Healthy. It is possible for manager to never reach the Healthy state, if some services fail to start.
 // When all services are stopped (Terminated or Failed), manager is Stopped.
+//
+// Note: Manager's state is defined by state of services. Services can be started outside of Manager and if all become Running, Manager will be Healthy as well.
+//
+// Note: Creating a manager immediately installs listeners to all services (to compute manager's state), which may start goroutines.
+// To avoid leaking goroutines, make sure to eventually stop all services or the manager (which stops services), even if manager wasn't explicitly started.
 type Manager struct {
 	services []Service
 
@@ -226,25 +234,61 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 // Specifically, a given listener will have its callbacks invoked in the same order as the underlying service enters those states.
 // Additionally, at most one of the listener's callbacks will execute at once.
 // However, multiple listeners' callbacks may execute concurrently, and listeners may execute in an order different from the one in which they were registered.
-func (m *Manager) AddListener(listener ManagerListener) {
+//
+// Returned function can be used to stop the listener and free resources used by it (e.g. goroutine).
+func (m *Manager) AddListener(listener ManagerListener) func() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.state == stopped {
 		// no need to register listener, as no more events will be sent
-		return
+		return func() {}
 	}
 
 	// max number of events is: failed notification for each service + healthy + stopped.
 	// we use buffer to avoid blocking the sender, which holds the manager's lock.
-	ch := make(chan func(l ManagerListener), len(m.services)+2)
-	m.listeners = append(m.listeners, ch)
+	listenerCh := make(chan func(l ManagerListener), len(m.services)+2)
+	m.listeners = append(m.listeners, listenerCh)
 
+	stop := make(chan struct{})
+	stopClosed := atomic.NewBool(false)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	// each listener has its own goroutine, processing events.
 	go func() {
-		for fn := range ch {
-			fn(listener)
+		defer wg.Done()
+		for {
+			select {
+			// Process events from service.
+			case fn, ok := <-listenerCh:
+				if !ok {
+					return
+				}
+				fn(listener)
+
+			case <-stop:
+				return
+			}
 		}
 	}()
+
+	return func() {
+		if stopClosed.CompareAndSwap(false, true) {
+			// Tell listener goroutine to stop.
+			close(stop)
+		}
+
+		// Remove channel for notifications from manager's list of listeners.
+		m.mu.Lock()
+		m.listeners = slices.DeleteFunc(m.listeners, func(c chan func(listener ManagerListener)) bool {
+			return listenerCh == c
+		})
+		m.mu.Unlock()
+
+		wg.Wait()
+	}
 }
 
 // called with lock

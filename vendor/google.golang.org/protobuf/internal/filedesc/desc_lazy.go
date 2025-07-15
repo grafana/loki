@@ -32,11 +32,6 @@ func (file *File) resolveMessages() {
 		for j := range md.L2.Fields.List {
 			fd := &md.L2.Fields.List[j]
 
-			// Weak fields are resolved upon actual use.
-			if fd.L1.IsWeak {
-				continue
-			}
-
 			// Resolve message field dependency.
 			switch fd.L1.Kind {
 			case protoreflect.EnumKind:
@@ -45,6 +40,11 @@ func (file *File) resolveMessages() {
 			case protoreflect.MessageKind, protoreflect.GroupKind:
 				fd.L1.Message = file.resolveMessageDependency(fd.L1.Message, listFieldDeps, depIdx)
 				depIdx++
+				if fd.L1.Kind == protoreflect.GroupKind && (fd.IsMap() || fd.IsMapEntry()) {
+					// A map field might inherit delimited encoding from a file-wide default feature.
+					// But maps never actually use delimited encoding. (At least for now...)
+					fd.L1.Kind = protoreflect.MessageKind
+				}
 			}
 
 			// Default is resolved here since it depends on Enum being resolved.
@@ -145,8 +145,6 @@ func (fd *File) unmarshalFull(b []byte) {
 			switch num {
 			case genid.FileDescriptorProto_PublicDependency_field_number:
 				fd.L2.Imports[v].IsPublic = true
-			case genid.FileDescriptorProto_WeakDependency_field_number:
-				fd.L2.Imports[v].IsWeak = true
 			}
 		case protowire.BytesType:
 			v, m := protowire.ConsumeBytes(b)
@@ -466,10 +464,10 @@ func (fd *Field) unmarshalFull(b []byte, sb *strs.Builder, pf *File, pd protoref
 			b = b[m:]
 		}
 	}
-	if fd.Syntax() == protoreflect.Editions && fd.L1.Kind == protoreflect.MessageKind && fd.L1.EditionFeatures.IsDelimitedEncoded {
+	if fd.L1.Kind == protoreflect.MessageKind && fd.L1.EditionFeatures.IsDelimitedEncoded {
 		fd.L1.Kind = protoreflect.GroupKind
 	}
-	if fd.Syntax() == protoreflect.Editions && fd.L1.EditionFeatures.IsLegacyRequired {
+	if fd.L1.EditionFeatures.IsLegacyRequired {
 		fd.L1.Cardinality = protoreflect.Required
 	}
 	if rawTypeName != nil {
@@ -496,13 +494,11 @@ func (fd *Field) unmarshalOptions(b []byte) {
 			b = b[m:]
 			switch num {
 			case genid.FieldOptions_Packed_field_number:
-				fd.L1.HasPacked = true
-				fd.L1.IsPacked = protowire.DecodeBool(v)
-			case genid.FieldOptions_Weak_field_number:
-				fd.L1.IsWeak = protowire.DecodeBool(v)
+				fd.L1.EditionFeatures.IsPacked = protowire.DecodeBool(v)
+			case genid.FieldOptions_Lazy_field_number:
+				fd.L1.IsLazy = protowire.DecodeBool(v)
 			case FieldOptions_EnforceUTF8:
-				fd.L1.HasEnforceUTF8 = true
-				fd.L1.EnforceUTF8 = protowire.DecodeBool(v)
+				fd.L1.EditionFeatures.IsUTF8Validated = protowire.DecodeBool(v)
 			}
 		case protowire.BytesType:
 			v, m := protowire.ConsumeBytes(b)
@@ -548,7 +544,6 @@ func (od *Oneof) unmarshalFull(b []byte, sb *strs.Builder, pf *File, pd protoref
 func (xd *Extension) unmarshalFull(b []byte, sb *strs.Builder) {
 	var rawTypeName []byte
 	var rawOptions []byte
-	xd.L1.EditionFeatures = featuresFromParentDesc(xd.L1.Extendee)
 	xd.L2 = new(ExtensionL2)
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)
@@ -572,19 +567,12 @@ func (xd *Extension) unmarshalFull(b []byte, sb *strs.Builder) {
 			case genid.FieldDescriptorProto_TypeName_field_number:
 				rawTypeName = v
 			case genid.FieldDescriptorProto_Options_field_number:
-				xd.unmarshalOptions(v)
 				rawOptions = appendOptions(rawOptions, v)
 			}
 		default:
 			m := protowire.ConsumeFieldValue(num, typ, b)
 			b = b[m:]
 		}
-	}
-	if xd.Syntax() == protoreflect.Editions && xd.L1.Kind == protoreflect.MessageKind && xd.L1.EditionFeatures.IsDelimitedEncoded {
-		xd.L1.Kind = protoreflect.GroupKind
-	}
-	if xd.Syntax() == protoreflect.Editions && xd.L1.EditionFeatures.IsLegacyRequired {
-		xd.L1.Cardinality = protoreflect.Required
 	}
 	if rawTypeName != nil {
 		name := makeFullName(sb, rawTypeName)
@@ -596,32 +584,6 @@ func (xd *Extension) unmarshalFull(b []byte, sb *strs.Builder) {
 		}
 	}
 	xd.L2.Options = xd.L0.ParentFile.builder.optionsUnmarshaler(&descopts.Field, rawOptions)
-}
-
-func (xd *Extension) unmarshalOptions(b []byte) {
-	for len(b) > 0 {
-		num, typ, n := protowire.ConsumeTag(b)
-		b = b[n:]
-		switch typ {
-		case protowire.VarintType:
-			v, m := protowire.ConsumeVarint(b)
-			b = b[m:]
-			switch num {
-			case genid.FieldOptions_Packed_field_number:
-				xd.L2.IsPacked = protowire.DecodeBool(v)
-			}
-		case protowire.BytesType:
-			v, m := protowire.ConsumeBytes(b)
-			b = b[m:]
-			switch num {
-			case genid.FieldOptions_Features_field_number:
-				xd.L1.EditionFeatures = unmarshalFeatureSet(v, xd.L1.EditionFeatures)
-			}
-		default:
-			m := protowire.ConsumeFieldValue(num, typ, b)
-			b = b[m:]
-		}
-	}
 }
 
 func (sd *Service) unmarshalFull(b []byte, sb *strs.Builder) {

@@ -29,6 +29,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local topologySpreadConstraints = k.core.v1.topologySpreadConstraint,
 
   querier_deployment: if !$._config.stateful_queriers then
+    assert !($._config.querier.no_schedule_constraints && $._config.querier.use_topology_spread) : 'Must configure either no_schedule_constraints or TopologySpreadConstraints, but not both';
     deployment.new('querier', 3, [$.querier_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
@@ -38,7 +39,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     ) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge('15%') +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable('15%') +
-    if $._config.querier.use_topology_spread then
+    if $._config.querier.no_schedule_constraints then {}
+    else if $._config.querier.use_topology_spread then
       deployment.spec.template.spec.withTopologySpreadConstraints(
         // Evenly spread queriers among available nodes.
         topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'querier' }) +
@@ -49,6 +51,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     else
       k.util.antiAffinity
   else {},
+
 
   // PVC for queriers when running as statefulsets
   querier_data_pvc:: if $._config.stateful_queriers then

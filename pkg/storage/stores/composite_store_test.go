@@ -352,7 +352,6 @@ func TestVolume(t *testing.T) {
 		require.Error(t, err, "something bad")
 		require.Nil(t, volumes)
 	})
-
 }
 
 func TestFilterForTimeRange(t *testing.T) {

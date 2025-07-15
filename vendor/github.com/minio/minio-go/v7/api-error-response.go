@@ -136,15 +136,15 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 			if objectName == "" {
 				errResp = ErrorResponse{
 					StatusCode: resp.StatusCode,
-					Code:       "NoSuchBucket",
-					Message:    "The specified bucket does not exist.",
+					Code:       NoSuchBucket,
+					Message:    s3ErrorResponseMap[NoSuchBucket],
 					BucketName: bucketName,
 				}
 			} else {
 				errResp = ErrorResponse{
 					StatusCode: resp.StatusCode,
-					Code:       "NoSuchKey",
-					Message:    "The specified key does not exist.",
+					Code:       NoSuchKey,
+					Message:    s3ErrorResponseMap[NoSuchKey],
 					BucketName: bucketName,
 					Key:        objectName,
 				}
@@ -152,23 +152,23 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 		case http.StatusForbidden:
 			errResp = ErrorResponse{
 				StatusCode: resp.StatusCode,
-				Code:       "AccessDenied",
-				Message:    "Access Denied.",
+				Code:       AccessDenied,
+				Message:    s3ErrorResponseMap[AccessDenied],
 				BucketName: bucketName,
 				Key:        objectName,
 			}
 		case http.StatusConflict:
 			errResp = ErrorResponse{
 				StatusCode: resp.StatusCode,
-				Code:       "Conflict",
-				Message:    "Bucket not empty.",
+				Code:       Conflict,
+				Message:    s3ErrorResponseMap[Conflict],
 				BucketName: bucketName,
 			}
 		case http.StatusPreconditionFailed:
 			errResp = ErrorResponse{
 				StatusCode: resp.StatusCode,
-				Code:       "PreconditionFailed",
-				Message:    s3ErrorResponseMap["PreconditionFailed"],
+				Code:       PreconditionFailed,
+				Message:    s3ErrorResponseMap[PreconditionFailed],
 				BucketName: bucketName,
 				Key:        objectName,
 			}
@@ -209,7 +209,7 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 	if errResp.Region == "" {
 		errResp.Region = resp.Header.Get("x-amz-bucket-region")
 	}
-	if errResp.Code == "InvalidRegion" && errResp.Region != "" {
+	if errResp.Code == InvalidRegion && errResp.Region != "" {
 		errResp.Message = fmt.Sprintf("Region does not match, expecting region ‘%s’.", errResp.Region)
 	}
 
@@ -218,10 +218,11 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 
 // errTransferAccelerationBucket - bucket name is invalid to be used with transfer acceleration.
 func errTransferAccelerationBucket(bucketName string) error {
+	msg := "The name of the bucket used for Transfer Acceleration must be DNS-compliant and must not contain periods ‘.’."
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
-		Code:       "InvalidArgument",
-		Message:    "The name of the bucket used for Transfer Acceleration must be DNS-compliant and must not contain periods ‘.’.",
+		Code:       InvalidArgument,
+		Message:    msg,
 		BucketName: bucketName,
 	}
 }
@@ -231,7 +232,7 @@ func errEntityTooLarge(totalSize, maxObjectSize int64, bucketName, objectName st
 	msg := fmt.Sprintf("Your proposed upload size ‘%d’ exceeds the maximum allowed object size ‘%d’ for single PUT operation.", totalSize, maxObjectSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
-		Code:       "EntityTooLarge",
+		Code:       EntityTooLarge,
 		Message:    msg,
 		BucketName: bucketName,
 		Key:        objectName,
@@ -243,7 +244,7 @@ func errEntityTooSmall(totalSize int64, bucketName, objectName string) error {
 	msg := fmt.Sprintf("Your proposed upload size ‘%d’ is below the minimum allowed object size ‘0B’ for single PUT operation.", totalSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
-		Code:       "EntityTooSmall",
+		Code:       EntityTooSmall,
 		Message:    msg,
 		BucketName: bucketName,
 		Key:        objectName,
@@ -255,7 +256,7 @@ func errUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string)
 	msg := fmt.Sprintf("Data read ‘%d’ is not equal to the size ‘%d’ of the input Reader.", totalRead, totalSize)
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
-		Code:       "UnexpectedEOF",
+		Code:       UnexpectedEOF,
 		Message:    msg,
 		BucketName: bucketName,
 		Key:        objectName,
@@ -266,7 +267,7 @@ func errUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string)
 func errInvalidArgument(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusBadRequest,
-		Code:       "InvalidArgument",
+		Code:       InvalidArgument,
 		Message:    message,
 		RequestID:  "minio",
 	}
@@ -277,7 +278,7 @@ func errInvalidArgument(message string) error {
 func errAPINotSupported(message string) error {
 	return ErrorResponse{
 		StatusCode: http.StatusNotImplemented,
-		Code:       "APINotSupported",
+		Code:       APINotSupported,
 		Message:    message,
 		RequestID:  "minio",
 	}

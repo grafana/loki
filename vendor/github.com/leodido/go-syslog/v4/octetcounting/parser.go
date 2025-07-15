@@ -5,15 +5,14 @@ import (
 	"io"
 
 	syslog "github.com/leodido/go-syslog/v4"
-	"github.com/leodido/go-syslog/v4/rfc5424"
 	"github.com/leodido/go-syslog/v4/rfc3164"
+	"github.com/leodido/go-syslog/v4/rfc5424"
 )
 
 // parser is capable to parse the input stream containing syslog messages with octetcounting framing.
 //
 // Use NewParser function to instantiate one.
 type parser struct {
-	msglen           int64
 	maxMessageLength int
 	s                Scanner
 	internal         syslog.Machine
@@ -96,6 +95,7 @@ func (p *parser) Parse(r io.Reader) {
 }
 
 func (p *parser) run() {
+	defer p.s.Release()
 	for {
 		var tok Token
 

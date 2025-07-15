@@ -11,4 +11,7 @@ import "github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 // ResponseError is returned when a request is made to a service and
 // the service returns a non-success HTTP status code.
 // Use errors.As() to access this type in the error chain.
+//
+// When marshaling instances, the RawResponse field will be omitted.
+// However, the contents returned by Error() will be preserved.
 type ResponseError = exported.ResponseError

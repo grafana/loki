@@ -169,6 +169,7 @@ message TopKSketchesResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
 message QuantileSketchResponse {
@@ -178,6 +179,17 @@ message QuantileSketchResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
+}
+
+message CountMinSketchResponse {
+  logproto.CountMinSketchVector response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.CountMinSketchVector"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+  repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
 message ShardsResponse {
@@ -226,6 +238,7 @@ message QueryResponse {
     DetectedFieldsResponse detectedFields = 11;
     QueryPatternsResponse patternsResponse = 12;
     DetectedLabelsResponse detectedLabels = 13;
+    CountMinSketchResponse countMinSketches = 14;
   }
 }
 

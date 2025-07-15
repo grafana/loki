@@ -196,14 +196,14 @@ func WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableW
 			}
 		}
 
-		for key, value := range writes.puts {
-			if err := b.Put([]byte(key), value); err != nil {
+		for key := range writes.deletes {
+			if err := b.Delete([]byte(key)); err != nil {
 				return err
 			}
 		}
 
-		for key := range writes.deletes {
-			if err := b.Delete([]byte(key)); err != nil {
+		for key, value := range writes.puts {
+			if err := b.Put([]byte(key), value); err != nil {
 				return err
 			}
 		}

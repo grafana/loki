@@ -18,13 +18,13 @@ func TestCMS(_ *testing.T) {
 	numStreams := 10
 	maxPerStream := 100
 	events := make([]event, 0)
-	max := int64(0)
+	maxVal := int64(0)
 
 	for j := 0; j < numStreams-k; j++ {
 		num := int64(maxPerStream)
 		n := rand.Int63n(num) + 1
-		if n > max {
-			max = n
+		if n > maxVal {
+			maxVal = n
 		}
 		for z := 0; z < int(n); z++ {
 			events = append(events, event{name: strconv.Itoa(j), count: 1})
@@ -32,7 +32,7 @@ func TestCMS(_ *testing.T) {
 	}
 	// then another set of things more than the max of the previous entries
 	for z := numStreams - k; z < numStreams; z++ {
-		n := rand.Int63n(int64(maxPerStream)) + 1 + max
+		n := rand.Int63n(int64(maxPerStream)) + 1 + maxVal
 		for x := 0; x < int(n); x++ {
 			events = append(events, event{name: strconv.Itoa(z), count: 1})
 		}
@@ -43,7 +43,7 @@ func TestCMS(_ *testing.T) {
 
 	for _, e := range events {
 		for i := 0; i < e.count; i++ {
-			cms.ConservativeIncrement(e.name)
+			cms.ConservativeIncrement(unsafeGetBytes(e.name))
 		}
 	}
 }

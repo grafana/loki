@@ -5,9 +5,10 @@
 // factory, which holds the contextual instance information that
 // allows multiple loggers of the same type to perform different
 // actions, such as logging to different locations.
-package logger // import "github.com/docker/docker/daemon/logger"
+package logger
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -88,7 +89,7 @@ type ReadConfig struct {
 // LogReader is the interface for reading log messages for loggers that support reading.
 type LogReader interface {
 	// ReadLogs reads logs from underlying logging backend.
-	ReadLogs(ReadConfig) *LogWatcher
+	ReadLogs(context.Context, ReadConfig) *LogWatcher
 }
 
 // LogWatcher is used when consuming logs read from the LogReader interface.

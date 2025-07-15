@@ -106,6 +106,11 @@ func (ms Metric) unmarshalJsoniter(iter *jsoniter.Iterator) {
 			ms.orig.Description = iter.ReadString()
 		case "unit":
 			ms.orig.Unit = iter.ReadString()
+		case "metadata":
+			iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
+				ms.orig.Metadata = append(ms.orig.Metadata, json.ReadAttribute(iter))
+				return true
+			})
 		case "sum":
 			ms.SetEmptySum().unmarshalJsoniter(iter)
 		case "gauge":

@@ -37,13 +37,20 @@ const (
 	ObjectCreatedPut                                   EventType = "s3:ObjectCreated:Put"
 	ObjectCreatedPost                                  EventType = "s3:ObjectCreated:Post"
 	ObjectCreatedCopy                                  EventType = "s3:ObjectCreated:Copy"
+	ObjectCreatedDeleteTagging                         EventType = "s3:ObjectCreated:DeleteTagging"
 	ObjectCreatedCompleteMultipartUpload               EventType = "s3:ObjectCreated:CompleteMultipartUpload"
+	ObjectCreatedPutLegalHold                          EventType = "s3:ObjectCreated:PutLegalHold"
+	ObjectCreatedPutRetention                          EventType = "s3:ObjectCreated:PutRetention"
+	ObjectCreatedPutTagging                            EventType = "s3:ObjectCreated:PutTagging"
 	ObjectAccessedGet                                  EventType = "s3:ObjectAccessed:Get"
 	ObjectAccessedHead                                 EventType = "s3:ObjectAccessed:Head"
+	ObjectAccessedGetRetention                         EventType = "s3:ObjectAccessed:GetRetention"
+	ObjectAccessedGetLegalHold                         EventType = "s3:ObjectAccessed:GetLegalHold"
 	ObjectAccessedAll                                  EventType = "s3:ObjectAccessed:*"
 	ObjectRemovedAll                                   EventType = "s3:ObjectRemoved:*"
 	ObjectRemovedDelete                                EventType = "s3:ObjectRemoved:Delete"
 	ObjectRemovedDeleteMarkerCreated                   EventType = "s3:ObjectRemoved:DeleteMarkerCreated"
+	ILMDelMarkerExpirationDelete                       EventType = "s3:LifecycleDelMarkerExpiration:Delete"
 	ObjectReducedRedundancyLostObject                  EventType = "s3:ReducedRedundancyLostObject"
 	ObjectTransitionAll                                EventType = "s3:ObjectTransition:*"
 	ObjectTransitionFailed                             EventType = "s3:ObjectTransition:Failed"
@@ -56,6 +63,9 @@ const (
 	ObjectReplicationOperationMissedThreshold          EventType = "s3:Replication:OperationMissedThreshold"
 	ObjectReplicationOperationNotTracked               EventType = "s3:Replication:OperationNotTracked"
 	ObjectReplicationOperationReplicatedAfterThreshold EventType = "s3:Replication:OperationReplicatedAfterThreshold"
+	ObjectScannerManyVersions                          EventType = "s3:Scanner:ManyVersions"
+	ObjectScannerBigPrefix                             EventType = "s3:Scanner:BigPrefix"
+	ObjectScannerAll                                   EventType = "s3:Scanner:*"
 	BucketCreatedAll                                   EventType = "s3:BucketCreated:*"
 	BucketRemovedAll                                   EventType = "s3:BucketRemoved:*"
 )
@@ -273,7 +283,6 @@ func (b *Configuration) AddTopic(topicConfig Config) bool {
 	for _, n := range b.TopicConfigs {
 		// If new config matches existing one
 		if n.Topic == newTopicConfig.Arn.String() && newTopicConfig.Filter == n.Filter {
-
 			existingConfig := set.NewStringSet()
 			for _, v := range n.Events {
 				existingConfig.Add(string(v))
@@ -298,7 +307,6 @@ func (b *Configuration) AddQueue(queueConfig Config) bool {
 	newQueueConfig := QueueConfig{Config: queueConfig, Queue: queueConfig.Arn.String()}
 	for _, n := range b.QueueConfigs {
 		if n.Queue == newQueueConfig.Arn.String() && newQueueConfig.Filter == n.Filter {
-
 			existingConfig := set.NewStringSet()
 			for _, v := range n.Events {
 				existingConfig.Add(string(v))
@@ -323,7 +331,6 @@ func (b *Configuration) AddLambda(lambdaConfig Config) bool {
 	newLambdaConfig := LambdaConfig{Config: lambdaConfig, Lambda: lambdaConfig.Arn.String()}
 	for _, n := range b.LambdaConfigs {
 		if n.Lambda == newLambdaConfig.Arn.String() && newLambdaConfig.Filter == n.Filter {
-
 			existingConfig := set.NewStringSet()
 			for _, v := range n.Events {
 				existingConfig.Add(string(v))
@@ -362,7 +369,7 @@ func (b *Configuration) RemoveTopicByArnEventsPrefixSuffix(arn Arn, events []Eve
 	removeIndex := -1
 	for i, v := range b.TopicConfigs {
 		// if it matches events and filters, mark the index for deletion
-		if v.Topic == arn.String() && v.Config.Equal(events, prefix, suffix) {
+		if v.Topic == arn.String() && v.Equal(events, prefix, suffix) {
 			removeIndex = i
 			break // since we have at most one matching config
 		}
@@ -390,7 +397,7 @@ func (b *Configuration) RemoveQueueByArnEventsPrefixSuffix(arn Arn, events []Eve
 	removeIndex := -1
 	for i, v := range b.QueueConfigs {
 		// if it matches events and filters, mark the index for deletion
-		if v.Queue == arn.String() && v.Config.Equal(events, prefix, suffix) {
+		if v.Queue == arn.String() && v.Equal(events, prefix, suffix) {
 			removeIndex = i
 			break // since we have at most one matching config
 		}
@@ -418,7 +425,7 @@ func (b *Configuration) RemoveLambdaByArnEventsPrefixSuffix(arn Arn, events []Ev
 	removeIndex := -1
 	for i, v := range b.LambdaConfigs {
 		// if it matches events and filters, mark the index for deletion
-		if v.Lambda == arn.String() && v.Config.Equal(events, prefix, suffix) {
+		if v.Lambda == arn.String() && v.Equal(events, prefix, suffix) {
 			removeIndex = i
 			break // since we have at most one matching config
 		}

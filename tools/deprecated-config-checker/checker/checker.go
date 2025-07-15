@@ -35,7 +35,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (c *Config) Validate() error {
 	if c.ConfigFile == "" && c.RuntimeConfigFile == "" {
-		return fmt.Errorf(configRequiredErrorMsg)
+		return fmt.Errorf("%s", configRequiredErrorMsg)
 	}
 	return nil
 }
@@ -182,7 +182,7 @@ func (d DeprecationNotes) String() string {
 	return sb.String()
 }
 
-func appenToPath(path, key string) string {
+func appendToPath(path, key string) string {
 	if path == "" {
 		return key
 	}
@@ -221,8 +221,8 @@ func checkRuntimeConfigDeprecated(deprecates, runtimeConfig RawYaml) []Deprecati
 	for tenant, tenantOverrides := range overrides {
 		tenantDeprecations := checkConfigDeprecated(deprecatedLimits, tenantOverrides.(RawYaml))
 		for i := range tenantDeprecations {
-			tenantPath := appenToPath("overrides", tenant)
-			tenantDeprecations[i].ItemPath = appenToPath(tenantPath, tenantDeprecations[i].ItemPath)
+			tenantPath := appendToPath("overrides", tenant)
+			tenantDeprecations[i].ItemPath = appendToPath(tenantPath, tenantDeprecations[i].ItemPath)
 		}
 		deprecations = append(deprecations, tenantDeprecations...)
 	}
@@ -242,7 +242,7 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 			continue
 		}
 
-		path := appenToPath(rootPath, key)
+		path := appendToPath(rootPath, key)
 
 		note, isDeprecatedNote := getDeprecationAnnotation(deprecate)
 		if isDeprecatedNote {
@@ -297,7 +297,7 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 				// If the config is a list, recurse into each item.
 				for i, item := range v {
 					itemYaml := item.(RawYaml)
-					deprecations = enumerateDeprecatesFields(deprecateYaml, itemYaml, appenToPath(path, fmt.Sprintf("[%d]", i)), deprecations)
+					deprecations = enumerateDeprecatesFields(deprecateYaml, itemYaml, appendToPath(path, fmt.Sprintf("[%d]", i)), deprecations)
 				}
 			}
 		}

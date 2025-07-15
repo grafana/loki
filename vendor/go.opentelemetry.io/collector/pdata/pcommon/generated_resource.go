@@ -38,6 +38,10 @@ func NewResource() Resource {
 func (ms Resource) MoveTo(dest Resource) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = otlpresource.Resource{}
 }
@@ -69,6 +73,5 @@ func (ms Resource) SetDroppedAttributesCount(v uint32) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Resource) CopyTo(dest Resource) {
 	dest.getState().AssertMutable()
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetDroppedAttributesCount(ms.DroppedAttributesCount())
+	internal.CopyOrigResource(dest.getOrig(), ms.getOrig())
 }

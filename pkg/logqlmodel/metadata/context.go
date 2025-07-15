@@ -7,10 +7,10 @@ package metadata
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
@@ -87,8 +87,7 @@ func (c *Context) Warnings() []string {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	warnings := maps.Keys(c.warnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(c.warnings))
 
 	return warnings
 }

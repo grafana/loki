@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 func TestMergeDedupeIter(t *testing.T) {
@@ -12,11 +14,11 @@ func TestMergeDedupeIter(t *testing.T) {
 		numSeries = 100
 		data, _   = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 		dataPtr   = PointerSlice(data)
-		queriers  = make([]PeekingIterator[*SeriesWithBlooms], 4)
+		queriers  = make([]iter.PeekIterator[*SeriesWithBlooms], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = NewPeekingIter[*SeriesWithBlooms](NewSliceIter[*SeriesWithBlooms](dataPtr))
+		queriers[i] = iter.NewPeekIter(iter.NewSliceIter(dataPtr))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
@@ -26,11 +28,11 @@ func TestMergeDedupeIter(t *testing.T) {
 	merge := func(a, _ *SeriesWithBlooms) *SeriesWithBlooms {
 		return a
 	}
-	deduper := NewDedupingIter[*SeriesWithBlooms, *SeriesWithBlooms](
+	deduper := iter.NewDedupingIter(
 		eq,
-		Identity[*SeriesWithBlooms],
+		iter.Identity[*SeriesWithBlooms],
 		merge,
-		NewPeekingIter[*SeriesWithBlooms](mbq),
+		iter.NewPeekIter(mbq),
 	)
 
 	for i := 0; i < len(data); i++ {

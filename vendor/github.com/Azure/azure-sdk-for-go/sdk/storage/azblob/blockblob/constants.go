@@ -8,9 +8,8 @@ package blockblob
 
 import "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 
-// nolint
 const (
-	// CountToEnd specifies the end of the file
+	// CountToEnd specifies the end of the file.
 	CountToEnd = 0
 
 	_1MiB = 1024 * 1024
@@ -37,4 +36,17 @@ const (
 // PossibleBlockListTypeValues returns the possible values for the BlockListType const type.
 func PossibleBlockListTypeValues() []BlockListType {
 	return generated.PossibleBlockListTypeValues()
+}
+
+// BlobCopySourceTags - can be 'COPY' or 'REPLACE'
+type BlobCopySourceTags = generated.BlobCopySourceTags
+
+const (
+	BlobCopySourceTagsCopy    = generated.BlobCopySourceTagsCOPY
+	BlobCopySourceTagsReplace = generated.BlobCopySourceTagsREPLACE
+)
+
+// PossibleBlobCopySourceTagsValues returns the possible values for the BlobCopySourceTags const type.
+func PossibleBlobCopySourceTagsValues() []BlobCopySourceTags {
+	return generated.PossibleBlobCopySourceTagsValues()
 }

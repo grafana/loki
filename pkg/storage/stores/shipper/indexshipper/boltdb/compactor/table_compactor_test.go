@@ -368,7 +368,6 @@ func TestTable_RecreateCompactedDB(t *testing.T) {
 			shouldRecreateCompactedDB: true,
 		},
 	} {
-		tt := tt
 		t.Run(name, func(t *testing.T) {
 			if !tt.compactedDBMtime.IsZero() {
 				require.Equal(t, 1, tt.dbCount)

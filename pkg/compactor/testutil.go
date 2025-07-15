@@ -14,11 +14,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/klauspost/compress/gzip"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -81,7 +82,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 	idx := 0
 	for filename, content := range commonIndexes {
 		filePath := filepath.Join(path, strings.TrimSuffix(filename, ".gz"))
-		require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
 		if strings.HasSuffix(filename, ".gz") {
 			compressFile(t, filePath)
 		}
@@ -92,7 +93,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
 		for filename, content := range files {
 			filePath := filepath.Join(path, userID, strings.TrimSuffix(filename, ".gz"))
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0777))
+			require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
 			if strings.HasSuffix(filename, ".gz") {
 				compressFile(t, filePath)
 			}
@@ -159,15 +160,19 @@ func openCompactedIndex(path string) (*compactedIndex, error) {
 	return &compactedIndex{indexFile: idxFile}, nil
 }
 
-func (c compactedIndex) ForEachChunk(_ context.Context, _ retention.ChunkEntryCallback) error {
+func (c compactedIndex) ForEachSeries(_ context.Context, _ retention.SeriesCallback) error {
 	return nil
 }
 
-func (c compactedIndex) IndexChunk(_ chunk.Chunk) (bool, error) {
+func (c compactedIndex) IndexChunk(_ logproto.ChunkRef, _ labels.Labels, _ uint32, _ uint32) (bool, error) {
 	return true, nil
 }
 
 func (c compactedIndex) CleanupSeries(_ []byte, _ labels.Labels) error {
+	return nil
+}
+
+func (c compactedIndex) RemoveChunk(_, _ model.Time, _ []byte, _ labels.Labels, _ string) error {
 	return nil
 }
 

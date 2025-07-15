@@ -45,7 +45,7 @@ func (r *mockJournalReader) Follow(until <-chan time.Time, _ io.Writer) error {
 }
 
 func newMockJournalEntry(entry *sdjournal.JournalEntry) journalEntryFunc {
-	return func(c sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error) {
+	return func(_ sdjournal.JournalReaderConfig, _ string) (*sdjournal.JournalEntry, error) {
 		return entry, nil
 	}
 }

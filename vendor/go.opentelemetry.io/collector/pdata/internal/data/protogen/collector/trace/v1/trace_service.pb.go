@@ -253,8 +253,6 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type TraceServiceClient interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(ctx context.Context, in *ExportTraceServiceRequest, opts ...grpc.CallOption) (*ExportTraceServiceResponse, error)
 }
 
@@ -277,8 +275,6 @@ func (c *traceServiceClient) Export(ctx context.Context, in *ExportTraceServiceR
 
 // TraceServiceServer is the server API for TraceService service.
 type TraceServiceServer interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(context.Context, *ExportTraceServiceRequest) (*ExportTraceServiceResponse, error)
 }
 

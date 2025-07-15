@@ -28,7 +28,7 @@ func PossibleCopyStatusTypeValues() []CopyStatusType {
 	return generated.PossibleCopyStatusTypeValues()
 }
 
-// PremiumPageBlobAccessTier defines values for Premium PageBlob's AccessTier
+// PremiumPageBlobAccessTier defines values for Premium PageBlob's AccessTier.
 type PremiumPageBlobAccessTier = generated.PremiumPageBlobAccessTier
 
 const (
@@ -50,7 +50,7 @@ func PossiblePremiumPageBlobAccessTierValues() []PremiumPageBlobAccessTier {
 	return generated.PossiblePremiumPageBlobAccessTierValues()
 }
 
-// SequenceNumberActionType defines values for SequenceNumberActionType
+// SequenceNumberActionType defines values for SequenceNumberActionType.
 type SequenceNumberActionType = generated.SequenceNumberActionType
 
 const (

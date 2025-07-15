@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package proto;
+
+service IngestLimitsFrontend {
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
+}
+
+service IngestLimits {
+  rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
+  rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
+}
+
+message ExceedsLimitsRequest {
+  string tenant = 1;
+  repeated StreamMetadata streams = 2;
+}
+
+message ExceedsLimitsResponse {
+  repeated ExceedsLimitsResult results = 1;
+}
+
+message ExceedsLimitsResult {
+  uint64 streamHash = 1;
+  uint32 reason = 2;
+}
+
+message GetAssignedPartitionsRequest {}
+
+message GetAssignedPartitionsResponse {
+  map<int32, int64> assignedPartitions = 1;
+}
+
+message StreamMetadata {
+  uint64 streamHash = 1;
+  uint64 totalSize = 2;
+}
+
+message StreamMetadataRecord {
+  string zone = 1;
+  string tenant = 2;
+  StreamMetadata metadata = 3;
+}

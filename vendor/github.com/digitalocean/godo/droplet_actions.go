@@ -30,6 +30,8 @@ type DropletActionsService interface {
 	SnapshotByTag(context.Context, string, string) ([]Action, *Response, error)
 	EnableBackups(context.Context, int) (*Action, *Response, error)
 	EnableBackupsByTag(context.Context, string) ([]Action, *Response, error)
+	EnableBackupsWithPolicy(context.Context, int, *DropletBackupPolicyRequest) (*Action, *Response, error)
+	ChangeBackupPolicy(context.Context, int, *DropletBackupPolicyRequest) (*Action, *Response, error)
 	DisableBackups(context.Context, int) (*Action, *Response, error)
 	DisableBackupsByTag(context.Context, string) ([]Action, *Response, error)
 	PasswordReset(context.Context, int) (*Action, *Response, error)
@@ -167,6 +169,42 @@ func (s *DropletActionsServiceOp) EnableBackups(ctx context.Context, id int) (*A
 func (s *DropletActionsServiceOp) EnableBackupsByTag(ctx context.Context, tag string) ([]Action, *Response, error) {
 	request := &ActionRequest{"type": "enable_backups"}
 	return s.doActionByTag(ctx, tag, request)
+}
+
+// EnableBackupsWithPolicy enables droplet's backup with a backup policy applied.
+func (s *DropletActionsServiceOp) EnableBackupsWithPolicy(ctx context.Context, id int, policy *DropletBackupPolicyRequest) (*Action, *Response, error) {
+	if policy == nil {
+		return nil, nil, NewArgError("policy", "policy can't be nil")
+	}
+
+	policyMap := map[string]interface{}{
+		"plan":    policy.Plan,
+		"weekday": policy.Weekday,
+	}
+	if policy.Hour != nil {
+		policyMap["hour"] = policy.Hour
+	}
+
+	request := &ActionRequest{"type": "enable_backups", "backup_policy": policyMap}
+	return s.doAction(ctx, id, request)
+}
+
+// ChangeBackupPolicy updates a backup policy when backups are enabled.
+func (s *DropletActionsServiceOp) ChangeBackupPolicy(ctx context.Context, id int, policy *DropletBackupPolicyRequest) (*Action, *Response, error) {
+	if policy == nil {
+		return nil, nil, NewArgError("policy", "policy can't be nil")
+	}
+
+	policyMap := map[string]interface{}{
+		"plan":    policy.Plan,
+		"weekday": policy.Weekday,
+	}
+	if policy.Hour != nil {
+		policyMap["hour"] = policy.Hour
+	}
+
+	request := &ActionRequest{"type": "change_backup_policy", "backup_policy": policyMap}
+	return s.doAction(ctx, id, request)
 }
 
 // DisableBackups disables backups for a Droplet.

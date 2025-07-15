@@ -96,7 +96,7 @@ export default () => {
 ## Metrics
 
 The extension collects metrics that are printed in the
-[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
+[end-of-test summary](https://grafana.com/docs/k6/latest/results-output/end-of-test/) in addition to the built-in metrics.
 These metrics are collected only for instant and range queries.
 
 | name                              | description                                  |

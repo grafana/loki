@@ -18,10 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 	customJSON "github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version"
-	"github.com/google/uuid"
 )
 
 // HTTPClient represents an HTTP client.
@@ -70,15 +71,13 @@ func (c *Client) JSONCall(ctx context.Context, endpoint string, headers http.Hea
 		unmarshal = customJSON.Unmarshal
 	}
 
-	u, err := url.Parse(endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s?%s", endpoint, qv.Encode()), nil)
 	if err != nil {
-		return fmt.Errorf("could not parse path URL(%s): %w", endpoint, err)
+		return fmt.Errorf("could not create request: %w", err)
 	}
-	u.RawQuery = qv.Encode()
 
 	addStdHeaders(headers)
-
-	req := &http.Request{Method: http.MethodGet, URL: u, Header: headers}
+	req.Header = headers
 
 	if body != nil {
 		// Note: In case your wondering why we are not gzip encoding....
@@ -99,7 +98,7 @@ func (c *Client) JSONCall(ctx context.Context, endpoint string, headers http.Hea
 
 	if resp != nil {
 		if err := unmarshal(data, resp); err != nil {
-			return fmt.Errorf("json decode error: %w\njson message bytes were: %s", err, string(data))
+			return errors.InvalidJsonErr{Err: fmt.Errorf("json decode error: %w\njson message bytes were: %s", err, string(data))}
 		}
 	}
 	return nil
@@ -222,7 +221,7 @@ func (c *Client) URLFormCall(ctx context.Context, endpoint string, qv url.Values
 	}
 	if resp != nil {
 		if err := unmarshal(data, resp); err != nil {
-			return fmt.Errorf("json decode error: %w\nraw message was: %s", err, string(data))
+			return errors.InvalidJsonErr{Err: fmt.Errorf("json decode error: %w\nraw message was: %s", err, string(data))}
 		}
 	}
 	return nil

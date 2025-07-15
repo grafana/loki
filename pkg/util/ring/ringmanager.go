@@ -151,7 +151,7 @@ func (rm *RingManager) startClientMode() error {
 
 	rm.Service = services.NewIdleService(func(ctx context.Context) error {
 		return services.StartManagerAndAwaitHealthy(ctx, rm.subservices)
-	}, func(failureCase error) error {
+	}, func(_ error) error {
 		return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
 	})
 

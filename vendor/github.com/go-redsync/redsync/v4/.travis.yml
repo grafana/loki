@@ -1,0 +1,13 @@
+---
+language: go
+
+go:
+  - "1.15"
+  - "1.16"
+
+env:
+  global:
+    - GO111MODULE=on
+
+services:
+  - redis-server

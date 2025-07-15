@@ -55,6 +55,38 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		}
 	}()
 
+	tmpName := destination + "-tmp"
+
+	ftmp, err := os.Create(tmpName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := os.Remove(tmpName)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to delete temp file from index download", "err", err)
+		}
+	}()
+
+	_, err = io.Copy(ftmp, readCloser)
+	if err != nil {
+		return err
+	}
+
+	dlTime := time.Since(start)
+	level.Info(logger).Log("msg", "downloaded file", "total_time", dlTime)
+	start = time.Now()
+
+	tmpReader, err := os.Open(tmpName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := tmpReader.Close(); err != nil {
+			level.Warn(logger).Log("msg", "failed to close file", "file", destination+"-tmp")
+		}
+	}()
+
 	f, err := os.Create(destination)
 	if err != nil {
 		return err
@@ -65,9 +97,9 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 			level.Warn(logger).Log("msg", "failed to close file", "file", destination)
 		}
 	}()
-	var objectReader io.Reader = readCloser
+	var objectReader io.Reader = tmpReader
 	if decompressFile {
-		decompressedReader, err := getGzipReader(readCloser)
+		decompressedReader, err := getGzipReader(tmpReader)
 		if err != nil {
 			return err
 		}
@@ -89,7 +121,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	if err == nil {
 		logger = log.With(logger, "size", humanize.Bytes(uint64(fStat.Size())))
 	}
-	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
+	level.Info(logger).Log("msg", "downloaded and extracted file", "download time", dlTime, "extract time", time.Since(start))
 
 	if sync {
 		return f.Sync()

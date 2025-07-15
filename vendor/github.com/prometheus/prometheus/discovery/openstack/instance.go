@@ -16,16 +16,18 @@ package openstack
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"strconv"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/floatingips"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
-	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
+	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -51,7 +53,7 @@ type InstanceDiscovery struct {
 	provider     *gophercloud.ProviderClient
 	authOpts     *gophercloud.AuthOptions
 	region       string
-	logger       log.Logger
+	logger       *slog.Logger
 	port         int
 	allTenants   bool
 	availability gophercloud.Availability
@@ -59,10 +61,10 @@ type InstanceDiscovery struct {
 
 // NewInstanceDiscovery returns a new instance discovery.
 func newInstanceDiscovery(provider *gophercloud.ProviderClient, opts *gophercloud.AuthOptions,
-	port int, region string, allTenants bool, availability gophercloud.Availability, l log.Logger,
+	port int, region string, allTenants bool, availability gophercloud.Availability, l *slog.Logger,
 ) *InstanceDiscovery {
 	if l == nil {
-		l = log.NewNopLogger()
+		l = promslog.NewNopLogger()
 	}
 	return &InstanceDiscovery{
 		provider: provider, authOpts: opts,
@@ -71,13 +73,12 @@ func newInstanceDiscovery(provider *gophercloud.ProviderClient, opts *gopherclou
 }
 
 type floatingIPKey struct {
-	id    string
-	fixed string
+	deviceID string
+	fixed    string
 }
 
 func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
-	i.provider.Context = ctx
-	err := openstack.Authenticate(i.provider, *i.authOpts)
+	err := openstack.Authenticate(ctx, i.provider, *i.authOpts)
 	if err != nil {
 		return nil, fmt.Errorf("could not authenticate to OpenStack: %w", err)
 	}
@@ -89,23 +90,60 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 		return nil, fmt.Errorf("could not create OpenStack compute session: %w", err)
 	}
 
+	networkClient, err := openstack.NewNetworkV2(i.provider, gophercloud.EndpointOpts{
+		Region: i.region, Availability: i.availability,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not create OpenStack network session: %w", err)
+	}
+
 	// OpenStack API reference
-	// https://developer.openstack.org/api-ref/compute/#list-floating-ips
-	pagerFIP := floatingips.List(client)
+	// https://docs.openstack.org/api-ref/network/v2/index.html#list-ports
+	portPages, err := ports.List(networkClient, ports.ListOpts{}).AllPages(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all ports: %w", err)
+	}
+
+	allPorts, err := ports.ExtractPorts(portPages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract Ports: %w", err)
+	}
+
+	portList := make(map[string]string)
+	for _, port := range allPorts {
+		portList[port.ID] = port.DeviceID
+	}
+
+	// OpenStack API reference
+	// https://docs.openstack.org/api-ref/network/v2/index.html#list-floating-ips
+	pagerFIP := floatingips.List(networkClient, floatingips.ListOpts{})
 	floatingIPList := make(map[floatingIPKey]string)
 	floatingIPPresent := make(map[string]struct{})
-	err = pagerFIP.EachPage(func(page pagination.Page) (bool, error) {
+	err = pagerFIP.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
 		result, err := floatingips.ExtractFloatingIPs(page)
 		if err != nil {
 			return false, fmt.Errorf("could not extract floatingips: %w", err)
 		}
 		for _, ip := range result {
 			// Skip not associated ips
-			if ip.InstanceID == "" || ip.FixedIP == "" {
+			if ip.PortID == "" || ip.FixedIP == "" {
 				continue
 			}
-			floatingIPList[floatingIPKey{id: ip.InstanceID, fixed: ip.FixedIP}] = ip.IP
-			floatingIPPresent[ip.IP] = struct{}{}
+
+			// Fetch deviceID from portList
+			deviceID, ok := portList[ip.PortID]
+			if !ok {
+				i.logger.Warn("Floating IP PortID not found in portList", "PortID", ip.PortID)
+				continue
+			}
+
+			key := floatingIPKey{
+				deviceID: deviceID,
+				fixed:    ip.FixedIP,
+			}
+
+			floatingIPList[key] = ip.FloatingIP
+			floatingIPPresent[ip.FloatingIP] = struct{}{}
 		}
 		return true, nil
 	})
@@ -120,9 +158,9 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 	}
 	pager := servers.List(client, opts)
 	tg := &targetgroup.Group{
-		Source: fmt.Sprintf("OS_" + i.region),
+		Source: "OS_" + i.region,
 	}
-	err = pager.EachPage(func(page pagination.Page) (bool, error) {
+	err = pager.EachPage(ctx, func(ctx context.Context, page pagination.Page) (bool, error) {
 		if ctx.Err() != nil {
 			return false, fmt.Errorf("could not extract instances: %w", ctx.Err())
 		}
@@ -133,7 +171,7 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 
 		for _, s := range instanceList {
 			if len(s.Addresses) == 0 {
-				level.Info(i.logger).Log("msg", "Got no IP address", "instance", s.ID)
+				i.logger.Info("Got no IP address", "instance", s.ID)
 				continue
 			}
 
@@ -145,12 +183,18 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 				openstackLabelUserID:         model.LabelValue(s.UserID),
 			}
 
-			flavorID, ok := s.Flavor["id"].(string)
-			if !ok {
-				level.Warn(i.logger).Log("msg", "Invalid type for flavor id, expected string")
-				continue
+			flavorName, nameOk := s.Flavor["original_name"].(string)
+			// "original_name" is only available for microversion >= 2.47. It was added in favor of "id".
+			if !nameOk {
+				flavorID, idOk := s.Flavor["id"].(string)
+				if !idOk {
+					i.logger.Warn("Invalid type for both flavor original_name and flavor id, expected string")
+					continue
+				}
+				labels[openstackLabelInstanceFlavor] = model.LabelValue(flavorID)
+			} else {
+				labels[openstackLabelInstanceFlavor] = model.LabelValue(flavorName)
 			}
-			labels[openstackLabelInstanceFlavor] = model.LabelValue(flavorID)
 
 			imageID, ok := s.Image["id"].(string)
 			if ok {
@@ -164,22 +208,22 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 			for pool, address := range s.Addresses {
 				md, ok := address.([]interface{})
 				if !ok {
-					level.Warn(i.logger).Log("msg", "Invalid type for address, expected array")
+					i.logger.Warn("Invalid type for address, expected array")
 					continue
 				}
 				if len(md) == 0 {
-					level.Debug(i.logger).Log("msg", "Got no IP address", "instance", s.ID)
+					i.logger.Debug("Got no IP address", "instance", s.ID)
 					continue
 				}
 				for _, address := range md {
 					md1, ok := address.(map[string]interface{})
 					if !ok {
-						level.Warn(i.logger).Log("msg", "Invalid type for address, expected dict")
+						i.logger.Warn("Invalid type for address, expected dict")
 						continue
 					}
 					addr, ok := md1["addr"].(string)
 					if !ok {
-						level.Warn(i.logger).Log("msg", "Invalid type for address, expected string")
+						i.logger.Warn("Invalid type for address, expected string")
 						continue
 					}
 					if _, ok := floatingIPPresent[addr]; ok {
@@ -191,10 +235,10 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 					}
 					lbls[openstackLabelAddressPool] = model.LabelValue(pool)
 					lbls[openstackLabelPrivateIP] = model.LabelValue(addr)
-					if val, ok := floatingIPList[floatingIPKey{id: s.ID, fixed: addr}]; ok {
+					if val, ok := floatingIPList[floatingIPKey{deviceID: s.ID, fixed: addr}]; ok {
 						lbls[openstackLabelPublicIP] = model.LabelValue(val)
 					}
-					addr = net.JoinHostPort(addr, fmt.Sprintf("%d", i.port))
+					addr = net.JoinHostPort(addr, strconv.Itoa(i.port))
 					lbls[model.AddressLabel] = model.LabelValue(addr)
 
 					tg.Targets = append(tg.Targets, lbls)

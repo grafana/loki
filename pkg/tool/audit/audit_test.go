@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,42 +14,55 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
+var errObjectNotFound = errors.New("object not found")
+
 type testObjClient struct {
 	client.ObjectClient
 }
 
-func (t testObjClient) ObjectExists(_ context.Context, object string) (bool, error) {
-	if strings.Contains(object, "missing") {
-		return false, nil
+func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
+	if _, err := t.GetAttributes(ctx, object); err != nil {
+		if t.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
 	}
 	return true, nil
+}
+
+func (t testObjClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, errObjectNotFound)
+}
+
+func (t testObjClient) GetAttributes(_ context.Context, object string) (client.ObjectAttributes, error) {
+	if strings.Contains(object, "missing") {
+		return client.ObjectAttributes{}, errObjectNotFound
+	}
+	return client.ObjectAttributes{}, nil
 }
 
 type testCompactedIdx struct {
 	compactor.CompactedIndex
 
-	chunks []retention.ChunkEntry
+	chunks []retention.Chunk
 }
 
-func (t testCompactedIdx) ForEachChunk(_ context.Context, f retention.ChunkEntryCallback) error {
-	for _, chunk := range t.chunks {
-		if _, err := f(chunk); err != nil {
-			return err
-		}
-	}
-	return nil
+func (t testCompactedIdx) ForEachSeries(_ context.Context, f retention.SeriesCallback) error {
+	series := retention.NewSeries()
+	series.AppendChunks(t.chunks...)
+	return f(series)
 }
 
 func TestAuditIndex(t *testing.T) {
 	ctx := context.Background()
 	objClient := testObjClient{}
 	compactedIdx := testCompactedIdx{
-		chunks: []retention.ChunkEntry{
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-1")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-2")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-3")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("found-4")}},
-			{ChunkRef: retention.ChunkRef{ChunkID: []byte("missing-1")}},
+		chunks: []retention.Chunk{
+			{ChunkID: "found-1"},
+			{ChunkID: "found-2"},
+			{ChunkID: "found-3"},
+			{ChunkID: "found-4"},
+			{ChunkID: "missing-1"},
 		},
 	}
 	logger := log.NewNopLogger()

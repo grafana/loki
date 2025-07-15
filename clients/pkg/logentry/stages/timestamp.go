@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
 
@@ -24,11 +24,6 @@ const (
 	ErrTimestampSourceMissing    = "extracted data did not contain a timestamp"
 	ErrTimestampConversionFailed = "failed to convert extracted time to string"
 	ErrTimestampParsingFailed    = "failed to parse time"
-
-	Unix   = "Unix"
-	UnixMs = "UnixMs"
-	UnixUs = "UnixUs"
-	UnixNs = "UnixNs"
 
 	TimestampActionOnFailureSkip    = "skip"
 	TimestampActionOnFailureFudge   = "fudge"
@@ -114,9 +109,9 @@ func newTimestampStage(logger log.Logger, config interface{}) (Stage, error) {
 		return nil, err
 	}
 
-	var lastKnownTimestamps *lru.Cache
+	var lastKnownTimestamps *lru.Cache[string, time.Time]
 	if *cfg.ActionOnFailure == TimestampActionOnFailureFudge {
-		lastKnownTimestamps, err = lru.New(maxLastKnownTimestampsCacheSize)
+		lastKnownTimestamps, err = lru.New[string, time.Time](maxLastKnownTimestampsCacheSize)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +133,7 @@ type timestampStage struct {
 
 	// Stores the last known timestamp for a given "stream id" (guessed, since at this stage
 	// there's no reliable way to know it).
-	lastKnownTimestamps *lru.Cache
+	lastKnownTimestamps *lru.Cache[string, time.Time]
 }
 
 // Name implements Stage
@@ -222,7 +217,7 @@ func (ts *timestampStage) processActionOnFailureFudge(labels model.LabelSet, t *
 	}
 
 	// Fudge the timestamp
-	*t = lastTimestamp.(time.Time).Add(1 * time.Nanosecond)
+	*t = lastTimestamp.Add(1 * time.Nanosecond)
 
 	// Store the fudged timestamp, so that a subsequent fudged timestamp will be 1ns after it
 	ts.lastKnownTimestamps.Add(labelsStr, *t)

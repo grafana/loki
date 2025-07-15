@@ -1,9 +1,13 @@
 type/docs:
-- 'docs/**/*'
-- 'operator/docs/*'
+- changed-files:
+  - any-glob-to-any-file: 'docs/**/*'
+  - any-glob-to-any-file: 'operator/docs/*'
 sig/operator:
-- 'operator/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'operator/**/*'
 kind/feature:
-- 'operator/docs/enhancements/*'
+- changed-files:
+  - any-glob-to-any-file: 'operator/docs/enhancements/*'
 area/helm:
-- 'production/helm/**/*'
+- changed-files:
+  - any-glob-to-any-file: 'production/helm/**/*'

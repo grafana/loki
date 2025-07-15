@@ -16,15 +16,17 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/uber/jaeger-client-go"
-	"github.com/uber/jaeger-client-go/config"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
@@ -39,14 +41,32 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
+var (
+	spanExporter = tracetest.NewInMemoryExporter()
+)
+
+func init() {
+	otel.SetTracerProvider(
+		tracesdk.NewTracerProvider(
+			tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(spanExporter)),
+		),
+	)
+
+	// This is usually done in dskit's tracing package, but we are initializing a custom tracer provider above so we'll do this manually.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator([]propagation.TextMapPropagator{
+		// w3c Propagator is the default propagator for opentelemetry
+		propagation.TraceContext{}, propagation.Baggage{},
+	}...))
+}
+
 const (
-	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	query        = "/loki/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
-	labelQuery   = `/api/v1/label/foo/values`
+	labelQuery   = `/api/prom/label/foo/values`
 )
 
 func TestFrontend(t *testing.T) {
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 	test := func(addr string, _ *Frontend) {
@@ -71,26 +91,22 @@ func TestFrontend(t *testing.T) {
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
-	closer, err := config.Configuration{}.InitGlobalTracer("test")
-	require.NoError(t, err)
-	defer closer.Close()
-
 	observedTraceID := make(chan string, 2)
 
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		sp := opentracing.SpanFromContext(ctx)
-		defer sp.Finish()
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		sp := trace.SpanFromContext(ctx)
 
-		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+		traceID := sp.SpanContext().TraceID().String()
 		observedTraceID <- traceID
 
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 
 	test := func(addr string, _ *Frontend) {
-		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
-		defer sp.Finish()
-		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
+		ctx, sp := tracesdk.NewTracerProvider().Tracer("test").Start(context.Background(), "client")
+		defer sp.End()
+
+		traceID := sp.SpanContext().TraceID().String()
 
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
@@ -98,12 +114,10 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
 		require.NoError(t, err)
 
-		req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
-		defer tr.Finish()
-
 		client := http.Client{
-			Transport: &nethttp.Transport{},
+			Transport: otelhttp.NewTransport(nil),
 		}
+
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
@@ -157,7 +171,7 @@ func TestFrontendCheckReady(t *testing.T) {
 // the underlying query is correctly cancelled _and not retried_.
 func TestFrontendCancel(t *testing.T) {
 	var tries atomic.Int32
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		<-ctx.Done()
 		tries.Inc()
 		return nil, ctx.Err()
@@ -188,7 +202,7 @@ func TestFrontendCancel(t *testing.T) {
 }
 
 func TestFrontendMetricsCleanup(t *testing.T) {
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 
@@ -253,7 +267,7 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 	}()
 
 	grpcServer := grpc.NewServer(
-		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 	defer grpcServer.GracefulStop()
 

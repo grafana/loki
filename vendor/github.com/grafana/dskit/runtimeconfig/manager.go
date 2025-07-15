@@ -2,12 +2,14 @@ package runtimeconfig
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -183,8 +185,8 @@ func (om *Manager) loadConfig() error {
 
 	mergedConfig := map[string]interface{}{}
 	for _, f := range om.cfg.LoadPath {
-		yamlFile := map[string]interface{}{}
-		err := yaml.Unmarshal(rawData[f], &yamlFile)
+		data := rawData[f]
+		yamlFile, err := om.unmarshalMaybeGzipped(f, data)
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "unmarshal file %q", f)
@@ -216,6 +218,32 @@ func (om *Manager) loadConfig() error {
 	// preserve hashes for next loop
 	om.fileHashes = hashes
 	return nil
+}
+
+func (om *Manager) unmarshalMaybeGzipped(filename string, data []byte) (map[string]any, error) {
+	yamlFile := map[string]any{}
+	if strings.HasSuffix(filename, ".gz") {
+		r, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, errors.Wrap(err, "read gzipped file")
+		}
+		defer r.Close()
+		err = yaml.NewDecoder(r).Decode(&yamlFile)
+		return yamlFile, errors.Wrap(err, "uncompress/unmarshal gzipped file")
+	}
+
+	if err := yaml.Unmarshal(data, &yamlFile); err != nil {
+		// Give a hint if we think that file is gzipped.
+		if isGzip(data) {
+			return nil, errors.Wrap(err, "file looks gzipped but doesn't have a .gz extension")
+		}
+		return nil, err
+	}
+	return yamlFile, nil
+}
+
+func isGzip(data []byte) bool {
+	return len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b
 }
 
 func mergeConfigMaps(a, b map[string]interface{}) map[string]interface{} {

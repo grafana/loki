@@ -228,8 +228,8 @@ func (c *S3) CompleteMultipartUploadRequest(input *CompleteMultipartUploadInput)
 // don't use exceptions, they return an error).
 //
 // Note that if CompleteMultipartUpload fails, applications should be prepared
-// to retry the failed requests. For more information, see Amazon S3 Error Best
-// Practices (https://docs.aws.amazon.com/AmazonS3/latest/dev/ErrorBestPractices.html).
+// to retry any failed requests (including 500 error responses). For more information,
+// see Amazon S3 Error Best Practices (https://docs.aws.amazon.com/AmazonS3/latest/dev/ErrorBestPractices.html).
 //
 // You can't use Content-Type: application/x-www-form-urlencoded for the CompleteMultipartUpload
 // requests. Also, if you don't provide a Content-Type header, CompleteMultipartUpload
@@ -391,7 +391,10 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // in the Amazon S3 User Guide.
 //
 // Both the Region that you want to copy the object from and the Region that
-// you want to copy the object to must be enabled for your account.
+// you want to copy the object to must be enabled for your account. For more
+// information about how to enable a Region for your account, see Enable or
+// disable a Region for standalone accounts (https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-regions.html#manage-acct-regions-enable-standalone)
+// in the Amazon Web Services Account Management Guide.
 //
 // Amazon S3 transfer acceleration does not support cross-Region copies. If
 // you request a cross-Region copy using a transfer acceleration endpoint, you
@@ -421,7 +424,7 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 //     IAM policy based on the source and destination bucket types in a CopyObject
 //     operation. If the source object is in a general purpose bucket, you must
 //     have s3:GetObject permission to read the source object that is being copied.
-//     If the destination bucket is a general purpose bucket, you must have s3:PubObject
+//     If the destination bucket is a general purpose bucket, you must have s3:PutObject
 //     permission to write the object copy to the destination bucket.
 //
 //   - Directory bucket permissions - You must have permissions in a bucket
@@ -446,7 +449,7 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // When the request is an HTTP 1.1 request, the response is chunk encoded. When
 // the request is not an HTTP 1.1 request, the response would not contain the
 // Content-Length. You always need to read the entire response body to check
-// if the copy succeeds. to keep the connection alive while we copy the data.
+// if the copy succeeds.
 //
 //   - If the copy is successful, you receive a response with information about
 //     the copied object.
@@ -458,7 +461,7 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 //     during the copy operation, the error response is embedded in the 200 OK
 //     response. For example, in a cross-region copy, you may encounter throttling
 //     and receive a 200 OK response. For more information, see Resolve the Error
-//     200 response when copying objects to Amazon S3 (repost.aws/knowledge-center/s3-resolve-200-internalerror).
+//     200 response when copying objects to Amazon S3 (https://repost.aws/knowledge-center/s3-resolve-200-internalerror).
 //     The 200 OK status code means the copy was accepted, but it doesn't mean
 //     the copy is complete. Another example is when you disconnect from Amazon
 //     S3 before the copy is complete, Amazon S3 might cancel the copy and you
@@ -477,7 +480,9 @@ func (c *S3) CopyObjectRequest(input *CopyObjectInput) (req *request.Request, ou
 // The copy request charge is based on the storage class and Region that you
 // specify for the destination object. The request can also result in a data
 // retrieval charge for the source if the source storage class bills for data
-// retrieval. For pricing information, see Amazon S3 pricing (http://aws.amazon.com/s3/pricing/).
+// retrieval. If the copy source is in a different region, the data transfer
+// is billed to the copy source account. For pricing information, see Amazon
+// S3 pricing (http://aws.amazon.com/s3/pricing/).
 //
 // # HTTP Host header syntax
 //
@@ -612,12 +617,20 @@ func (c *S3) CreateBucketRequest(input *CreateBucketInput) (req *request.Request
 //     and s3:PutBucketVersioning permissions are required. S3 Object Ownership
 //
 //   - If your CreateBucket request includes the x-amz-object-ownership header,
-//     then the s3:PutBucketOwnershipControls permission is required. If your
-//     CreateBucket request sets BucketOwnerEnforced for Amazon S3 Object Ownership
-//     and specifies a bucket ACL that provides access to an external Amazon
-//     Web Services account, your request fails with a 400 error and returns
-//     the InvalidBucketAcLWithObjectOwnership error code. For more information,
-//     see Setting Object Ownership on an existing bucket (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-ownership-existing-bucket.html)
+//     then the s3:PutBucketOwnershipControls permission is required. To set
+//     an ACL on a bucket as part of a CreateBucket request, you must explicitly
+//     set S3 Object Ownership for the bucket to a different value than the default,
+//     BucketOwnerEnforced. Additionally, if your desired bucket ACL grants public
+//     access, you must first create the bucket (without the bucket ACL) and
+//     then explicitly disable Block Public Access on the bucket before using
+//     PutBucketAcl to set the ACL. If you try to create a bucket with a public
+//     ACL, the request will fail. For the majority of modern use cases in S3,
+//     we recommend that you keep all Block Public Access settings enabled and
+//     keep ACLs disabled. If you would like to share data with users outside
+//     of your account, you can use bucket policies as needed. For more information,
+//     see Controlling ownership of objects and disabling ACLs for your bucket
+//     (https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html)
+//     and Blocking public access to your Amazon S3 storage (https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html)
 //     in the Amazon S3 User Guide. S3 Block Public Access - If your specific
 //     use case requires granting public access to your S3 resources, you can
 //     disable Block Public Access. Specifically, you can create a new bucket
@@ -2373,14 +2386,23 @@ func (c *S3) DeleteObjectRequest(input *DeleteObjectInput) (req *request.Request
 // Removes an object from a bucket. The behavior depends on the bucket's versioning
 // state:
 //
-//   - If versioning is enabled, the operation removes the null version (if
-//     there is one) of an object and inserts a delete marker, which becomes
-//     the latest version of the object. If there isn't a null version, Amazon
-//     S3 does not remove any objects but will still respond that the command
-//     was successful.
+//   - If bucket versioning is not enabled, the operation permanently deletes
+//     the object.
 //
-//   - If versioning is suspended or not enabled, the operation permanently
-//     deletes the object.
+//   - If bucket versioning is enabled, the operation inserts a delete marker,
+//     which becomes the current version of the object. To permanently delete
+//     an object in a versioned bucket, you must include the object’s versionId
+//     in the request. For more information about versioning-enabled buckets,
+//     see Deleting object versions from a versioning-enabled bucket (https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html).
+//
+//   - If bucket versioning is suspended, the operation removes the object
+//     that has a null versionId, if there is one, and inserts a delete marker
+//     that becomes the current version of the object. If there isn't an object
+//     with a null versionId, and all versions of the object have a versionId,
+//     Amazon S3 does not remove the object and only inserts a delete marker.
+//     To permanently delete an object that has a versionId, you must include
+//     the object’s versionId in the request. For more information about versioning-suspended
+//     buckets, see Deleting objects from versioning-suspended buckets (https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectsfromVersioningSuspendedBuckets.html).
 //
 //   - Directory buckets - S3 Versioning isn't enabled and supported for directory
 //     buckets. For this API operation, only the null value of the version ID
@@ -2423,7 +2445,7 @@ func (c *S3) DeleteObjectRequest(input *DeleteObjectInput) (req *request.Request
 //     in your policies when your DeleteObjects request includes specific headers.
 //     s3:DeleteObject - To delete an object from a bucket, you must always have
 //     the s3:DeleteObject permission. s3:DeleteObjectVersion - To delete a specific
-//     version of an object from a versiong-enabled bucket, you must have the
+//     version of an object from a versioning-enabled bucket, you must have the
 //     s3:DeleteObjectVersion permission.
 //
 //   - Directory bucket permissions - To grant access to this API operation
@@ -2657,7 +2679,7 @@ func (c *S3) DeleteObjectsRequest(input *DeleteObjectsInput) (req *request.Reque
 //     in your policies when your DeleteObjects request includes specific headers.
 //     s3:DeleteObject - To delete an object from a bucket, you must always specify
 //     the s3:DeleteObject permission. s3:DeleteObjectVersion - To delete a specific
-//     version of an object from a versiong-enabled bucket, you must specify
+//     version of an object from a versioning-enabled bucket, you must specify
 //     the s3:DeleteObjectVersion permission.
 //
 //   - Directory bucket permissions - To grant access to this API operation
@@ -3651,12 +3673,15 @@ func (c *S3) GetBucketLifecycleConfigurationRequest(input *GetBucketLifecycleCon
 // This operation is not supported by directory buckets.
 //
 // Bucket lifecycle configuration now supports specifying a lifecycle rule using
-// an object key name prefix, one or more object tags, or a combination of both.
+// an object key name prefix, one or more object tags, object size, or any combination
+// of these. Accordingly, this section describes the latest API. The previous
+// version of the API supported filtering based only on an object key name prefix,
+// which is supported for backward compatibility. For the related API description,
+// see GetBucketLifecycle (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle.html).
 // Accordingly, this section describes the latest API. The response describes
 // the new filter element that you can use to specify a filter to select a subset
 // of objects to which the rule applies. If you are using a previous version
-// of the lifecycle configuration, it still works. For the earlier action, see
-// GetBucketLifecycle (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycle.html).
+// of the lifecycle configuration, it still works. For the earlier action,
 //
 // Returns the lifecycle configuration information set on the bucket. For information
 // about lifecycle configuration, see Object Lifecycle Management (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html).
@@ -6018,7 +6043,7 @@ func (c *S3) HeadBucketRequest(input *HeadBucketInput) (req *request.Request, ou
 // If the bucket does not exist or you do not have permission to access it,
 // the HEAD request returns a generic 400 Bad Request, 403 Forbidden or 404
 // Not Found code. A message body is not included, so you cannot determine the
-// exception beyond these error codes.
+// exception beyond these HTTP response codes.
 //
 // Directory buckets - You must make requests for this API operation to the
 // Zonal endpoint. These endpoints support virtual-hosted-style requests in
@@ -8931,10 +8956,10 @@ func (c *S3) PutBucketLifecycleConfigurationRequest(input *PutBucketLifecycleCon
 // about lifecycle configuration, see Managing your storage lifecycle (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html).
 //
 // Bucket lifecycle configuration now supports specifying a lifecycle rule using
-// an object key name prefix, one or more object tags, or a combination of both.
-// Accordingly, this section describes the latest API. The previous version
-// of the API supported filtering based only on an object key name prefix, which
-// is supported for backward compatibility. For the related API description,
+// an object key name prefix, one or more object tags, object size, or any combination
+// of these. Accordingly, this section describes the latest API. The previous
+// version of the API supported filtering based only on an object key name prefix,
+// which is supported for backward compatibility. For the related API description,
 // see PutBucketLifecycle (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycle.html).
 //
 // # Rules
@@ -8945,8 +8970,8 @@ func (c *S3) PutBucketLifecycleConfigurationRequest(input *PutBucketLifecycleCon
 // adjustable. Each rule consists of the following:
 //
 //   - A filter identifying a subset of objects to which the rule applies.
-//     The filter can be based on a key name prefix, object tags, or a combination
-//     of both.
+//     The filter can be based on a key name prefix, object tags, object size,
+//     or any combination of these.
 //
 //   - A status indicating whether the rule is in effect.
 //
@@ -11175,8 +11200,6 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //
 // This action performs the following types of requests:
 //
-//   - select - Perform a select query on an archived object
-//
 //   - restore an archive - Restore an archived object
 //
 // For more information about the S3 structure in the request body, see the
@@ -11189,44 +11212,6 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //
 //   - Protecting Data Using Server-Side Encryption (https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html)
 //     in the Amazon S3 User Guide
-//
-// Define the SQL expression for the SELECT type of restoration for your query
-// in the request body's SelectParameters structure. You can use expressions
-// like the following examples.
-//
-//   - The following expression returns all records from the specified object.
-//     SELECT * FROM Object
-//
-//   - Assuming that you are not using any headers for data stored in the object,
-//     you can specify columns with positional headers. SELECT s._1, s._2 FROM
-//     Object s WHERE s._3 > 100
-//
-//   - If you have headers and you set the fileHeaderInfo in the CSV structure
-//     in the request body to USE, you can specify headers in the query. (If
-//     you set the fileHeaderInfo field to IGNORE, the first row is skipped for
-//     the query.) You cannot mix ordinal positions with header column names.
-//     SELECT s.Id, s.FirstName, s.SSN FROM S3Object s
-//
-// When making a select request, you can also do the following:
-//
-//   - To expedite your queries, specify the Expedited tier. For more information
-//     about tiers, see "Restoring Archives," later in this topic.
-//
-//   - Specify details about the data serialization format of both the input
-//     object that is being queried and the serialization of the CSV-encoded
-//     query results.
-//
-// The following are additional important facts about the select feature:
-//
-//   - The output results are new Amazon S3 objects. Unlike archive retrievals,
-//     they are stored until explicitly deleted-manually or through a lifecycle
-//     configuration.
-//
-//   - You can issue more than one select request on the same Amazon S3 object.
-//     Amazon S3 doesn't duplicate requests, so avoid issuing duplicate requests.
-//
-//   - Amazon S3 accepts a select request even if the object has already been
-//     restored. A select request doesn’t return error response 409.
 //
 // # Permissions
 //
@@ -11331,8 +11316,8 @@ func (c *S3) RestoreObjectRequest(input *RestoreObjectInput) (req *request.Reque
 //     response.
 //
 //   - Special errors: Code: RestoreAlreadyInProgress Cause: Object restore
-//     is already in progress. (This error does not apply to SELECT type requests.)
-//     HTTP Status Code: 409 Conflict SOAP Fault Code Prefix: Client
+//     is already in progress. HTTP Status Code: 409 Conflict SOAP Fault Code
+//     Prefix: Client
 //
 //   - Code: GlacierExpeditedRetrievalNotAvailable Cause: expedited retrievals
 //     are currently not available. Try again later. (Returned if there is insufficient
@@ -12014,17 +11999,17 @@ func (c *S3) UploadPartCopyRequest(input *UploadPartCopyInput) (req *request.Req
 //     bucket in an UploadPartCopy operation. If the source object is in a general
 //     purpose bucket, you must have the s3:GetObject permission to read the
 //     source object that is being copied. If the destination bucket is a general
-//     purpose bucket, you must have the s3:PubObject permission to write the
+//     purpose bucket, you must have the s3:PutObject permission to write the
 //     object copy to the destination bucket. For information about permissions
-//     required to use the multipart upload API, see Multipart Upload and Permissions
-//     (https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuAndPermissions.html)
+//     required to use the multipart upload API, see Multipart upload API and
+//     permissions (https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html#mpuAndPermissions)
 //     in the Amazon S3 User Guide.
 //
 //   - Directory bucket permissions - You must have permissions in a bucket
 //     policy or an IAM identity-based policy based on the source and destination
 //     bucket types in an UploadPartCopy operation. If the source object that
 //     you want to copy is in a directory bucket, you must have the s3express:CreateSession
-//     permission in the Action element of a policy to read the object . By default,
+//     permission in the Action element of a policy to read the object. By default,
 //     the session is in the ReadWrite mode. If you want to restrict the access,
 //     you can explicitly set the s3express:SessionMode condition key to ReadOnly
 //     on the copy source bucket. If the copy destination is a directory bucket,
@@ -12270,7 +12255,7 @@ type AbortMultipartUploadInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -13730,7 +13715,7 @@ type CompleteMultipartUploadInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -14507,7 +14492,7 @@ type CopyObjectInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -15828,7 +15813,7 @@ type CreateBucketInput struct {
 	// you must use path-style requests in the format https://s3express-control.region_code.amazonaws.com/bucket-name
 	// . Virtual-hosted-style requests aren't supported. Directory bucket names
 	// must be unique in the chosen Availability Zone. Bucket names must also follow
-	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3).
+	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3).
 	// For information about bucket naming restrictions, see Directory bucket naming
 	// rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide
@@ -16061,7 +16046,7 @@ type CreateMultipartUploadInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -16955,7 +16940,7 @@ func (s CreateSessionInput) updateArnableField(v string) (interface{}, error) {
 type CreateSessionOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The established temporary security credentials for the created session..
+	// The established temporary security credentials for the created session.
 	//
 	// Credentials is a required field
 	Credentials *SessionCredentials `locationName:"Credentials" type:"structure" required:"true"`
@@ -17488,7 +17473,7 @@ type DeleteBucketInput struct {
 	// you must use path-style requests in the format https://s3express-control.region_code.amazonaws.com/bucket-name
 	// . Virtual-hosted-style requests aren't supported. Directory bucket names
 	// must be unique in the chosen Availability Zone. Bucket names must also follow
-	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3).
+	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3).
 	// For information about bucket naming restrictions, see Directory bucket naming
 	// rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide
@@ -18230,7 +18215,7 @@ type DeleteBucketPolicyInput struct {
 	// you must use path-style requests in the format https://s3express-control.region_code.amazonaws.com/bucket-name
 	// . Virtual-hosted-style requests aren't supported. Directory bucket names
 	// must be unique in the chosen Availability Zone. Bucket names must also follow
-	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3).
+	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3).
 	// For information about bucket naming restrictions, see Directory bucket naming
 	// rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide
@@ -18822,7 +18807,7 @@ type DeleteObjectInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -19248,7 +19233,7 @@ type DeleteObjectsInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -20561,8 +20546,15 @@ func (s *ExistingObjectReplication) SetStatus(v string) *ExistingObjectReplicati
 	return s
 }
 
-// Specifies the Amazon S3 object key name to filter on and whether to filter
-// on the suffix or prefix of the key name.
+// Specifies the Amazon S3 object key name to filter on. An object key name
+// is the name assigned to an object in your Amazon S3 bucket. You specify whether
+// to filter on the suffix or prefix of the object key name. A prefix is a specific
+// string of characters at the beginning of an object key name, which you can
+// use to organize objects. For example, you can start the key names of related
+// objects with a prefix, such as 2023- or engineering/. Then, you can use FilterRule
+// to find objects in a bucket with key names that have the same prefix. A suffix
+// is similar to a prefix, but it is at the end of the object key name instead
+// of at the beginning.
 type FilterRule struct {
 	_ struct{} `type:"structure"`
 
@@ -22464,7 +22456,7 @@ type GetBucketPolicyInput struct {
 	// you must use path-style requests in the format https://s3express-control.region_code.amazonaws.com/bucket-name
 	// . Virtual-hosted-style requests aren't supported. Directory bucket names
 	// must be unique in the chosen Availability Zone. Bucket names must also follow
-	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3).
+	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3).
 	// For information about bucket naming restrictions, see Directory bucket naming
 	// rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide
@@ -23607,7 +23599,7 @@ type GetObjectAttributesInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -24071,7 +24063,7 @@ type GetObjectInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -24648,7 +24640,7 @@ type GetObjectLegalHoldOutput struct {
 	_ struct{} `type:"structure" payload:"LegalHold"`
 
 	// The current legal hold status for the specified object.
-	LegalHold *ObjectLockLegalHold `type:"structure"`
+	LegalHold *ObjectLockLegalHold `locationName:"LegalHold" type:"structure"`
 }
 
 // String returns the string representation.
@@ -25407,7 +25399,7 @@ type GetObjectRetentionOutput struct {
 	_ struct{} `type:"structure" payload:"Retention"`
 
 	// The container element for an object's retention settings.
-	Retention *ObjectLockRetention `type:"structure"`
+	Retention *ObjectLockRetention `locationName:"Retention" type:"structure"`
 }
 
 // String returns the string representation.
@@ -26148,7 +26140,7 @@ type HeadBucketInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -26281,7 +26273,7 @@ type HeadBucketOutput struct {
 	// The name of the location where the bucket will be created.
 	//
 	// For directory buckets, the AZ ID of the Availability Zone where the bucket
-	// is created. An example AZ ID value is usw2-az2.
+	// is created. An example AZ ID value is usw2-az1.
 	//
 	// This functionality is only supported by directory buckets.
 	BucketLocationName *string `location:"header" locationName:"x-amz-bucket-location-name" type:"string"`
@@ -26348,7 +26340,7 @@ type HeadObjectInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -26474,6 +26466,24 @@ type HeadObjectInput struct {
 	//
 	// This functionality is not supported for directory buckets.
 	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// Sets the Cache-Control header of the response.
+	ResponseCacheControl *string `location:"querystring" locationName:"response-cache-control" type:"string"`
+
+	// Sets the Content-Disposition header of the response.
+	ResponseContentDisposition *string `location:"querystring" locationName:"response-content-disposition" type:"string"`
+
+	// Sets the Content-Encoding header of the response.
+	ResponseContentEncoding *string `location:"querystring" locationName:"response-content-encoding" type:"string"`
+
+	// Sets the Content-Language header of the response.
+	ResponseContentLanguage *string `location:"querystring" locationName:"response-content-language" type:"string"`
+
+	// Sets the Content-Type header of the response.
+	ResponseContentType *string `location:"querystring" locationName:"response-content-type" type:"string"`
+
+	// Sets the Expires header of the response.
+	ResponseExpires *time.Time `location:"querystring" locationName:"response-expires" type:"timestamp" timestampFormat:"rfc822"`
 
 	// Specifies the algorithm to use when encrypting the object (for example, AES256).
 	//
@@ -26617,6 +26627,42 @@ func (s *HeadObjectInput) SetRange(v string) *HeadObjectInput {
 // SetRequestPayer sets the RequestPayer field's value.
 func (s *HeadObjectInput) SetRequestPayer(v string) *HeadObjectInput {
 	s.RequestPayer = &v
+	return s
+}
+
+// SetResponseCacheControl sets the ResponseCacheControl field's value.
+func (s *HeadObjectInput) SetResponseCacheControl(v string) *HeadObjectInput {
+	s.ResponseCacheControl = &v
+	return s
+}
+
+// SetResponseContentDisposition sets the ResponseContentDisposition field's value.
+func (s *HeadObjectInput) SetResponseContentDisposition(v string) *HeadObjectInput {
+	s.ResponseContentDisposition = &v
+	return s
+}
+
+// SetResponseContentEncoding sets the ResponseContentEncoding field's value.
+func (s *HeadObjectInput) SetResponseContentEncoding(v string) *HeadObjectInput {
+	s.ResponseContentEncoding = &v
+	return s
+}
+
+// SetResponseContentLanguage sets the ResponseContentLanguage field's value.
+func (s *HeadObjectInput) SetResponseContentLanguage(v string) *HeadObjectInput {
+	s.ResponseContentLanguage = &v
+	return s
+}
+
+// SetResponseContentType sets the ResponseContentType field's value.
+func (s *HeadObjectInput) SetResponseContentType(v string) *HeadObjectInput {
+	s.ResponseContentType = &v
+	return s
+}
+
+// SetResponseExpires sets the ResponseExpires field's value.
+func (s *HeadObjectInput) SetResponseExpires(v time.Time) *HeadObjectInput {
+	s.ResponseExpires = &v
 	return s
 }
 
@@ -27163,9 +27209,9 @@ type IndexDocument struct {
 	_ struct{} `type:"structure"`
 
 	// A suffix that is appended to a request that is for a directory on the website
-	// endpoint (for example,if the suffix is index.html and you make a request
-	// to samplebucket/images/ the data that is returned will be for the object
-	// with the key name images/index.html) The suffix must not be empty and must
+	// endpoint. (For example, if the suffix is index.html and you make a request
+	// to samplebucket/images/, the data that is returned will be for the object
+	// with the key name images/index.html.) The suffix must not be empty and must
 	// not include a slash character.
 	//
 	// Replacement must be made for object keys containing special characters (such
@@ -28557,7 +28603,9 @@ func (s *LifecycleRuleAndOperator) SetTags(v []*Tag) *LifecycleRuleAndOperator {
 }
 
 // The Filter is used to identify objects that a Lifecycle Rule applies to.
-// A Filter must have exactly one of Prefix, Tag, or And specified.
+// A Filter can have exactly one of Prefix, Tag, ObjectSizeGreaterThan, ObjectSizeLessThan,
+// or And specified. If the Filter element is left empty, the Lifecycle Rule
+// applies to all objects in the bucket.
 type LifecycleRuleFilter struct {
 	_ struct{} `type:"structure"`
 
@@ -29470,7 +29518,7 @@ type ListMultipartUploadsInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -29765,7 +29813,11 @@ type ListMultipartUploadsOutput struct {
 	// This functionality is not supported for directory buckets.
 	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
 
-	// Upload ID after which listing began.
+	// Together with key-marker, specifies the multipart upload after which listing
+	// should begin. If key-marker is not specified, the upload-id-marker parameter
+	// is ignored. Otherwise, any multipart uploads for a key equal to the key-marker
+	// might be included in the list only if they have an upload ID lexicographically
+	// greater than the specified upload-id-marker.
 	//
 	// This functionality is not supported for directory buckets.
 	UploadIdMarker *string `type:"string"`
@@ -30252,7 +30304,7 @@ type ListObjectsInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -30470,7 +30522,9 @@ type ListObjectsOutput struct {
 	// the MaxKeys value.
 	Delimiter *string `type:"string"`
 
-	// Encoding type used by Amazon S3 to encode object keys in the response.
+	// Encoding type used by Amazon S3 to encode object keys in the response. If
+	// using url, non-ASCII characters used in an object's key name will be URL
+	// encoded. For example, the object test_file(3).png will appear as test_file%283%29.png.
 	EncodingType *string `type:"string" enum:"EncodingType"`
 
 	// A flag that indicates whether Amazon S3 returned all of the results that
@@ -30600,7 +30654,7 @@ type ListObjectsV2Input struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -30645,7 +30699,9 @@ type ListObjectsV2Input struct {
 	//    the Amazon S3 User Guide.
 	Delimiter *string `location:"querystring" locationName:"delimiter" type:"string"`
 
-	// Encoding type used by Amazon S3 to encode object keys in the response.
+	// Encoding type used by Amazon S3 to encode object keys in the response. If
+	// using url, non-ASCII characters used in an object's key name will be URL
+	// encoded. For example, the object test_file(3).png will appear as test_file%283%29.png.
 	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
 
 	// The account ID of the expected bucket owner. If the account ID that you provide
@@ -31030,7 +31086,7 @@ type ListPartsInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -31324,9 +31380,8 @@ type ListPartsOutput struct {
 	// all the parts.
 	Owner *Owner `type:"structure"`
 
-	// When a list is truncated, this element specifies the last part in the list,
-	// as well as the value to use for the part-number-marker request parameter
-	// in a subsequent request.
+	// Specifies the part after which listing should begin. Only parts with higher
+	// part numbers will be listed.
 	PartNumberMarker *int64 `type:"integer"`
 
 	// Container for elements related to a particular part. A response can contain
@@ -31612,8 +31667,8 @@ type LocationInfo struct {
 
 	// The name of the location where the bucket will be created.
 	//
-	// For directory buckets, the AZ ID of the Availability Zone where the bucket
-	// will be created. An example AZ ID value is usw2-az2.
+	// For directory buckets, the name of the location is the AZ ID of the Availability
+	// Zone where the bucket will be created. An example AZ ID value is usw2-az1.
 	Name *string `type:"string"`
 
 	// The type of location where the bucket will be created.
@@ -32178,9 +32233,9 @@ func (s *MultipartUpload) SetUploadId(v string) *MultipartUpload {
 type NoncurrentVersionExpiration struct {
 	_ struct{} `type:"structure"`
 
-	// Specifies how many newer noncurrent versions must exist before Amazon S3
-	// can perform the associated action on a given version. If there are this many
-	// more recent noncurrent versions, Amazon S3 will take the associated action.
+	// Specifies how many noncurrent versions Amazon S3 will retain. You can specify
+	// up to 100 noncurrent versions to retain. Amazon S3 will permanently delete
+	// any additional noncurrent versions beyond the specified number to retain.
 	// For more information about noncurrent versions, see Lifecycle configuration
 	// elements (https://docs.aws.amazon.com/AmazonS3/latest/userguide/intro-lifecycle-rules.html)
 	// in the Amazon S3 User Guide.
@@ -32234,11 +32289,11 @@ func (s *NoncurrentVersionExpiration) SetNoncurrentDays(v int64) *NoncurrentVers
 type NoncurrentVersionTransition struct {
 	_ struct{} `type:"structure"`
 
-	// Specifies how many newer noncurrent versions must exist before Amazon S3
-	// can perform the associated action on a given version. If there are this many
-	// more recent noncurrent versions, Amazon S3 will take the associated action.
-	// For more information about noncurrent versions, see Lifecycle configuration
-	// elements (https://docs.aws.amazon.com/AmazonS3/latest/userguide/intro-lifecycle-rules.html)
+	// Specifies how many noncurrent versions Amazon S3 will retain in the same
+	// storage class before transitioning objects. You can specify up to 100 noncurrent
+	// versions to retain. Amazon S3 will transition any additional noncurrent versions
+	// beyond the specified number to retain. For more information about noncurrent
+	// versions, see Lifecycle configuration elements (https://docs.aws.amazon.com/AmazonS3/latest/userguide/intro-lifecycle-rules.html)
 	// in the Amazon S3 User Guide.
 	NewerNoncurrentVersions *int64 `type:"integer"`
 
@@ -35951,7 +36006,7 @@ type PutBucketPolicyInput struct {
 	// you must use path-style requests in the format https://s3express-control.region_code.amazonaws.com/bucket-name
 	// . Virtual-hosted-style requests aren't supported. Directory bucket names
 	// must be unique in the chosen Availability Zone. Bucket names must also follow
-	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3).
+	// the format bucket_base_name--az_id--x-s3 (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3).
 	// For information about bucket naming restrictions, see Directory bucket naming
 	// rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide
@@ -37310,7 +37365,7 @@ type PutObjectInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -41519,7 +41574,7 @@ type ServerSideEncryptionByDefault struct {
 
 	// Amazon Web Services Key Management Service (KMS) customer Amazon Web Services
 	// KMS key ID to use for the default encryption. This parameter is allowed if
-	// and only if SSEAlgorithm is set to aws:kms.
+	// and only if SSEAlgorithm is set to aws:kms or aws:kms:dsse.
 	//
 	// You can specify the key ID, key alias, or the Amazon Resource Name (ARN)
 	// of the KMS key.
@@ -42696,7 +42751,7 @@ type UploadPartCopyInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//
@@ -43264,7 +43319,7 @@ type UploadPartInput struct {
 	// you must use virtual-hosted-style requests in the format Bucket_name.s3express-az_id.region.amazonaws.com.
 	// Path-style requests are not supported. Directory bucket names must be unique
 	// in the chosen Availability Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3
-	// (for example, DOC-EXAMPLE-BUCKET--usw2-az2--x-s3). For information about
+	// (for example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3). For information about
 	// bucket naming restrictions, see Directory bucket naming rules (https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html)
 	// in the Amazon S3 User Guide.
 	//

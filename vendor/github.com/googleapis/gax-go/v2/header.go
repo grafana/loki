@@ -163,11 +163,38 @@ func insertMetadata(ctx context.Context, keyvals ...string) metadata.MD {
 		out = metadata.MD(make(map[string][]string))
 	}
 	headers := callctx.HeadersFromContext(ctx)
-	for k, v := range headers {
-		out[k] = append(out[k], v...)
+
+	// x-goog-api-client is a special case that we want to make sure gets merged
+	// into a single header.
+	const xGoogHeader = "x-goog-api-client"
+	var mergedXgoogHeader strings.Builder
+
+	for k, vals := range headers {
+		if k == xGoogHeader {
+			// Merge all values for the x-goog-api-client header set on the ctx.
+			for _, v := range vals {
+				mergedXgoogHeader.WriteString(v)
+				mergedXgoogHeader.WriteRune(' ')
+			}
+			continue
+		}
+		out[k] = append(out[k], vals...)
 	}
 	for i := 0; i < len(keyvals); i = i + 2 {
 		out[keyvals[i]] = append(out[keyvals[i]], keyvals[i+1])
+
+		if keyvals[i] == xGoogHeader {
+			// Merge the x-goog-api-client header values set on the ctx with any
+			// values passed in for it from the client.
+			mergedXgoogHeader.WriteString(keyvals[i+1])
+			mergedXgoogHeader.WriteRune(' ')
+		}
 	}
+
+	// Add the x goog header back in, replacing the separate values that were set.
+	if mergedXgoogHeader.Len() > 0 {
+		out[xGoogHeader] = []string{mergedXgoogHeader.String()[:mergedXgoogHeader.Len()-1]}
+	}
+
 	return out
 }

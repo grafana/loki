@@ -32,7 +32,7 @@ func TestPreallocTimeseriesSliceFromPool(t *testing.T) {
 		first := PreallocTimeseriesSliceFromPool()
 		second := PreallocTimeseriesSliceFromPool()
 
-		assert.NotSame(t, first, second)
+		assert.NotSame(t, &first, &second)
 	})
 
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {
@@ -50,11 +50,12 @@ func TestTimeseriesFromPool(t *testing.T) {
 		first := TimeseriesFromPool()
 		second := TimeseriesFromPool()
 
-		assert.NotSame(t, first, second)
+		assert.NotSame(t, &first, &second)
 	})
 
 	t.Run("instance is cleaned before reusing", func(t *testing.T) {
 		ts := TimeseriesFromPool()
+
 		ts.Labels = []LabelAdapter{{Name: "foo", Value: "bar"}}
 		ts.Samples = []LegacySample{{Value: 1, TimestampMs: 2}}
 		ReuseTimeseries(ts)

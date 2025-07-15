@@ -61,6 +61,9 @@ module Fluent
       desc 'TLS: disable server certificate verification'
       config_param :insecure_tls, :bool, default: false
 
+      desc 'Custom HTTP headers'
+      config_param :custom_headers, :hash, default: {}
+
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
 
@@ -232,6 +235,9 @@ module Fluent
         req = Net::HTTP::Post.new(
           @uri.request_uri
         )
+        @custom_headers.each do |key, value|
+          req.add_field(key, value)
+        end
         req.add_field('Content-Type', 'application/json')
         req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant

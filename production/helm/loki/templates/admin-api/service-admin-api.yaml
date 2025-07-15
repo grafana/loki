@@ -1,4 +1,4 @@
-{{- if .Values.enterprise.enabled }}
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
