@@ -43,6 +43,7 @@ type BuilderOptions struct {
 
 // Builder accumulate a set of [Record]s within a data object.
 type Builder struct {
+	tenant  string
 	metrics *Metrics
 	opts    BuilderOptions
 
@@ -74,12 +75,13 @@ type Builder struct {
 
 // Nwe creates a new logs section. The pageSize argument specifies how large
 // pages should be.
-func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
+func NewBuilder(tenant string, metrics *Metrics, opts BuilderOptions) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 
 	return &Builder{
+		tenant:  tenant,
 		metrics: metrics,
 		opts:    opts,
 	}
@@ -207,6 +209,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 
+	logsEnc.tenant = b.tenant
 	n, err = logsEnc.Flush(w)
 	if err == nil {
 		b.Reset()
@@ -269,6 +272,7 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 
 // Reset resets all state, allowing b to be reused.
 func (b *Builder) Reset() {
+	b.tenant = ""
 	b.metrics.recordCount.Set(0)
 
 	b.records = sliceclear.Clear(b.records)
