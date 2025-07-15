@@ -403,9 +403,9 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	}
 
 	// Then we iterate over index objects based on the new format.
-	predicate := indexpointers.TimeRangePredicate{
-		MinTimestamp: start.UTC(),
-		MaxTimestamp: end.UTC(),
+	predicate := indexpointers.TimeRangeRowPredicate{
+		Start: start.UTC(),
+		End:   end.UTC(),
 	}
 	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
 		objectPaths = append(objectPaths, indexPointer.Path)
