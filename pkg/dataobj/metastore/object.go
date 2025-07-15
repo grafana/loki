@@ -720,10 +720,10 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 
 		for {
 			num, err := reader.Read(ctx, buf)
-			if err != nil && err != io.EOF {
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-			if num == 0 && err == io.EOF {
+			if num == 0 && errors.Is(err, io.EOF) {
 				break
 			}
 			for _, indexPointer := range buf[:num] {
