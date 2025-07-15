@@ -97,7 +97,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(metastoreCfg.UpdaterConfig, bucket, tenantID, logger)
+	metastoreUpdater := metastore.NewUpdater(metastoreCfg.Updater, bucket, tenantID, logger)
 	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}

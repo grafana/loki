@@ -1045,12 +1045,6 @@ dataobj:
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
-    metastore:
-      updater:
-        # Top level object format to store pointers to index objects
-        # CLI flag: -dataobj-consumer.format
-        [format: <string> | default = "v1"]
-
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
@@ -1098,6 +1092,12 @@ dataobj:
     # CLI flag: -dataobj-index-builder.enabled-tenant-ids
     [enabled_tenant_ids: <string> | default = ""]
 
+  metastore:
+    updater:
+      # The format to use for the metastore top-level index objects.
+      # CLI flag: -dataobj-metastore.storage-format
+      [storage_format: <string> | default = "v1"]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
@@ -1111,12 +1111,6 @@ dataobj:
     # The number of shards to use for the dataobj querier.
     # CLI flag: -dataobj-querier-shard-factor
     [shard_factor: <int> | default = 32]
-
-  metastore:
-    updater:
-      # Top level object format to store pointers to index objects
-      # CLI flag: -dataobj-metastore.format
-      [format: <string> | default = "v1"]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix

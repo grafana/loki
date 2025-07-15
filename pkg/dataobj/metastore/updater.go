@@ -30,14 +30,14 @@ const (
 	labelNamePath  = "__path__"
 )
 
-// TopLevelObjectType is the type of metastore object being updated.
-type TopLevelObjectType int
+// StorageFormatType is the dataobj section type used to store the metastore top-level index oblects.
+type StorageFormatType int
 
 const (
-	// TopLevelObjectTypeV1 is the old top-level streams based object format.
-	TopLevelObjectTypeV1 TopLevelObjectType = iota
-	// TopLevelObjectTypeV2 is the new top-level index pointer based object format.
-	TopLevelObjectTypeV2
+	// StorageFormatTypeV1 is the old top-level streams based object format.
+	StorageFormatTypeV1 StorageFormatType = iota
+	// StorageFormatTypeV2 is the new top-level index pointer based object format.
+	StorageFormatTypeV2
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
@@ -149,7 +149,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 				// Keep using V1 for now.
 				var (
-					ty = m.cfg.Format
+					ty = m.cfg.StorageFormat
 				)
 
 				if m.buf.Len() > 0 {
@@ -174,12 +174,12 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 				m.buf.Reset()
 
 				switch ty {
-				case TopLevelObjectTypeV1:
+				case StorageFormatTypeV1:
 					_, err = m.metastoreBuilder.Flush(m.buf)
 					if err != nil {
 						return nil, errors.Wrap(err, "flushing metastore builder")
 					}
-				case TopLevelObjectTypeV2:
+				case StorageFormatTypeV2:
 					_, err = m.builder.Flush(m.buf)
 					if err != nil {
 						return nil, errors.Wrap(err, "flushing metastore builder")
@@ -206,10 +206,10 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	return err
 }
 
-func (m *Updater) append(ty TopLevelObjectType, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+func (m *Updater) append(ty StorageFormatType, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
 	switch ty {
 	// Backwards compatibility with old metastore top-level objects.
-	case TopLevelObjectTypeV1:
+	case StorageFormatTypeV1:
 		ls := labels.New(
 			labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
 			labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
@@ -224,7 +224,7 @@ func (m *Updater) append(ty TopLevelObjectType, dataobjPath string, minTimestamp
 			return errors.Wrap(err, "appending internal metadata stream")
 		}
 	// New standard approach for metastore top-level objects.
-	case TopLevelObjectTypeV2:
+	case StorageFormatTypeV2:
 		err := m.builder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
 		if err != nil {
 			return errors.Wrap(err, "appending index pointer")
@@ -237,7 +237,7 @@ func (m *Updater) append(ty TopLevelObjectType, dataobjPath string, minTimestamp
 }
 
 // readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
-func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) (TopLevelObjectType, error) {
+func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) (StorageFormatType, error) {
 	var streamsReader streams.RowReader
 	defer streamsReader.Close()
 
@@ -258,13 +258,13 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		case streams.CheckSection(section):
 			sec, err := streams.Open(ctx, section)
 			if err != nil {
-				return TopLevelObjectTypeV1, errors.Wrap(err, "opening section")
+				return StorageFormatTypeV1, errors.Wrap(err, "opening section")
 			}
 
 			streamsReader.Reset(sec)
 			for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
 				if err != nil && err != io.EOF {
-					return TopLevelObjectTypeV1, errors.Wrap(err, "reading streams")
+					return StorageFormatTypeV1, errors.Wrap(err, "reading streams")
 				}
 				for _, stream := range buf[:n] {
 					err = m.metastoreBuilder.Append(logproto.Stream{
@@ -272,34 +272,34 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 						Entries: []logproto.Entry{{Line: ""}},
 					})
 					if err != nil {
-						return TopLevelObjectTypeV1, errors.Wrap(err, "appending streams")
+						return StorageFormatTypeV1, errors.Wrap(err, "appending streams")
 					}
 				}
 			}
 
-			return TopLevelObjectTypeV1, nil
+			return StorageFormatTypeV1, nil
 		// New standard approach for metastore top-level objects.
 		case indexpointers.CheckSection(section):
 			sec, err := indexpointers.Open(ctx, section)
 			if err != nil {
-				return TopLevelObjectTypeV2, errors.Wrap(err, "opening section")
+				return StorageFormatTypeV2, errors.Wrap(err, "opening section")
 			}
 			indexPointersReader.Reset(sec)
 			for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
 				if err != nil && err != io.EOF {
-					return TopLevelObjectTypeV2, errors.Wrap(err, "reading index pointers")
+					return StorageFormatTypeV2, errors.Wrap(err, "reading index pointers")
 				}
 				for _, indexPointer := range pbuf[:n] {
 					err = m.builder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
 					if err != nil {
-						return TopLevelObjectTypeV2, errors.Wrap(err, "appending index pointers")
+						return StorageFormatTypeV2, errors.Wrap(err, "appending index pointers")
 					}
 				}
 			}
 
-			return TopLevelObjectTypeV2, nil
+			return StorageFormatTypeV2, nil
 		}
 	}
 
-	return m.cfg.Format, nil
+	return m.cfg.StorageFormat, nil
 }

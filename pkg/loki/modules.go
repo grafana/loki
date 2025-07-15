@@ -2200,6 +2200,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
+		t.Cfg.DataObj.Metastore,
 		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
@@ -2223,8 +2224,8 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj index builder", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
 	t.dataObjIndexBuilder, err = dataobjindex.NewIndexBuilder(
 		t.Cfg.DataObj.Index,
+		t.Cfg.DataObj.Metastore,
 		t.Cfg.KafkaConfig,
-		t.Cfg.DataObj.Metastore.UpdaterConfig,
 		util_log.Logger,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		store,

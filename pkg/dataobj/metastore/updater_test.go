@@ -106,7 +106,7 @@ func TestUpdater(t *testing.T) {
 
 		ty, err := updater.readFromExisting(context.Background(), dobj)
 		require.NoError(t, err)
-		require.Equal(t, TopLevelObjectTypeV1, ty)
+		require.Equal(t, StorageFormatTypeV1, ty)
 	})
 }
 
