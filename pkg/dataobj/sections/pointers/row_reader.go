@@ -240,16 +240,16 @@ func translatePointersPredicate(p RowPredicate, columns []dataset.Column, column
 			Left:  translatePointersPredicate(p.Left, columns, columnDescs),
 			Right: translatePointersPredicate(p.Right, columns, columnDescs),
 		}
-	case BloomExistencePredicate:
-		return convertBloomExistencePredicate(p, nameColumn, bloomColumn)
-	case TimeRangePredicate:
-		return convertTimeRangePredicate(p, startColumn, endColumn)
+	case BloomExistenceRowPredicate:
+		return convertBloomExistenceRowPredicate(p, nameColumn, bloomColumn)
+	case TimeRangeRowPredicate:
+		return convertTimeRangeRowPredicate(p, startColumn, endColumn)
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
 }
 
-func convertBloomExistencePredicate(p BloomExistencePredicate, nameColumn, bloomColumn dataset.Column) dataset.Predicate {
+func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn, bloomColumn dataset.Column) dataset.Predicate {
 	// TODO: Make this more efficient by not re-allocating the bloom filter each time
 	return dataset.AndPredicate{
 		Left: dataset.EqualPredicate{
@@ -271,19 +271,15 @@ func convertBloomExistencePredicate(p BloomExistencePredicate, nameColumn, bloom
 	}
 }
 
-func convertTimeRangePredicate(p TimeRangePredicate, startColumn, endColumn dataset.Column) dataset.Predicate {
+func convertTimeRangeRowPredicate(p TimeRangeRowPredicate, startColumn, endColumn dataset.Column) dataset.Predicate {
 	return dataset.AndPredicate{
-		Left: dataset.NotPredicate{
-			Inner: dataset.LessThanPredicate{
-				Column: startColumn,
-				Value:  dataset.Int64Value(p.Start.UnixNano()),
-			},
+		Left: dataset.GreaterThanPredicate{
+			Column: startColumn,
+			Value:  dataset.Int64Value(p.Start.UnixNano() - 1),
 		},
-		Right: dataset.NotPredicate{
-			Inner: dataset.GreaterThanPredicate{
-				Column: endColumn,
-				Value:  dataset.Int64Value(p.End.UnixNano()),
-			},
+		Right: dataset.LessThanPredicate{
+			Column: endColumn,
+			Value:  dataset.Int64Value(p.End.UnixNano() + 1),
 		},
 	}
 }

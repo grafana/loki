@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -50,11 +51,18 @@ type Catalog interface {
 type MetastoreCatalog struct {
 	ctx           context.Context
 	metastore     metastore.Metastore
-	catalogueType string
+	catalogueType CatalogueType
 }
 
+type CatalogueType int
+
+const (
+	CatalogueTypeDirect CatalogueType = iota
+	CatalogueTypeIndex
+)
+
 // NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
-func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore, catalogueType string) *MetastoreCatalog {
+func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore, catalogueType CatalogueType) *MetastoreCatalog {
 	return &MetastoreCatalog{
 		ctx:           ctx,
 		metastore:     ms,
@@ -75,12 +83,12 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicat
 	}
 
 	switch c.catalogueType {
-	case "direct":
+	case CatalogueTypeDirect:
 		return c.resolveDataObj(selector, shard, from, through)
-	case "index":
+	case CatalogueTypeIndex:
 		return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
 	default:
-		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %s", c.catalogueType)
+		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %d", c.catalogueType)
 	}
 }
 
@@ -183,22 +191,11 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.
 	for i := range streams {
 		sort.Slice(streams[i], func(j, k int) bool { return streams[i][j] < streams[i][k] })
 		sort.Slice(sections[i], func(j, k int) bool { return sections[i][j] < sections[i][k] })
-		streams[i] = unique(streams[i])
-		sections[i] = unique(sections[i])
+		streams[i] = slices.Compact(streams[i])
+		sections[i] = slices.Compact(sections[i])
 	}
 
 	return locations, streams, sections, nil
-}
-
-func unique[T comparable](s []T) []T {
-	next := 0
-	for i := range s {
-		if s[i] != s[next] {
-			next++
-			s[next] = s[i]
-		}
-	}
-	return s[:next+1]
 }
 
 // expressionToMatchers converts a selector expression to a list of matchers.

@@ -41,36 +41,38 @@ type ObjectMetastore struct {
 	metrics     *objectMetastoreMetrics
 }
 
-type sectionKey struct {
-	objectPath string
-	sectionIdx int64
+type SectionKey struct {
+	ObjectPath string
+	SectionIdx int64
 }
 
 type DataobjSectionDescriptor struct {
-	ObjectPath string
-	SectionIdx int64
-	StreamIDs  []int64
-	Lines      int
-	Size       int64
-	Start      time.Time
-	End        time.Time
+	SectionKey
+
+	StreamIDs []int64
+	RowCount  int
+	Size      int64
+	Start     time.Time
+	End       time.Time
 }
 
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
 	return &DataobjSectionDescriptor{
-		ObjectPath: pointer.Path,
-		SectionIdx: pointer.Section,
-		StreamIDs:  []int64{pointer.StreamIDRef},
-		Lines:      int(pointer.LineCount),
-		Size:       pointer.UncompressedSize,
-		Start:      pointer.StartTs,
-		End:        pointer.EndTs,
+		SectionKey: SectionKey{
+			ObjectPath: pointer.Path,
+			SectionIdx: pointer.Section,
+		},
+		StreamIDs: []int64{pointer.StreamIDRef},
+		RowCount:  int(pointer.LineCount),
+		Size:      pointer.UncompressedSize,
+		Start:     pointer.StartTs,
+		End:       pointer.EndTs,
 	}
 }
 
 func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	d.StreamIDs = append(d.StreamIDs, pointer.StreamIDRef)
-	d.Lines += int(pointer.LineCount)
+	d.RowCount += int(pointer.LineCount)
 	d.Size += pointer.UncompressedSize
 	if pointer.StartTs.Before(d.Start) {
 		d.Start = pointer.StartTs
@@ -177,7 +179,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	}
 
 	if len(streamIDs) == 0 {
-		return paths, streamIDs, sections, nil
+		return []string{}, [][]int64{}, []int{}, nil
 	}
 
 	// Remove objects that do not contain any matching streams
@@ -216,7 +218,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
-	pointerPredicate := pointers.TimeRangePredicate{
+	pointerPredicate := pointers.TimeRangeRowPredicate{
 		Start: start,
 		End:   end,
 	}
@@ -248,19 +250,19 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 }
 
 func intersectSections(sectionPointers []*DataobjSectionDescriptor, sectionMembershipEstimates []*DataobjSectionDescriptor) []*DataobjSectionDescriptor {
-	existence := make(map[sectionKey]struct{}, len(sectionMembershipEstimates))
+	existence := make(map[SectionKey]struct{}, len(sectionMembershipEstimates))
 	for _, section := range sectionMembershipEstimates {
-		existence[sectionKey{
-			objectPath: section.ObjectPath,
-			sectionIdx: section.SectionIdx,
+		existence[SectionKey{
+			ObjectPath: section.ObjectPath,
+			SectionIdx: section.SectionIdx,
 		}] = struct{}{}
 	}
 
 	nextEmptyIdx := 0
-	key := sectionKey{}
+	key := SectionKey{}
 	for _, section := range sectionPointers {
-		key.objectPath = section.ObjectPath
-		key.sectionIdx = section.SectionIdx
+		key.ObjectPath = section.ObjectPath
+		key.SectionIdx = section.SectionIdx
 		if _, ok := existence[key]; ok {
 			sectionPointers[nextEmptyIdx] = section
 			nextEmptyIdx++
@@ -401,7 +403,7 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 	for _, matcher := range matchers {
 		switch matcher.Type {
 		case labels.MatchEqual:
-			predicates = append(predicates, pointers.BloomExistencePredicate{
+			predicates = append(predicates, pointers.BloomExistenceRowPredicate{
 				Name:  matcher.Name,
 				Value: matcher.Value,
 			})
@@ -513,7 +515,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangePredicate) ([]*DataobjSectionDescriptor, error) {
+func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
 	startTime := time.Now()
 	defer func() {
 		m.metrics.streamFilterTotalDuration.Observe(time.Since(startTime).Seconds())
@@ -528,7 +530,7 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 	for i, path := range paths {
 		func(idx int) {
 			g.Go(func() error {
-				var key sectionKey
+				var key SectionKey
 				var matchingStreamIDs []int64
 
 				idxObject, err := fetchObject(ctx, m.bucket, path)
@@ -545,11 +547,11 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 				}
 				m.metrics.streamFilterStreamsReadDuration.Observe(time.Since(streamReadStartTime).Seconds())
 
-				objectSectionDescriptors := make(map[sectionKey]*DataobjSectionDescriptor)
+				objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 				sectionPointerReadStartTime := time.Now()
 				err = forEachObjPointer(ctx, idxObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
-					key.objectPath = pointer.Path
-					key.sectionIdx = pointer.Section
+					key.ObjectPath = pointer.Path
+					key.SectionIdx = pointer.Section
 
 					sectionDescriptor, ok := objectSectionDescriptors[key]
 					if !ok {
@@ -609,8 +611,10 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 				var objectSectionDescriptors []*DataobjSectionDescriptor
 				err = forEachObjPointer(ctx, idxObject, predicate, nil, func(pointer pointers.SectionPointer) {
 					objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
-						ObjectPath: pointer.Path,
-						SectionIdx: pointer.Section,
+						SectionKey: SectionKey{
+							ObjectPath: pointer.Path,
+							SectionIdx: pointer.Section,
+						},
 					})
 				})
 				if err != nil {

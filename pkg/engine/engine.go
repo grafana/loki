@@ -95,7 +95,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for physical planning
 	statsCtx, ctx := stats.NewContext(ctx)
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, e.opts.CatalogueType)
+	catalogueType := physical.CatalogueTypeDirect
+	if e.opts.CataloguePath != "" {
+		catalogueType = physical.CatalogueTypeIndex
+	}
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
