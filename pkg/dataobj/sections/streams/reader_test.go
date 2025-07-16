@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -25,8 +26,8 @@ func TestReader(t *testing.T) {
 			"stream_id.int64":         int64(1),
 			"app.label.binary":        []byte("foo"),
 			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(10),
-			"max_timestamp.timestamp": arrowUnixTime(15),
+			"min_timestamp.timestamp": time.Unix(10, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(15, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(25),
 		},
@@ -34,8 +35,8 @@ func TestReader(t *testing.T) {
 			"stream_id.int64":         int64(2),
 			"app.label.binary":        []byte("bar"),
 			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
@@ -43,8 +44,8 @@ func TestReader(t *testing.T) {
 			"stream_id.int64":         int64(3),
 			"app.label.binary":        []byte("baz"),
 			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(25),
-			"max_timestamp.timestamp": arrowUnixTime(30),
+			"min_timestamp.timestamp": time.Unix(25, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(30, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(35),
 		},
@@ -78,8 +79,8 @@ func TestReader_Predicate(t *testing.T) {
 			"stream_id.int64":         int64(2),
 			"app.label.binary":        []byte("bar"),
 			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
@@ -122,8 +123,8 @@ func TestReader_InPredicate(t *testing.T) {
 			"stream_id.int64":         int64(2),
 			"app.label.binary":        []byte("bar"),
 			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
@@ -205,10 +206,6 @@ func TestReader_ColumnSubset(t *testing.T) {
 	actual, err := arrowtest.TableRows(alloc, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
-}
-
-func arrowUnixTime(sec int64) string {
-	return arrowtest.Time(unixTime(sec).UTC())
 }
 
 func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
