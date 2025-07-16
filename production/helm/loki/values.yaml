@@ -364,7 +364,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. 
+    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.
     # If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.
     compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
