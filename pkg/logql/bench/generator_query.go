@@ -103,7 +103,8 @@ func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 }
 
 type TestCaseGeneratorConfig struct {
-	RangeType string // "instant" or "range"
+	RangeInterval string // 1m, 5m, etc
+	RangeType     string // "instant" or "range"
 }
 
 type TestCaseGenerator struct {
@@ -125,14 +126,13 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 
 	start := g.logGenCfg.StartTime
 	end := g.logGenCfg.StartTime.Add(g.logGenCfg.TimeSpread)
-	rangeInterval := "5m"
+	rangeInterval := g.cfg.RangeInterval
 	// Calculate step size to get ~20 points over the time range
 	step := g.logGenCfg.TimeSpread / 19
 
 	if g.cfg.RangeType == "instant" {
 		// for instant queries, search the whole time spread from end
 		start = end
-		rangeInterval = g.logGenCfg.TimeSpread.String()
 		step = 0
 	}
 

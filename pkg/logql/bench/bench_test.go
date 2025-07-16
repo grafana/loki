@@ -26,8 +26,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-var slowTests = flag.Bool("slow-tests", false, "run slow tests")
-var rangeType = flag.String("range-type", "range", "range type to use for test cases")
+var (
+	slowTests     = flag.Bool("slow-tests", false, "run slow tests")
+	rangeType     = flag.String("range-type", "range", "range type to use for test cases")
+	rangeInterval = flag.String("range-interval", "1h", "interval to use for range aggregations")
+)
 
 const testTenant = "test-tenant"
 
@@ -233,7 +236,10 @@ func TestLogQLQueries(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	// Generate test cases
-	cases := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: *rangeType}, config).Generate()
+	cases := NewTestCaseGenerator(
+		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+		config,
+	).Generate()
 
 	// Log all unique queries
 	uniqueQueries := make(map[string]struct{})
