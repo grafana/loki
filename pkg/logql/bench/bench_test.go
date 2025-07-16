@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -113,7 +114,10 @@ func TestStorageEquality(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cases := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: *rangeType}, config).Generate()
+		cases := NewTestCaseGenerator(
+			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+			config,
+		).Generate()
 
 		return &store{
 			Name:   name,
@@ -169,6 +173,9 @@ func TestStorageEquality(t *testing.T) {
 				require.NoError(t, err)
 
 				expected, err := baseStore.Engine.Query(params).Exec(ctx)
+				if errors.Is(err, engine.ErrNotSupported) {
+					t.Skip(err)
+				}
 				require.NoError(t, err)
 
 				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
@@ -317,7 +324,10 @@ func BenchmarkLogQL(b *testing.B) {
 		}
 
 		// Generate test cases using the loaded config
-		cases := NewTestCaseGenerator(TestCaseGeneratorConfig{RangeType: *rangeType}, config).Generate()
+		cases := NewTestCaseGenerator(
+			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+			config,
+		).Generate()
 
 		for _, c := range cases {
 			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
