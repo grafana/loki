@@ -126,7 +126,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 
 	start := g.logGenCfg.StartTime
 	end := g.logGenCfg.StartTime.Add(g.logGenCfg.TimeSpread)
-	rangeInterval := "5m"
+	rangeInterval := g.cfg.RangeInterval
 	// Calculate step size to get ~20 points over the time range
 	step := g.logGenCfg.TimeSpread / 19
 
