@@ -39617,6 +39617,8 @@ type ReservationBlockPhysicalTopology struct {
 	Block string `json:"block,omitempty"`
 	// Cluster: The cluster name of the reservation block.
 	Cluster string `json:"cluster,omitempty"`
+	// Instances: The detailed instances information for a given Block
+	Instances []*ReservationBlockPhysicalTopologyInstance `json:"instances,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Block") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
 	// omitted from API requests. See
@@ -39632,6 +39634,59 @@ type ReservationBlockPhysicalTopology struct {
 
 func (s ReservationBlockPhysicalTopology) MarshalJSON() ([]byte, error) {
 	type NoMethod ReservationBlockPhysicalTopology
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationBlockPhysicalTopologyInstance: The instances information for a
+// given Block
+type ReservationBlockPhysicalTopologyInstance struct {
+	// InstanceId: The InstanceId of the instance
+	InstanceId uint64 `json:"instanceId,omitempty,string"`
+	// PhysicalHostTopology: The PhysicalHostTopology of instances within a Block
+	// resource.
+	PhysicalHostTopology *ReservationBlockPhysicalTopologyInstancePhysicalHostTopology `json:"physicalHostTopology,omitempty"`
+	// ProjectId: Project where the instance lives
+	ProjectId uint64 `json:"projectId,omitempty,string"`
+	// ForceSendFields is a list of field names (e.g. "InstanceId") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "InstanceId") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationBlockPhysicalTopologyInstance) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationBlockPhysicalTopologyInstance
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationBlockPhysicalTopologyInstancePhysicalHostTopology: The
+// PhysicalHostTopology of the instance within a Block resource.
+type ReservationBlockPhysicalTopologyInstancePhysicalHostTopology struct {
+	// Host: Host hash for a given instance
+	Host string `json:"host,omitempty"`
+	// SubBlock: Sub block hash for a given instance
+	SubBlock string `json:"subBlock,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Host") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Host") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationBlockPhysicalTopologyInstancePhysicalHostTopology) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationBlockPhysicalTopologyInstancePhysicalHostTopology
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
