@@ -56,10 +56,6 @@ var _ Pipeline = (*dataobjScan)(nil)
 // returned record are ordered by timestamp in the direction specified by
 // opts.Direction.
 func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
-	if opts.Direction == physical.ASC {
-		// It's ok to panic here, because the validation of log query direction is performed in the logical planner.
-		panic("sorting by timestamp ASC is not supported by DataObjScan")
-	}
 	return &dataobjScan{opts: opts}
 }
 

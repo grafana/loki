@@ -173,6 +173,7 @@ func TestStorageEquality(t *testing.T) {
 				require.NoError(t, err)
 
 				expected, err := baseStore.Engine.Query(params).Exec(ctx)
+
 				if errors.Is(err, engine.ErrNotSupported) {
 					t.Skip(err)
 				}

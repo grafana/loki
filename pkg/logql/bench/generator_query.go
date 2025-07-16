@@ -102,39 +102,11 @@ func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 	return combinations
 }
 
-type TestCaseGeneratorConfig struct {
-	RangeInterval string // 1m, 5m, etc
-	RangeType     string // "instant" or "range"
-}
-
-type TestCaseGenerator struct {
-	logGenCfg *GeneratorConfig
-	cfg       TestCaseGeneratorConfig
-}
-
-func NewTestCaseGenerator(cfg TestCaseGeneratorConfig, logGenCfg *GeneratorConfig) *TestCaseGenerator {
-	return &TestCaseGenerator{
-		cfg:       cfg,
-		logGenCfg: logGenCfg,
-	}
-}
-
 // GenerateTestCases creates a sorted list of test cases using the configuration
-func (g *TestCaseGenerator) Generate() []TestCase {
+func (c *GeneratorConfig) GenerateTestCases() []TestCase {
 	var cases []TestCase
-	labelCombos := g.logGenCfg.generateLabelCombinations()
-
-	start := g.logGenCfg.StartTime
-	end := g.logGenCfg.StartTime.Add(g.logGenCfg.TimeSpread)
-	rangeInterval := g.cfg.RangeInterval
-	// Calculate step size to get ~20 points over the time range
-	step := g.logGenCfg.TimeSpread / 19
-
-	if g.cfg.RangeType == "instant" {
-		// for instant queries, search the whole time spread from end
-		start = end
-		step = 0
-	}
+	labelCombos := c.generateLabelCombinations()
+	end := c.StartTime.Add(c.TimeSpread)
 
 	// Use a map to track unique queries
 	uniqueQueries := make(map[string]struct{})
@@ -178,33 +150,30 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		)
 	}
 
+	// Calculate step size to get ~20 points over the time range
+	step := c.TimeSpread / 19
+
 	// Basic label selector queries with line filters and structured metadata
-	if g.cfg.RangeType != "instant" { // log queries only support range type
-		for _, combo := range labelCombos {
-			selector := g.logGenCfg.buildLabelSelector(combo)
-
-			// Basic selector
-			addBidirectional(selector, g.logGenCfg.StartTime, end)
-
-			// With structured metadata filters
-			addBidirectional(selector+` | detected_level="error"`, g.logGenCfg.StartTime, end)
-			addBidirectional(selector+` | detected_level="warn"`, g.logGenCfg.StartTime, end)
-
-			// Combined filters
-			addBidirectional(selector+` |~ "error|exception" | detected_level="error"`, g.logGenCfg.StartTime, end)
-			addBidirectional(selector+` | json | duration_seconds > 0.1 | detected_level!="debug"`, g.logGenCfg.StartTime, end)
-			addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, g.logGenCfg.StartTime, end)
-		}
-	}
-
 	for _, combo := range labelCombos {
-		selector := g.logGenCfg.buildLabelSelector(combo)
+		selector := c.buildLabelSelector(combo)
+
+		// Basic selector
+		addBidirectional(selector, c.StartTime, end)
+
+		// With structured metadata filters
+		addBidirectional(selector+` | detected_level="error"`, c.StartTime, end)
+		addBidirectional(selector+` | detected_level="warn"`, c.StartTime, end)
+
+		// Combined filters
+		addBidirectional(selector+` |~ "error|exception" | detected_level="error"`, c.StartTime, end)
+		addBidirectional(selector+` | json | duration_seconds > 0.1 | detected_level!="debug"`, c.StartTime, end)
+		addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, c.StartTime, end)
 
 		// Metric queries with structured metadata
 		baseRangeAggregationQueries := []string{
-			fmt.Sprintf(`count_over_time(%s[%s])`, selector, rangeInterval),
-			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
-			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
+			fmt.Sprintf(`count_over_time(%s[5m])`, selector),
+			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [5m])`, selector),
+			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [5m])`, selector),
 		}
 
 		// Single dimension aggregations
@@ -212,7 +181,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		for _, dim := range dimensions {
 			for _, baseMetricQuery := range baseRangeAggregationQueries {
 				query := fmt.Sprintf(`sum by (%s) (%s)`, dim, baseMetricQuery)
-				addMetricQuery(query, start, end, step)
+				addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
 			}
 		}
 
@@ -224,41 +193,38 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		for _, dims := range twoDimCombos {
 			for _, baseMetricQuery := range baseRangeAggregationQueries {
 				query := fmt.Sprintf(`sum by (%s, %s) (%s)`, dims[0], dims[1], baseMetricQuery)
-				addMetricQuery(query, start, end, step)
+				addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
 			}
+		}
+
+		// Error rates by severity
+		errorQueries := []string{
+			fmt.Sprintf(`sum by (component) (rate(%s | detected_level="error" [5m]))`, selector),
+			fmt.Sprintf(`sum by (component) (rate(%s | detected_level="warn" [5m]))`, selector),
+			fmt.Sprintf(`sum by (component, detected_level) (rate(%s | detected_level=~"error|warn" [5m]))`, selector),
+		}
+		for _, query := range errorQueries {
+			addMetricQuery(query, c.StartTime.Add(5*time.Minute), end, step)
 		}
 	}
 
 	// Dense period queries
-	for _, interval := range g.logGenCfg.DenseIntervals {
-		combo := labelCombos[g.logGenCfg.NewRand().Intn(len(labelCombos))]
-		selector := g.logGenCfg.buildLabelSelector(combo)
-		if g.cfg.RangeType != "instant" {
-			addBidirectional(
-				selector+` | detected_level=~"error|warn"`,
-				interval.Start,
-				interval.Start.Add(interval.Duration),
-			)
-		}
-
-		start := interval.Start
-		end := interval.Start.Add(interval.Duration)
-		step := interval.Duration / 19
-		rangeInterval := "1m"
-		if g.cfg.RangeType == "instant" {
-			// for instant queries, search the whole interval from end
-			rangeInterval = interval.Duration.String()
-			start = end
-			step = 0
-		}
+	for _, interval := range c.DenseIntervals {
+		combo := labelCombos[c.NewRand().Intn(len(labelCombos))]
+		selector := c.buildLabelSelector(combo)
+		addBidirectional(
+			selector+` | detected_level=~"error|warn"`,
+			interval.Start,
+			interval.Start.Add(interval.Duration),
+		)
 
 		// Add metric queries for dense periods
-		rateQuery := fmt.Sprintf(`sum by (component, detected_level) (rate(%s[%s]))`, selector, rangeInterval)
+		rateQuery := fmt.Sprintf(`sum by (component, detected_level) (rate(%s[1m]))`, selector)
 		addMetricQuery(
 			rateQuery,
-			start,
-			end,
-			step,
+			interval.Start,
+			interval.Start.Add(interval.Duration),
+			interval.Duration/19,
 		)
 	}
 
