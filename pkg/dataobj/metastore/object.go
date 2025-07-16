@@ -760,10 +760,10 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 		}
 		for {
 			num, err := reader.Read(ctx, buf)
-			if err != nil && err != io.EOF {
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-			if num == 0 && err == io.EOF {
+			if num == 0 && errors.Is(err, io.EOF) {
 				break
 			}
 			for _, stream := range buf[:num] {
@@ -799,10 +799,10 @@ func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate po
 		}
 		for {
 			num, err := reader.Read(ctx, buf)
-			if err != nil && err != io.EOF {
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-			if num == 0 && err == io.EOF {
+			if num == 0 && errors.Is(err, io.EOF) {
 				break
 			}
 			for _, pointer := range buf[:num] {
