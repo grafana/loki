@@ -133,7 +133,6 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	if g.cfg.RangeType == "instant" {
 		// for instant queries, search the whole time spread from end
 		start = end
-		rangeInterval = g.logGenCfg.TimeSpread.String()
 		step = 0
 	}
 
@@ -245,10 +244,8 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		start := interval.Start
 		end := interval.Start.Add(interval.Duration)
 		step := interval.Duration / 19
-		rangeInterval := "1m"
+		rangeInterval := g.cfg.RangeInterval
 		if g.cfg.RangeType == "instant" {
-			// for instant queries, search the whole interval from end
-			rangeInterval = interval.Duration.String()
 			start = end
 			step = 0
 		}
