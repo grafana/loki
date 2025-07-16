@@ -102,8 +102,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		if !req.logSelectorExpr.HasFilter() {
 			return nil, errors.New("deletion query does not contain filter")
 		}
-		// ToDo(Sandeep): set it to proper metrics
-		req.Metrics = newDeleteRequestsManagerMetrics(nil)
+		req.TotalLinesDeletedMetric = jr.metrics.deletedLinesTotal
 	}
 
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)

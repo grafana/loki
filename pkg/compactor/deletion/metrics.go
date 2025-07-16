@@ -119,6 +119,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 
 type deletionJobRunnerMetrics struct {
 	chunksProcessedTotal prometheus.Counter
+	deletedLinesTotal    *prometheus.CounterVec
 }
 
 func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetrics {
@@ -129,6 +130,11 @@ func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetr
 		Name:      "compactor_deletion_job_runner_chunks_processed_total",
 		Help:      "Number of chunks processed",
 	})
+	m.deletedLinesTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_deletion_job_runner_deleted_lines_total",
+		Help:      "Number of deleted lines per user",
+	}, []string{"user"})
 
 	return &m
 }
