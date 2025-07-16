@@ -20,7 +20,7 @@ package clusterresolver
 import (
 	"fmt"
 
-	"google.golang.org/grpc/xds/internal"
+	"google.golang.org/grpc/xds/internal/clients"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -31,7 +31,7 @@ import (
 // struct keeps state between generate() calls, and a later generate() might
 // return names returned by the previous call.
 type nameGenerator struct {
-	existingNames map[internal.LocalityID]string
+	existingNames map[clients.Locality]string
 	prefix        uint64
 	nextID        uint64
 }
@@ -55,7 +55,7 @@ func newNameGenerator(prefix uint64) *nameGenerator {
 func (ng *nameGenerator) generate(priorities [][]xdsresource.Locality) []string {
 	var ret []string
 	usedNames := make(map[string]bool)
-	newNames := make(map[internal.LocalityID]string)
+	newNames := make(map[clients.Locality]string)
 	for _, priority := range priorities {
 		var nameFound string
 		for _, locality := range priority {

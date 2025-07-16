@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2020 gRPC authors.
+ * Copyright 2025 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,21 @@
  *
  */
 
-package load
+package lrsclient
 
-// PerClusterReporter wraps the methods from the loadStore that are used here.
-type PerClusterReporter interface {
-	CallStarted(locality string)
-	CallFinished(locality string, err error)
-	CallServerLoad(locality, name string, val float64)
-	CallDropped(category string)
+import (
+	"fmt"
+
+	"google.golang.org/grpc/grpclog"
+	internalgrpclog "google.golang.org/grpc/internal/grpclog"
+)
+
+var logger = grpclog.Component("xds")
+
+func prefixLogger(c *LRSClient) *internalgrpclog.PrefixLogger {
+	return internalgrpclog.NewPrefixLogger(logger, clientPrefix(c))
+}
+
+func clientPrefix(c *LRSClient) string {
+	return fmt.Sprintf("[lrs-client %p] ", c)
 }

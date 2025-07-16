@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021 gRPC authors.
+ * Copyright 2025 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
  */
 
 package xdsclient
@@ -23,13 +24,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/grpclog"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/internal/xds/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/transport/ads"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
+	"google.golang.org/grpc/xds/internal/clients"
+	"google.golang.org/grpc/xds/internal/clients/internal/syncutil"
+	"google.golang.org/grpc/xds/internal/clients/xdsclient/internal/xdsresource"
+	"google.golang.org/grpc/xds/internal/clients/xdsclient/metrics"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -38,11 +38,11 @@ import (
 )
 
 type resourceState struct {
-	watchers          map[xdsresource.ResourceWatcher]bool // Set of watchers for this resource.
-	cache             xdsresource.ResourceData             // Most recent ACKed update for this resource.
-	md                xdsresource.UpdateMetadata           // Metadata for the most recent update.
-	deletionIgnored   bool                                 // True, if resource deletion was ignored for a prior update.
-	xdsChannelConfigs map[*xdsChannelWithConfig]bool       // Set of xdsChannels where this resource is subscribed.
+	watchers          map[ResourceWatcher]bool       // Set of watchers for this resource.
+	cache             ResourceData                   // Most recent ACKed update for this resource.
+	md                xdsresource.UpdateMetadata     // Metadata for the most recent update.
+	deletionIgnored   bool                           // True, if resource deletion was ignored for a prior update.
+	xdsChannelConfigs map[*xdsChannelWithConfig]bool // Set of xdsChannels where this resource is subscribed.
 }
 
 // xdsChannelForADS is used to acquire a reference to an xdsChannel. This
@@ -56,22 +56,22 @@ type resourceState struct {
 // Returns a reference to the xdsChannel and a function to release the same. A
 // non-nil error is returned if the channel creation fails and the first two
 // return values are meaningless in this case.
-type xdsChannelForADS func(*bootstrap.ServerConfig, *authority) (*xdsChannel, func(), error)
+type xdsChannelForADS func(*ServerConfig, *authority) (*xdsChannel, func(), error)
 
 // xdsChannelWithConfig is a struct that holds an xdsChannel and its associated
 // ServerConfig, along with a cleanup function to release the xdsChannel.
 type xdsChannelWithConfig struct {
 	channel      *xdsChannel
-	serverConfig *bootstrap.ServerConfig
+	serverConfig *ServerConfig
 	cleanup      func()
 }
 
 // authority provides the functionality required to communicate with a
 // management server corresponding to an authority name specified in the
-// bootstrap configuration.
+// xDS client configuration.
 //
 // It holds references to one or more xdsChannels, one for each server
-// configuration in the bootstrap, to allow fallback from a primary management
+// configuration in the config, to allow fallback from a primary management
 // server to a secondary management server. Authorities that contain similar
 // server configuration entries will end up sharing the xdsChannel for that
 // server configuration. The xdsChannels are owned and managed by the xdsClient.
@@ -82,14 +82,14 @@ type xdsChannelWithConfig struct {
 type authority struct {
 	// The following fields are initialized at creation time and are read-only
 	// afterwards, and therefore don't need to be protected with a mutex.
-	name                      string                       // Name of the authority from bootstrap configuration.
-	watcherCallbackSerializer *grpcsync.CallbackSerializer // Serializer to run watcher callbacks, owned by the xDS client implementation.
+	name                      string                       // Name of the authority from xDS client configuration.
+	watcherCallbackSerializer *syncutil.CallbackSerializer // Serializer to run watcher callbacks, owned by the xDS client implementation.
 	getChannelForADS          xdsChannelForADS             // Function to get an xdsChannel for ADS, provided by the xDS client implementation.
-	xdsClientSerializer       *grpcsync.CallbackSerializer // Serializer to run call ins from the xDS client, owned by this authority.
+	xdsClientSerializer       *syncutil.CallbackSerializer // Serializer to run call ins from the xDS client, owned by this authority.
 	xdsClientSerializerClose  func()                       // Function to close the above serializer.
 	logger                    *igrpclog.PrefixLogger       // Logger for this authority.
 	target                    string                       // The gRPC Channel target.
-	metricsRecorder           stats.MetricsRecorder        // The metrics recorder used for emitting metrics.
+	metricsReporter           clients.MetricsReporter
 
 	// The below defined fields must only be accessed in the context of the
 	// serializer callback, owned by this authority.
@@ -102,10 +102,10 @@ type authority struct {
 	//
 	// The second level map key is the resource name, with the value being the
 	// actual state of the resource.
-	resources map[xdsresource.Type]map[string]*resourceState
+	resources map[ResourceType]map[string]*resourceState
 
 	// An ordered list of xdsChannels corresponding to the list of server
-	// configurations specified for this authority in the bootstrap. The
+	// configurations specified for this authority in the config. The
 	// ordering specifies the order in which these channels are preferred for
 	// fallback.
 	xdsChannelConfigs []*xdsChannelWithConfig
@@ -118,13 +118,13 @@ type authority struct {
 
 // authorityBuildOptions wraps arguments required to create a new authority.
 type authorityBuildOptions struct {
-	serverConfigs    bootstrap.ServerConfigs      // Server configs for the authority
+	serverConfigs    []ServerConfig               // Server configs for the authority
 	name             string                       // Name of the authority
-	serializer       *grpcsync.CallbackSerializer // Callback serializer for invoking watch callbacks
+	serializer       *syncutil.CallbackSerializer // Callback serializer for invoking watch callbacks
 	getChannelForADS xdsChannelForADS             // Function to acquire a reference to an xdsChannel
 	logPrefix        string                       // Prefix for logging
 	target           string                       // Target for the gRPC Channel that owns xDS Client/Authority
-	metricsRecorder  stats.MetricsRecorder        // metricsRecorder to emit metrics
+	metricsReporter  clients.MetricsReporter      // Metrics reporter for the authority
 }
 
 // newAuthority creates a new authority instance with the provided
@@ -144,12 +144,12 @@ func newAuthority(args authorityBuildOptions) *authority {
 		name:                      args.name,
 		watcherCallbackSerializer: args.serializer,
 		getChannelForADS:          args.getChannelForADS,
-		xdsClientSerializer:       grpcsync.NewCallbackSerializer(ctx),
+		xdsClientSerializer:       syncutil.NewCallbackSerializer(ctx),
 		xdsClientSerializerClose:  cancel,
 		logger:                    igrpclog.NewPrefixLogger(l, logPrefix),
-		resources:                 make(map[xdsresource.Type]map[string]*resourceState),
+		resources:                 make(map[ResourceType]map[string]*resourceState),
 		target:                    args.target,
-		metricsRecorder:           args.metricsRecorder,
+		metricsReporter:           args.metricsReporter,
 	}
 
 	// Create an ordered list of xdsChannels with their server configs. The
@@ -157,7 +157,7 @@ func newAuthority(args authorityBuildOptions) *authority {
 	// first watch is registered, and channels to other server configurations
 	// are created as needed to support fallback.
 	for _, sc := range args.serverConfigs {
-		ret.xdsChannelConfigs = append(ret.xdsChannelConfigs, &xdsChannelWithConfig{serverConfig: sc})
+		ret.xdsChannelConfigs = append(ret.xdsChannelConfigs, &xdsChannelWithConfig{serverConfig: &sc})
 	}
 	return ret
 }
@@ -170,7 +170,7 @@ func newAuthority(args authorityBuildOptions) *authority {
 // authorities) when a stream error is reported by an xdsChannel.
 //
 // Errors of type xdsresource.ErrTypeStreamFailedAfterRecv are ignored.
-func (a *authority) adsStreamFailure(serverConfig *bootstrap.ServerConfig, err error) {
+func (a *authority) adsStreamFailure(serverConfig *ServerConfig, err error) {
 	a.xdsClientSerializer.TrySchedule(func(context.Context) {
 		a.handleADSStreamFailure(serverConfig, err)
 	})
@@ -180,7 +180,7 @@ func (a *authority) adsStreamFailure(serverConfig *bootstrap.ServerConfig, err e
 // fallback if the associated conditions are met.
 //
 // Only executed in the context of a serializer callback.
-func (a *authority) handleADSStreamFailure(serverConfig *bootstrap.ServerConfig, err error) {
+func (a *authority) handleADSStreamFailure(serverConfig *ServerConfig, err error) {
 	if a.logger.V(2) {
 		a.logger.Infof("Connection to server %s failed with error: %v", serverConfig, err)
 	}
@@ -255,9 +255,9 @@ func (a *authority) propagateConnectivityErrorToAllWatchers(err error) {
 // serverIndexForConfig returns the index of the xdsChannelConfig matching the
 // provided server config, panicking if no match is found (which indicates a
 // programming error).
-func (a *authority) serverIndexForConfig(sc *bootstrap.ServerConfig) int {
+func (a *authority) serverIndexForConfig(sc *ServerConfig) int {
 	for i, cfg := range a.xdsChannelConfigs {
-		if cfg.serverConfig.Equal(sc) {
+		if isServerConfigEqual(sc, cfg.serverConfig) {
 			return i
 		}
 	}
@@ -294,7 +294,7 @@ func (a *authority) fallbackToServer(xc *xdsChannelWithConfig) bool {
 	for typ, resources := range a.resources {
 		for name, state := range resources {
 			if a.logger.V(2) {
-				a.logger.Infof("Resubscribing to resource of type %q and name %q", typ.TypeName(), name)
+				a.logger.Infof("Resubscribing to resource of type %q and name %q", typ.TypeName, name)
 			}
 			xc.channel.subscribe(typ, name)
 
@@ -313,7 +313,7 @@ func (a *authority) fallbackToServer(xc *xdsChannelWithConfig) bool {
 //
 // This method is called by the xDS client implementation (on all interested
 // authorities) when a stream error is reported by an xdsChannel.
-func (a *authority) adsResourceUpdate(serverConfig *bootstrap.ServerConfig, rType xdsresource.Type, updates map[string]ads.DataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
+func (a *authority) adsResourceUpdate(serverConfig *ServerConfig, rType ResourceType, updates map[string]dataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
 	a.xdsClientSerializer.TrySchedule(func(context.Context) {
 		a.handleADSResourceUpdate(serverConfig, rType, updates, md, onDone)
 	})
@@ -329,7 +329,7 @@ func (a *authority) adsResourceUpdate(serverConfig *bootstrap.ServerConfig, rTyp
 // to invoke the onDone callback.
 //
 // Only executed in the context of a serializer callback.
-func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig, rType xdsresource.Type, updates map[string]ads.DataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
+func (a *authority) handleADSResourceUpdate(serverConfig *ServerConfig, rType ResourceType, updates map[string]dataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
 	a.handleRevertingToPrimaryOnUpdate(serverConfig)
 
 	// We build a list of callback funcs to invoke, and invoke them at the end
@@ -368,7 +368,11 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 		// On error, keep previous version of the resource. But update status
 		// and error.
 		if uErr.Err != nil {
-			xdsClientResourceUpdatesInvalidMetric.Record(a.metricsRecorder, 1, a.target, serverConfig.ServerURI(), rType.TypeName())
+			if a.metricsReporter != nil {
+				a.metricsReporter.ReportMetric(&metrics.ResourceUpdateInvalid{
+					ServerURI: serverConfig.ServerIdentifier.ServerURI, ResourceType: rType.TypeName,
+				})
+			}
 			state.md.ErrState = md.ErrState
 			state.md.Status = md.Status
 			for watcher := range state.watchers {
@@ -384,21 +388,25 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 			continue
 		}
 
-		xdsClientResourceUpdatesValidMetric.Record(a.metricsRecorder, 1, a.target, serverConfig.ServerURI(), rType.TypeName())
+		if a.metricsReporter != nil {
+			a.metricsReporter.ReportMetric(&metrics.ResourceUpdateValid{
+				ServerURI: serverConfig.ServerIdentifier.ServerURI, ResourceType: rType.TypeName,
+			})
+		}
 
 		if state.deletionIgnored {
 			state.deletionIgnored = false
-			a.logger.Infof("A valid update was received for resource %q of type %q after previously ignoring a deletion", name, rType.TypeName())
+			a.logger.Infof("A valid update was received for resource %q of type %q after previously ignoring a deletion", name, rType.TypeName)
 		}
 		// Notify watchers if any of these conditions are met:
 		//   - this is the first update for this resource
 		//   - this update is different from the one currently cached
 		//   - the previous update for this resource was NACKed, but the update
 		//     before that was the same as this update.
-		if state.cache == nil || !state.cache.RawEqual(uErr.Resource) || state.md.ErrState != nil {
+		if state.cache == nil || !state.cache.Equal(uErr.Resource) || state.md.ErrState != nil {
 			// Update the resource cache.
 			if a.logger.V(2) {
-				a.logger.Infof("Resource type %q with name %q added to cache", rType.TypeName(), name)
+				a.logger.Infof("Resource type %q with name %q added to cache", rType.TypeName, name)
 			}
 			state.cache = uErr.Resource
 
@@ -426,7 +434,7 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 	// previously seen resource will be interpreted as a deletion of that
 	// resource unless ignore_resource_deletion option was set in the server
 	// config.
-	if !rType.AllResourcesRequiredInSotW() {
+	if !rType.AllResourcesRequiredInSotW {
 		return
 	}
 	for name, state := range resourceStates {
@@ -459,16 +467,16 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 			// "resource-not-found" error.
 			continue
 		}
-		if serverConfig.ServerFeaturesIgnoreResourceDeletion() {
+		if serverConfig.IgnoreResourceDeletion {
 			// Per A53, resource deletions are ignored if the
 			// `ignore_resource_deletion` server feature is enabled through the
-			// bootstrap configuration. If the resource deletion is to be
+			// xDS client configuration. If the resource deletion is to be
 			// ignored, the resource is not removed from the cache and the
-			// corresponding ResourceError() callback is not invoked on
+			// corresponding OnResourceDoesNotExist() callback is not invoked on
 			// the watchers.
 			if !state.deletionIgnored {
 				state.deletionIgnored = true
-				a.logger.Warningf("Ignoring resource deletion for resource %q of type %q", name, rType.TypeName())
+				a.logger.Warningf("Ignoring resource deletion for resource %q of type %q", name, rType.TypeName)
 			}
 			continue
 		}
@@ -484,7 +492,7 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 			watcher := watcher
 			watcherCnt.Add(1)
 			funcsToSchedule = append(funcsToSchedule, func(context.Context) {
-				watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q has been removed", name, rType.TypeName()), done)
+				watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q has been removed", name, rType.TypeName), done)
 			})
 		}
 	}
@@ -493,7 +501,7 @@ func (a *authority) handleADSResourceUpdate(serverConfig *bootstrap.ServerConfig
 // adsResourceDoesNotExist is called by the xDS client implementation (on all
 // interested authorities) to notify the authority that a subscribed resource
 // does not exist.
-func (a *authority) adsResourceDoesNotExist(rType xdsresource.Type, resourceName string) {
+func (a *authority) adsResourceDoesNotExist(rType ResourceType, resourceName string) {
 	a.xdsClientSerializer.TrySchedule(func(context.Context) {
 		a.handleADSResourceDoesNotExist(rType, resourceName)
 	})
@@ -503,22 +511,22 @@ func (a *authority) adsResourceDoesNotExist(rType xdsresource.Type, resourceName
 // exist. It removes the resource from the cache, updates the metadata status
 // to ServiceStatusNotExist, and notifies all watchers that the resource does
 // not exist.
-func (a *authority) handleADSResourceDoesNotExist(rType xdsresource.Type, resourceName string) {
+func (a *authority) handleADSResourceDoesNotExist(rType ResourceType, resourceName string) {
 	if a.logger.V(2) {
-		a.logger.Infof("Watch for resource %q of type %s timed out", resourceName, rType.TypeName())
+		a.logger.Infof("Watch for resource %q of type %s timed out", resourceName, rType.TypeName)
 	}
 
 	resourceStates := a.resources[rType]
 	if resourceStates == nil {
 		if a.logger.V(2) {
-			a.logger.Infof("Resource %q of type %s currently not being watched", resourceName, rType.TypeName())
+			a.logger.Infof("Resource %q of type %s currently not being watched", resourceName, rType.TypeName)
 		}
 		return
 	}
 	state, ok := resourceStates[resourceName]
 	if !ok {
 		if a.logger.V(2) {
-			a.logger.Infof("Resource %q of type %s currently not being watched", resourceName, rType.TypeName())
+			a.logger.Infof("Resource %q of type %s currently not being watched", resourceName, rType.TypeName)
 		}
 		return
 	}
@@ -528,7 +536,7 @@ func (a *authority) handleADSResourceDoesNotExist(rType xdsresource.Type, resour
 	for watcher := range state.watchers {
 		watcher := watcher
 		a.watcherCallbackSerializer.TrySchedule(func(context.Context) {
-			watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q does not exist", resourceName, rType.TypeName()), func() {})
+			watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q has been removed", resourceName, rType.TypeName), func() {})
 		})
 	}
 }
@@ -541,8 +549,8 @@ func (a *authority) handleADSResourceDoesNotExist(rType xdsresource.Type, resour
 // highest priority server that sent the update.
 //
 // This method is only executed in the context of a serializer callback.
-func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *bootstrap.ServerConfig) {
-	if a.activeXDSChannel != nil && a.activeXDSChannel.serverConfig.Equal(serverConfig) {
+func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *ServerConfig) {
+	if a.activeXDSChannel != nil && isServerConfigEqual(serverConfig, a.activeXDSChannel.serverConfig) {
 		// If the resource update is from the current active server, nothing
 		// needs to be done from fallback point of view.
 		return
@@ -607,7 +615,7 @@ func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *bootstrap.Ser
 // the resource with the xdsChannel. If a cached copy of the resource exists, it
 // will immediately notify the new watcher. When the last watcher for a resource
 // is removed, it will unsubscribe the resource from the xdsChannel.
-func (a *authority) watchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) func() {
+func (a *authority) watchResource(rType ResourceType, resourceName string, watcher ResourceWatcher) func() {
 	cleanup := func() {}
 	done := make(chan struct{})
 
@@ -615,7 +623,7 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		defer close(done)
 
 		if a.logger.V(2) {
-			a.logger.Infof("New watch for type %q, resource name %q", rType.TypeName(), resourceName)
+			a.logger.Infof("New watch for type %q, resource name %q", rType.TypeName, resourceName)
 		}
 
 		xdsChannel, err := a.xdsChannelToUse()
@@ -638,10 +646,10 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		state := resources[resourceName]
 		if state == nil {
 			if a.logger.V(2) {
-				a.logger.Infof("First watch for type %q, resource name %q", rType.TypeName(), resourceName)
+				a.logger.Infof("First watch for type %q, resource name %q", rType.TypeName, resourceName)
 			}
 			state = &resourceState{
-				watchers:          make(map[xdsresource.ResourceWatcher]bool),
+				watchers:          make(map[ResourceWatcher]bool),
 				md:                xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusRequested},
 				xdsChannelConfigs: map[*xdsChannelWithConfig]bool{xdsChannel: true},
 			}
@@ -655,7 +663,7 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		// immediately.
 		if state.cache != nil {
 			if a.logger.V(2) {
-				a.logger.Infof("Resource type %q with resource name %q found in cache: %s", rType.TypeName(), resourceName, state.cache.ToJSON())
+				a.logger.Infof("Resource type %q with resource name %q found in cache: %v", rType.TypeName, resourceName, state.cache)
 			}
 			// state can only be accessed in the context of an
 			// xdsClientSerializer callback. Hence making a copy of the cached
@@ -667,7 +675,7 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		// immediately as well.
 		if state.md.Status == xdsresource.ServiceStatusNACKed {
 			if a.logger.V(2) {
-				a.logger.Infof("Resource type %q with resource name %q was NACKed", rType.TypeName(), resourceName)
+				a.logger.Infof("Resource type %q with resource name %q was NACKed", rType.TypeName, resourceName)
 			}
 			// state can only be accessed in the context of an
 			// xdsClientSerializer callback. Hence making a copy of the error
@@ -683,13 +691,13 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		// server does not have this resource, notify the new watcher.
 		if state.md.Status == xdsresource.ServiceStatusNotExist {
 			a.watcherCallbackSerializer.TrySchedule(func(context.Context) {
-				watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q does not exist", resourceName, rType.TypeName()), func() {})
+				watcher.ResourceError(xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "xds: resource %q of type %q has been removed", resourceName, rType.TypeName), func() {})
 			})
 		}
 		cleanup = a.unwatchResource(rType, resourceName, watcher)
 	}, func() {
 		if a.logger.V(2) {
-			a.logger.Infof("Failed to schedule a watch for type %q, resource name %q, because the xDS client is closed", rType.TypeName(), resourceName)
+			a.logger.Infof("Failed to schedule a watch for type %q, resource name %q, because the xDS client is closed", rType.TypeName, resourceName)
 		}
 		close(done)
 	})
@@ -697,14 +705,14 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 	return cleanup
 }
 
-func (a *authority) unwatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) func() {
+func (a *authority) unwatchResource(rType ResourceType, resourceName string, watcher ResourceWatcher) func() {
 	return sync.OnceFunc(func() {
 		done := make(chan struct{})
 		a.xdsClientSerializer.ScheduleOr(func(context.Context) {
 			defer close(done)
 
 			if a.logger.V(2) {
-				a.logger.Infof("Canceling a watch for type %q, resource name %q", rType.TypeName(), resourceName)
+				a.logger.Infof("Canceling a watch for type %q, resource name %q", rType.TypeName, resourceName)
 			}
 
 			// Lookup the resource type from the resource cache. The entry is
@@ -718,7 +726,7 @@ func (a *authority) unwatchResource(rType xdsresource.Type, resourceName string,
 			delete(state.watchers, watcher)
 			if len(state.watchers) > 0 {
 				if a.logger.V(2) {
-					a.logger.Infof("Other watchers exist for type %q, resource name %q", rType.TypeName(), resourceName)
+					a.logger.Infof("Other watchers exist for type %q, resource name %q", rType.TypeName, resourceName)
 				}
 				return
 			}
@@ -738,7 +746,7 @@ func (a *authority) unwatchResource(rType xdsresource.Type, resourceName string,
 			// resource type from the top-level map.
 			if len(resources) == 0 {
 				if a.logger.V(2) {
-					a.logger.Infof("Removing last watch for resource type %q", rType.TypeName())
+					a.logger.Infof("Removing last watch for resource type %q", rType.TypeName)
 				}
 				delete(a.resources, rType)
 			}
@@ -831,11 +839,11 @@ func (a *authority) dumpResources() []*v3statuspb.ClientConfig_GenericXdsConfig 
 func (a *authority) resourceConfig() []*v3statuspb.ClientConfig_GenericXdsConfig {
 	var ret []*v3statuspb.ClientConfig_GenericXdsConfig
 	for rType, resourceStates := range a.resources {
-		typeURL := rType.TypeURL()
+		typeURL := rType.TypeURL
 		for name, state := range resourceStates {
 			var raw *anypb.Any
 			if state.cache != nil {
-				raw = state.cache.Raw()
+				raw = &anypb.Any{TypeUrl: typeURL, Value: state.cache.Bytes()}
 			}
 			config := &v3statuspb.ClientConfig_GenericXdsConfig{
 				TypeUrl:      typeURL,

@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2024 gRPC authors.
+ * Copyright 2025 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,19 @@
 // Package internal contains functionality internal to the xdsclient package.
 package internal
 
-// The following vars can be overridden by tests.
-var (
-	// GRPCNewClient returns a new gRPC Client.
-	GRPCNewClient any // func(string, ...grpc.DialOption) (*grpc.ClientConn, error)
+import "time"
 
-	// NewADSStream returns a new ADS stream.
-	NewADSStream any // func(context.Context, *grpc.ClientConn) (v3adsgrpc.AggregatedDiscoveryService_StreamAggregatedResourcesClient, error)
+var (
+	// WatchExpiryTimeout is the watch expiry timeout for xDS client. It can be
+	// overridden by tests to change the default watch expiry timeout.
+	WatchExpiryTimeout time.Duration
+
+	// StreamBackoff is the stream backoff for xDS client. It can be overridden
+	// by tests to change the default backoff strategy.
+	StreamBackoff func(int) time.Duration
 
 	// ResourceWatchStateForTesting gets the watch state for the resource
 	// identified by the given resource type and resource name. Returns a
 	// non-nil error if there is no such resource being watched.
-	ResourceWatchStateForTesting any // func(xdsclient.XDSClient, xdsresource.Type, string) error
+	ResourceWatchStateForTesting any // func(*xdsclient.XDSClient, xdsclient.ResourceType, string) error
 )
