@@ -249,6 +249,8 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
+	PatternPersistenceGranularity               model.Duration               `yaml:"pattern_persistence_granularity"                  json:"pattern_persistence_granularity"`
+	PatternRateThreshold                        float64                      `yaml:"pattern_rate_threshold"                           json:"pattern_rate_threshold"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -477,6 +479,18 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"limits.pattern-persistence-enabled",
 		false,
 		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
+	)
+	f.DurationVar(
+		(*time.Duration)(&l.PatternPersistenceGranularity),
+		"limits.pattern-persistence-granularity",
+		0,
+		"The time granularity for persisting patterns. Controls how many data points are written when patterns are flushed. Set to 0 to use the default from the pattern ingester configuration.",
+	)
+	f.Float64Var(
+		&l.PatternRateThreshold,
+		"limits.pattern-rate-threshold",
+		1.0,
+		"Minimum pattern rate (samples per second) required for a pattern to be persisted. Patterns with lower rates will be filtered out during persistence. Default: 1.0",
 	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
@@ -1231,6 +1245,14 @@ func (o *Overrides) MetricAggregationEnabled(userID string) bool {
 
 func (o *Overrides) PatternPersistenceEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).PatternPersistenceEnabled
+}
+
+func (o *Overrides) PersistenceGranularity(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).PatternPersistenceGranularity)
+}
+
+func (o *Overrides) PatternRateThreshold(userID string) float64 {
+	return o.getOverridesForUser(userID).PatternRateThreshold
 }
 
 func (o *Overrides) EnableMultiVariantQueries(userID string) bool {

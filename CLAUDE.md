@@ -1,15 +1,18 @@
 # Loki Development Guide
 
 ## Build & Test Commands
+
+Go commands need to be run with the `-tags slicelabels` flag to build correctly.
+
 ```bash
 make all                      # build all binaries
 make loki                     # build loki only
 make logcli                   # build logcli only
 make test                     # run all unit tests
 make test-integration         # run integration tests
-go test ./...                 # run all tests with Go directly
-go test -v ./pkg/logql/...    # run tests in specific package
-go test -run TestName ./pkg/path  # run a specific test
+go test -tags slicelabels ./...                 # run all tests with Go directly
+go test -tags slicelabels -v ./pkg/logql/...    # run tests in specific package
+go test -tags slicelabels -run TestName ./pkg/path  # run a specific test
 make lint                     # run all linters
 make format                   # format code (gofmt and goimports)
 ```

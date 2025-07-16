@@ -14,8 +14,6 @@ const (
 	TimeResolution = model.Time(int64(time.Second*10) / 1e6)
 
 	defaultVolumeSize = 500
-
-	maxChunkTime = 1 * time.Hour
 )
 
 type Chunks []Chunk
@@ -24,8 +22,8 @@ type Chunk struct {
 	Samples []logproto.PatternSample
 }
 
-func newChunk(ts model.Time) Chunk {
-	maxSize := int(maxChunkTime.Nanoseconds()/TimeResolution.UnixNano()) + 1
+func newChunk(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) Chunk {
+	maxSize := int(chunkDuration.Nanoseconds()/sampleInterval.Nanoseconds()) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
@@ -34,18 +32,19 @@ func newChunk(ts model.Time) Chunk {
 	return v
 }
 
-func (c Chunk) spaceFor(ts model.Time) bool {
+func (c Chunk) spaceFor(ts model.Time, chunkDuration time.Duration) bool {
 	if len(c.Samples) == 0 {
 		return true
 	}
 
-	return ts.Sub(c.Samples[0].Timestamp) < maxChunkTime
+	return ts.Sub(c.Samples[0].Timestamp) < time.Duration(chunkDuration.Nanoseconds())
 }
 
 // ForRange returns samples with only the values
 // in the given range [start:end) and aggregates them by step duration.
 // start and end are in milliseconds since epoch. step is a duration in milliseconds.
-func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
+// sampleInterval is the configured sample interval for this chunk.
+func (c Chunk) ForRange(start, end, step, sampleInterval model.Time) []logproto.PatternSample {
 	if len(c.Samples) == 0 {
 		return nil
 	}
@@ -71,7 +70,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 		return nil
 	}
 
-	if step == TimeResolution {
+	if step == sampleInterval {
 		return c.Samples[lo:hi]
 	}
 
@@ -102,11 +101,11 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 // Add records the sample by incrementing the value of the current sample
 // or creating a new sample if past the time resolution of the current one.
 // Returns the previous sample if a new sample was created, nil otherwise.
-func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
-	t := TruncateTimestamp(ts, TimeResolution)
+func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
+	t := TruncateTimestamp(ts, model.Time(sampleInterval.Nanoseconds()/1e6))
 
 	if len(*c) == 0 {
-		*c = append(*c, newChunk(t))
+		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
 		return nil
 	}
 	last := &(*c)[len(*c)-1]
@@ -114,8 +113,8 @@ func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
 		last.Samples[len(last.Samples)-1].Value++
 		return nil
 	}
-	if !last.spaceFor(t) {
-		*c = append(*c, newChunk(t))
+	if !last.spaceFor(t, chunkDuration) {
+		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
 		return &last.Samples[len(last.Samples)-1]
 	}
 	if ts.Before(last.Samples[len(last.Samples)-1].Timestamp) {
@@ -128,10 +127,10 @@ func (c *Chunks) Add(ts model.Time) *logproto.PatternSample {
 	return &last.Samples[len(last.Samples)-2]
 }
 
-func (c Chunks) Iterator(pattern, lvl string, from, through, step model.Time) iter.Iterator {
+func (c Chunks) Iterator(pattern, lvl string, from, through, step, sampleInterval model.Time) iter.Iterator {
 	iters := make([]iter.Iterator, 0, len(c))
 	for _, chunk := range c {
-		samples := chunk.ForRange(from, through, step)
+		samples := chunk.ForRange(from, through, step, sampleInterval)
 		if len(samples) == 0 {
 			continue
 		}
@@ -187,17 +186,23 @@ func (c *Chunks) merge(samples []*logproto.PatternSample) []logproto.PatternSamp
 	return result
 }
 
-func (c *Chunks) prune(olderThan time.Duration) {
+func (c *Chunks) prune(olderThan time.Duration) []*logproto.PatternSample {
 	if len(*c) == 0 {
-		return
+		return nil
 	}
+	var prunedSamples []*logproto.PatternSample
 	// go for every chunks, check the last timestamp is after duration from now and remove the chunk
 	for i := 0; i < len(*c); i++ {
 		if time.Since((*c)[i].Samples[len((*c)[i].Samples)-1].Timestamp.Time()) > olderThan {
+			// collect all samples from the pruned chunk
+			for j := range (*c)[i].Samples {
+				prunedSamples = append(prunedSamples, &(*c)[i].Samples[j])
+			}
 			*c = append((*c)[:i], (*c)[i+1:]...)
 			i--
 		}
 	}
+	return prunedSamples
 }
 
 func (c *Chunks) size() int {
