@@ -166,12 +166,12 @@ func Test_BitPrefixCreation(t *testing.T) {
 func Test_BitPrefixDeleteAddLoopkup(t *testing.T) {
 	index, err := NewBitPrefixWithShards(DefaultIndexShards)
 	require.Nil(t, err)
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
+
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
 
 	index.Add(lbs, model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
 	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))

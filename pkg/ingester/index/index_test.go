@@ -77,12 +77,12 @@ func BenchmarkHash(b *testing.B) {
 
 func TestDeleteAddLoopkup(t *testing.T) {
 	index := NewWithShards(DefaultIndexShards)
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
+
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
 
 	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
 	// make sure we consistent
