@@ -41,9 +41,9 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 				StartTs: unixTime(10),
 				EndTs:   unixTime(20),
 			},
-			pred: TimeRangePredicate{
-				MinTimestamp: unixTime(10),
-				MaxTimestamp: unixTime(20),
+			pred: TimeRangeRowPredicate{
+				Start: unixTime(10),
+				End:   unixTime(20),
 			},
 			expected: true,
 		},
@@ -53,9 +53,9 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 				StartTs: unixTime(10),
 				EndTs:   unixTime(20),
 			},
-			pred: TimeRangePredicate{
-				MinTimestamp: unixTime(21),
-				MaxTimestamp: unixTime(30),
+			pred: TimeRangeRowPredicate{
+				Start: unixTime(21),
+				End:   unixTime(30),
 			},
 			expected: false,
 		},
@@ -65,9 +65,9 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 				StartTs: unixTime(5),
 				EndTs:   unixTime(20),
 			},
-			pred: TimeRangePredicate{
-				MinTimestamp: unixTime(10),
-				MaxTimestamp: unixTime(20),
+			pred: TimeRangeRowPredicate{
+				Start: unixTime(10),
+				End:   unixTime(20),
 			},
 			expected: false,
 		},
@@ -77,9 +77,9 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 				StartTs: unixTime(10),
 				EndTs:   unixTime(25),
 			},
-			pred: TimeRangePredicate{
-				MinTimestamp: unixTime(10),
-				MaxTimestamp: unixTime(20),
+			pred: TimeRangeRowPredicate{
+				Start: unixTime(10),
+				End:   unixTime(20),
 			},
 			expected: false,
 		},
@@ -89,16 +89,16 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 				StartTs: unixTime(15),
 				EndTs:   unixTime(25),
 			},
-			pred: TimeRangePredicate{
-				MinTimestamp: unixTime(5),
-				MaxTimestamp: unixTime(25),
+			pred: TimeRangeRowPredicate{
+				Start: unixTime(5),
+				End:   unixTime(25),
 			},
 			expected: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			predicate := translateIndexPointersPredicate(tt.pred.(TimeRangePredicate), []dataset.Column{fakeMinTimestampColumn, fakeMaxTimestampColumn})
+			predicate := translateIndexPointersPredicate(tt.pred.(TimeRangeRowPredicate), []dataset.Column{fakeMinTimestampColumn, fakeMaxTimestampColumn})
 			actual := evaluateTimeRangePredicate(predicate, tt.pointer)
 			require.Equal(t, tt.expected, actual)
 		})
@@ -108,36 +108,32 @@ func TestWithInTimeRangePredicate(t *testing.T) {
 func evaluateTimeRangePredicate(p dataset.Predicate, s IndexPointer) bool {
 	switch p := p.(type) {
 	case dataset.AndPredicate:
-		return evaluateMinTimestampPredicate(p.Left, s) && evaluateMaxTimestampPredicate(p.Right, s)
+		return evaluateStartPredicate(p.Left, s) && evaluateEndPredicate(p.Right, s)
 	default:
 		panic(fmt.Sprintf("unexpected predicate type %T", p))
 	}
 }
 
-func evaluateMinTimestampPredicate(p dataset.Predicate, s IndexPointer) bool {
+func evaluateStartPredicate(p dataset.Predicate, s IndexPointer) bool {
 	switch p := p.(type) {
-	case dataset.OrPredicate:
-		return evaluateMinTimestampPredicate(p.Left, s) || evaluateMinTimestampPredicate(p.Right, s)
-	case dataset.EqualPredicate:
-		return s.StartTs.Unix() == p.Value.Int64()
-	case dataset.GreaterThanPredicate:
-		return s.StartTs.Unix() > p.Value.Int64()
-
-	default:
-		panic(fmt.Sprintf("unexpected predicate type %T", p))
-	}
-}
-
-func evaluateMaxTimestampPredicate(p dataset.Predicate, s IndexPointer) bool {
-	switch p := p.(type) {
-	case dataset.OrPredicate:
-		return evaluateMaxTimestampPredicate(p.Left, s) || evaluateMaxTimestampPredicate(p.Right, s)
-	case dataset.EqualPredicate:
-		return s.EndTs.Unix() == p.Value.Int64()
+	case dataset.NotPredicate:
+		return !evaluateStartPredicate(p.Inner, s)
 	case dataset.LessThanPredicate:
-		return s.EndTs.Unix() < p.Value.Int64()
+		return s.StartTs.UnixNano() < p.Value.Int64()
 
 	default:
-		panic(fmt.Sprintf("unexpected predicate type %T", p))
+		panic(fmt.Sprintf("unexpected row predicate type %T", p))
+	}
+}
+
+func evaluateEndPredicate(p dataset.Predicate, s IndexPointer) bool {
+	switch p := p.(type) {
+	case dataset.NotPredicate:
+		return !evaluateEndPredicate(p.Inner, s)
+	case dataset.GreaterThanPredicate:
+		return s.EndTs.UnixNano() > p.Value.Int64()
+
+	default:
+		panic(fmt.Sprintf("unexpected row predicate type %T", p))
 	}
 }

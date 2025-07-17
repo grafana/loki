@@ -1092,6 +1092,12 @@ dataobj:
     # CLI flag: -dataobj-index-builder.enabled-tenant-ids
     [enabled_tenant_ids: <string> | default = ""]
 
+  metastore:
+    updater:
+      # The format to use for the metastore top-level index objects.
+      # CLI flag: -dataobj-metastore.storage-format
+      [storage_format: <string> | default = "v1"]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
@@ -2573,6 +2579,36 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
+
+# Supported modes - [disabled]: Keeps the horizontal scaling mode disabled.
+# Locally runs all the functions of the compactor.[main]: Runs all functions of
+# the compactor. Distributes work to workers where possible.[worker]: Runs the
+# compactor in worker mode, only working on jobs built by the main compactor.
+# CLI flag: -compactor.horizontal-scaling-mode
+[horizontal_scaling_mode: <string> | default = "disabled"]
+
+worker_config:
+  # Number of workers to run for concurrent processing of jobs.
+  # CLI flag: -compactor.worker.num-workers
+  [num_workers: <int> | default = 4]
+
+jobs_config:
+  deletion:
+    # Object storage path prefix for storing deletion manifests.
+    # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
+    [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
+
+    # Maximum number of chunks to process concurrently in each worker.
+    # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
+    [chunk_processing_concurrency: <int> | default = 5]
+
+    # Maximum time to wait for a job before considering it failed and retrying.
+    # CLI flag: -compactor.jobs.deletion.timeout
+    [timeout: <duration> | default = 15m]
+
+    # Maximum number of times to retry a failed or timed out job.
+    # CLI flag: -compactor.jobs.deletion.max-retries
+    [max_retries: <int> | default = 3]
 ```
 
 ### consul

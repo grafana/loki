@@ -22,6 +22,7 @@ import (
 
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/internal/xds/bootstrap"
+	xdsclient "google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -103,7 +104,6 @@ func (listenerResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*D
 	}
 
 	return &DecodeResult{Name: name, Resource: &ListenerResourceData{Resource: listener}}, nil
-
 }
 
 // ListenerResourceData wraps the configuration of a Listener resource as
@@ -127,7 +127,6 @@ func (l *ListenerResourceData) RawEqual(other ResourceData) bool {
 		return false
 	}
 	return proto.Equal(l.Resource.Raw, other.Raw())
-
 }
 
 // ToJSON returns a JSON string representation of the resource data.
@@ -181,4 +180,10 @@ func (d *delegatingListenerWatcher) AmbientError(err error, onDone func()) {
 func WatchListener(p Producer, name string, w ListenerWatcher) (cancel func()) {
 	delegator := &delegatingListenerWatcher{watcher: w}
 	return p.WatchResource(listenerType, name, delegator)
+}
+
+// NewGenericListenerResourceTypeDecoder returns a xdsclient.Decoder that wraps
+// the xdsresource.listenerType.
+func NewGenericListenerResourceTypeDecoder(bc *bootstrap.Config) xdsclient.Decoder {
+	return &GenericResourceTypeDecoder{ResourceType: listenerType, BootstrapConfig: bc}
 }

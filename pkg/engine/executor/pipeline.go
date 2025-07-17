@@ -22,7 +22,7 @@ type Pipeline interface {
 	// Read reads the next value into its state.
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 	// The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-	Read() error
+	Read(context.Context) error
 	// Value returns the current value in state.
 	Value() (arrow.Record, error)
 	// Close closes the resources of the pipeline.
@@ -67,10 +67,10 @@ type GenericPipeline struct {
 	t      Transport
 	inputs []Pipeline
 	state  state
-	read   func([]Pipeline) state
+	read   func(context.Context, []Pipeline) state
 }
 
-func newGenericPipeline(t Transport, read func([]Pipeline) state, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipeline(t Transport, read func(context.Context, []Pipeline) state, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		t:      t,
 		read:   read,
@@ -91,11 +91,11 @@ func (p *GenericPipeline) Value() (arrow.Record, error) {
 }
 
 // Read implements Pipeline.
-func (p *GenericPipeline) Read() error {
+func (p *GenericPipeline) Read(ctx context.Context) error {
 	if p.read == nil {
 		return EOF
 	}
-	p.state = p.read(p.inputs)
+	p.state = p.read(ctx, p.inputs)
 	return p.state.err
 }
 
@@ -112,13 +112,13 @@ func (p *GenericPipeline) Transport() Transport {
 }
 
 func errorPipeline(err error) Pipeline {
-	return newGenericPipeline(Local, func(_ []Pipeline) state {
+	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) state {
 		return state{err: fmt.Errorf("failed to execute pipeline: %w", err)}
 	})
 }
 
 func emptyPipeline() Pipeline {
-	return newGenericPipeline(Local, func(_ []Pipeline) state {
+	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) state {
 		return Exhausted
 	})
 }
@@ -133,7 +133,6 @@ type prefetchWrapper struct {
 	ch    chan state // the results channel for pre-fetched items
 	state state      // internal state representing the last pre-fetched item
 
-	ctx    context.Context         // context to control lifecycle
 	cancel context.CancelCauseFunc // cancellation function for the context
 }
 
@@ -150,29 +149,28 @@ var _ Pipeline = (*prefetchWrapper)(nil)
 // with pre-fetching capability.
 //
 // Returns a [prefetchWrapper] that implements the [Pipeline] interface.
-func newPrefetchingPipeline(ctx context.Context, p Pipeline) *prefetchWrapper {
-	ctx, cancel := context.WithCancelCause(ctx)
+func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 	return &prefetchWrapper{
 		Pipeline: p,
 		ch:       make(chan state),
-		ctx:      ctx,
-		cancel:   cancel,
 	}
 }
 
 // Read implements [Pipeline].
-func (p *prefetchWrapper) Read() error {
-	p.init()
-	return p.read()
+func (p *prefetchWrapper) Read(ctx context.Context) error {
+	p.init(ctx)
+	return p.read(ctx)
 }
 
-func (p *prefetchWrapper) init() {
+func (p *prefetchWrapper) init(ctx context.Context) {
 	if p.initialized {
 		return
 	}
 
 	p.initialized = true
-	go p.prefetch(p.ctx) // nolint:errcheck
+
+	ctx, p.cancel = context.WithCancelCause(ctx)
+	go p.prefetch(ctx) // nolint:errcheck
 }
 
 func (p prefetchWrapper) prefetch(ctx context.Context) error {
@@ -185,7 +183,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 			return ctx.Err()
 		default:
 			var s state
-			s.err = p.Pipeline.Read()
+			s.err = p.Pipeline.Read(ctx)
 			if s.err != nil {
 				p.ch <- s
 				return s.err
@@ -203,7 +201,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	}
 }
 
-func (p *prefetchWrapper) read() error {
+func (p *prefetchWrapper) read(_ context.Context) error {
 	// Release previously retained batch
 	if p.state.batch != nil {
 		p.state.batch.Release()
