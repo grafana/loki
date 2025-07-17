@@ -171,7 +171,7 @@ func (s *dataobjScan) initStreams(ctx context.Context) error {
 					continue
 				}
 
-				s.streams[stream.ID] = stream.Labels
+				s.streams[stream.ID] = stream.Labels.Copy()
 
 				// Zero out the stream entry from the slice so the next call to sr.Read
 				// doesn't overwrite any memory we just moved to s.streams.
