@@ -683,7 +683,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	require.EqualError(t, err, fmt.Sprintf("no requests loaded for user: %s", user2))
 
 	err = builder.Finish(ctx)
-	require.EqualError(t, err, ErrNoChunksSelectedForDeletion.Error())
+	require.NoError(t, err)
 }
 
 func TestCleanupInvalidManifest(t *testing.T) {

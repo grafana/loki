@@ -185,10 +185,6 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	if d.overallChunksCount == 0 {
-		return ErrNoChunksSelectedForDeletion
-	}
-
 	level.Debug(d.logger).Log("msg", "uploading manifest file after finishing building deletion manifest",
 		"total_segments", d.segmentsCount,
 		"total_chunks", d.overallChunksCount,
