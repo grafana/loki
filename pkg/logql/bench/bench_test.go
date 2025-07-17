@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -164,18 +165,6 @@ func TestStorageEquality(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				expected, err := baseStore.Engine.Query(params).Exec(ctx)
-				require.NoError(t, err)
-
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					baseStore.Name,
-					expected.Statistics.Summary.TotalLinesProcessed,
-					expected.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
-					uint64(expected.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
 				// Find matching test case in other stores and then compare results.
 				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
 					return tc == baseCase
@@ -186,21 +175,31 @@ func TestStorageEquality(t *testing.T) {
 				}
 
 				actual, err := store.Engine.Query(params).Exec(ctx)
-				if err != nil && errors.Is(err, errStoreUnimplemented) {
-					t.Logf("Store %s does not implement test case %s", store.Name, baseCase.Name())
-					return
-				} else if assert.NoError(t, err) {
-					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-						store.Name,
-						actual.Statistics.Summary.TotalLinesProcessed,
-						actual.Statistics.Summary.TotalEntriesReturned,
-						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
-						uint64(actual.Statistics.Summary.ExecTime),
-						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
-					)
-
-					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
+				if err != nil && errors.Is(err, engine.ErrNotSupported) {
+					t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
 				}
+				require.NoError(t, err)
+				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+					store.Name,
+					actual.Statistics.Summary.TotalLinesProcessed,
+					actual.Statistics.Summary.TotalEntriesReturned,
+					humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+					uint64(actual.Statistics.Summary.ExecTime),
+					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+				)
+
+				expected, err := baseStore.Engine.Query(params).Exec(ctx)
+				require.NoError(t, err)
+				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+					baseStore.Name,
+					expected.Statistics.Summary.TotalLinesProcessed,
+					expected.Statistics.Summary.TotalEntriesReturned,
+					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+					uint64(expected.Statistics.Summary.ExecTime),
+					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+				)
+
+				assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 			})
 		}
 	}
