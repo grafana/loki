@@ -250,6 +250,12 @@ func translatePointersPredicate(p RowPredicate, columns []dataset.Column, column
 }
 
 func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn, bloomColumn dataset.Column) dataset.Predicate {
+	if nameColumn == nil && bloomColumn == nil {
+		// If there are no name or bloom columns present, it means this section doesn't have any relevant columns for this predicate.
+		// This can happen if a whole section only contains pointers of a different Kind.
+		return dataset.FalsePredicate{}
+	}
+
 	// TODO: Make this more efficient by not re-allocating the bloom filter each time
 	return dataset.AndPredicate{
 		Left: dataset.EqualPredicate{

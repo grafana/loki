@@ -30,8 +30,8 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
-		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
-		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
+		msBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
+		ms = metastore.NewObjectMetastore(msBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -95,11 +95,13 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for physical planning
 	statsCtx, ctx := stats.NewContext(ctx)
-	catalogueType := physical.CatalogueTypeDirect
+
+	catalogType := physical.CatalogueTypeDirect
 	if e.opts.CataloguePath != "" {
-		catalogueType = physical.CatalogueTypeIndex
+		catalogType = physical.CatalogueTypeIndex
 	}
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
+
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {

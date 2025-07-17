@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,7 +15,10 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -144,6 +148,88 @@ func (s *DataObjStore) Close() error {
 	// Flush any remaining data
 	if err := s.flush(); err != nil {
 		return fmt.Errorf("failed to flush remaining data: %w", err)
+	}
+
+	if err := s.buildIndex(); err != nil {
+		return fmt.Errorf("failed to build index: %w", err)
+	}
+
+	return nil
+}
+
+func (s *DataObjStore) buildIndex() error {
+	// Create indexes for use with the new engine
+	indexWriterBucket := objstore.NewPrefixedBucket(s.bucket, "index/v0/")
+	os.MkdirAll(filepath.Join(s.dir, "index/v0", "tenant-"+s.tenantID, "metastore"), 0o755)
+	indexMetastore := metastore.NewUpdater(metastore.UpdaterConfig{}, indexWriterBucket, s.tenantID, s.logger)
+
+	flushAndUpload := func(calculator *index.Calculator) error {
+		buffer := bytes.NewBuffer(make([]byte, 0, 128*1024*1024))
+		stats, err := calculator.Flush(buffer)
+		if err != nil {
+			return fmt.Errorf("failed to flush index: %w", err)
+		}
+		key := index.IndexObjectKey(s.tenantID, buffer)
+		err = indexWriterBucket.Upload(context.Background(), key, buffer)
+		if err != nil {
+			return fmt.Errorf("failed to upload index: %w", err)
+		}
+
+		err = indexMetastore.Update(context.Background(), key, stats.MinTimestamp, stats.MaxTimestamp)
+		if err != nil {
+			return fmt.Errorf("failed to update metastore: %w", err)
+		}
+		fmt.Println("uploaded index", key)
+		calculator.Reset()
+		return nil
+	}
+
+	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		TargetPageSize:    128 * 1024,        // 128KB
+		TargetObjectSize:  128 * 1024 * 1024, // 128MB
+		TargetSectionSize: 16 * 1024,         // 16MB
+		BufferSize:        16 * 1024,         // 16MB
+
+		SectionStripeMergeLimit: 2,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create index builder: %w", err)
+	}
+
+	calculator := index.NewCalculator(builder)
+	cnt := 0
+	objectsPerIndex := 16
+	err = s.bucket.Iter(context.Background(), "", func(name string) error {
+		if !strings.Contains(name, "objects") {
+			return nil
+		}
+		fmt.Println("processing", name)
+		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name)
+		if err != nil {
+			return fmt.Errorf("failed to read object: %w", err)
+		}
+
+		err = calculator.Calculate(context.Background(), s.logger, reader, name)
+		if err != nil {
+			return fmt.Errorf("failed to calculate index: %w", err)
+		}
+		cnt++
+
+		if cnt%objectsPerIndex == 0 {
+			if err := flushAndUpload(calculator); err != nil {
+				return fmt.Errorf("failed to flush and upload index: %w", err)
+			}
+		}
+		return nil
+	}, objstore.WithRecursiveIter())
+	if err != nil {
+		return fmt.Errorf("failed to iterate over objects: %w", err)
+	}
+
+	if cnt%objectsPerIndex != 0 {
+		if err := flushAndUpload(calculator); err != nil {
+			return fmt.Errorf("failed to flush and upload index: %w", err)
+		}
 	}
 	return nil
 }

@@ -411,9 +411,7 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 		}
 	}
 
-	current := pointers.AndRowPredicate{
-		Left: predicates[0],
-	}
+	current := predicates[0]
 
 	for _, predicate := range predicates[1:] {
 		and := pointers.AndRowPredicate{
@@ -588,7 +586,7 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 	defer timer.ObserveDuration()
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
+	g.SetLimit(1)
 
 	var sectionDescriptors []*DataobjSectionDescriptor
 	var sectionDescriptorsMutex sync.Mutex
