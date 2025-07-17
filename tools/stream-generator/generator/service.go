@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -325,11 +324,11 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		labelsStr := fmt.Sprintf("{%s}", strings.Join(labelValues, ","))
 
 		// Parse the labels to get the hash
-		lbs := labels.FromMap(map[string]string{})
+		builder := labels.NewScratchBuilder(len(streamLabels))
 		for j, label := range streamLabels {
-			lbs = append(lbs, labels.Label{Name: label, Value: fmt.Sprintf("%s-%d-%d", label, i, j)})
+			builder.Add(label, fmt.Sprintf("%s-%d-%d", label, i, j))
 		}
-		sort.Sort(lbs)
+		lbs := builder.Labels()
 
 		// Create the stream with multiple entries
 		stream := logproto.Stream{
