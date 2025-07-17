@@ -107,11 +107,15 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			switch arr := col.(type) {
 			case *array.String:
 				metadata.Set(colName, arr.Value(i))
+				// include structured metadata in stream labels
+				lbs.Set(colName, arr.Value(i))
 			}
 			continue
 		}
 	}
 	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
+	// set to a non-nil value to match with existing engine.
+	entry.Parsed = logproto.FromLabelsToLabelAdapters(labels.Labels{})
 
 	return lbs.Labels(), entry
 }
@@ -121,6 +125,7 @@ func (b *streamsResultBuilder) SetStats(s stats.Result) {
 }
 
 func (b *streamsResultBuilder) Build() logqlmodel.Result {
+	sort.Sort(b.data)
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: b.stats,
