@@ -837,10 +837,10 @@ func newMockEngineWithPatterns(patterns []string) logql.Engine {
 	matrix := promql.Matrix{}
 	for _, pattern := range patterns {
 		matrix = append(matrix, promql.Series{
-			Metric: labels.Labels{
-				{Name: "service_name", Value: "test-service"},
-				{Name: "decoded_pattern", Value: pattern},
-			},
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: pattern},
+			),
 			Floats: []promql.FPoint{
 				{T: time.Now().UnixMilli(), F: 100},
 			},
@@ -865,10 +865,10 @@ func newMockEngineWithPatternsAndTimestamps(patternSamples []patternSample) logq
 	matrix := promql.Matrix{}
 	for _, ps := range patternSamples {
 		matrix = append(matrix, promql.Series{
-			Metric: labels.Labels{
-				{Name: "service_name", Value: "test-service"},
-				{Name: "decoded_pattern", Value: ps.pattern},
-			},
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: ps.pattern},
+			),
 			Floats: []promql.FPoint{
 				{T: ps.timestamp, F: float64(ps.value)},
 			},
