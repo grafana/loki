@@ -112,6 +112,22 @@ src/
    npm run lint
    ```
 
+## Feature Flags
+
+The UI supports feature flags to control experimental features. In development:
+
+- Copy `.env.development` to `.env.local` to customize feature flags
+- Set `VITE_ENABLE_GOLDFISH=true` to enable the Goldfish query comparison feature
+- Set `VITE_MOCK_FEATURES=true` to use local overrides without a backend
+
+In production, feature flags are controlled by Loki configuration:
+
+```yaml
+ui:
+  enabled: true
+  enable_goldfish: true  # Enable Goldfish feature
+```
+
 ## Contributing
 
 1. Follow the folder structure
