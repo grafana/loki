@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"runtime/pprof"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -646,17 +645,29 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				for i := range entry.StructuredMetadata {
-					normalized = labelNamer.Build(structuredMetadata[i].Name)
-					if normalized != structuredMetadata[i].Name {
-						structuredMetadata[i].Name = normalized
+
+				normalizedBuilder := labels.NewBuilder(structuredMetadata)
+
+				for _, lbl := range entry.StructuredMetadata {
+					normalized = labelNamer.Build(lbl.Name)
+					if normalized != lbl.Name {
+						// Swap the name with the normalized one.
+						normalizedBuilder.Del(lbl.Name)
+						normalizedBuilder.Set(normalized, lbl.Value)
+
 						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
-					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
-						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
+					if strings.ContainsRune(lbl.Value, utf8.RuneError) {
+						normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
 						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 				}
+
+				// Update structured metadata with normalized labels. We also need to
+				// update the original stream to reflect the changes.
+				structuredMetadata = normalizedBuilder.Labels()
+				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
+
 				if shouldDiscoverLevels {
 					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
 						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
@@ -1070,26 +1081,22 @@ func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	baseLbls, err := syntax.ParseLabels(lbls)
 	if err != nil {
 		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
-		return nil
+		return labels.EmptyLabels()
 	}
 
-	streamLabels := make([]labels.Label, len(baseLbls)+1)
-	copy(streamLabels, baseLbls)
-	streamLabels[len(baseLbls)] = labels.Label{Name: ingester.ShardLbName, Value: ingester.ShardLbPlaceholder}
-
-	sort.Sort(labels.Labels(streamLabels))
-
-	return streamLabels
+	builder := labels.NewBuilder(baseLbls)
+	builder.Set(ingester.ShardLbName, ingester.ShardLbPlaceholder)
+	return builder.Labels()
 }
 
 func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
 	shardLabel := strconv.Itoa(shardNumber)
-	for i := 0; i < len(lbls); i++ {
-		if lbls[i].Name == ingester.ShardLbName {
-			lbls[i].Value = shardLabel
-			break
-		}
+
+	builder := labels.NewBuilder(lbls)
+	if lbls.Has(ingester.ShardLbName) {
+		builder.Set(ingester.ShardLbName, shardLabel)
 	}
+	lbls = builder.Labels()
 
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
@@ -1297,16 +1304,16 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
-		return nil, "", 0, retentionHours, policy, err
+		return labels.EmptyLabels(), "", 0, retentionHours, policy, err
 	}
 
 	lsHash := labels.StableHash(ls)
