@@ -1897,7 +1897,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache{{ include \"loki.memcached.suffix\" .Values.chunksCache.suffix }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2024,14 +2024,14 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache{{ include \"loki.memcached.suffix\" .Values.chunksCache.l2.suffix }}.{{ $.Release.Namespace }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
   "affinity": {},
   "allocatedMemory": 8192,
   "annotations": {},
   "batchSize": 4,
   "connectionLimit": 16384,
   "defaultValidity": "0s",
-  "enabled": true,
+  "enabled": false,
   "extraArgs": {},
   "extraContainers": [],
   "extraExtendedOptions": "",
@@ -2044,6 +2044,7 @@ true
   "parallelism": 5,
   "persistence": {
     "enabled": false,
+    "labels": {},
     "mountPath": "/data",
     "storageClass": null,
     "storageSize": "10G"
@@ -2082,7 +2083,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache{{ include \"loki.memcached.suffix\" .Values.chunksCache.l2.suffix }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2145,7 +2146,7 @@ true
 			<td>bool</td>
 			<td>Specifies whether memcached based chunks-cache-l2 should be enabled</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -2206,7 +2207,7 @@ true
 		<tr>
 			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
 			<td>string</td>
-			<td>The age of chunks should be transfered from l1 cache to l2</td>
+			<td>The age of chunks should be transfered from l1 cache to l2 4 days</td>
 			<td><pre lang="json">
 "345600s"
 </pre>
@@ -2246,6 +2247,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -2506,15 +2508,6 @@ null
 			<td>Enable creating PVCs for the chunks-cache</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>chunksCache.persistence.labels</td>
-			<td>object</td>
-			<td>PVC additional labels</td>
-			<td><pre lang="json">
-{}
 </pre>
 </td>
 		</tr>
@@ -10677,7 +10670,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
 </pre>
 </td>
 		</tr>
