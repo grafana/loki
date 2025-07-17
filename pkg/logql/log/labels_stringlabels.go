@@ -1,4 +1,4 @@
-//go:build stringlabels
+//go:build !slicelabels && !dedupelabels
 
 package log
 
@@ -18,26 +18,4 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	// The results from Hash(l) and HashWithoutLabels(l, []string{}) are different with stringlabels, so using Hash
 	// here also simplifies our tests.
 	return labels.StableHash(lbs)
-}
-
-// BufferedLabelsBuilder is a simple builder that uses a label buffer passed in.
-// It is used to avoid allocations when building labels.
-type BufferedLabelsBuilder struct {
-	builder *labels.Builder
-}
-
-func NewBufferedLabelsBuilder(l labels.Labels) *BufferedLabelsBuilder {
-	return &BufferedLabelsBuilder{builder: labels.NewBuilder(l)}
-}
-
-func (b *BufferedLabelsBuilder) Reset() {
-	b.builder.Reset(labels.EmptyLabels())
-}
-
-func (b *BufferedLabelsBuilder) Add(label labels.Label) {
-	b.builder.Set(label.Name, label.Value)
-}
-
-func (b *BufferedLabelsBuilder) Labels() labels.Labels {
-	return b.builder.Labels()
 }
