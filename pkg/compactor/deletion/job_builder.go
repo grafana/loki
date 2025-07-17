@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -21,6 +22,14 @@ import (
 const (
 	maxChunksPerJob              = 1000
 	storageUpdatesFilenameSuffix = `-storage-updates.json`
+
+	processManifestStageBuildJobs           = "build_jobs"
+	processManifestStageApplyStorageUpdates = "apply_storage_updates"
+	processManifestStageCleanupManifest     = "cleanup_manifest"
+
+	storageUpdateTypeDeleteChunk  = "delete_chunk"
+	storageUpdateTypeDeIndexChunk = "de_index_chunk"
+	storageUpdateTypeIndexChunk   = "index_chunk"
 )
 
 type StorageUpdatesIterator interface {
@@ -61,9 +70,15 @@ type JobBuilder struct {
 	currentManifestMtx sync.RWMutex
 
 	currSegmentStorageUpdates *storageUpdatesCollection
+	metrics                   *jobBuilderMetrics
 }
 
-func NewJobBuilder(deletionManifestStoreClient client.ObjectClient, applyStorageUpdatesFunc ApplyStorageUpdatesFunc, markRequestsAsProcessedFunc markRequestsAsProcessedFunc) *JobBuilder {
+func NewJobBuilder(
+	deletionManifestStoreClient client.ObjectClient,
+	applyStorageUpdatesFunc ApplyStorageUpdatesFunc,
+	markRequestsAsProcessedFunc markRequestsAsProcessedFunc,
+	r prometheus.Registerer,
+) *JobBuilder {
 	return &JobBuilder{
 		deletionManifestStoreClient: deletionManifestStoreClient,
 		applyStorageUpdatesFunc:     applyStorageUpdatesFunc,
@@ -71,6 +86,7 @@ func NewJobBuilder(deletionManifestStoreClient client.ObjectClient, applyStorage
 		currSegmentStorageUpdates: &storageUpdatesCollection{
 			StorageUpdates: map[string]*storageUpdates{},
 		},
+		metrics: newJobBuilderMetrics(r),
 	}
 }
 
@@ -81,7 +97,6 @@ func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) {
 
 	for {
 		if err := b.buildJobs(ctx, jobsChan); err != nil {
-			// ToDo(Sandeep): Add a metric for tracking failures in building jobs
 			level.Error(util_log.Logger).Log("msg", "error building jobs", "err", err)
 		}
 
@@ -106,18 +121,22 @@ func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) e
 	for _, manifestPath := range manifests {
 		manifest, err := b.readManifest(ctx, manifestPath)
 		if err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageBuildJobs).Inc()
 			return err
 		}
 
 		if err := b.processManifest(ctx, manifest, manifestPath, jobsChan); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageBuildJobs).Inc()
 			return err
 		}
 
 		if err := b.applyStorageUpdates(ctx, manifest, manifestPath); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageApplyStorageUpdates).Inc()
 			return err
 		}
 
 		if err := b.cleanupManifest(ctx, manifest, manifestPath); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageCleanupManifest).Inc()
 			return err
 		}
 	}
@@ -362,7 +381,7 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 
 // applyStorageUpdates applies all the storage updates accumulated while processing of the given manifest
 func (b *JobBuilder) applyStorageUpdates(ctx context.Context, manifest *manifest, manifestPath string) error {
-	storageUpdatesIterator := newStorageUpdatesIterator(ctx, manifestPath, manifest, b.deletionManifestStoreClient)
+	storageUpdatesIterator := newStorageUpdatesIterator(ctx, manifestPath, manifest, b.deletionManifestStoreClient, b.metrics.storageUpdatesAppliedTotal)
 	return b.applyStorageUpdatesFunc(ctx, storageUpdatesIterator)
 }
 
@@ -460,19 +479,21 @@ type storageUpdatesIterator struct {
 	manifestPath                string
 	manifest                    *manifest
 	deletionManifestStoreClient client.ObjectClient
+	storageUpdatesTotal         *prometheus.CounterVec
 
 	currSegmentNum        int
 	currUpdatesCollection *storageUpdatesCollection
 	err                   error
 }
 
-func newStorageUpdatesIterator(ctx context.Context, manifestPath string, manifest *manifest, deletionManifestStoreClient client.ObjectClient) *storageUpdatesIterator {
+func newStorageUpdatesIterator(ctx context.Context, manifestPath string, manifest *manifest, deletionManifestStoreClient client.ObjectClient, storageUpdatesTotal *prometheus.CounterVec) *storageUpdatesIterator {
 	return &storageUpdatesIterator{
 		ctx:                         ctx,
 		manifestPath:                manifestPath,
 		manifest:                    manifest,
 		deletionManifestStoreClient: deletionManifestStoreClient,
 		currSegmentNum:              -1,
+		storageUpdatesTotal:         storageUpdatesTotal,
 	}
 }
 
@@ -542,6 +563,9 @@ func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, chun
 		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, chunksToIndex); err != nil {
 			return err
 		}
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeleteChunk).Add(float64(len(updates.ChunksToDelete)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeIndexChunk).Add(float64(len(updates.ChunksToDeIndex)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeIndexChunk).Add(float64(len(updates.ChunksToIndex)))
 	}
 
 	return nil

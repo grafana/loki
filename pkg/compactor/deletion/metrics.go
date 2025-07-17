@@ -138,3 +138,25 @@ func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetr
 
 	return &m
 }
+
+type jobBuilderMetrics struct {
+	processManifestFailuresTotal *prometheus.CounterVec
+	storageUpdatesAppliedTotal   *prometheus.CounterVec
+}
+
+func newJobBuilderMetrics(r prometheus.Registerer) *jobBuilderMetrics {
+	m := jobBuilderMetrics{}
+
+	m.processManifestFailuresTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_process_manifest_failures_total",
+		Help:      "Number of times compactor failed to process manifest at various stages",
+	}, []string{"stage"})
+	m.storageUpdatesAppliedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_deletion_storage_updates_applied_total",
+		Help:      "Number of storage updates made by type after processing of delete manifests",
+	}, []string{"type"})
+
+	return &m
+}

@@ -392,7 +392,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				return iterator.Err()
 			}, func(requests []DeleteRequest) {
 				requestsMarkedAsProcessed = requests
-			})
+			}, nil)
 			jobsChan := make(chan *grpc.Job)
 
 			var jobsBuilt []grpc.Job
@@ -470,7 +470,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
 				return nil
-			}, func(_ []DeleteRequest) {})
+			}, func(_ []DeleteRequest) {}, nil)
 
 			// Create a test manifest
 			manifest := &manifest{
