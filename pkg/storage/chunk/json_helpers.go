@@ -59,7 +59,7 @@ func encodeLabels(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 
 func labelsIsEmpty(ptr unsafe.Pointer) bool {
 	labelsPtr := (*labels.Labels)(ptr)
-	return labelsPtr.Len() == 0
+	return labelsPtr.IsEmpty()
 }
 
 // Decode via jsoniter's float64 routine is faster than getting the string data and decoding as two integers

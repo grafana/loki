@@ -566,7 +566,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 		// Ensure no empty or duplicate labels have gotten through. This mirrors the
 		// equivalent validation code in the TSDB's headAppender.
 		l = l.WithoutEmpty()
-		if l.Len() == 0 {
+		if l.IsEmpty() {
 			return 0, errors.Wrap(tsdb.ErrInvalidSample, "empty labelset")
 		}
 
