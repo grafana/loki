@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 
-	// This is the equivilent of the main.go of the Loki UI, hence why we allo the blank import here
+	// This is equivilent to a main.go for the Loki UI, so the blank import is allowed
 	_ "github.com/go-sql-driver/mysql" //nolint:revive
 )
 
