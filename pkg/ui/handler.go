@@ -163,8 +163,8 @@ func (s *Service) clusterSelfHandler() http.Handler {
 }
 
 func (s *Service) featuresHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		features := map[string]interface{}{
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		features := map[string]any{
 			"goldfish": s.cfg.Goldfish.Enable,
 		}
 		w.Header().Set("Content-Type", contentTypeJSON)

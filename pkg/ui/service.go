@@ -23,7 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 
-	_ "github.com/go-sql-driver/mysql"
+	// This is the equivilent of the main.go of the Loki UI, hence why we allo the blank import here
+	_ "github.com/go-sql-driver/mysql" //nolint:revive
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
