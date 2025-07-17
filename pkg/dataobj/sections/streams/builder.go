@@ -3,7 +3,6 @@ package streams
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -34,7 +33,7 @@ type Stream struct {
 	UncompressedSize int64
 
 	// Labels of the stream.
-	Labels labels.Labels //
+	Labels labels.Labels
 
 	// Total number of log records in the stream.
 	Rows int
@@ -43,7 +42,7 @@ type Stream struct {
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
-	s.Labels = nil
+	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
 	s.UncompressedSize = 0
@@ -180,13 +179,9 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
-	// Ensure streamLabels are sorted prior to adding to ensure consistent column
-	// ordering.
-	sort.Sort(streamLabels)
-
-	for _, lbl := range streamLabels {
-		b.currentLabelsSize += len(lbl.Value)
-	}
+	streamLabels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
 
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
@@ -305,12 +300,16 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
 		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(stream.UncompressedSize))
 
-		for _, label := range stream.Labels {
+		err := stream.Labels.Validate(func(label labels.Label) error {
 			builder, err := getLabelColumn(label.Name)
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
 			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 

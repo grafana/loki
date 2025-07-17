@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/sync/errgroup"
@@ -450,9 +451,9 @@ func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logg
 
 		for i, log := range logsBuf[:n] {
 			cnt++
-			for _, md := range log.Metadata {
+			log.Metadata.Range(func(md labels.Label) {
 				columnBloomBuilders[md.Name].Add([]byte(md.Value))
-			}
+			})
 			logsInfo[i].objectPath = objectPath
 			logsInfo[i].sectionIdx = sectionIdx
 			logsInfo[i].streamID = log.StreamID
