@@ -231,6 +231,10 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 				return err
 			}
 
+			if iterator == nil {
+				continue
+			}
+
 			if err := iterator.ForEachSeries(ctx, func(series retention.Series) (err error) {
 				return deletionManifestBuilder.AddSeries(ctx, tableName, series)
 			}); err != nil {
