@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"zombiezen.com/go/sqlite/sqlitex"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
@@ -212,4 +214,93 @@ func TestBatchCreateGetSQLite(t *testing.T) {
 		require.ErrorIs(t, err, ErrDeleteRequestNotFound)
 		require.Empty(t, results)
 	})
+}
+
+func TestFixProcessedShardCount(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeSQLite)
+	defer tc.store.Stop()
+
+	// add a delete request
+	reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
+	require.NoError(t, err)
+
+	// get the current state from db
+	before, err := tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+
+	sqliteStore := tc.store.(*deleteRequestsStoreSQLite)
+
+	// trying to fix the shard count should have no effect
+	require.NoError(t, sqliteStore.fixProcessedShardCount(context.Background()))
+
+	after, err := tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+
+	shards, err := tc.store.GetUnprocessedShards(context.Background())
+	require.NoError(t, err)
+
+	// mark a shard as processed
+	require.NoError(t, tc.store.MarkShardAsProcessed(context.Background(), shards[0]))
+
+	// refresh the current state from db
+	before, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+
+	// trying to fix the shard count should have no effect
+	require.NoError(t, sqliteStore.fixProcessedShardCount(context.Background()))
+	after, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+
+	// set the shard count to an incorrect value
+	err = sqliteStore.sqliteStore.Exec(context.Background(), true, sqlQuery{
+		query: sqlUpdateShardCount,
+		execOpts: &sqlitex.ExecOptions{
+			Args: []any{
+				len(shards) + 1,
+				len(shards) + 1,
+				time.Now().UnixNano(),
+				reqID,
+			},
+		},
+		postUpdateExecCallback: func(numChanges int) error {
+			require.Equal(t, 1, numChanges)
+			return nil
+		},
+	})
+	require.NoError(t, err)
+
+	after, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+	require.NotEqual(t, before, after)
+
+	// try fixing the shard count and see if we get the correct state back
+	require.NoError(t, sqliteStore.fixProcessedShardCount(context.Background()))
+	after, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+
+	// delete all shards of the request without touching the consolidated record for the request
+	err = sqliteStore.sqliteStore.Exec(context.Background(), true, sqlQuery{
+		query: sqlDeleteShards,
+		execOpts: &sqlitex.ExecOptions{
+			Args: []any{
+				reqID,
+				user1,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// ensure that the current status of the request is not processed
+	require.NotEqual(t, StatusProcessed, after.Status)
+
+	// fixing the shard count should mark the request as processed
+	require.NoError(t, sqliteStore.fixProcessedShardCount(context.Background()))
+
+	// verify that the request has been marked as processed in the db
+	after, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
+	require.NoError(t, err)
+	require.Equal(t, StatusProcessed, after.Status)
 }

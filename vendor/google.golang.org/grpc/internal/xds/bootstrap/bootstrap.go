@@ -217,10 +217,16 @@ func (sc *ServerConfig) ServerFeaturesIgnoreResourceDeletion() bool {
 	return false
 }
 
+// SelectedCreds returns the selected credentials configuration for
+// communicating with this server.
+func (sc *ServerConfig) SelectedCreds() ChannelCreds {
+	return sc.selectedCreds
+}
+
 // DialOptions returns a slice of all the configured dial options for this
-// server.
+// server except grpc.WithCredentialsBundle().
 func (sc *ServerConfig) DialOptions() []grpc.DialOption {
-	dopts := []grpc.DialOption{sc.credsDialOption}
+	var dopts []grpc.DialOption
 	if sc.extraDialOptions != nil {
 		dopts = append(dopts, sc.extraDialOptions...)
 	}
@@ -570,6 +576,9 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 // the presence of the errors) and may return a Config object with certain
 // fields left unspecified, in which case the caller should use some sane
 // defaults.
+//
+// This function returns an error if it's unable to parse the contents of the
+// bootstrap config. It returns (nil, nil) if none of the env vars are set.
 func GetConfiguration() (*Config, error) {
 	fName := envconfig.XDSBootstrapFileName
 	fContent := envconfig.XDSBootstrapFileContent
@@ -592,7 +601,7 @@ func GetConfiguration() (*Config, error) {
 		return NewConfigFromContents([]byte(fContent))
 	}
 
-	return nil, fmt.Errorf("bootstrap environment variables (%q or %q) not defined", envconfig.XDSBootstrapFileNameEnv, envconfig.XDSBootstrapFileContentEnv)
+	return nil, nil
 }
 
 // NewConfigFromContents creates a new bootstrap configuration from the provided

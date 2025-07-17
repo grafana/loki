@@ -3,6 +3,7 @@ package deletion
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -46,7 +47,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		expectedResp                      resp
 		expectedDeletionRangeByUser       map[string]model.Interval
 		expectedRequestsMarkedAsProcessed []int
-		expectedDuplicateRequestsCount    int
+		expectedRequestsToProcess         []int
+		expectedDuplicateRequests         []int
 	}{
 		{
 			name:         "no delete requests",
@@ -62,6 +64,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
@@ -79,6 +82,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "no relevant delete requests",
@@ -86,6 +90,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
@@ -103,6 +108,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "delete request not matching labels",
@@ -110,6 +116,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     `{fizz="buzz"}`,
 					StartTime: now.Add(-24 * time.Hour),
@@ -127,6 +134,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "whole chunk deleted by single request",
@@ -134,6 +142,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
@@ -151,6 +160,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "whole chunk deleted by single request with line filters",
@@ -158,6 +168,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-24 * time.Hour),
@@ -178,6 +189,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "whole chunk deleted by single request with structured metadata filters",
@@ -185,6 +197,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
@@ -205,6 +218,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "whole chunk deleted by single request with line and structured metadata filters",
@@ -212,6 +226,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineAndStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
@@ -232,6 +247,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "deleted interval out of range",
@@ -239,6 +255,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
@@ -256,6 +273,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0},
+			expectedRequestsToProcess:         []int{0},
 		},
 		{
 			name:         "deleted interval out of range(with multiple user requests)",
@@ -263,6 +281,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
@@ -270,6 +289,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-24 * time.Hour),
@@ -291,6 +311,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple delete requests with one deleting the whole chunk",
@@ -298,6 +319,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-48 * time.Hour),
@@ -305,6 +327,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-12 * time.Hour),
@@ -322,6 +345,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple delete requests with line filters and one deleting the whole chunk",
@@ -329,6 +353,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-48 * time.Hour),
@@ -336,6 +361,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-12 * time.Hour),
@@ -356,6 +382,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple delete requests with structured metadata filters and one deleting the whole chunk",
@@ -363,6 +390,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-48 * time.Hour),
@@ -370,6 +398,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
@@ -390,6 +419,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple delete requests causing multiple holes",
@@ -397,6 +427,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -404,6 +435,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
@@ -411,6 +443,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -418,6 +451,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "4",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
@@ -445,6 +479,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1, 2, 3},
+			expectedRequestsToProcess:         []int{0, 1, 2, 3},
 		},
 		{
 			name:         "multiple overlapping requests deleting the whole chunk",
@@ -452,6 +487,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -459,6 +495,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-8 * time.Hour),
@@ -479,6 +516,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple overlapping requests with line filters deleting the whole chunk",
@@ -486,6 +524,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-13 * time.Hour),
@@ -493,6 +532,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-8 * time.Hour),
@@ -513,6 +553,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple overlapping requests with structured metadata filters deleting the whole chunk",
@@ -520,6 +561,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-13 * time.Hour),
@@ -527,6 +569,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-8 * time.Hour),
@@ -547,6 +590,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedRequestsToProcess:         []int{0, 1},
 		},
 		{
 			name:         "multiple non-overlapping requests deleting the whole chunk",
@@ -554,6 +598,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-12 * time.Hour),
@@ -561,6 +606,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -568,6 +614,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-4 * time.Hour),
@@ -588,6 +635,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1, 2},
+			expectedRequestsToProcess:         []int{0, 1, 2},
 		},
 		{
 			name:         "multiple non-overlapping requests with line filter deleting the whole chunk",
@@ -595,6 +643,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-12 * time.Hour),
@@ -602,6 +651,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-6 * time.Hour),
@@ -609,6 +659,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     streamSelectorWithLineFilters,
 					StartTime: now.Add(-4 * time.Hour),
@@ -629,6 +680,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1, 2},
+			expectedRequestsToProcess:         []int{0, 1, 2},
 		},
 		{
 			name:         "multiple non-overlapping requests with structured metadata filter deleting the whole chunk",
@@ -636,6 +688,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
@@ -643,6 +696,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-6 * time.Hour),
@@ -650,6 +704,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-4 * time.Hour),
@@ -670,6 +725,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1, 2},
+			expectedRequestsToProcess:         []int{0, 1, 2},
 		},
 		{
 			name:         "deletes are disabled",
@@ -677,6 +733,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -684,6 +741,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
@@ -691,6 +749,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -698,6 +757,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "4",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
@@ -715,6 +775,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -722,6 +783,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
@@ -729,6 +791,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -736,6 +799,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "4",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
@@ -753,6 +817,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
@@ -760,6 +825,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -767,6 +833,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
@@ -774,6 +841,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "4",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -800,6 +868,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{2, 3},
+			expectedRequestsToProcess:         []int{2, 3},
 		},
 		{
 			name:         "Deletes beyond retention are marked as processed straight away without being batched for processing",
@@ -807,6 +876,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-14 * 24 * time.Hour),
@@ -814,6 +884,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-14 * 24 * time.Hour),
@@ -821,6 +892,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "3",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-2 * time.Hour),
@@ -828,6 +900,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "4",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-6 * time.Hour),
@@ -835,6 +908,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "5",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-10 * time.Hour),
@@ -842,6 +916,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "6",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-13 * time.Hour),
@@ -868,6 +943,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1, 4, 5},
+			expectedRequestsToProcess:         []int{4, 5},
 		},
 		{
 			name:         "All deletes beyond retention",
@@ -875,6 +951,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
+					RequestID: "1",
 					UserID:    "different-user",
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-14 * 24 * time.Hour),
@@ -882,6 +959,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 					Status:    StatusReceived,
 				},
 				{
+					RequestID: "2",
 					UserID:    testUserID,
 					Query:     lblFoo.String(),
 					StartTime: now.Add(-14 * 24 * time.Hour),
@@ -897,7 +975,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		{
 			name:         "duplicate delete request marked as processed with loaded request",
 			deletionMode: deletionmode.FilterAndDelete,
-			batchSize:    1,
+			batchSize:    2,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					RequestID: "1",
@@ -929,7 +1007,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
-			expectedDuplicateRequestsCount:    1,
+			expectedRequestsToProcess:         []int{0},
+			expectedDuplicateRequests:         []int{1},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -942,6 +1021,23 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			require.NoError(t, mgr.Init(nil))
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
+
+			// verify we have picked up expected requests for processing
+			requests := mgr.currentBatch.getAllRequests()
+			require.Len(t, requests, len(tc.expectedRequestsToProcess))
+			slices.SortFunc(requests, func(a, b *DeleteRequest) int {
+				return strings.Compare(a.RequestID, b.RequestID)
+			})
+			for i, reqIdx := range tc.expectedRequestsToProcess {
+				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], *requests[i]))
+			}
+
+			// verify we have considered appropriate requests as duplicate of what we are currently processing
+			duplicateRequests := mgr.currentBatch.duplicateRequests
+			require.Len(t, duplicateRequests, len(tc.expectedDuplicateRequests))
+			for i, reqIdx := range tc.expectedDuplicateRequests {
+				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], duplicateRequests[i]))
+			}
 
 			for _, deleteRequests := range mgr.currentBatch.deleteRequestsToProcess {
 				for _, dr := range deleteRequests.requests {
@@ -977,7 +1073,6 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			duplicateRequests := mgr.currentBatch.duplicateRequests
 			mgr.MarkPhaseFinished()
 
 			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
@@ -987,7 +1082,6 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			for i, reqIdx := range tc.expectedRequestsMarkedAsProcessed {
 				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], processedRequests[i]))
 			}
-			require.Len(t, duplicateRequests, tc.expectedDuplicateRequestsCount)
 		})
 	}
 }

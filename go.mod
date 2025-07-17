@@ -103,8 +103,8 @@ require (
 	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/time v0.12.0
-	google.golang.org/api v0.241.0
-	google.golang.org/grpc v1.73.0
+	google.golang.org/api v0.242.0
+	google.golang.org/grpc v1.74.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog/v2 v2.130.1
@@ -159,13 +159,13 @@ require (
 	golang.org/x/text v0.27.0
 	google.golang.org/protobuf v1.36.6
 	gotest.tools v2.2.0+incompatible
-	k8s.io/apimachinery v0.33.2
+	k8s.io/apimachinery v0.33.3
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	zombiezen.com/go/sqlite v1.4.2
 )
 
 require (
-	cel.dev/expr v0.23.1 // indirect
+	cel.dev/expr v0.24.0 // indirect
 	cloud.google.com/go/auth v0.16.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.24.2 // indirect
@@ -333,7 +333,7 @@ require (
 	github.com/aws/smithy-go v1.22.4 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cncf/xds/go v0.0.0-20250326154945-ae57f3c0d45f // indirect
+	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
