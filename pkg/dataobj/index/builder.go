@@ -248,7 +248,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
 			return
 		}
-		err := p.BuildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
+		err := p.buildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
 		if err != nil {
 			// TODO(benclive): Improve error handling for failed index builds.
 			panic(err)
@@ -262,7 +262,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	}
 }
 
-func (p *Builder) BuildIndex(events []metastore.ObjectWrittenEvent) error {
+func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.cfg.IndexStoragePrefix)
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
 	start := time.Now()

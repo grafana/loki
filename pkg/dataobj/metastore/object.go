@@ -586,7 +586,7 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, pat
 	defer timer.ObserveDuration()
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(1)
+	g.SetLimit(m.parallelism)
 
 	var sectionDescriptors []*DataobjSectionDescriptor
 	var sectionDescriptorsMutex sync.Mutex
