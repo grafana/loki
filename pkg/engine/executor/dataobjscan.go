@@ -72,7 +72,6 @@ func (s *dataobjScan) Read(ctx context.Context) error {
 	rec, err := s.read(ctx)
 	s.state = newState(rec, err)
 
-	fmt.Println("read some data from object", "section", s.opts.Section)
 	if err != nil {
 		return fmt.Errorf("reading data object: %w", err)
 	}
