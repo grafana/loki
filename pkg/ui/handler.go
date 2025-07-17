@@ -18,16 +18,16 @@ import (
 )
 
 const (
-	proxyScheme      = "http"
-	prefixPath       = "/ui"
-	proxyPath        = prefixPath + "/api/v1/proxy/{nodename}/"
-	clusterPath      = prefixPath + "/api/v1/cluster/nodes"
-	clusterSelfPath  = prefixPath + "/api/v1/cluster/nodes/self/details"
-	analyticsPath    = prefixPath + "/api/v1/analytics"
-	featuresPath     = prefixPath + "/api/v1/features"
-	goldfishPath     = prefixPath + "/api/v1/goldfish/queries"
-	notFoundPath     = prefixPath + "/api/v1/404"
-	contentTypeJSON  = "application/json"
+	proxyScheme     = "http"
+	prefixPath      = "/ui"
+	proxyPath       = prefixPath + "/api/v1/proxy/{nodename}/"
+	clusterPath     = prefixPath + "/api/v1/cluster/nodes"
+	clusterSelfPath = prefixPath + "/api/v1/cluster/nodes/self/details"
+	analyticsPath   = prefixPath + "/api/v1/analytics"
+	featuresPath    = prefixPath + "/api/v1/features"
+	goldfishPath    = prefixPath + "/api/v1/goldfish/queries"
+	notFoundPath    = prefixPath + "/api/v1/404"
+	contentTypeJSON = "application/json"
 )
 
 //go:embed frontend/dist
@@ -209,13 +209,13 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		// Parse query parameters
 		page := 1
 		pageSize := 20
-		
+
 		if pageStr := r.URL.Query().Get("page"); pageStr != "" {
 			if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
 				page = p
 			}
 		}
-		
+
 		if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
 			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
 				pageSize = ps

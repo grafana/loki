@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
-	
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -270,7 +270,7 @@ func (s *Service) initGoldfishDB() error {
 // verifyGoldfishTables checks if the required goldfish tables exist
 func (s *Service) verifyGoldfishTables(db *sql.DB) error {
 	tables := []string{"sampled_queries", "comparison_outcomes"}
-	
+
 	for _, table := range tables {
 		query := fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", table)
 		_, err := db.Exec(query)
@@ -278,6 +278,6 @@ func (s *Service) verifyGoldfishTables(db *sql.DB) error {
 			return fmt.Errorf("table %s not found or not accessible: %w", table, err)
 		}
 	}
-	
+
 	return nil
 }

@@ -49,12 +49,12 @@ type SampledQuery struct {
 
 // ComparisonOutcome represents a comparison result from the database
 type ComparisonOutcome struct {
-	CorrelationID       string      `json:"correlationId" db:"correlation_id"`
-	ComparisonStatus    string      `json:"comparisonStatus" db:"comparison_status"`
-	DifferenceDetails   interface{} `json:"differenceDetails" db:"difference_details"`
-	PerformanceMetrics  interface{} `json:"performanceMetrics" db:"performance_metrics"`
-	ComparedAt          time.Time   `json:"comparedAt" db:"compared_at"`
-	CreatedAt           time.Time   `json:"createdAt" db:"created_at"`
+	CorrelationID      string      `json:"correlationId" db:"correlation_id"`
+	ComparisonStatus   string      `json:"comparisonStatus" db:"comparison_status"`
+	DifferenceDetails  interface{} `json:"differenceDetails" db:"difference_details"`
+	PerformanceMetrics interface{} `json:"performanceMetrics" db:"performance_metrics"`
+	ComparedAt         time.Time   `json:"comparedAt" db:"compared_at"`
+	CreatedAt          time.Time   `json:"createdAt" db:"created_at"`
 }
 
 // GoldfishApiResponse represents the paginated API response
