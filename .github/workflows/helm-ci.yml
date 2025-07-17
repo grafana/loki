@@ -10,14 +10,16 @@ env:
   CT_CONFIGFILE: production/helm/ct.yaml
 
 jobs:
-  call-lint:
-    permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
-    uses: grafana/helm-charts/.github/workflows/linter.yml@main
-    with:
-      filter_regex_include: .*production/helm/loki/.*
+# Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
+#  call-lint:
+#    permissions:
+#      contents: "read"
+#      id-token: "write"
+#      pull-requests: "write"
+#    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+#    with:
+#      filter_regex_include: .*production/helm/loki/.*
+#      golang_ci_lint_file: production/helm/loki/.golangci.yaml
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest

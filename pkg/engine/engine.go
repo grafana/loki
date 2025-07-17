@@ -36,6 +36,10 @@ func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg
 		ms = metastore.NewObjectMetastore(bucket, logger)
 	}
 
+	if opts.BatchSize <= 0 {
+		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
+	}
+
 	return &QueryEngine{
 		logger:    logger,
 		metrics:   newMetrics(reg),
@@ -161,9 +165,9 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	return builder.Build(), nil
 }
 
-func collectResult(_ context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
 	for {
-		if err := pipeline.Read(); err != nil {
+		if err := pipeline.Read(ctx); err != nil {
 			if errors.Is(err, executor.EOF) {
 				break
 			}
