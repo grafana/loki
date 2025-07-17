@@ -125,20 +125,5 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 		return stats, nil
 	}
 
-	width := int(stats.MaxTimestamp.Add(1 * time.Hour).Truncate(time.Hour).Sub(stats.MinTimestamp.Truncate(time.Hour)).Hours())
-	counts := make([]uint64, width)
-	for streamVal := range IterSection(ctx, section) {
-		stream, err := streamVal.Value()
-		if err != nil {
-			return stats, err
-		}
-		for i := stream.StartTs; !i.After(stream.EndTs); i = i.Add(time.Hour) {
-			hoursBeforeMax := int(stats.MaxTimestamp.Sub(i).Hours())
-			counts[hoursBeforeMax]++
-		}
-	}
-
-	stats.TimestampDistribution = counts
-
 	return stats, nil
 }
