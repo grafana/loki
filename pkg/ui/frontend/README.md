@@ -125,7 +125,14 @@ In production, feature flags are controlled by Loki configuration:
 ```yaml
 ui:
   enabled: true
-  enable_goldfish: true  # Enable Goldfish feature
+  goldfish:
+    enable: true  # Enable Goldfish feature
+    cloudsql_user: user
+    cloudsql_host: host
+    cloudsql_port: 3306
+    cloudsql_database: database
+    max_connections: 10
+    max_idle_time: 300
 ```
 
 ## Contributing

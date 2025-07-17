@@ -1,4 +1,4 @@
-import { SampledQuery, GoldfishApiResponse } from "@/types/goldfish";
+import { GoldfishApiResponse } from "@/types/goldfish";
 
 export async function fetchSampledQueries(
   page: number = 1,
