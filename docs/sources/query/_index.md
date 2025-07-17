@@ -125,7 +125,11 @@ to this much more readable line in the results:
 
 ## Types of LogQL queries
 
-There are two types of LogQL queries:
+There are different types of LogQL queries, each of which yields a different result.
+
+### By data type
+
+Loki can return the results of queries in different data types.
 
 - [Log queries]({{< relref "./log_queries" >}}) return the contents of log lines (log streams).
 - [Metric queries]({{< relref "./metric_queries" >}}) let you create metrics from logs and return numerical values.
@@ -134,6 +138,16 @@ Log queries are queries whose output remains strings, structured or otherwise. T
 
 Metric queries calculate values based on the log results returned.
 
+### By evaluation type
+
+All LogQL queries can be evaluated as *instant* or *range* queries.  Instant queries are evaluated for a single specific moment in time (such as `now`). Range queries are evaluated over a specified interval of time.
+
+You can choose whether you want to run a query as an instant or range query in a few ways:
+- by selecting the instant or range button [in Grafana](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/)
+- by using the relevant commands using [LogCLI](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/)
+- by sending queries to the appropriate endpoint using [the Loki HTTP API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/)
+
+Both log and metric queries can be run as both instant and range queries.
 ## Results of a LogQL query
 
 The results of a LogQL query can be one of the following data types:
@@ -141,3 +155,4 @@ The results of a LogQL query can be one of the following data types:
 - A **log stream** is a set of raw log lines that include a timestamp and a unique combination of [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/). Only log queries can return log streams. Log streams are not suitable for [time series panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/time-series/); they're used in [log panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/logs/) or for debugging.
 - A **scalar** is a single simple numeric floating point value (ex: `42`) and can only be returned by metric queries.
 - An **instant vector** is a single numerical values (per time series) that represent a sample of one or more log lines containing the same timestamp. They are snapshots of log information at a particular moment of time. Instant vectors can only be returned by metric queries.
+- A **range vector** is a set of numbers calculated from logs per log stream. Range vectors show values over time. They can only be returned by metric queries.
