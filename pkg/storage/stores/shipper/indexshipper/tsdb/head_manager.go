@@ -577,7 +577,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 				}
 
 				// labels are always written to the WAL before corresponding chunks
-				if len(rec.Series.Labels) > 0 {
+				if !rec.Series.Labels.IsEmpty() {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
 						tenant = make(map[uint64]*labelsWithFp)
