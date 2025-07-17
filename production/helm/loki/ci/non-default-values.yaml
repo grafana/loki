@@ -39,16 +39,19 @@ queryScheduler:
 chunksCache:
   suffix: "l1"
   enabled: true
-  l2:
-    enabled: true
-lokiCanary:
-  kind: Deployment
-resultsCache:
   persistence:
     labels:
       foo: bar
       baz: qux
-chunksCache:
+  l2:
+    enabled: true
+    persistence:
+      labels:
+        foo: bar
+        baz: qux
+lokiCanary:
+  kind: Deployment
+resultsCache:
   persistence:
     labels:
       foo: bar
