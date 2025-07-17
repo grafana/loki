@@ -212,6 +212,9 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
+	if d.currentSegmentChunksCount == 0 {
+		return nil
+	}
 	level.Debug(d.logger).Log("msg", "flushing segment",
 		"segment_num", d.segmentsCount-1,
 		"chunks_count", d.currentSegmentChunksCount,

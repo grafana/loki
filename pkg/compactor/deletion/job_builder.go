@@ -117,6 +117,12 @@ func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) e
 		return err
 	}
 
+	if len(manifests) == 0 {
+		return nil
+	}
+
+	b.metrics.numManifestsLeftToProcess.Set(float64(len(manifests)))
+
 	// Process each manifest
 	for _, manifestPath := range manifests {
 		manifest, err := b.readManifest(ctx, manifestPath)
@@ -139,6 +145,7 @@ func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) e
 			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageCleanupManifest).Inc()
 			return err
 		}
+		b.metrics.numManifestsLeftToProcess.Dec()
 	}
 
 	return nil
@@ -156,6 +163,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		cancel:         cancel,
 	}
 	b.currentManifestMtx.Unlock()
+	b.metrics.numSegmentsLeftToProcess.Set(float64(manifest.SegmentsCount))
 
 	// Process segments sequentially
 	for segmentNum := 0; ctx.Err() == nil && segmentNum < manifest.SegmentsCount; segmentNum++ {
@@ -170,6 +178,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 			return err
 		}
 		if !manifestExists {
+			b.metrics.numSegmentsLeftToProcess.Dec()
 			level.Info(util_log.Logger).Log("msg", "manifest does not exist(likely processed already), skipping", "manifest", manifestPath)
 			continue
 		}
@@ -218,6 +227,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		level.Info(util_log.Logger).Log("msg", "finished segment processing",
 			"manifest", manifestPath,
 			"segment", segmentNum)
+		b.metrics.numSegmentsLeftToProcess.Dec()
 	}
 
 	level.Info(util_log.Logger).Log("msg", "finished manifest processing", "manifest", manifestPath)

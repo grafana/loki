@@ -217,6 +217,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		return nil, err
 	}
 
+	jr.metrics.chunksProcessedTotal.Add(float64(len(deletionJob.ChunkIDs)))
 	jobResultJSON, err := json.Marshal(updates)
 	if err != nil {
 		return nil, err

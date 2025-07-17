@@ -140,6 +140,8 @@ func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetr
 }
 
 type jobBuilderMetrics struct {
+	numSegmentsLeftToProcess     prometheus.Gauge
+	numManifestsLeftToProcess    prometheus.Gauge
 	processManifestFailuresTotal *prometheus.CounterVec
 	storageUpdatesAppliedTotal   *prometheus.CounterVec
 }
@@ -147,6 +149,16 @@ type jobBuilderMetrics struct {
 func newJobBuilderMetrics(r prometheus.Registerer) *jobBuilderMetrics {
 	m := jobBuilderMetrics{}
 
+	m.numSegmentsLeftToProcess = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_job_builder_num_segments_left_to_process",
+		Help:      "Number of segments left to process to finish processing the current segment",
+	})
+	m.numManifestsLeftToProcess = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_job_builder_num_manifests_left_to_process",
+		Help:      "Number of manifests left to process",
+	})
 	m.processManifestFailuresTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "compactor_process_manifest_failures_total",
