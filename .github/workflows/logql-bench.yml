@@ -106,6 +106,7 @@ jobs:
         run: mkdir -p ./pkg/logql/bench/results
 
       - name: Run benchmarks
+        shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
             -tags slicelabels \
