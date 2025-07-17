@@ -120,10 +120,5 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 		stats.Columns = append(stats.Columns, columnStats)
 	}
 
-	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
-		// Short sircuit if there's no timestamps.
-		return stats, nil
-	}
-
 	return stats, nil
 }
