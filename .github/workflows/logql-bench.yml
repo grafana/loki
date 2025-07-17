@@ -108,6 +108,7 @@ jobs:
       - name: Run benchmarks
         run: |
           go test \
+            -tags slicelabels \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
             -count=10 -timeout=5h -benchmem \
             -cpuprofile=results/cpu.pprof \
