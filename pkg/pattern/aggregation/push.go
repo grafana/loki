@@ -409,9 +409,9 @@ func internalEntry(
 	base string,
 	lbls labels.Labels,
 ) string {
-	for _, l := range lbls {
+	lbls.Range(func(l labels.Label) {
 		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
-	}
+	})
 
 	return base
 }
