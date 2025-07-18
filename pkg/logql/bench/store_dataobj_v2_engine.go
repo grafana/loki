@@ -25,6 +25,23 @@ type DataObjV2EngineStore struct {
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
 func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
+		EnableV2Engine: true,
+		BatchSize:      512,
+	})
+}
+
+// NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
+// This is useful for comparing results between when an index is available and when it is not. Once tested, the indexed engine will be the default.
+func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
+		EnableV2Engine: true,
+		BatchSize:      512,
+		CataloguePath:  "index/v0",
+	})
+}
+
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
@@ -36,12 +53,6 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 	bucketClient, err := filesystem.NewBucket(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
-	}
-
-	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{
-		EnableV2Engine: true,
-		BatchSize:      512,
 	}
 
 	// Instantiate the new engine

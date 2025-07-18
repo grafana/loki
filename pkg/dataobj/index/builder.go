@@ -9,12 +9,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"runtime"
 	"slices"
 	"sync"
 	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -22,16 +20,12 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
@@ -61,7 +55,6 @@ type downloadedObject struct {
 }
 
 const (
-	indexEventTopic    = "loki.metastore-events"
 	indexConsumerGroup = "metastore-event-reader"
 )
 
@@ -78,7 +71,7 @@ type Builder struct {
 	// Processing pipeline
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
-	builder           *indexobj.Builder
+	calculator        *Calculator
 
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
@@ -91,11 +84,10 @@ type Builder struct {
 	metrics *indexBuilderMetrics
 
 	// Control and coordination
-	ctx        context.Context
-	cancel     context.CancelCauseFunc
-	wg         sync.WaitGroup
-	logger     log.Logger
-	builderMtx sync.Mutex
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	wg     sync.WaitGroup
+	logger log.Logger
 }
 
 func NewIndexBuilder(
@@ -114,7 +106,7 @@ func NewIndexBuilder(
 		kafkaCfg,
 		logger,
 		reg,
-		kgo.ConsumeTopics(indexEventTopic),
+		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.ConsumerGroup(indexConsumerGroup),
@@ -126,7 +118,7 @@ func NewIndexBuilder(
 	}
 
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     indexEventTopic,
+		"topic":     kafkaCfg.Topic,
 		"component": "index_builder",
 	}, reg)
 
@@ -139,6 +131,7 @@ func NewIndexBuilder(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
+	calculator := NewCalculator(builder)
 
 	if err := builder.RegisterMetrics(reg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
@@ -157,15 +150,13 @@ func NewIndexBuilder(
 		mCfg:              mCfg,
 		client:            eventConsumerClient,
 		logger:            logger,
-		builder:           builder,
 		bucket:            bucket,
 		flushBuffer:       flushBuffer,
-		builderMtx:        sync.Mutex{},
 		downloadedObjects: downloadedObjects,
 		downloadQueue:     downloadQueue,
 		metrics:           metrics,
-
-		bufferedEvents: make(map[string][]metastore.ObjectWrittenEvent),
+		calculator:        calculator,
+		bufferedEvents:    make(map[string][]metastore.ObjectWrittenEvent),
 	}
 
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
@@ -307,32 +298,8 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 			continue
 		}
 
-		// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
-		for i, section := range reader.Sections().Filter(streams.CheckSection) {
-			level.Debug(objLogger).Log("msg", "processing streams section", "index", i)
-			if err := p.processStreamsSection(section, obj.event.ObjectPath); err != nil {
-				processingErrors.Add(fmt.Errorf("failed to process stream section: %w", err))
-				continue
-			}
-		}
-
-		// Logs Section: these can be processed in parallel once we have the stream IDs. This work is heavily CPU bound so is limited to GOMAXPROCS parallelism.
-		g, ctx := errgroup.WithContext(p.ctx)
-		g.SetLimit(runtime.GOMAXPROCS(0))
-		for i, section := range reader.Sections().Filter(logs.CheckSection) {
-			g.Go(func() error {
-				sectionLogger := log.With(objLogger, "section", i)
-				level.Debug(sectionLogger).Log("msg", "processing logs section")
-				// 1. A bloom filter for each column in the logs section.
-				// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-				if err := p.processLogsSection(ctx, sectionLogger, obj.event.ObjectPath, section, int64(i)); err != nil {
-					return fmt.Errorf("failed to process logs section path=%s section=%d: %w", obj.event.ObjectPath, i, err)
-				}
-				return nil
-			})
-		}
-		if err := g.Wait(); err != nil {
-			processingErrors.Add(fmt.Errorf("failed to process logs sections: %w", err))
+		if err := p.calculator.Calculate(p.ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
+			processingErrors.Add(fmt.Errorf("failed to calculate index: %w", err))
 			continue
 		}
 	}
@@ -342,14 +309,14 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 
 	p.flushBuffer.Reset()
-	stats, err := p.builder.Flush(p.flushBuffer)
+	stats, err := p.calculator.Flush(p.flushBuffer)
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
 	}
 
 	size := p.flushBuffer.Len()
 
-	key := p.getKey(events[0].Tenant, p.flushBuffer)
+	key := ObjectKey(events[0].Tenant, p.flushBuffer)
 	if err := indexStorageBucket.Upload(p.ctx, key, p.flushBuffer); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
@@ -366,129 +333,12 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	return nil
 }
 
-// getKey determines the key in object storage to upload the object to, based on our path scheme.
-func (p *Builder) getKey(tenantID string, object *bytes.Buffer) string {
+// ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
+func ObjectKey(tenantID string, object *bytes.Buffer) string {
 	sum := sha256.Sum224(object.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 
 	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:])
-}
-
-func (p *Builder) processStreamsSection(section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
-	streamSection, err := streams.Open(p.ctx, section)
-	if err != nil {
-		return fmt.Errorf("failed to open stream section: %w", err)
-	}
-
-	streamBuf := make([]streams.Stream, 2048)
-	rowReader := streams.NewRowReader(streamSection)
-	for {
-		n, err := rowReader.Read(p.ctx, streamBuf)
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("failed to read stream section: %w", err)
-		}
-		if n == 0 && err == io.EOF {
-			break
-		}
-		for _, stream := range streamBuf[:n] {
-			newStreamID, err := p.builder.AppendStream(stream)
-			if err != nil {
-				return fmt.Errorf("failed to append to stream: %w", err)
-			}
-			p.builder.RecordStreamRef(objectPath, stream.ID, newStreamID)
-		}
-	}
-	return nil
-}
-
-// processLogsSection reads information from the logs section in order to build index information in a new object.
-func (p *Builder) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
-	logsBuf := make([]logs.Record, 1024)
-	type logInfo struct {
-		objectPath string
-		sectionIdx int64
-		streamID   int64
-		timestamp  time.Time
-		length     int64
-	}
-	logsInfo := make([]logInfo, len(logsBuf))
-
-	logsSection, err := logs.Open(ctx, section)
-	if err != nil {
-		return fmt.Errorf("failed to open logs section: %w", err)
-	}
-
-	// Fetch the column statistics in order to init the bloom filters for each column
-	stats, err := logs.ReadStats(ctx, logsSection)
-	if err != nil {
-		return fmt.Errorf("failed to read log section stats: %w", err)
-	}
-
-	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
-	columnIndexes := make(map[string]int64)
-	for _, column := range stats.Columns {
-		if !logs.IsMetadataColumn(column.Type) {
-			continue
-		}
-		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
-		columnIndexes[column.Name] = column.ColumnIndex
-	}
-
-	// Read the whole logs section to extract all the column values.
-	cnt := 0
-	// TODO(benclive): Switch to a columnar reader instead of row based
-	// This is also likely to be more performant, especially if we don't need to read the whole log line.
-	// Note: the source object would need a new column storing just the length to avoid reading the log line itself.
-	rowReader := logs.NewRowReader(logsSection)
-	for {
-		n, err := rowReader.Read(p.ctx, logsBuf)
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("failed to read logs section: %w", err)
-		}
-		if n == 0 && err == io.EOF {
-			break
-		}
-
-		for i, log := range logsBuf[:n] {
-			cnt++
-			log.Metadata.Range(func(md labels.Label) {
-				columnBloomBuilders[md.Name].Add([]byte(md.Value))
-			})
-			logsInfo[i].objectPath = objectPath
-			logsInfo[i].sectionIdx = sectionIdx
-			logsInfo[i].streamID = log.StreamID
-			logsInfo[i].timestamp = log.Timestamp
-			logsInfo[i].length = int64(len(log.Line))
-		}
-
-		// Lock the mutex once per read for perf reasons.
-		p.builderMtx.Lock()
-		for _, log := range logsInfo[:n] {
-			err = p.builder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, log.timestamp, log.length)
-			if err != nil {
-				p.builderMtx.Unlock()
-				return fmt.Errorf("failed to observe log line: %w", err)
-			}
-		}
-		p.builderMtx.Unlock()
-	}
-
-	// Write the indexes (bloom filters) to the new index object.
-	for columnName, bloom := range columnBloomBuilders {
-		bloomBytes, err := bloom.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("failed to marshal bloom filter: %w", err)
-		}
-		p.builderMtx.Lock()
-		err = p.builder.AppendColumnIndex(objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
-		p.builderMtx.Unlock()
-		if err != nil {
-			return fmt.Errorf("failed to append column index: %w", err)
-		}
-	}
-
-	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
-	return nil
 }
 
 func (p *Builder) commitRecords(record *kgo.Record) error {

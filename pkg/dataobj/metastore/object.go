@@ -411,9 +411,7 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 		}
 	}
 
-	current := pointers.AndRowPredicate{
-		Left: predicates[0],
-	}
+	current := predicates[0]
 
 	for _, predicate := range predicates[1:] {
 		and := pointers.AndRowPredicate{
