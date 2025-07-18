@@ -1,10 +1,20 @@
-import { GoldfishApiResponse } from "@/types/goldfish";
+import { GoldfishApiResponse, OutcomeFilter, OUTCOME_ALL } from "@/types/goldfish";
 
 export async function fetchSampledQueries(
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  outcome?: OutcomeFilter
 ): Promise<GoldfishApiResponse> {
-  const response = await fetch(`/ui/api/v1/goldfish/queries?page=${page}&pageSize=${pageSize}`);
+  const params = new URLSearchParams({
+    page: page.toString(),
+    pageSize: pageSize.toString(),
+  });
+  
+  if (outcome && outcome !== OUTCOME_ALL) {
+    params.append("outcome", outcome);
+  }
+  
+  const response = await fetch(`/ui/api/v1/goldfish/queries?${params}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch sampled queries: ${response.statusText}`);
   }

@@ -222,8 +222,18 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 			}
 		}
 
+		var outcome string
+		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
+			switch strings.ToLower(outcomeStr) {
+			case "all", "match", "mismatch", "error":
+				outcome = outcomeStr
+			default:
+				outcome = "all"
+			}
+		}
+
 		// Get sampled queries
-		response, err := s.GetSampledQueries(page, pageSize)
+		response, err := s.GetSampledQueries(page, pageSize, outcome)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to retrieve sampled queries")
