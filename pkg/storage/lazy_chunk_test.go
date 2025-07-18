@@ -49,7 +49,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			{
 				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
-					Hash:   fooLabelsWithName.Hash(),
+					Hash:   labels.StableHash(fooLabelsWithName),
 					Entries: []logproto.Entry{
 						{
 							Timestamp:          from,
@@ -62,7 +62,7 @@ func TestLazyChunkIterator(t *testing.T) {
 				[]logproto.Stream{
 					{
 						Labels: fooLabels.String(),
-						Hash:   fooLabels.Hash(),
+						Hash:   labels.StableHash(fooLabels),
 						Entries: []logproto.Entry{
 							{
 								Timestamp:          from,

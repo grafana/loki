@@ -78,7 +78,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
-	fp := model.Fingerprint(lbs.Hash())
+	fp := model.Fingerprint(labels.StableHash(lbs))
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(logInterval) {
@@ -156,7 +156,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -183,7 +183,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -216,7 +216,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -237,7 +237,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -408,19 +408,19 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 				// chunk recreated by test-request-0
 				From:        yesterdaysTableInterval.Start.Add(31 * time.Minute),
 				Through:     yesterdaysTableInterval.Start.Add(time.Hour),
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 			{
 				// chunk recreated by test-request-1, removing just last line
 				From:        chks[5].From,
 				Through:     chks[5].Through.Add(-time.Minute),
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 			{
 				// chunk recreated by test-request-1, removing just first line
 				From:        chks[10].From.Add(time.Minute),
 				Through:     chks[10].Through,
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 		},
 		ChunksToDeIndex: []string{

@@ -332,7 +332,7 @@ func (c *RuleCache) Set(ts time.Time, vec promql.Vector) {
 	}
 
 	for _, sample := range vec {
-		tsMap[sample.Metric.Hash()] = sample
+		tsMap[labels.StableHash(sample.Metric)] = sample
 	}
 	c.metrics.samples.Add(float64(len(vec)))
 }
@@ -347,7 +347,7 @@ func (c *RuleCache) Get(ts time.Time, ls labels.Labels) (*promql.Sample, bool) {
 		return nil, false
 	}
 
-	smp, ok := match[ls.Hash()]
+	smp, ok := match[labels.StableHash(ls)]
 	if !ok {
 		return nil, true
 	}

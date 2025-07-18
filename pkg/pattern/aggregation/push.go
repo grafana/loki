@@ -216,7 +216,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		streams = append(streams, logproto.Stream{
 			Labels:  s,
 			Entries: entries,
-			Hash:    lbls.Hash(),
+			Hash:    labels.StableHash(lbls),
 		})
 	}
 

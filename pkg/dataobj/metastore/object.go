@@ -641,7 +641,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 
 	sort.Sort(newLabels)
 
-	key := newLabels.Hash()
+	key := labels.StableHash(*newLabels)
 	matches, ok := streams[key]
 	if !ok {
 		streams[key] = append(streams[key], newLabels)

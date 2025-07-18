@@ -118,7 +118,7 @@ func TestMultiIndex(t *testing.T) {
 		{Name: "buzz", Value: "buzz"},
 	}
 	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
-	fp := model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	fp := model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs)))
 
 	ls := multi.Add(lbs, fp)
 

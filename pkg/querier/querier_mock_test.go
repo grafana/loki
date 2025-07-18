@@ -607,7 +607,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -667,7 +667,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	for i := quantity; i > 0; i-- {

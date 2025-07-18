@@ -269,7 +269,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	seriesMap := make(map[uint64]labels.Labels, len(series))
 	for _, s := range series {
-		seriesMap[s.Hash()] = s
+		seriesMap[labels.StableHash(s)] = s
 	}
 	sp.AddEvent("indexQuerier.GetSeries", trace.WithAttributes(
 		attribute.String("duration", time.Since(start).String()),

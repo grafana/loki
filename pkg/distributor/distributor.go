@@ -958,7 +958,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 		result = append(result, streamWithTimeShard{
 			Stream: logproto.Stream{
 				Labels:  shardLbls.String(),
-				Hash:    shardLbls.Hash(),
+				Hash:    labels.StableHash(shardLbls),
 				Entries: stream.Entries[startIdx:endIdx],
 			},
 			linesTotalLen: linesTotalLen,
@@ -1093,7 +1093,7 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		Hash:    lbls.Hash(),
+		Hash:    labels.StableHash(lbls),
 		Entries: make([]logproto.Entry, 0, numOfEntries),
 	}
 }
@@ -1309,7 +1309,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, retentionHours, policy, err
 	}
 
-	lsHash := ls.Hash()
+	lsHash := labels.StableHash(ls)
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
 	return ls, ls.String(), lsHash, retentionHours, policy, nil

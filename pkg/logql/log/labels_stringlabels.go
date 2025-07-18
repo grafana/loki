@@ -17,7 +17,7 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	// We use Hash() here because there's no performance advantage to using HashWithoutLabels() with stringlabels.
 	// The results from Hash(l) and HashWithoutLabels(l, []string{}) are different with stringlabels, so using Hash
 	// here also simplifies our tests.
-	return lbs.Hash()
+	return labels.StableHash(lbs)
 }
 
 // BufferedLabelsBuilder is a simple builder that uses a label buffer passed in.

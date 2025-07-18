@@ -334,7 +334,7 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		// Create the stream with multiple entries
 		stream := logproto.Stream{
 			Labels:  labelsStr,
-			Hash:    lbs.Hash(),
+			Hash:    labels.StableHash(lbs),
 			Entries: make([]logproto.Entry, 0, entriesPerStream),
 		}
 

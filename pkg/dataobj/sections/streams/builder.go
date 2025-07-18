@@ -164,7 +164,7 @@ func (b *Builder) EstimatedSize() int {
 }
 
 func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return b.addStream(hash, streamLabels)
@@ -202,7 +202,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 // StreamID returns the stream ID for the provided streamLabels. If the stream
 // has not been recorded, StreamID returns 0.
 func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return 0

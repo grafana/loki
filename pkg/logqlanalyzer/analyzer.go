@@ -117,7 +117,7 @@ func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
 			stageIndex: i,
 		})
 	}
-	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, p.streamLabels.Hash()))
+	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, labels.StableHash(p.streamLabels)))
 	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line, labels.EmptyLabels())
 	return records
 }

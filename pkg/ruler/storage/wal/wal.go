@@ -267,7 +267,7 @@ func (w *Storage) loadWAL(r *wlog.Reader) (err error) {
 				// the truncation is performed.
 				if w.series.getByID(s.Ref) == nil {
 					series := &memSeries{ref: s.Ref, lset: s.Labels, lastTs: 0}
-					w.series.set(s.Labels.Hash(), series)
+					w.series.set(labels.StableHash(s.Labels), series)
 
 					w.metrics.NumActiveSeries.Inc()
 					w.metrics.TotalCreatedSeries.Inc()
@@ -605,7 +605,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 }
 
 func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool) {
-	hash := l.Hash()
+	hash := labels.StableHash(l)
 
 	series = a.w.series.getByHash(hash, l)
 	if series != nil {
@@ -613,7 +613,7 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 	}
 
 	series = &memSeries{ref: chunks.HeadSeriesRef(a.w.ref.Inc()), lset: l}
-	a.w.series.set(l.Hash(), series)
+	a.w.series.set(labels.StableHash(l), series)
 	return series, true
 }
 

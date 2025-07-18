@@ -173,8 +173,8 @@ func Test_BitPrefixDeleteAddLoopkup(t *testing.T) {
 	}
 	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
 
-	index.Add(lbs, model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash())))
-	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	index.Add(lbs, model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
+	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
 	ids, err := index.Lookup([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 	}, nil)
@@ -200,11 +200,11 @@ func Test_BitPrefix_hash_mapping(t *testing.T) {
 
 			requestedFactor := 16
 
-			fp := model.Fingerprint(lbs.Hash())
+			fp := model.Fingerprint(labels.StableHash(lbs))
 			ii.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 
 			requiredBits := index.NewShard(0, uint32(requestedFactor)).RequiredBits()
-			expShard := uint32(lbs.Hash() >> (64 - requiredBits))
+			expShard := uint32(labels.StableHash(lbs) >> (64 - requiredBits))
 
 			res, err := ii.Lookup(
 				[]*labels.Matcher{{Type: labels.MatchEqual,
@@ -230,7 +230,7 @@ func Test_BitPrefixNoMatcherLookup(t *testing.T) {
 	// with no shard param
 	ii, err := NewBitPrefixWithShards(16)
 	require.Nil(t, err)
-	fp := model.Fingerprint(lbs.Hash())
+	fp := model.Fingerprint(labels.StableHash(lbs))
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 	ids, err := ii.Lookup(nil, nil)
 	require.Nil(t, err)
@@ -258,7 +258,7 @@ func Test_BitPrefixConsistentMapping(t *testing.T) {
 			"hi", fmt.Sprint(i),
 		)
 
-		fp := model.Fingerprint(lbs.Hash())
+		fp := model.Fingerprint(labels.StableHash(lbs))
 		a.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 		b.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 	}

@@ -87,8 +87,8 @@ func TestDeleteAddLoopkup(t *testing.T) {
 	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
 	// make sure we consistent
 	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
-	index.Add(lbs, model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash())))
-	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	index.Add(lbs, model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
+	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
 	ids, err := index.Lookup([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 	}, nil)
