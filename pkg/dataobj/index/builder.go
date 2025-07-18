@@ -316,7 +316,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 
 	size := p.flushBuffer.Len()
 
-	key := IndexObjectKey(events[0].Tenant, p.flushBuffer)
+	key := ObjectKey(events[0].Tenant, p.flushBuffer)
 	if err := indexStorageBucket.Upload(p.ctx, key, p.flushBuffer); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
@@ -334,7 +334,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 }
 
 // getKey determines the key in object storage to upload the object to, based on our path scheme.
-func IndexObjectKey(tenantID string, object *bytes.Buffer) string {
+func ObjectKey(tenantID string, object *bytes.Buffer) string {
 	sum := sha256.Sum224(object.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 

@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -76,10 +77,10 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	rowReader := streams.NewRowReader(streamSection)
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to read stream section: %w", err)
 		}
-		if n == 0 && err == io.EOF {
+		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
 		for _, stream := range streamBuf[:n] {
@@ -134,10 +135,10 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	rowReader := logs.NewRowReader(logsSection)
 	for {
 		n, err := rowReader.Read(ctx, logsBuf)
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to read logs section: %w", err)
 		}
-		if n == 0 && err == io.EOF {
+		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
 

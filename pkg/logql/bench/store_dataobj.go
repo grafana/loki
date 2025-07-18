@@ -182,7 +182,7 @@ func (s *DataObjStore) buildIndex() error {
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
-		key := index.IndexObjectKey(s.tenantID, buffer)
+		key := index.ObjectKey(s.tenantID, buffer)
 		err = s.indexWriterBucket.Upload(context.Background(), key, buffer)
 		if err != nil {
 			return fmt.Errorf("failed to upload index: %w", err)
