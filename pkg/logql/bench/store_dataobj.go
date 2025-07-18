@@ -37,6 +37,9 @@ type DataObjStore struct {
 
 	bucket objstore.Bucket
 
+	indexWriterBucket objstore.Bucket
+	indexMetastore    *metastore.Updater
+
 	logger log.Logger
 }
 
@@ -53,6 +56,15 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	metastoreDir := filepath.Join(tenantDir, "metastore")
 	if err := os.MkdirAll(metastoreDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create metastore directory: %w", err)
+	}
+
+	// Create required directories for index
+	indexDirPrefix := "index/v0"
+	indexDir := filepath.Join(storeDir, indexDirPrefix)
+	tenantIndexDir := filepath.Join(indexDir, "tenant-"+tenantID)
+	metastoreIndexDir := filepath.Join(tenantIndexDir, "metastore")
+	if err := os.MkdirAll(metastoreIndexDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create index directory: %w", err)
 	}
 
 	bucket, err := filesystem.NewBucket(storeDir)
@@ -76,15 +88,21 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
+	// Create prefixed bucket & metastore for indexes
+	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
+	indexMetastore := metastore.NewUpdater(metastore.UpdaterConfig{}, indexWriterBucket, tenantID, logger)
+
 	return &DataObjStore{
-		dir:      storeDir,
-		tenantID: tenantID,
-		builder:  builder,
-		buf:      bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
-		uploader: uploader,
-		meta:     meta,
-		bucket:   bucket,
-		logger:   logger,
+		dir:               storeDir,
+		tenantID:          tenantID,
+		builder:           builder,
+		buf:               bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
+		uploader:          uploader,
+		meta:              meta,
+		bucket:            bucket,
+		logger:            logger,
+		indexWriterBucket: indexWriterBucket,
+		indexMetastore:    indexMetastore,
 	}, nil
 }
 
@@ -158,11 +176,6 @@ func (s *DataObjStore) Close() error {
 }
 
 func (s *DataObjStore) buildIndex() error {
-	// Create indexes for use with the new engine
-	indexWriterBucket := objstore.NewPrefixedBucket(s.bucket, "index/v0/")
-	os.MkdirAll(filepath.Join(s.dir, "index/v0", "tenant-"+s.tenantID, "metastore"), 0o755)
-	indexMetastore := metastore.NewUpdater(metastore.UpdaterConfig{}, indexWriterBucket, s.tenantID, s.logger)
-
 	flushAndUpload := func(calculator *index.Calculator) error {
 		buffer := bytes.NewBuffer(make([]byte, 0, 128*1024*1024))
 		stats, err := calculator.Flush(buffer)
@@ -170,16 +183,15 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
 		key := index.IndexObjectKey(s.tenantID, buffer)
-		err = indexWriterBucket.Upload(context.Background(), key, buffer)
+		err = s.indexWriterBucket.Upload(context.Background(), key, buffer)
 		if err != nil {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = indexMetastore.Update(context.Background(), key, stats.MinTimestamp, stats.MaxTimestamp)
+		err = s.indexMetastore.Update(context.Background(), key, stats.MinTimestamp, stats.MaxTimestamp)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}
-		fmt.Println("uploaded index", key)
 		calculator.Reset()
 		return nil
 	}
@@ -187,8 +199,8 @@ func (s *DataObjStore) buildIndex() error {
 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 		TargetPageSize:    128 * 1024,        // 128KB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
-		TargetSectionSize: 16 * 1024,         // 16MB
-		BufferSize:        16 * 1024,         // 16MB
+		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
+		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
 	})
@@ -203,7 +215,7 @@ func (s *DataObjStore) buildIndex() error {
 		if !strings.Contains(name, "objects") {
 			return nil
 		}
-		fmt.Println("processing", name)
+
 		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name)
 		if err != nil {
 			return fmt.Errorf("failed to read object: %w", err)

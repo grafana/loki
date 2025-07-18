@@ -99,7 +99,6 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	if e.opts.CataloguePath != "" {
 		catalogueType = physical.CatalogueTypeIndex
 	}
-
 	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
