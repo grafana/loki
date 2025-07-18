@@ -280,7 +280,7 @@ func (b *JobBuilder) listManifests(ctx context.Context) ([]string, error) {
 
 		// Check if manifest.json exists in this directory
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := b.deletionManifestStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(context.Background(), b.deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return nil, err
 		}

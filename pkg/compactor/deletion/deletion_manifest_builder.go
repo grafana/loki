@@ -313,7 +313,7 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 
 		// manifest without manifest.json is considered invalid
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := deletionManifestStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(ctx, deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return err
 		}
@@ -344,4 +344,18 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 	}
 
 	return firstErr
+}
+
+// objectExists checks if an object exists in storage with the given key.
+// We can't use ObjectClient.ObjectExists method due to a bug in the GCS object client implementation of Thanos.
+// (Sandeep): I will fix the bug upstream and remove this once we have the fix merged.
+func objectExists(ctx context.Context, objectClient client.ObjectClient, objectPath string) (bool, error) {
+	_, err := objectClient.GetAttributes(ctx, objectPath)
+	if err == nil {
+		return true, nil
+	} else if objectClient.IsObjectNotFoundErr(err) {
+		return false, nil
+	}
+
+	return false, err
 }
