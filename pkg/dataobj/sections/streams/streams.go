@@ -41,12 +41,12 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 
 func (s *Section) init(ctx context.Context) error {
 	dec := newDecoder(s.reader)
-	cols, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to decode columns: %w", err)
+		return fmt.Errorf("failed to decode metadata: %w", err)
 	}
 
-	for _, col := range cols {
+	for _, col := range metadata.GetColumns() {
 		colType, ok := convertColumnType(col.Type)
 		if !ok {
 			// Skip over unrecognized columns.

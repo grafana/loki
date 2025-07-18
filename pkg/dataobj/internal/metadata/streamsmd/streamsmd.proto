@@ -12,6 +12,9 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/st
 message Metadata {
   // Columns within the stream.
   repeated ColumnDesc columns = 1;
+
+  // Section sort information.
+  dataobj.metadata.dataset.v1.SectionSortInfo sort_info = 2;
 }
 
 // ColumnDesc describes an individual column within the streams table.

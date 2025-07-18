@@ -102,6 +102,24 @@ func (s *dataobjScan) init(ctx context.Context) error {
 			return fmt.Errorf("opening logs section: %w", err)
 		}
 
+		{
+			si := sec.SortInfo().GetColumnSorts()
+			if len(si) == 0 {
+				return fmt.Errorf("missing sort order info")
+			}
+
+			// [dataobjscan] expects the records to be sorted by timestamp.
+			// Ensure that the section is sorted by Timestamp column first.
+			idx := si[0].ColumnIndex
+			if int(idx) >= len(sec.Columns()) {
+				return fmt.Errorf("invalid column reference in sort info")
+			}
+
+			if sec.Columns()[idx].Type != logs.ColumnTypeTimestamp {
+				return fmt.Errorf("records are not sorted by timestamp")
+			}
+		}
+
 		// TODO(rfratto): There's a few problems with using LogsReader as it is:
 		//
 		// 1. LogsReader doesn't support providing a subset of columns to read

@@ -8,13 +8,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
-// decodeStreamsMetadata decodes stream section metadata from r.
-func decodeStreamsMetadata(r streamio.Reader) (*pointersmd.Metadata, error) {
+// decodePointersMetadata decodes pointers section metadata from r.
+func decodePointersMetadata(r streamio.Reader) (*pointersmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
-		return nil, fmt.Errorf("read streams section format version: %w", err)
+		return nil, fmt.Errorf("read pointers section format version: %w", err)
 	} else if gotVersion != pointersFormatVersion {
-		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, pointersFormatVersion)
+		return nil, fmt.Errorf("unexpected pointers section format version: got=%d want=%d", gotVersion, pointersFormatVersion)
 	}
 
 	var md pointersmd.Metadata
@@ -24,11 +24,11 @@ func decodeStreamsMetadata(r streamio.Reader) (*pointersmd.Metadata, error) {
 	return &md, nil
 }
 
-// decodeStreamsColumnMetadata decodes stream column metadata from r.
-func decodeStreamsColumnMetadata(r streamio.Reader) (*pointersmd.ColumnMetadata, error) {
+// decodePointersColumnMetadata decodes pointers column metadata from r.
+func decodePointersColumnMetadata(r streamio.Reader) (*pointersmd.ColumnMetadata, error) {
 	var metadata pointersmd.ColumnMetadata
 	if err := protocodec.Decode(r, &metadata); err != nil {
-		return nil, fmt.Errorf("streams column metadata: %w", err)
+		return nil, fmt.Errorf("pointers column metadata: %w", err)
 	}
 	return &metadata, nil
 }
