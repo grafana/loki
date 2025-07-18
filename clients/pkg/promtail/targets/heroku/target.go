@@ -134,7 +134,7 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 		filtered := h.Labels().Clone()
 		processed.Range(func(lbl labels.Label) {
 			if strings.HasPrefix(lbl.Name, "__") {
-				return // (continue, not abort)
+				return // (will continue Range loop, not abort)
 			}
 			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 		})

@@ -39,7 +39,7 @@ func labelNamesFromChunks(chunks []chunk.Chunk) []string {
 	for _, c := range chunks {
 		c.Metric.Range(func(l labels.Label) {
 			if l.Name == model.MetricNameLabel {
-				return // (continue, not abort)
+				return // (will continue Range loop, not abort)
 			}
 			result.Add(l.Name)
 		})

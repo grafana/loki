@@ -127,7 +127,7 @@ func (t *Target) handleMessage(msg *gelf.Message) {
 	filtered := make(model.LabelSet)
 	processed.Range(func(lbl labels.Label) {
 		if strings.HasPrefix(lbl.Name, "__") {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	})

@@ -214,11 +214,11 @@ func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelCon
 	processed.Range(func(lbl labels.Label) {
 		// ignore internal labels
 		if strings.HasPrefix(lbl.Name, "__") {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		// ignore invalid labels
 		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		resultLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	})

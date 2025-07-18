@@ -308,7 +308,7 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, lbls lab
 	// We use a hash of the value to limit its length.
 	lbls.Range(func(v labels.Label) {
 		if v.Name == model.MetricNameLabel {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		valueHash := sha256bytes(v.Value)
 		entries = append(entries, Entry{
@@ -412,7 +412,7 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, lbls 
 	// We use a hash of the value to limit its length.
 	lbls.Range(func(v labels.Label) {
 		if v.Name == model.MetricNameLabel {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		valueHash := sha256bytes(v.Value)
 		entries = append(entries, Entry{
@@ -535,7 +535,7 @@ func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, lbls 
 	labelNames := make([]string, 0, lbls.Len())
 	lbls.Range(func(l labels.Label) {
 		if l.Name == model.MetricNameLabel {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		labelNames = append(labelNames, l.Name)
 	})
@@ -565,7 +565,7 @@ func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, lbls 
 	// We use a hash of the value to limit its length.
 	lbls.Range(func(v labels.Label) {
 		if v.Name == model.MetricNameLabel {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		valueHash := sha256bytes(v.Value)
 		entries = append(entries, Entry{
