@@ -254,7 +254,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 		builder.addStreamAndFlush(stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger())
+	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -279,7 +279,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewUpdater(bucket, tenantID, logger)
+	meta := NewUpdater(UpdaterConfig{}, bucket, tenantID, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

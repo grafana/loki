@@ -14,14 +14,13 @@ const (
 	registryPath = "/v2/registry"
 	// RegistryServer is the hostname of the DigitalOcean registry service
 	RegistryServer = "registry.digitalocean.com"
-
-	// Multi-registry Open Beta API constants
-	registriesPath = "/v2/registries"
 )
 
 // RegistryService is an interface for interfacing with the Registry endpoints
 // of the DigitalOcean API.
 // See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Container-Registry
+//
+// NOTE: We are introducing a new RegistriesService and this one will be deprecated eventually.
 type RegistryService interface {
 	Create(context.Context, *RegistryCreateRequest) (*Registry, *Response, error)
 	Get(context.Context) (*Registry, *Response, error)
@@ -627,23 +626,51 @@ func (svc *RegistryServiceOp) ValidateName(ctx context.Context, request *Registr
 	return resp, nil
 }
 
-// RegistriesService is an interface for interfacing with the new multiple-registry beta endpoints
+const (
+	registriesPath = "/v2/registries"
+)
+
+// RegistriesService is an interface for interfacing with the new multiple-registry endpoints
 // of the DigitalOcean API.
-//
-// We are creating a separate Service in alignment with the new /v2/registries endpoints.
 type RegistriesService interface {
 	Get(context.Context, string) (*Registry, *Response, error)
 	List(context.Context) ([]*Registry, *Response, error)
-	Create(context.Context, *RegistriesCreateRequest) (*Registry, *Response, error)
+	Create(context.Context, *RegistryCreateRequest) (*Registry, *Response, error)
 	Delete(context.Context, string) (*Response, error)
 	DockerCredentials(context.Context, string, *RegistryDockerCredentialsRequest) (*DockerCredentials, *Response, error)
+	ListRepositoriesV2(context.Context, string, *TokenListOptions) ([]*RepositoryV2, *Response, error)
+	ListRepositoryTags(context.Context, string, string, *ListOptions) ([]*RepositoryTag, *Response, error)
+	DeleteTag(context.Context, string, string, string) (*Response, error)
+	ListRepositoryManifests(context.Context, string, string, *ListOptions) ([]*RepositoryManifest, *Response, error)
+	DeleteManifest(context.Context, string, string, string) (*Response, error)
+	StartGarbageCollection(context.Context, string, ...*StartGarbageCollectionRequest) (*GarbageCollection, *Response, error)
+	GetGarbageCollection(context.Context, string) (*GarbageCollection, *Response, error)
+	ListGarbageCollections(context.Context, string, *ListOptions) ([]*GarbageCollection, *Response, error)
+	UpdateGarbageCollection(context.Context, string, string, *UpdateGarbageCollectionRequest) (*GarbageCollection, *Response, error)
+	GetOptions(context.Context) (*RegistryOptions, *Response, error)
+	GetSubscription(context.Context) (*RegistrySubscription, *Response, error)
+	UpdateSubscription(context.Context, *RegistrySubscriptionUpdateRequest) (*RegistrySubscription, *Response, error)
+	ValidateName(context.Context, *RegistryValidateNameRequest) (*Response, error)
 }
 
 var _ RegistriesService = &RegistriesServiceOp{}
 
-// RegistriesServiceOp handles communication with the multiple-registry beta methods.
 type RegistriesServiceOp struct {
 	client *Client
+}
+
+// List returns a list of the named Registries.
+func (svc *RegistriesServiceOp) List(ctx context.Context) ([]*Registry, *Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, registriesPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(registriesRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Registries, resp, nil
 }
 
 // Get returns the details of a named Registry.
@@ -661,22 +688,8 @@ func (svc *RegistriesServiceOp) Get(ctx context.Context, registry string) (*Regi
 	return root.Registry, resp, nil
 }
 
-// List returns a list of the named Registries.
-func (svc *RegistriesServiceOp) List(ctx context.Context) ([]*Registry, *Response, error) {
-	req, err := svc.client.NewRequest(ctx, http.MethodGet, registriesPath, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	root := new(registriesRoot)
-	resp, err := svc.client.Do(ctx, req, root)
-	if err != nil {
-		return nil, resp, err
-	}
-	return root.Registries, resp, nil
-}
-
-// Create creates a named Registry.
-func (svc *RegistriesServiceOp) Create(ctx context.Context, create *RegistriesCreateRequest) (*Registry, *Response, error) {
+// Create creates a new registry.
+func (svc *RegistriesServiceOp) Create(ctx context.Context, create *RegistryCreateRequest) (*Registry, *Response, error) {
 	req, err := svc.client.NewRequest(ctx, http.MethodPost, registriesPath, create)
 	if err != nil {
 		return nil, nil, err
@@ -729,4 +742,260 @@ func (svc *RegistriesServiceOp) DockerCredentials(ctx context.Context, registry 
 		DockerConfigJSON: buf.Bytes(),
 	}
 	return dc, resp, nil
+}
+
+// ListRepositoriesV2 returns a list of repositories in V2 format
+func (svc *RegistriesServiceOp) ListRepositoriesV2(ctx context.Context, registry string, opts *TokenListOptions) ([]*RepositoryV2, *Response, error) {
+	path := fmt.Sprintf("%s/%s/repositoriesV2", registriesPath, registry)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(repositoriesV2Root)
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	resp.Links = root.Links
+	resp.Meta = root.Meta
+
+	return root.Repositories, resp, nil
+}
+
+// ListRepositoryTags returns a list of tags in a repository
+func (svc *RegistriesServiceOp) ListRepositoryTags(ctx context.Context, registry, repository string, opts *ListOptions) ([]*RepositoryTag, *Response, error) {
+	path := fmt.Sprintf("%s/%s/repositories/%s/tags", registriesPath, registry, url.PathEscape(repository))
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(repositoryTagsRoot)
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+
+	return root.Tags, resp, nil
+}
+
+// DeleteTag deletes a tag from a repository
+func (svc *RegistriesServiceOp) DeleteTag(ctx context.Context, registry, repository, tag string) (*Response, error) {
+	path := fmt.Sprintf("%s/%s/repositories/%s/tags/%s", registriesPath, registry, url.PathEscape(repository), tag)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+// ListRepositoryManifests returns a list of manifests in a repository
+func (svc *RegistriesServiceOp) ListRepositoryManifests(ctx context.Context, registry, repository string, opts *ListOptions) ([]*RepositoryManifest, *Response, error) {
+	path := fmt.Sprintf("%s/%s/repositories/%s/digests", registriesPath, registry, url.PathEscape(repository))
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(repositoryManifestsRoot)
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	resp.Links = root.Links
+	resp.Meta = root.Meta
+
+	return root.Manifests, resp, nil
+}
+
+// DeleteManifest deletes a manifest from a repository
+func (svc *RegistriesServiceOp) DeleteManifest(ctx context.Context, registry, repository, digest string) (*Response, error) {
+	path := fmt.Sprintf("%s/%s/repositories/%s/digests/%s", registriesPath, registry, url.PathEscape(repository), digest)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+// StartGarbageCollection starts a garbage collection process
+func (svc *RegistriesServiceOp) StartGarbageCollection(ctx context.Context, registry string, request ...*StartGarbageCollectionRequest) (*GarbageCollection, *Response, error) {
+	path := fmt.Sprintf("%s/%s/garbage-collection", registriesPath, registry)
+	var requestParams interface{}
+	if len(request) < 1 {
+		// default to only garbage collecting unreferenced blobs for backwards
+		// compatibility
+		requestParams = &StartGarbageCollectionRequest{
+			Type: GCTypeUnreferencedBlobsOnly,
+		}
+	} else {
+		requestParams = request[0]
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, requestParams)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(garbageCollectionRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.GarbageCollection, resp, err
+}
+
+// GetGarbageCollection gets the active garbage collection
+func (svc *RegistriesServiceOp) GetGarbageCollection(ctx context.Context, registry string) (*GarbageCollection, *Response, error) {
+	path := fmt.Sprintf("%s/%s/garbage-collection", registriesPath, registry)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(garbageCollectionRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.GarbageCollection, resp, nil
+}
+
+// ListGarbageCollections lists all garbage collections
+func (svc *RegistriesServiceOp) ListGarbageCollections(ctx context.Context, registry string, opts *ListOptions) ([]*GarbageCollection, *Response, error) {
+	path := fmt.Sprintf("%s/%s/garbage-collections", registriesPath, registry)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(garbageCollectionsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if root.Links != nil {
+		resp.Links = root.Links
+	}
+	if root.Meta != nil {
+		resp.Meta = root.Meta
+	}
+
+	return root.GarbageCollections, resp, nil
+}
+
+// UpdateGarbageCollection updates a garbage collection
+func (svc *RegistriesServiceOp) UpdateGarbageCollection(ctx context.Context, registry, gcUUID string, request *UpdateGarbageCollectionRequest) (*GarbageCollection, *Response, error) {
+	path := fmt.Sprintf("%s/%s/garbage-collection/%s", registriesPath, registry, gcUUID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, request)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(garbageCollectionRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.GarbageCollection, resp, nil
+}
+
+// GetOptions gets registry options
+func (svc *RegistriesServiceOp) GetOptions(ctx context.Context) (*RegistryOptions, *Response, error) {
+	path := fmt.Sprintf("%s/options", registriesPath)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(registryOptionsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Options, resp, nil
+}
+
+// GetSubscription gets subscription information
+func (svc *RegistriesServiceOp) GetSubscription(ctx context.Context) (*RegistrySubscription, *Response, error) {
+	path := fmt.Sprintf("%s/subscription", registriesPath)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(registrySubscriptionRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Subscription, resp, nil
+}
+
+// UpdateSubscription updates subscription information
+func (svc *RegistriesServiceOp) UpdateSubscription(ctx context.Context, request *RegistrySubscriptionUpdateRequest) (*RegistrySubscription, *Response, error) {
+	path := fmt.Sprintf("%s/subscription", registriesPath)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, request)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(registrySubscriptionRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Subscription, resp, nil
+}
+
+// ValidateName validates a registry name
+func (svc *RegistriesServiceOp) ValidateName(ctx context.Context, request *RegistryValidateNameRequest) (*Response, error) {
+	path := fmt.Sprintf("%s/validate-name", registriesPath)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, request)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
 }

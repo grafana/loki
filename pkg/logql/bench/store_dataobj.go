@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
@@ -68,7 +69,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(bucket, tenantID, logger)
+	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	return &DataObjStore{
@@ -103,7 +104,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {

@@ -175,7 +175,7 @@ func translateIndexPointersPredicate(p RowPredicate, columns []dataset.Column) d
 	}
 
 	switch p := p.(type) {
-	case TimeRangePredicate:
+	case TimeRangeRowPredicate:
 		return convertTimeRangePredicate(p, minTimestampColumn, maxTimestampColumn)
 
 	default:
@@ -183,26 +183,18 @@ func translateIndexPointersPredicate(p RowPredicate, columns []dataset.Column) d
 	}
 }
 
-func convertTimeRangePredicate(p TimeRangePredicate, minTimestampColumn, maxTimestampColumn dataset.Column) dataset.Predicate {
+func convertTimeRangePredicate(p TimeRangeRowPredicate, minTimestampColumn, maxTimestampColumn dataset.Column) dataset.Predicate {
 	return dataset.AndPredicate{
-		Left: dataset.OrPredicate{
-			Left: dataset.EqualPredicate{
+		Left: dataset.NotPredicate{
+			Inner: dataset.LessThanPredicate{
 				Column: minTimestampColumn,
-				Value:  dataset.Int64Value(p.MinTimestamp.Unix()),
-			},
-			Right: dataset.GreaterThanPredicate{
-				Column: minTimestampColumn,
-				Value:  dataset.Int64Value(p.MinTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.Start.UnixNano()),
 			},
 		},
-		Right: dataset.OrPredicate{
-			Left: dataset.EqualPredicate{
+		Right: dataset.NotPredicate{
+			Inner: dataset.GreaterThanPredicate{
 				Column: maxTimestampColumn,
-				Value:  dataset.Int64Value(p.MaxTimestamp.Unix()),
-			},
-			Right: dataset.LessThanPredicate{
-				Column: maxTimestampColumn,
-				Value:  dataset.Int64Value(p.MaxTimestamp.Unix()),
+				Value:  dataset.Int64Value(p.End.UnixNano()),
 			},
 		},
 	}
