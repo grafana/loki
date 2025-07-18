@@ -9,12 +9,20 @@ weight: 300
 
 # Log queries
 
+Log queries in LogQL are queries that retrieve and filter log lines from log streams. 
+
+Results of log queries are always log streams: sets of log lines that include a timestamp and labels. Log lines can include numbers, strings, objects, and more. They can be heavily structured or semi-structured.
+
+## Structure of a log query
+
 All LogQL queries contain a **log stream selector**.
+
+Optionally, the log stream selector can be followed by a **log pipeline**. A log pipeline is a set of stage expressions that are chained together and applied to the selected log streams. Each expression can filter out, parse, or mutate log lines and their respective labels.
+
 
 ![parts of a query](./query_components.png)
 
 
-Optionally, the log stream selector can be followed by a **log pipeline**. A log pipeline is a set of stage expressions that are chained together and applied to the selected log streams. Each expression can filter out, parse, or mutate log lines and their respective labels.
 
 The following example shows a full log query in action:
 
@@ -29,7 +37,7 @@ The query is composed of:
 
 > To avoid escaping special characters you can use the `` ` ``(backtick) instead of `"` when quoting strings.
 For example `` `\w+` `` is the same as `"\\w+"`.
-This is specially useful when writing a regular expression which contains multiple backslashes that require escaping.
+This is especially useful when writing a regular expression which contains multiple backslashes that require escaping.
 
 ## Log stream selector
 
@@ -101,14 +109,10 @@ An example that mutates is the expression
 
 Log pipeline expressions fall into one of four categories:
 
-- Filtering expressions: [line filter expressions](#line-filter-expression)
-and
-[label filter expressions](#label-filter-expression)
-- [Parsing expressions](#parser-expression)
-- Formatting expressions: [line format expressions](#line-format-expression)
-and
-[label format expressions](#labels-format-expression)
-- Labels expressions: [drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression)
+- **Filtering expressions**: Return log lines that include or don't include specified strings or values ([line filter expressions](#line-filter-expression) and [label filter expressions](#label-filter-expression))
+- **Parsing expressions**: Let you set the format of a log line so that you can extract structured data and turn the log line into labels or fields that you can use for filtering ([parser expressions](#parser-expression))
+- **Formatting expressions**: Change the way log lines are displayed when they're returned for ease of reading without changing the original log content ([line format expressions](#line-format-expression) and [label format expressions](#labels-format-expression))
+- **Labels expressions**: Let you remove labels from the results without changing the original log content ([drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression))
 
 ### Line filter expression
 
@@ -701,3 +705,17 @@ the result will be
 {level="info"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
+## Structured metadata
+
+## Evaluation options for log queries
+
+### Instant log queries
+
+### Range log queries
+
+
+## Further resources
+
+- [Query best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/query/bp-query/) for improving the performance of your LogQL queries
+- [Metric queries](https://grafana.com/docs/loki/<LOKI_VERSION>/query/metric_queries/) let you generate metrics from log lines with Loki
+- [Labels best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/) for what makes a good label
