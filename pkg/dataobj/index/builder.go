@@ -333,7 +333,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	return nil
 }
 
-// getKey determines the key in object storage to upload the object to, based on our path scheme.
+// ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
 func ObjectKey(tenantID string, object *bytes.Buffer) string {
 	sum := sha256.Sum224(object.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
