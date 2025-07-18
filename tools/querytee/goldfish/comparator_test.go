@@ -7,6 +7,7 @@ import (
 )
 
 func TestComparator_CompareResponses(t *testing.T) {
+	testTolerance := 0.1 // 10% tolerance for tests
 	tests := []struct {
 		name           string
 		sample         *QuerySample
@@ -96,7 +97,7 @@ func TestComparator_CompareResponses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CompareResponses(tt.sample)
+			result := CompareResponses(tt.sample, testTolerance)
 			assert.Equal(t, tt.expectedStatus, result.ComparisonStatus)
 
 			for _, expectedDiff := range tt.expectedDiffs {
@@ -145,7 +146,8 @@ func TestCompareQueryStats(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := &ComparisonResult{DifferenceDetails: make(map[string]any)}
-			compareQueryStats(tt.statsA, tt.statsB, result)
+			testTolerance := 0.1 // 10% tolerance for tests
+			compareQueryStats(tt.statsA, tt.statsB, result, testTolerance)
 
 			// Check if differences were recorded when expected
 			if tt.expectMatch {
@@ -203,13 +205,92 @@ func TestCompareResponses_StatusCodes(t *testing.T) {
 				CellBResponseHash: "hash1", // Same hash for successful cases
 			}
 
-			result := CompareResponses(sample)
+			testTolerance := 0.1 // 10% tolerance for tests
+			result := CompareResponses(sample, testTolerance)
 
 			if tt.cellAStatus == 200 && tt.cellBStatus == 200 {
 				// For 200 status codes, result depends on hash comparison
 				assert.Equal(t, ComparisonStatusMatch, result.ComparisonStatus)
 			} else {
 				assert.Equal(t, tt.expectedStatus, result.ComparisonStatus)
+			}
+		})
+	}
+}
+
+func TestCompareResponses_ConfigurableTolerance(t *testing.T) {
+	tests := []struct {
+		name           string
+		tolerance      float64
+		cellAExecTime  int64
+		cellBExecTime  int64
+		expectVariance bool
+	}{
+		{
+			name:           "5% difference with 10% tolerance - no variance",
+			tolerance:      0.1,
+			cellAExecTime:  100,
+			cellBExecTime:  105,
+			expectVariance: false,
+		},
+		{
+			name:           "15% difference with 10% tolerance - has variance",
+			tolerance:      0.1,
+			cellAExecTime:  100,
+			cellBExecTime:  115,
+			expectVariance: true,
+		},
+		{
+			name:           "5% difference with 1% tolerance - has variance",
+			tolerance:      0.01,
+			cellAExecTime:  100,
+			cellBExecTime:  105,
+			expectVariance: true,
+		},
+		{
+			name:           "50% difference with 60% tolerance - no variance",
+			tolerance:      0.6,
+			cellAExecTime:  100,
+			cellBExecTime:  150,
+			expectVariance: false,
+		},
+		{
+			name:           "0% tolerance requires exact match",
+			tolerance:      0.0,
+			cellAExecTime:  100,
+			cellBExecTime:  101,
+			expectVariance: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sample := &QuerySample{
+				CorrelationID:     "test-tolerance",
+				CellAStatusCode:   200,
+				CellBStatusCode:   200,
+				CellAResponseHash: "same-hash",
+				CellBResponseHash: "same-hash",
+				CellAStats: QueryStats{
+					ExecTimeMs:     tt.cellAExecTime,
+					BytesProcessed: 1000,
+				},
+				CellBStats: QueryStats{
+					ExecTimeMs:     tt.cellBExecTime,
+					BytesProcessed: 1000,
+				},
+			}
+
+			result := CompareResponses(sample, tt.tolerance)
+
+			// The comparison should always be a match (same hash)
+			assert.Equal(t, ComparisonStatusMatch, result.ComparisonStatus)
+
+			// Check if execution time variance was detected based on tolerance
+			if tt.expectVariance {
+				assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
+			} else {
+				assert.NotContains(t, result.DifferenceDetails, "exec_time_variance")
 			}
 		})
 	}

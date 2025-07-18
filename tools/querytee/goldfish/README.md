@@ -15,10 +15,7 @@ Goldfish is a feature within QueryTee that enables sampling and comparison of qu
   - Bytes/lines processed comparison
   - Query complexity metrics (splits, shards)
   - Performance variance detection and reporting
-- **Flexible Storage**: Support for multiple database backends:
-  - Google Cloud SQL
-  - BigQuery
-  - Generic SQL databases (PostgreSQL, MySQL)
+- **Persistent Storage**: MySQL storage via Google Cloud SQL Proxy for storing query samples and comparison results
 
 ## Configuration
 
@@ -33,15 +30,21 @@ Goldfish is configured through command-line flags:
 -goldfish.sampling.tenant-rules="tenant1:0.5,tenant2:1.0"       # Tenant-specific rates
 
 # Storage configuration (optional - defaults to no-op if not specified)
-# CloudSQL example:
+# CloudSQL (MySQL) configuration:
 -goldfish.storage.type=cloudsql
 -goldfish.storage.cloudsql.host=cloudsql-proxy                  # CloudSQL proxy host
--goldfish.storage.cloudsql.port=5432                           # CloudSQL proxy port
+-goldfish.storage.cloudsql.port=3306                           # MySQL port (default: 3306)
 -goldfish.storage.cloudsql.database=goldfish
 -goldfish.storage.cloudsql.user=goldfish-user
--goldfish.storage.cloudsql.password=your-password
+# Password must be provided via GOLDFISH_DB_PASSWORD environment variable
+export GOLDFISH_DB_PASSWORD=your-password
+
+# Connection pool settings
 -goldfish.storage.max-connections=10                            # Maximum database connections
 -goldfish.storage.max-idle-time=300                            # Connection idle timeout (seconds)
+
+# Performance comparison settings
+-goldfish.performance-tolerance=0.1                             # 10% tolerance for execution time variance
 
 # Or run without storage (sampling and comparison only, no persistence)
 # Simply omit the storage configuration
@@ -103,7 +106,7 @@ Goldfish uses a simplified, privacy-focused comparison approach:
    - Different hashes = different content = **MISMATCH**
 
 2. **Performance Analysis**: Execution statistics are compared for optimization insights:
-   - Execution time variance (with 10% tolerance for normal variation)
+   - Execution time variance (with configurable tolerance for normal variation)
    - Bytes/lines processed (must be identical for same query)
    - Query complexity differences (splits, shards)
 
@@ -142,14 +145,18 @@ JOIN sampled_queries sq ON co.correlation_id = sq.correlation_id
 GROUP BY sq.tenant_id;
 ```
 
-## Development
+## Storage Configuration
 
-To add a new storage backend:
+Goldfish currently supports MySQL storage via Google Cloud SQL Proxy. The storage is optional - if not configured, Goldfish will perform sampling and comparison but won't persist results.
 
-1. Implement the `Storage` interface in a new file (e.g., `storage_bigquery.go`)
-2. Add the backend type to the `NewStorage` factory function
-3. Add any backend-specific configuration to `StorageConfig`
-4. Add backend-specific flags to `RegisterFlags`
+### Setting up CloudSQL:
+
+1. Ensure your CloudSQL proxy is running and accessible
+2. Create a MySQL database for Goldfish
+3. Configure the connection parameters via flags
+4. Set the database password using the `GOLDFISH_DB_PASSWORD` environment variable
+
+The schema will be automatically created on first run.
 
 ## Testing
 
@@ -157,6 +164,8 @@ The Goldfish implementation includes comprehensive tests that verify:
 - Hash-based comparison logic
 - Performance statistics analysis
 - Status code handling
+- SQL injection protection with parameterized queries
+- Configurable performance tolerance
 - Backward compatibility with existing QueryTee functionality
 
 Run tests with:

@@ -6,7 +6,7 @@ import (
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *QuerySample) ComparisonResult {
+func CompareResponses(sample *QuerySample, performanceTolerance float64) ComparisonResult {
 	result := ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),
@@ -27,45 +27,45 @@ func CompareResponses(sample *QuerySample) ComparisonResult {
 		result.PerformanceMetrics.BytesRatio = float64(sample.CellBResponseSize) / float64(sample.CellAResponseSize)
 	}
 
-	// Check status codes first
-	if sample.CellAStatusCode != sample.CellBStatusCode {
+	// Compare responses using clear matching rules
+	switch {
+	case sample.CellAStatusCode != sample.CellBStatusCode:
+		// Different status codes always indicate a mismatch
 		result.ComparisonStatus = ComparisonStatusMismatch
 		result.DifferenceDetails["status_code"] = map[string]any{
 			"cell_a": sample.CellAStatusCode,
 			"cell_b": sample.CellBStatusCode,
 		}
 		return result
-	}
 
-	// Both non-200 status codes are considered a match
-	if sample.CellAStatusCode != http.StatusOK {
+	case sample.CellAStatusCode == sample.CellBStatusCode && sample.CellAStatusCode != http.StatusOK:
+		// Same non-200 status codes indicate matching error behavior
+		// Both services are failing in the same way (e.g., both returning 404 for not found)
 		result.ComparisonStatus = ComparisonStatusMatch
 		return result
-	}
 
-	// Compare response hashes for content verification
-	if sample.CellAResponseHash != sample.CellBResponseHash {
+	case sample.CellAResponseHash != sample.CellBResponseHash:
+		// Both returned 200 but with different content
 		result.ComparisonStatus = ComparisonStatusMismatch
 		result.DifferenceDetails["content_hash"] = map[string]any{
 			"cell_a": sample.CellAResponseHash,
 			"cell_b": sample.CellBResponseHash,
 		}
 		return result
+
+	default:
+		// Both returned 200 with identical content
+		result.ComparisonStatus = ComparisonStatusMatch
 	}
 
-	// If we reach here, hashes match and status codes are both 200
-	// This means the content is identical, so it's a match
-	result.ComparisonStatus = ComparisonStatusMatch
-
 	// Still compare performance statistics for analysis, but don't change match status
-	compareQueryStats(sample.CellAStats, sample.CellBStats, &result)
+	compareQueryStats(sample.CellAStats, sample.CellBStats, &result, performanceTolerance)
 
 	return result
 }
 
 // compareQueryStats compares performance statistics between two queries
-func compareQueryStats(statsA, statsB QueryStats, result *ComparisonResult) {
-	const tolerance = 0.1 // 10% tolerance for performance differences
+func compareQueryStats(statsA, statsB QueryStats, result *ComparisonResult, tolerance float64) {
 
 	// Compare execution times (record variance for analysis)
 	if statsA.ExecTimeMs > 0 && statsB.ExecTimeMs > 0 {
