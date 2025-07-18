@@ -230,13 +230,6 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 	}
 }
 
-func TestSymbolizerNormalizationCache(t *testing.T) {
-	// NOTE(rfratto): Caching normalized strings can no longer be consistently
-	// tested; when stringlabels are used (the default), normalization is
-	// impossible due to storing the labels as a single string.
-	t.Skip()
-}
-
 func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
 	s := newSymbolizer()
 
@@ -288,6 +281,8 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	result := s.Lookup(originalSymbols, nil)
 	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized")
 	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 
 	// Serialize the symbolizer
 	buf := bytes.NewBuffer(nil)
@@ -307,6 +302,8 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	result = loaded.Lookup(originalSymbols, nil)
 	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized after deserialization")
 	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized after deserialization")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 
 	// Also test with checkpoint serialization
 	buf.Reset()
@@ -317,4 +314,6 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	result = loadedFromCheckpoint.Lookup(originalSymbols, nil)
 	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized after checkpoint")
 	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized after checkpoint")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 }

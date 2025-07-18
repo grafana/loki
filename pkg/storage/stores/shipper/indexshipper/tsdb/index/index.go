@@ -417,11 +417,11 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
-	if (labelHash < lastHash && w.lastSeries.Len() > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
+	if (labelHash < lastHash && !w.lastSeries.IsEmpty()) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && w.lastSeries.Len() != 0 {
+	if ref < w.lastRef && !w.lastSeries.IsEmpty() {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte

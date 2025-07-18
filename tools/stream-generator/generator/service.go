@@ -328,6 +328,7 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 		for j, label := range streamLabels {
 			builder.Add(label, fmt.Sprintf("%s-%d-%d", label, i, j))
 		}
+		builder.Sort()
 		lbs := builder.Labels()
 
 		// Create the stream with multiple entries

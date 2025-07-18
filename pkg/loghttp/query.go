@@ -319,7 +319,6 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 				if ty == jsonparser.Null {
 					return
 				}
-				// Initialize fields to known values for consistent decoding.
 				var entry Entry
 				if err := entry.UnmarshalJSON(value); err != nil {
 					parseError = err
