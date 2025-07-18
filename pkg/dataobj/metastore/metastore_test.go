@@ -445,11 +445,11 @@ func TestObjectOverlapsRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create labels with timestamps in nanoseconds
-			lbs := labels.Labels{
-				{Name: labelNameStart, Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
-				{Name: labelNameEnd, Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
-				{Name: labelNamePath, Value: testPath},
-			}
+			lbs := labels.New(
+				labels.Label{Name: labelNameStart, Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
+				labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
+				labels.Label{Name: labelNamePath, Value: testPath},
+			)
 
 			gotMatch, gotPath := objectOverlapsRange(lbs, tt.queryStart, tt.queryEnd)
 			require.Equal(t, tt.wantMatch, gotMatch, "overlap match failed for %s", tt.desc)

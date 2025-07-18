@@ -184,7 +184,7 @@ func TestGetStreamRates(t *testing.T) {
 			l = makeRandomLabels()
 		}
 		uniqueLabels[l.String()] = true
-		labelsByHash[l.Hash()] = l
+		labelsByHash[labels.StableHash(l)] = l
 
 		wg.Add(1)
 		go func(labels string) {

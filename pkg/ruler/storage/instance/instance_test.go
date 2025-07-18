@@ -268,7 +268,7 @@ func (a *mockAppender) Add(l labels.Labels, _ int64, _ float64) (storage.SeriesR
 	a.s.mut.Lock()
 	defer a.s.mut.Unlock()
 
-	hash := l.Hash()
+	hash := labels.StableHash(l)
 	a.s.series[storage.SeriesRef(hash)] = 1
 	return storage.SeriesRef(hash), nil
 }
