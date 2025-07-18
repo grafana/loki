@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -22,10 +23,10 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		}
 	}
 
-	return newGenericPipeline(Local, func(inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
-		err := input.Read()
+		err := input.Read(ctx)
 		if err != nil {
 			return failureState(err)
 		}

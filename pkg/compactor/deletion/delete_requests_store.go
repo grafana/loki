@@ -93,6 +93,10 @@ func newDeleteRequestsStore(
 				return nil, err
 			}
 		}
+
+		if err := deleteRequestsStoreSQLite.fixProcessedShardCount(context.Background()); err != nil {
+			return nil, err
+		}
 	} else {
 		// we want to cleanup SQLite DB for the scenario when SQLite is rolled back to boltDB and back to SQLite again
 		// because we only copy the data from boltDB to SQLite when the db is empty.
