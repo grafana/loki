@@ -1,6 +1,9 @@
 package executor
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -51,6 +54,30 @@ func init() {
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Int64, &intCompareFunction{cmp: func(a, b int64) bool { return a <= b }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Uint64, &timestampCompareFunction{cmp: func(a, b uint64) bool { return a <= b }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Float64, &floatCompareFunction{cmp: func(a, b float64) bool { return a <= b }})
+	// Functions for [types.BinaryOpMatchSubstr]
+	binaryFunctions.register(types.BinaryOpMatchSubstr, arrow.BinaryTypes.String, &strCompareFunction{cmp: func(a, b string) bool { return strings.Contains(a, b) }})
+	// Functions for [types.BinaryOpNotMatchSubstr]
+	binaryFunctions.register(types.BinaryOpNotMatchSubstr, arrow.BinaryTypes.String, &strCompareFunction{cmp: func(a, b string) bool { return !strings.Contains(a, b) }})
+	// Functions for [types.BinaryOpMatchRe]
+	// TODO(chaudum): Performance of regex evaluation can be improved if RHS is a Scalar,
+	// because the regexp would only need to compiled once for the given scalar value.
+	// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
+	// see pkg/logql/log/filter.go:645
+	binaryFunctions.register(types.BinaryOpMatchRe, arrow.BinaryTypes.String, &strCompareFunction{cmp: func(a, b string) bool {
+		reg, err := regexp.Compile(b)
+		if err != nil { // TODO(chaudum): Add support for returning error when comparison fails. For now, return false.
+			return false
+		}
+		return reg.Match([]byte(a))
+	}})
+	// Functions for [types.BinaryOpNotMatchRe]
+	binaryFunctions.register(types.BinaryOpNotMatchRe, arrow.BinaryTypes.String, &strCompareFunction{cmp: func(a, b string) bool {
+		reg, err := regexp.Compile(b)
+		if err != nil { // TODO(chaudum): Add support for returning error when comparison fails. For now, return false.
+			return false
+		}
+		return !reg.Match([]byte(a))
+	}})
 }
 
 type UnaryFunctionRegistry interface {
