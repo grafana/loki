@@ -1092,6 +1092,12 @@ dataobj:
     # CLI flag: -dataobj-index-builder.enabled-tenant-ids
     [enabled_tenant_ids: <string> | default = ""]
 
+  metastore:
+    updater:
+      # The format to use for the metastore top-level index objects.
+      # CLI flag: -dataobj-metastore.storage-format
+      [storage_format: <string> | default = "v1"]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled

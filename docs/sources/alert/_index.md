@@ -45,7 +45,7 @@ We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/
 
 Loki alerting rules are exactly the same, except they use LogQL for their expressions.
 
-### Example
+### Alerting rule example
 
 A complete example of a rules file:
 
@@ -80,13 +80,12 @@ groups:
 We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules) recording rules. From Prometheus' documentation:
 
 > Recording rules allow you to precompute frequently needed or computationally expensive expressions and save their result as a new set of time series.
-
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [metric queries](../query/metric_queries/) over your logs, which means
+Loki allows you to run [metric queries](https://grafana.com/docs/loki/<LOKI_VERSION>>/query/metric_queries/) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
-### Example
+### Recording rule example
 
 ```yaml
 name: NginxRules
@@ -109,7 +108,7 @@ just like any other metric.
 
 Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
 
-#### Example
+### Rule group example
 
 Here is an example of a rule group along with its limit configured.
 
@@ -148,7 +147,7 @@ At the time of writing, these are the compatible backends that support this:
 
 - [Prometheus](https://prometheus.io/docs/prometheus/latest/disabled_features/#remote-write-receiver) (`>=v2.25.0`):
   Prometheus is generally a pull-based system, but since `v2.25.0` has allowed for metrics to be written directly to it as well.
-- [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
+- [Grafana Mimir](https://grafana.com/docs/mimir/<MIMIR_VERSION>/references/http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
 Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
@@ -167,7 +166,7 @@ Further configuration options can be found under [ruler](https://grafana.com/doc
 
 ### Operations
 
-Please refer to the [Recording Rules](../operations/recording-rules/) page.
+Please refer to the [Recording Rules](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/recording-rules/) page.
 
 ## Use cases
 
@@ -207,10 +206,10 @@ As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us
 
 ### Lokitool
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`. You can download `lokitool` from the [Loki Releases page](https://github.com/grafana/loki/releases) under Assets. Note that versions of Loki older than 3.1 used `cortextool` instead of `lokitool`.
 
 {{< admonition type="note" >}}
-lokitool is intended to run against multi-tenant Loki.  The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+lokitool is intended to run against multi-tenant Loki. The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`. If Loki is running in single tenant mode, the required ID is `fake`.
 {{< /admonition >}}
 
 An example workflow is included below:
@@ -337,14 +336,14 @@ The local implementation reads the rule files off of the local filesystem. This 
 
 A typical local configuration might look something like:
 
-```
+```yaml
   -ruler.storage.type=local
   -ruler.storage.local.directory=/tmp/loki/rules
 ```
 
 With the above configuration, the Ruler would expect the following layout:
 
-```
+```bash
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```

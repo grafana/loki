@@ -20,6 +20,7 @@
 package http
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,12 +28,16 @@ import (
 	"time"
 )
 
-const (
+var (
 	defaultMaxIdleConnsPerHost   = 500
 	defaultResponseHeaderTimeout = 60 * time.Second
 	defaultDialTimeout           = 30 * time.Second
+	defaultKeepAlive             = 30 * time.Second
 	defaultSmallInterval         = 600 * time.Second
 	defaultLargeInterval         = 1200 * time.Second
+	defaultTLSHandshakeTimeout   = 10 * time.Second
+	defaultIdleConnTimeout       = 90 * time.Second
+	defaultHTTPClientTimeout     = 1200 * time.Second
 )
 
 // The httpClient is the global variable to send the request and get response
@@ -42,22 +47,101 @@ var (
 	transport  *http.Transport
 )
 
+type Dialer struct {
+	net.Dialer
+	ReadTimeout  *time.Duration
+	WriteTimeout *time.Duration
+}
+
+func NewDialer(config *ClientConfig) *Dialer {
+	dialer := &Dialer{
+		Dialer: net.Dialer{
+			Timeout:   *config.DialTimeout,
+			KeepAlive: *config.KeepAlive,
+		},
+		ReadTimeout:  config.ReadTimeout,
+		WriteTimeout: config.WriteTimeout,
+	}
+	return dialer
+}
+
+func (d *Dialer) Dial(network, address string) (net.Conn, error) {
+	return d.DialContext(context.Background(), network, address)
+}
+
+func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	c, err := d.Dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return c, err
+	}
+	tc := &timeoutConn{
+		conn:          c,
+		smallInterval: defaultSmallInterval,
+		largeInterval: defaultLargeInterval,
+		readTimeout:   d.ReadTimeout,
+		writeTimeout:  d.WriteTimeout,
+	}
+	if tc.readTimeout != nil {
+		err = tc.SetReadDeadline(time.Now().Add(*tc.readTimeout))
+	} else {
+		err = tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if tc.writeTimeout != nil {
+		err = tc.SetWriteDeadline(time.Now().Add(*tc.writeTimeout))
+	} else {
+		err = tc.SetWriteDeadline(time.Now().Add(defaultLargeInterval))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return tc, err
+}
+
 type timeoutConn struct {
 	conn          net.Conn
 	smallInterval time.Duration
 	largeInterval time.Duration
+	readTimeout   *time.Duration
+	writeTimeout  *time.Duration
 }
 
 func (c *timeoutConn) Read(b []byte) (n int, err error) {
-	c.SetReadDeadline(time.Now().Add(c.smallInterval))
+	if c.readTimeout == nil {
+		err = c.SetReadDeadline(time.Now().Add(c.smallInterval))
+		if err != nil {
+			return n, err
+		}
+	}
 	n, err = c.conn.Read(b)
-	c.SetReadDeadline(time.Now().Add(c.largeInterval))
+	if err != nil {
+		return n, err
+	}
+	if c.readTimeout == nil {
+		err = c.SetReadDeadline(time.Now().Add(c.largeInterval))
+	} else {
+		err = c.SetReadDeadline(time.Now().Add(*c.readTimeout))
+	}
 	return n, err
 }
 func (c *timeoutConn) Write(b []byte) (n int, err error) {
-	c.SetWriteDeadline(time.Now().Add(c.smallInterval))
+	if c.writeTimeout == nil {
+		err = c.SetWriteDeadline(time.Now().Add(c.smallInterval))
+	}
+	if err != nil {
+		return n, err
+	}
 	n, err = c.conn.Write(b)
-	c.SetWriteDeadline(time.Now().Add(c.largeInterval))
+	if err != nil {
+		return n, err
+	}
+	if c.writeTimeout == nil {
+		err = c.SetWriteDeadline(time.Now().Add(c.largeInterval))
+	} else {
+		err = c.SetWriteDeadline(time.Now().Add(*c.writeTimeout))
+	}
 	return n, err
 }
 func (c *timeoutConn) Close() error                       { return c.conn.Close() }
@@ -68,8 +152,68 @@ func (c *timeoutConn) SetReadDeadline(t time.Time) error  { return c.conn.SetRea
 func (c *timeoutConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 type ClientConfig struct {
-	RedirectDisabled  bool
-	DisableKeepAlives bool
+	RedirectDisabled      bool
+	DisableKeepAlives     bool
+	DialTimeout           *time.Duration
+	KeepAlive             *time.Duration
+	ReadTimeout           *time.Duration
+	WriteTimeout          *time.Duration
+	TLSHandshakeTimeout   *time.Duration
+	IdleConnectionTimeout *time.Duration
+	ResponseHeaderTimeout *time.Duration
+	HTTPClientTimeout     *time.Duration
+}
+
+var DefaultClientConfig = ClientConfig{
+	RedirectDisabled:      false,
+	DisableKeepAlives:     false,
+	DialTimeout:           &defaultDialTimeout,
+	KeepAlive:             &defaultKeepAlive,
+	TLSHandshakeTimeout:   &defaultTLSHandshakeTimeout,
+	IdleConnectionTimeout: &defaultIdleConnTimeout,
+	ResponseHeaderTimeout: &defaultResponseHeaderTimeout,
+	HTTPClientTimeout:     &defaultHTTPClientTimeout,
+}
+
+func (cfg *ClientConfig) Copy(src *ClientConfig) {
+	if src == nil {
+		return
+	}
+	cfg.RedirectDisabled = src.RedirectDisabled
+	cfg.DisableKeepAlives = src.DisableKeepAlives
+	if src.DialTimeout != nil {
+		cfg.DialTimeout = src.DialTimeout
+	}
+	if src.KeepAlive != nil {
+		cfg.KeepAlive = src.KeepAlive
+	}
+	if src.ReadTimeout != nil {
+		cfg.ReadTimeout = src.ReadTimeout
+	}
+	if src.WriteTimeout != nil {
+		cfg.WriteTimeout = src.WriteTimeout
+	}
+	if src.TLSHandshakeTimeout != nil {
+		cfg.TLSHandshakeTimeout = src.TLSHandshakeTimeout
+	}
+	if src.IdleConnectionTimeout != nil {
+		cfg.IdleConnectionTimeout = src.IdleConnectionTimeout
+	}
+	if src.ResponseHeaderTimeout != nil {
+		cfg.ResponseHeaderTimeout = src.ResponseHeaderTimeout
+	}
+	if src.HTTPClientTimeout != nil {
+		cfg.HTTPClientTimeout = src.HTTPClientTimeout
+	}
+}
+
+func MergeWithDefaultConfig(cfgs ...*ClientConfig) *ClientConfig {
+	dst := &ClientConfig{}
+	dst.Copy(&DefaultClientConfig)
+	for _, cfg := range cfgs {
+		dst.Copy(cfg)
+	}
+	return dst
 }
 
 var customizeInit sync.Once
@@ -90,12 +234,48 @@ func InitClient(config ClientConfig) {
 				if err != nil {
 					return nil, err
 				}
-				tc := &timeoutConn{conn, defaultSmallInterval, defaultLargeInterval}
+				tc := &timeoutConn{
+					conn:          conn,
+					smallInterval: defaultSmallInterval,
+					largeInterval: defaultLargeInterval,
+				}
 				tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
 				return tc, nil
 			},
 		}
 		httpClient.Transport = transport
+		if config.RedirectDisabled {
+			httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+		}
+	})
+}
+
+func NewTransportCustom(config *ClientConfig) *http.Transport {
+	maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
+	if config.DisableKeepAlives {
+		maxIdleConnsPerHost = -1
+	}
+	transport := &http.Transport{
+		DialContext:           NewDialer(config).DialContext,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		DisableKeepAlives:     config.DisableKeepAlives,
+		TLSHandshakeTimeout:   *config.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: *config.ResponseHeaderTimeout,
+		IdleConnTimeout:       *config.IdleConnectionTimeout,
+	}
+	return transport
+}
+
+func InitClientWithTimeout(config *ClientConfig) {
+	customizeInit.Do(func() {
+		config = MergeWithDefaultConfig(config)
+		transport = NewTransportCustom(config)
+		httpClient = &http.Client{
+			Timeout:   *config.HTTPClientTimeout,
+			Transport: transport,
+		}
 		if config.RedirectDisabled {
 			httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -122,10 +302,10 @@ func Execute(request *Request) (*Response, error) {
 
 	if request.Context() != nil {
 		httpRequest = httpRequest.WithContext(request.Context())
+	} else {
+		// Set the connection timeout for current request
+		httpClient.Timeout = time.Duration(request.Timeout()) * time.Second
 	}
-
-	// Set the connection timeout for current request
-	httpClient.Timeout = time.Duration(request.Timeout()) * time.Second
 
 	// Set the request method
 	httpRequest.Method = request.Method()
@@ -192,7 +372,11 @@ func SetResponseHeaderTimeout(t int) {
 			if err != nil {
 				return nil, err
 			}
-			tc := &timeoutConn{conn, defaultSmallInterval, defaultLargeInterval}
+			tc := &timeoutConn{
+				conn:          conn,
+				smallInterval: defaultSmallInterval,
+				largeInterval: defaultLargeInterval,
+			}
 			err = tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
 			if err != nil {
 				return nil, err
