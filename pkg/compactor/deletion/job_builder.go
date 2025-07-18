@@ -439,9 +439,9 @@ func (b *JobBuilder) getSegment(ctx context.Context, segmentPath string) (*segme
 }
 
 type storageUpdates struct {
-	ChunksToDelete  []string // List of chunks to be deleted from object storage and removed from the index of the current table
-	ChunksToDeIndex []string // List of chunks only to be removed from the index of the current table
-	ChunksToIndex   []chunk  // List of chunks to be indexed in the current table
+	ChunksToDelete  []string `json:"chunks_to_delete,omitempty"`   // List of chunks to be deleted from object storage and removed from the index of the current table
+	ChunksToDeIndex []string `json:"chunks_to_de_index,omitempty"` // List of chunks only to be removed from the index of the current table
+	ChunksToIndex   []chunk  `json:"chunks_to_index,omitempty"`    // List of chunks to be indexed in the current table
 }
 
 // storageUpdatesCollection collects updates to be made to the storage for a single segment
@@ -462,6 +462,10 @@ func (i *storageUpdatesCollection) reset(tableName, userID string) {
 }
 
 func (i *storageUpdatesCollection) addUpdates(labels string, result storageUpdates) {
+	if len(result.ChunksToIndex)+len(result.ChunksToDeIndex)+len(result.ChunksToDelete) == 0 {
+		return
+	}
+
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
