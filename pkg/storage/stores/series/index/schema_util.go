@@ -30,7 +30,7 @@ func labelsString(ls labels.Labels) string {
 	i := 0
 	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		if i > 0 {
 			b.WriteByte(',')

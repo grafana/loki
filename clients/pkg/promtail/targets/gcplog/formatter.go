@@ -84,11 +84,11 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 	processed.Range(func(lbl labels.Label) {
 		// ignore internal labels
 		if strings.HasPrefix(lbl.Name, "__") {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		// ignore invalid labels
 		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
-			return // (continue, not abort)
+			return // (will continue Range loop, not abort)
 		}
 		final[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 	})
