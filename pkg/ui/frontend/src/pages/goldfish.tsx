@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchSampledQueries } from "@/lib/goldfish-api";
+import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +15,7 @@ import {
 import { RefreshCw, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
+import { filterQueriesByOutcome } from "@/lib/goldfish-utils";
 
 
 export default function GoldfishPage() {
@@ -24,26 +24,23 @@ export default function GoldfishPage() {
   const [page, setPage] = useState(1);
   const pageSize = 10; // Reduced since we're showing more detail per query
   
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["goldfish-queries", page, pageSize, selectedOutcome],
-    queryFn: () => fetchSampledQueries(page, pageSize, selectedOutcome),
-  });
-  
-  const allQueries = data?.queries || [];
+  const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(page, pageSize, selectedOutcome);
+  const allQueries = (data as any)?.queries || [];
   
   // Extract unique tenants from queries
   const uniqueTenants = useMemo(() => {
-    const tenants = new Set(allQueries.map(q => q.tenantId));
+    const tenants = new Set(allQueries.map((q: any) => q.tenantId));
     return Array.from(tenants).sort();
   }, [allQueries]);
   
-  // Filter queries based on tenant
-  const filteredQueries = allQueries.filter(query => {
-    const matchesTenant = selectedTenant === "all" || query.tenantId === selectedTenant;
-    return matchesTenant;
-  });
-  
-  const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
+  // Apply client-side filtering based on tenant and outcome
+  const filteredQueries = useMemo(() => {
+    const outcomeFiltered = filterQueriesByOutcome(allQueries, selectedOutcome);
+    return outcomeFiltered.filter(query => {
+      const matchesTenant = selectedTenant === "all" || query.tenantId === selectedTenant;
+      return matchesTenant;
+    });
+  }, [allQueries, selectedTenant, selectedOutcome]);
   
   return (
     <PageContainer>
@@ -135,7 +132,7 @@ export default function GoldfishPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Tenants</SelectItem>
-                {uniqueTenants.map(tenant => (
+                {uniqueTenants.map((tenant: any) => (
                   <SelectItem key={tenant} value={tenant}>
                     {tenant}
                   </SelectItem>
@@ -170,7 +167,7 @@ export default function GoldfishPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredQueries.map((query) => (
+                {filteredQueries.map((query: any) => (
                   <QueryDiffView key={query.correlationId} query={query} />
                 ))}
               </div>
