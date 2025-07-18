@@ -21,6 +21,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+// Calculator is used to calculate the indexes for a logs object and write them to the builder.
+// It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
 	builderMtx      sync.Mutex
@@ -38,6 +40,7 @@ func (c *Calculator) Flush(buffer *bytes.Buffer) (indexobj.FlushStats, error) {
 	return c.indexobjBuilder.Flush(buffer)
 }
 
+// Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
 	// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
