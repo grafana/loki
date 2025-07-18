@@ -1,26 +1,26 @@
-name: LogQL benchmarks
+name: LogQL correctness tests
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run benchmarks on'
+        description: 'Git ref to run correctness tests on'
         required: false
         default: 'main'
         type: 'string'
-      bench_chunks_v1:
-        description: 'Benchmark V1 chunk store'
+      test_dataobj_v1:
+        description: 'Test V1 data object store'
         required: false
         default: true
         type: 'boolean'
-      bench_dataobj_v1:
-        description: 'Benchmark V1 data object store'
-        required: false
-        default: true
-        type: 'boolean'
-      bench_dataobj_v2:
-        description: 'Benchmark V2 data object store'
+      test_dataobj_v2:
+        description: 'Test V2 data object store'
         required: false
         default: false # Disabled by default due to less complete implementation
+        type: 'boolean'
+      failfast:
+        description: 'Fail fast on first test failure'
+        required: false
+        default: true
         type: 'boolean'
 permissions: {}
 jobs:
@@ -66,20 +66,19 @@ jobs:
           STORES=()
 
           # Use explicit equality checks to avoid template injection.
-          ${{ inputs.bench_chunks_v1 == true }} && STORES+=("chunk")
-          ${{ inputs.bench_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.bench_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.test_dataobj_v1 == true }} && STORES+=("dataobj")
+          ${{ inputs.test_dataobj_v2 == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
 
-  benchmarks:
-    name: Run benchmarks for ${{ matrix.store }}
+  tests:
+    name: Run correctness tests for ${{ matrix.store }}
     runs-on: github-hosted-ubuntu-arm64-large
     needs: setup-matrix
     strategy:
       matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-      fail-fast: false # Continue benchmarking other stores if one fails
+      fail-fast: false # Continue testing other stores if one fails
     steps:
       - name: Checkout code
         id: checkout
@@ -105,21 +104,20 @@ jobs:
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
 
-      - name: Run benchmarks
+      - name: Run tests
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
             -tags slicelabels \
-            -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
-            -count=10 -timeout=5h -benchmem \
-            -cpuprofile=results/cpu.pprof \
-            -memprofile=results/mem.pprof \
+            -v -slow-tests \
+            -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
         working-directory: ./pkg/logql/bench
 
       - name: Upload results
         uses: actions/upload-artifact@v4
-        if: always() # Upload results even if one of the benchmark tests fails
+        if: always() # Upload results even if one of the test tests fails
         with:
           name: logql-bench-results-${{ matrix.store }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
