@@ -138,6 +138,8 @@ Log queries are queries whose output remains strings, structured or otherwise. T
 
 Metric queries calculate values based on the log results returned.
 
+Both log queries and metric queries support the query structure discussed on this page, although metric queries additionally use aggregation functions to turn results into numbers.
+
 ### By evaluation type
 
 All LogQL queries can be evaluated as *instant* or *range* queries.  Instant queries are evaluated for a single specific moment in time (such as `now`). Range queries are evaluated over a specified interval of time.
@@ -153,6 +155,6 @@ Both log and metric queries can be run as both instant and range queries.
 The results of a LogQL query can be one of the following data types:
 
 - A **log stream** is a set of raw log lines that include a timestamp and a unique combination of [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/). Only log queries can return log streams. Log streams are not suitable for [time series panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/time-series/); they're used in [log panels](https://grafana.com/docs/grafana-cloud/visualizations/panels-visualizations/visualizations/logs/) or for debugging.
-- A **scalar** is a single simple numeric floating point value (ex: `42`) and can only be returned by metric queries.
 - An **instant vector** is a single numerical values (per time series) that represent a sample of one or more log lines containing the same timestamp. They are snapshots of log information at a particular moment of time. Instant vectors can only be returned by metric queries.
 - A **range vector** is a set of numbers calculated from logs per log stream. Range vectors show values over time. They can only be returned by metric queries.
+	
