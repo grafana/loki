@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 )
 
@@ -20,8 +21,9 @@ func CheckSection(section *dataobj.Section) bool { return section.Type == sectio
 
 // Section represents an opened logs section.
 type Section struct {
-	reader  dataobj.SectionReader
-	columns []*Column
+	reader   dataobj.SectionReader
+	columns  []*Column
+	sortInfo *datasetmd.SectionSortInfo
 }
 
 // Open opens a Section from an underlying [dataobj.Section]. Open returns an
@@ -62,6 +64,7 @@ func (s *Section) init(ctx context.Context) error {
 		})
 	}
 
+	s.sortInfo = metadata.SortInfo
 	return nil
 }
 
@@ -71,6 +74,9 @@ func (s *Section) init(ctx context.Context) error {
 // Unrecognized columns (e.g., when running older code against newer sterams
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// SortInfo returns the sort order information for the records in this section.
+func (s *Section) SortInfo() *datasetmd.SectionSortInfo { return s.sortInfo }
 
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
