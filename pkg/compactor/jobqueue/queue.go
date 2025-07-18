@@ -212,6 +212,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 
 		now := time.Now()
 		if err := s.Send(job); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to send job", "job_id", job.Id, "err", err)
 			return err
 		}
 		q.metrics.jobsSent.Inc()
@@ -221,6 +222,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 		resp, err := s.Recv()
 		if err != nil {
 			q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())
+			level.Error(util_log.Logger).Log("msg", "error receiving job response", "job_id", job.Id, "err", err)
 			return err
 		}
 		q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())
