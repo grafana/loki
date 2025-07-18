@@ -33,8 +33,8 @@ import (
 )
 
 var (
-	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
-	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
+	fooLabelsWithName = labels.FromStrings("foo", "bar", "__name__", "logs")
+	fooLabels         = labels.FromStrings("foo", "bar")
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
