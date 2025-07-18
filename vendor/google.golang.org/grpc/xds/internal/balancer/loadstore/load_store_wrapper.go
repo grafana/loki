@@ -22,7 +22,8 @@ package loadstore
 import (
 	"sync"
 
-	"google.golang.org/grpc/xds/internal/xdsclient/load"
+	"google.golang.org/grpc/xds/internal/clients"
+	"google.golang.org/grpc/xds/internal/clients/lrsclient"
 )
 
 // NewWrapper creates a Wrapper.
@@ -53,8 +54,8 @@ type Wrapper struct {
 	// store and perCluster are initialized as nil. They are only set by the
 	// balancer when LRS is enabled. Before that, all functions to record loads
 	// are no-op.
-	store      *load.Store
-	perCluster load.PerClusterReporter
+	store      *lrsclient.LoadStore
+	perCluster *lrsclient.PerClusterReporter
 }
 
 // UpdateClusterAndService updates the cluster name and eds service for this
@@ -68,23 +69,30 @@ func (lsw *Wrapper) UpdateClusterAndService(cluster, edsService string) {
 	}
 	lsw.cluster = cluster
 	lsw.edsService = edsService
-	lsw.perCluster = lsw.store.PerCluster(lsw.cluster, lsw.edsService)
+	if lsw.store == nil {
+		return
+	}
+	lsw.perCluster = lsw.store.ReporterForCluster(lsw.cluster, lsw.edsService)
 }
 
 // UpdateLoadStore updates the load store for this wrapper. If it is changed
 // from before, the perCluster store in this wrapper will also be updated.
-func (lsw *Wrapper) UpdateLoadStore(store *load.Store) {
+func (lsw *Wrapper) UpdateLoadStore(store *lrsclient.LoadStore) {
 	lsw.mu.Lock()
 	defer lsw.mu.Unlock()
 	if store == lsw.store {
 		return
 	}
 	lsw.store = store
-	lsw.perCluster = lsw.store.PerCluster(lsw.cluster, lsw.edsService)
+	if lsw.store == nil {
+		lsw.perCluster = nil
+		return
+	}
+	lsw.perCluster = lsw.store.ReporterForCluster(lsw.cluster, lsw.edsService)
 }
 
 // CallStarted records a call started in the store.
-func (lsw *Wrapper) CallStarted(locality string) {
+func (lsw *Wrapper) CallStarted(locality clients.Locality) {
 	lsw.mu.RLock()
 	defer lsw.mu.RUnlock()
 	if lsw.perCluster != nil {
@@ -93,7 +101,7 @@ func (lsw *Wrapper) CallStarted(locality string) {
 }
 
 // CallFinished records a call finished in the store.
-func (lsw *Wrapper) CallFinished(locality string, err error) {
+func (lsw *Wrapper) CallFinished(locality clients.Locality, err error) {
 	lsw.mu.RLock()
 	defer lsw.mu.RUnlock()
 	if lsw.perCluster != nil {
@@ -102,7 +110,7 @@ func (lsw *Wrapper) CallFinished(locality string, err error) {
 }
 
 // CallServerLoad records the server load in the store.
-func (lsw *Wrapper) CallServerLoad(locality, name string, val float64) {
+func (lsw *Wrapper) CallServerLoad(locality clients.Locality, name string, val float64) {
 	lsw.mu.RLock()
 	defer lsw.mu.RUnlock()
 	if lsw.perCluster != nil {

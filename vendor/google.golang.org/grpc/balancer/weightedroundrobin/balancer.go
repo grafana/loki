@@ -404,9 +404,7 @@ func (b *wrrBalancer) Close() {
 }
 
 func (b *wrrBalancer) ExitIdle() {
-	if ei, ok := b.child.(balancer.ExitIdler); ok { // Should always be ok, as child is endpoint sharding.
-		ei.ExitIdle()
-	}
+	b.child.ExitIdle()
 }
 
 // picker is the WRR policy's picker.  It uses live-updating backend weights to

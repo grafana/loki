@@ -23,11 +23,11 @@ type catalog struct {
 
 // ResolveDataObj implements Catalog.
 func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(e, noShard, from, through)
+	return c.ResolveDataObjWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -100,13 +100,12 @@ func TestMockCatalog(t *testing.T) {
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, tt.shard, time.Now(), time.Now())
+			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, time.Now(), time.Now())
 			require.Equal(t, tt.expPaths, paths)
 			require.Equal(t, tt.expStreams, streams)
 			require.Equal(t, tt.expSections, sections)
 		})
 	}
-
 }
 
 func locations(t *testing.T, plan *Plan, nodes []Node) []string {
