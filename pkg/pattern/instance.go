@@ -38,23 +38,24 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID  string
-	buf         []byte             // buffer used to compute fps.
-	mapper      *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams     *streamsMap
-	index       *index.BitPrefixInvertedIndex
-	logger      log.Logger
-	metrics     *ingesterMetrics
-	drainCfg    *drain.Config
-	drainLimits drain.Limits
-	ringClient  RingClient
-	ingesterID  string
+	instanceID string
+	buf        []byte             // buffer used to compute fps.
+	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams    *streamsMap
+	index      *index.BitPrefixInvertedIndex
+	logger     log.Logger
+	metrics    *ingesterMetrics
+	drainCfg   *drain.Config
+	limits     Limits
+	ringClient RingClient
+	ingesterID string
 
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
 
-	metricWriter  aggregation.EntryWriter
-	patternWriter aggregation.EntryWriter
+	metricWriter       aggregation.EntryWriter
+	patternWriter      aggregation.EntryWriter
+	aggregationMetrics *aggregation.Metrics
 }
 
 type aggregatedMetrics struct {
@@ -67,11 +68,12 @@ func newInstance(
 	logger log.Logger,
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
-	drainLimits drain.Limits,
+	drainLimits Limits,
 	ringClient RingClient,
 	ingesterID string,
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
+	aggregationMetrics *aggregation.Metrics,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
@@ -85,12 +87,13 @@ func newInstance(
 		index:                      index,
 		metrics:                    metrics,
 		drainCfg:                   drainCfg,
-		drainLimits:                drainLimits,
+		limits:                     drainLimits,
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
 		metricWriter:               metricWriter,
 		patternWriter:              patternWriter,
+		aggregationMetrics:         aggregationMetrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -236,7 +239,19 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits, i.patternWriter)
+
+	s, err := newStream(
+		fp,
+		sortedLabels,
+		i.metrics,
+		i.logger,
+		drain.DetectLogFormat(firstEntryLine),
+		i.instanceID,
+		i.drainCfg,
+		i.limits,
+		i.patternWriter,
+		i.aggregationMetrics,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -263,6 +278,14 @@ func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
 	}
+}
+
+// flushPatterns flushes all patterns from all streams in this instance.
+func (i *instance) flushPatterns() {
+	_ = i.streams.ForEach(func(s *stream) (bool, error) {
+		s.flush()
+		return true, nil
+	})
 }
 
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
@@ -343,9 +366,19 @@ func (i *instance) writeAggregatedMetrics(
 	}
 
 	if i.metricWriter != nil {
+		aggregatedEntry := aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls)
+
+		// Record metrics
+		if i.aggregationMetrics != nil {
+			// Record aggregated metric entry size
+			entrySize := len(aggregatedEntry)
+			i.aggregationMetrics.AggregatedMetricBytesWrittenTotal.WithLabelValues(i.instanceID, service).Add(float64(entrySize))
+			i.aggregationMetrics.AggregatedMetricsPayloadBytes.WithLabelValues(i.instanceID, service).Observe(float64(entrySize))
+		}
+
 		i.metricWriter.WriteEntry(
 			now.Time(),
-			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls),
+			aggregatedEntry,
 			newLbls,
 			sturcturedMetadata,
 		)

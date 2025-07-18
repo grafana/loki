@@ -511,3 +511,88 @@ pattern_persistence_enabled: false
 		})
 	}
 }
+
+func Test_PersistenceGranularity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected time.Duration
+	}{
+		{
+			name: "when set to 5 minutes",
+			yaml: `
+pattern_persistence_granularity: 5m
+`,
+			expected: 5 * time.Minute,
+		},
+		{
+			name: "when set to 1 hour",
+			yaml: `
+pattern_persistence_granularity: 1h
+`,
+			expected: 1 * time.Hour,
+		},
+		{
+			name: "when set to zero",
+			yaml: `
+pattern_persistence_granularity: 0s
+`,
+			expected: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PersistenceGranularity("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_PatternRateThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected float64
+	}{
+		{
+			name:     "when using default value",
+			yaml:     ``,
+			expected: 1.0,
+		},
+		{
+			name: "when set to 2.5 samples per second",
+			yaml: `
+pattern_rate_threshold: 2.5
+`,
+			expected: 2.5,
+		},
+		{
+			name: "when set to 0.5 samples per second",
+			yaml: `
+pattern_rate_threshold: 0.5
+`,
+			expected: 0.5,
+		},
+		{
+			name: "when set to zero",
+			yaml: `
+pattern_rate_threshold: 0.0
+`,
+			expected: 0.0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{PatternRateThreshold: 1.0},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternRateThreshold("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
