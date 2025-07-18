@@ -187,9 +187,10 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		perfDiffs := 0
 		contentDiffs := 0
 		for key := range result.DifferenceDetails {
-			if key == "content_hash" || key == "status_code" || key == "entries_returned" || key == "bytes_processed" || key == "lines_processed" {
+			switch key {
+			case "content_hash", "status_code", "entries_returned", "bytes_processed", "lines_processed":
 				contentDiffs++
-			} else if key == "exec_time_variance" {
+			case "exec_time_variance":
 				perfDiffs++
 			}
 		}
@@ -288,7 +289,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 func extractTenant(r *http.Request) string {
 	tenant := r.Header.Get("X-Scope-OrgID")
 	if tenant == "" {
-		return "anonymous"
+		return "fake"
 	}
 	return tenant
 }
