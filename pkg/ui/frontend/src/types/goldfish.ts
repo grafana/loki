@@ -37,7 +37,16 @@ export interface SampledQuery {
   
   sampledAt: string;
   createdAt: string;
+  comparisonStatus: string;
 }
+
+// Outcome filter constants
+export const OUTCOME_ALL = "all" as const;
+export const OUTCOME_MATCH = "match" as const;
+export const OUTCOME_MISMATCH = "mismatch" as const;
+export const OUTCOME_ERROR = "error" as const;
+
+export type OutcomeFilter = typeof OUTCOME_ALL | typeof OUTCOME_MATCH | typeof OUTCOME_MISMATCH | typeof OUTCOME_ERROR;
 
 export interface ComparisonOutcome {
   correlationId: string;
