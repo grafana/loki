@@ -149,7 +149,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	// Compare responses using simplified comparator
 	start := time.Now()
-	result := CompareResponses(sample)
+	result := CompareResponses(sample, m.config.PerformanceTolerance)
 
 	m.metrics.comparisonDuration.Observe(time.Since(start).Seconds())
 

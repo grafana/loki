@@ -17,6 +17,9 @@ type Config struct {
 
 	// Storage configuration
 	StorageConfig StorageConfig `yaml:"storage"`
+
+	// Performance comparison tolerance (0.0-1.0, where 0.1 = 10%)
+	PerformanceTolerance float64 `yaml:"performance_tolerance"`
 }
 
 // SamplingConfig defines how queries are sampled
@@ -27,7 +30,7 @@ type SamplingConfig struct {
 
 // StorageConfig defines storage backend configuration
 type StorageConfig struct {
-	Type string `yaml:"type"` // "cloudsql", "bigquery", "rds", etc.
+	Type string `yaml:"type"` // "cloudsql" or empty string for no storage
 
 	// CloudSQL specific (via proxy)
 	CloudSQLHost     string `yaml:"cloudsql_host"`
@@ -35,13 +38,6 @@ type StorageConfig struct {
 	CloudSQLDatabase string `yaml:"cloudsql_database"`
 	CloudSQLUser     string `yaml:"cloudsql_user"`
 	// CloudSQLPassword provided via GOLDFISH_DB_PASSWORD environment variable
-
-	// BigQuery specific
-	BigQueryProject string `yaml:"bigquery_project"`
-	BigQueryDataset string `yaml:"bigquery_dataset"`
-
-	// Generic SQL
-	DSN string `yaml:"dsn"`
 
 	// Common settings
 	MaxConnections int `yaml:"max_connections"`
@@ -57,16 +53,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&tenantRulesFlag{&cfg.SamplingConfig.TenantRules}, "goldfish.sampling.tenant-rules", "Tenant-specific sampling rules (format: tenant1:0.1,tenant2:0.5)")
 
 	// Storage flags
-	f.StringVar(&cfg.StorageConfig.Type, "goldfish.storage.type", "", "Storage backend type (cloudsql, bigquery, rds)")
+	f.StringVar(&cfg.StorageConfig.Type, "goldfish.storage.type", "", "Storage backend type (cloudsql or empty for no storage)")
 	f.StringVar(&cfg.StorageConfig.CloudSQLHost, "goldfish.storage.cloudsql.host", "cloudsql-proxy", "CloudSQL proxy host")
-	f.IntVar(&cfg.StorageConfig.CloudSQLPort, "goldfish.storage.cloudsql.port", 5432, "CloudSQL proxy port")
+	f.IntVar(&cfg.StorageConfig.CloudSQLPort, "goldfish.storage.cloudsql.port", 3306, "CloudSQL proxy port")
 	f.StringVar(&cfg.StorageConfig.CloudSQLDatabase, "goldfish.storage.cloudsql.database", "", "CloudSQL database name")
 	f.StringVar(&cfg.StorageConfig.CloudSQLUser, "goldfish.storage.cloudsql.user", "", "CloudSQL database user")
-	f.StringVar(&cfg.StorageConfig.BigQueryProject, "goldfish.storage.bigquery.project", "", "BigQuery project ID")
-	f.StringVar(&cfg.StorageConfig.BigQueryDataset, "goldfish.storage.bigquery.dataset", "", "BigQuery dataset name")
-	f.StringVar(&cfg.StorageConfig.DSN, "goldfish.storage.dsn", "", "Generic database DSN")
 	f.IntVar(&cfg.StorageConfig.MaxConnections, "goldfish.storage.max-connections", 10, "Maximum database connections")
 	f.IntVar(&cfg.StorageConfig.MaxIdleTime, "goldfish.storage.max-idle-time", 300, "Maximum idle time in seconds")
+
+	// Performance comparison flags
+	f.Float64Var(&cfg.PerformanceTolerance, "goldfish.performance-tolerance", 0.1, "Performance comparison tolerance (0.0-1.0, where 0.1 = 10%)")
 }
 
 // Validate validates the configuration
@@ -85,6 +81,10 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
+	if cfg.PerformanceTolerance < 0 || cfg.PerformanceTolerance > 1 {
+		return errors.New("performance tolerance must be between 0 and 1")
+	}
+
 	// Only validate storage if one is configured
 	if cfg.StorageConfig.Type == "" {
 		return nil
@@ -94,14 +94,6 @@ func (cfg *Config) Validate() error {
 	case "cloudsql":
 		if cfg.StorageConfig.CloudSQLDatabase == "" || cfg.StorageConfig.CloudSQLUser == "" {
 			return errors.New("CloudSQL database and user must be specified")
-		}
-	case "bigquery":
-		if cfg.StorageConfig.BigQueryProject == "" || cfg.StorageConfig.BigQueryDataset == "" {
-			return errors.New("BigQuery project and dataset must be specified")
-		}
-	case "postgres", "mysql":
-		if cfg.StorageConfig.DSN == "" {
-			return errors.New("DSN must be specified for generic SQL storage")
 		}
 	default:
 		return fmt.Errorf("unsupported storage type: %s", cfg.StorageConfig.Type)
