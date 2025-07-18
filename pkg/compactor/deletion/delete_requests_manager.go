@@ -353,8 +353,12 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 				continue
 			}
 		}
-		if err := batch.checkDuplicate(deleteRequest); err != nil {
+		isDuplicate, err := batch.checkDuplicate(deleteRequest)
+		if err != nil {
 			return nil, err
+		}
+		if isDuplicate {
+			continue
 		}
 		if reqCount >= d.batchSize {
 			logBatchTruncation(reqCount, len(deleteRequests))

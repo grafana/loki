@@ -549,7 +549,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger, prometheus.DefaultRegisterer)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -2200,6 +2200,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
+		t.Cfg.DataObj.Metastore,
 		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
@@ -2223,6 +2224,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj index builder", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
 	t.dataObjIndexBuilder, err = dataobjindex.NewIndexBuilder(
 		t.Cfg.DataObj.Index,
+		t.Cfg.DataObj.Metastore,
 		t.Cfg.KafkaConfig,
 		util_log.Logger,
 		t.Cfg.Ingester.LifecyclerConfig.ID,

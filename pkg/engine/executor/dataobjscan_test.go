@@ -59,7 +59,7 @@ func Test_dataobjScan(t *testing.T) {
 	})
 
 	t.Run("All columns", func(t *testing.T) {
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:      obj,
 			StreamIDs:   []int64{1, 2}, // All streams
 			Section:     0,             // First section.
@@ -91,7 +91,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 	})
 
 	t.Run("Column subset", func(t *testing.T) {
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2}, // All streams
 			Section:   0,             // First section.
@@ -124,7 +124,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 	t.Run("Unknown column", func(t *testing.T) {
 		// Here, we'll check for a column which only exists once in the dataobj but is
 		// ambiguous from the perspective of the caller.
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2}, // All streams
 			Section:   0,             // First section.
@@ -190,7 +190,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 	})
 
 	t.Run("All columns", func(t *testing.T) {
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:      obj,
 			StreamIDs:   []int64{1, 2, 3}, // All streams
 			Section:     0,                // First section.
@@ -225,7 +225,7 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 	})
 
 	t.Run("Ambiguous pod", func(t *testing.T) {
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2, 3}, // All streams
 			Section:   0,                // First section.
@@ -254,7 +254,7 @@ pod-1,override`
 	})
 
 	t.Run("Ambiguous namespace", func(t *testing.T) {
-		pipeline := newDataobjScanPipeline(t.Context(), dataobjScanOptions{
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
 			Object:    obj,
 			StreamIDs: []int64{1, 2, 3}, // All streams
 			Section:   0,

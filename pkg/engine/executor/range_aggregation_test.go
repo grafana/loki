@@ -88,7 +88,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 	defer pipeline.Close()
 
 	// Read the pipeline output
-	err = pipeline.Read()
+	err = pipeline.Read(t.Context())
 	require.NoError(t, err)
 	record, err := pipeline.Value()
 	require.NoError(t, err)

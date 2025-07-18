@@ -70,15 +70,15 @@ func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
 	b.count++
 }
 
-func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
+func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) (bool, error) {
 	ur, ok := b.deleteRequestsToProcess[deleteRequest.UserID]
 	if !ok {
-		return nil
+		return false, nil
 	}
 	for _, requestLoadedForProcessing := range ur.requests {
 		isDuplicate, err := requestLoadedForProcessing.IsDuplicate(&deleteRequest)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if isDuplicate {
 			level.Info(util_log.Logger).Log(
@@ -88,10 +88,11 @@ func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
 				"user", deleteRequest.UserID,
 			)
 			b.duplicateRequests = append(b.duplicateRequests, deleteRequest)
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, skipRequest func(*DeleteRequest) bool) (bool, filter.Func) {
@@ -162,4 +163,15 @@ func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*DeleteReque
 	}
 
 	return userRequests.requests
+}
+
+func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
+	requests := make([]*DeleteRequest, 0, b.count)
+	for _, ur := range b.deleteRequestsToProcess {
+		for _, request := range ur.requests {
+			requests = append(requests, request)
+		}
+	}
+
+	return requests
 }
