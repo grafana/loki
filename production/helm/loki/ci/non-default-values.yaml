@@ -39,12 +39,14 @@ queryScheduler:
 chunksCache:
   suffix: "l1"
   enabled: true
+  allocatedMemory: 128
   persistence:
     labels:
       foo: bar
       baz: qux
   l2:
     enabled: true
+    allocatedMemory: 128
     persistence:
       labels:
         foo: bar
@@ -52,6 +54,7 @@ chunksCache:
 lokiCanary:
   kind: Deployment
 resultsCache:
+  allocatedMemory: 128
   persistence:
     labels:
       foo: bar
