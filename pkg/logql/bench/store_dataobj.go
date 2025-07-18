@@ -177,13 +177,13 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		buffer := bytes.NewBuffer(make([]byte, 0, 128*1024*1024))
-		stats, err := calculator.Flush(buffer)
+		s.buf.Reset()
+		stats, err := calculator.Flush(s.buf)
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
-		key := index.ObjectKey(s.tenantID, buffer)
-		err = s.indexWriterBucket.Upload(context.Background(), key, buffer)
+		key := index.ObjectKey(s.tenantID, s.buf)
+		err = s.indexWriterBucket.Upload(context.Background(), key, s.buf)
 		if err != nil {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}

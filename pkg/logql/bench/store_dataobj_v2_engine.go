@@ -25,60 +25,34 @@ type DataObjV2EngineStore struct {
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
 func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	logger := log.NewNopLogger()
-
-	// Setup filesystem client as objstore.Bucket
-	// This assumes the engine is configured to read its specific data format (e.g., Parquet)
-	// from this directory structure. The existing benchmark data generation might need adjustments
-	// if it doesn't produce this format.
-	// Use NewBucket from thanos-io/objstore/providers/filesystem, similar to store_dataobj.go
-	storeDir := filepath.Join(dataDir, "dataobj")
-	bucketClient, err := filesystem.NewBucket(storeDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
-	}
-
-	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
 		EnableV2Engine: true,
 		BatchSize:      512,
-	}
-
-	// Instantiate the new engine
-	// Note: The tenantID is not directly passed to engine.New here.
-	// The engine might expect tenant information to be part of the query context
-	// or derived from the bucket structure if it's multi-tenant aware.
-	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
-	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, bucketClient, logql.NoLimits, nil, logger)
-
-	return &DataObjV2EngineStore{
-		engine:   queryEngine,
-		tenantID: tenantID, // Store for context or if querier needs it
-		dataDir:  dataDir,
-	}, nil
+	})
 }
 
-// NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
+// NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
+// This is useful for comparing results between when an index is available and when it is not. Once tested, the indexed engine will be the default.
 func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	logger := log.NewNopLogger()
-
-	// Setup filesystem client as objstore.Bucket
-	// This assumes the engine is configured to read its specific data format (e.g., Parquet)
-	// from this directory structure. The existing benchmark data generation might need adjustments
-	// if it doesn't produce this format.
-	// Use NewBucket from thanos-io/objstore/providers/filesystem, similar to store_dataobj.go
-	storeDir := filepath.Join(dataDir, "dataobj")
-	bucketClient, err := filesystem.NewBucket(storeDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
-	}
-
-	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
 		EnableV2Engine: true,
 		BatchSize:      512,
 		CataloguePath:  "index/v0",
+	})
+}
+
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts) (*DataObjV2EngineStore, error) {
+	logger := log.NewNopLogger()
+
+	// Setup filesystem client as objstore.Bucket
+	// This assumes the engine is configured to read its specific data format (e.g., Parquet)
+	// from this directory structure. The existing benchmark data generation might need adjustments
+	// if it doesn't produce this format.
+	// Use NewBucket from thanos-io/objstore/providers/filesystem, similar to store_dataobj.go
+	storeDir := filepath.Join(dataDir, "dataobj")
+	bucketClient, err := filesystem.NewBucket(storeDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
 
 	// Instantiate the new engine

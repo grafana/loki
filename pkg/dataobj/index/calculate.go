@@ -13,11 +13,12 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"golang.org/x/sync/errgroup"
 )
 
 type Calculator struct {
@@ -40,9 +41,10 @@ func (c *Calculator) Flush(buffer *bytes.Buffer) (indexobj.FlushStats, error) {
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
 	// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
-		level.Debug(logger).Log("msg", "processing streams section", "index", i)
+		sectionLogger := log.With(logger, "section", i)
+		level.Debug(sectionLogger).Log("msg", "processing streams section")
 		if err := c.processStreamsSection(ctx, section, objectPath); err != nil {
-			return fmt.Errorf("failed to process stream section: %w", err)
+			return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 		}
 	}
 
@@ -62,12 +64,12 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("failed to process logs sections: %w", err)
+		return err
 	}
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, objectPath string) /*map[int64]streams.Stream, map[uint64]int64,*/ error {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, objectPath string) error {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)
@@ -94,7 +96,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 	return nil
 }
 
-// processLogsSection reads information from the logs section in order to build index information in a new object.
+// processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
 	logsBuf := make([]logs.Record, 1024)
 	type logInfo struct {
