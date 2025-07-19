@@ -446,3 +446,49 @@ storage_config:
 
 ```
 
+
+## 18-OCI-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by Oracle Cloud Infrastructure Object Storage.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+  storage:
+    object_store:
+      oci:
+        provider: oke-workload-identity # Other credential providers: default, raw, instance-principal
+        bucket: replace_by_your_bucket_name
+        region: replace_by_your_region
+        # See https://github.com/thanos-io/objstore/blob/main/README.md#oracle-cloud-infrastructure-object-storage
+        # for more information on these settings
+schema_config:
+  configs:
+  - from: "2025-07-01"
+    store: tsdb
+    object_store: oci
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+
+```
+
