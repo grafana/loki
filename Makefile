@@ -276,7 +276,7 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
 endif
 endif
 ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
-PROMTAIL_GO_TAGS = promtail_journal_enabled slicelabels
+PROMTAIL_GO_TAGS = promtail_journal_enabled,slicelabels
 endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
 promtail: clients/cmd/promtail/promtail ## build promtail executable
