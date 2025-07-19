@@ -112,6 +112,29 @@ src/
    npm run lint
    ```
 
+## Feature Flags
+
+The UI supports feature flags to control experimental features. In development:
+
+- Copy `.env.development` to `.env.local` to customize feature flags
+- Set `VITE_ENABLE_GOLDFISH=true` to enable the Goldfish query comparison feature
+- Set `VITE_MOCK_FEATURES=true` to use local overrides without a backend
+
+In production, feature flags are controlled by Loki configuration:
+
+```yaml
+ui:
+  enabled: true
+  goldfish:
+    enable: true  # Enable Goldfish feature
+    cloudsql_user: user
+    cloudsql_host: host
+    cloudsql_port: 3306
+    cloudsql_database: database
+    max_connections: 10
+    max_idle_time: 300
+```
+
 ## Contributing
 
 1. Follow the folder structure

@@ -146,6 +146,35 @@ ui:
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
 
+  goldfish:
+    # Enable the Goldfish query comparison feature.
+    # CLI flag: -ui.goldfish.enable
+    [enable: <boolean> | default = false]
+
+    # CloudSQL username for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-user
+    [cloudsql_user: <string> | default = ""]
+
+    # CloudSQL host for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-host
+    [cloudsql_host: <string> | default = "127.0.0.1"]
+
+    # CloudSQL port for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-port
+    [cloudsql_port: <int> | default = 3306]
+
+    # CloudSQL database name for Goldfish.
+    # CLI flag: -ui.goldfish.cloudsql-database
+    [cloudsql_database: <string> | default = "goldfish"]
+
+    # Maximum number of database connections for Goldfish.
+    # CLI flag: -ui.goldfish.max-connections
+    [max_connections: <int> | default = 10]
+
+    # Maximum idle time for database connections in seconds.
+    # CLI flag: -ui.goldfish.max-idle-time
+    [max_idle_time: <int> | default = 300]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
