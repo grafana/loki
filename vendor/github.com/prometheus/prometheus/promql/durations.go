@@ -22,15 +22,13 @@ import (
 )
 
 // durationVisitor is a visitor that visits a duration expression and calculates the duration.
-type durationVisitor struct {
-	step time.Duration
-}
+type durationVisitor struct{}
 
 func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visitor, error) {
 	switch n := node.(type) {
 	case *parser.VectorSelector:
 		if n.OriginalOffsetExpr != nil {
-			duration, err := v.calculateDuration(n.OriginalOffsetExpr, true)
+			duration, err := calculateDuration(n.OriginalOffsetExpr, true)
 			if err != nil {
 				return nil, err
 			}
@@ -38,7 +36,7 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 		}
 	case *parser.MatrixSelector:
 		if n.RangeExpr != nil {
-			duration, err := v.calculateDuration(n.RangeExpr, false)
+			duration, err := calculateDuration(n.RangeExpr, false)
 			if err != nil {
 				return nil, err
 			}
@@ -46,21 +44,21 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 		}
 	case *parser.SubqueryExpr:
 		if n.OriginalOffsetExpr != nil {
-			duration, err := v.calculateDuration(n.OriginalOffsetExpr, true)
+			duration, err := calculateDuration(n.OriginalOffsetExpr, true)
 			if err != nil {
 				return nil, err
 			}
 			n.OriginalOffset = duration
 		}
 		if n.StepExpr != nil {
-			duration, err := v.calculateDuration(n.StepExpr, false)
+			duration, err := calculateDuration(n.StepExpr, false)
 			if err != nil {
 				return nil, err
 			}
 			n.Step = duration
 		}
 		if n.RangeExpr != nil {
-			duration, err := v.calculateDuration(n.RangeExpr, false)
+			duration, err := calculateDuration(n.RangeExpr, false)
 			if err != nil {
 				return nil, err
 			}
@@ -71,8 +69,8 @@ func (v *durationVisitor) Visit(node parser.Node, _ []parser.Node) (parser.Visit
 }
 
 // calculateDuration computes the duration from a duration expression.
-func (v *durationVisitor) calculateDuration(expr parser.Expr, allowedNegative bool) (time.Duration, error) {
-	duration, err := v.evaluateDurationExpr(expr)
+func calculateDuration(expr parser.Expr, allowedNegative bool) (time.Duration, error) {
+	duration, err := evaluateDurationExpr(expr)
 	if err != nil {
 		return 0, err
 	}
@@ -86,7 +84,7 @@ func (v *durationVisitor) calculateDuration(expr parser.Expr, allowedNegative bo
 }
 
 // evaluateDurationExpr recursively evaluates a duration expression to a float64 value.
-func (v *durationVisitor) evaluateDurationExpr(expr parser.Expr) (float64, error) {
+func evaluateDurationExpr(expr parser.Expr) (float64, error) {
 	switch n := expr.(type) {
 	case *parser.NumberLiteral:
 		return n.Val, nil
@@ -95,31 +93,19 @@ func (v *durationVisitor) evaluateDurationExpr(expr parser.Expr) (float64, error
 		var err error
 
 		if n.LHS != nil {
-			lhs, err = v.evaluateDurationExpr(n.LHS)
+			lhs, err = evaluateDurationExpr(n.LHS)
 			if err != nil {
 				return 0, err
 			}
 		}
 
-		if n.RHS != nil {
-			rhs, err = v.evaluateDurationExpr(n.RHS)
-			if err != nil {
-				return 0, err
-			}
+		rhs, err = evaluateDurationExpr(n.RHS)
+		if err != nil {
+			return 0, err
 		}
 
 		switch n.Op {
-		case parser.STEP:
-			return float64(v.step.Seconds()), nil
-		case parser.MIN:
-			return math.Min(lhs, rhs), nil
-		case parser.MAX:
-			return math.Max(lhs, rhs), nil
 		case parser.ADD:
-			if n.LHS == nil {
-				// Unary positive duration expression.
-				return rhs, nil
-			}
 			return lhs + rhs, nil
 		case parser.SUB:
 			if n.LHS == nil {
