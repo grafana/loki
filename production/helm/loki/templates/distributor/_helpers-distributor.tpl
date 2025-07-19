@@ -11,6 +11,8 @@ distributor common labels
 {{- define "loki.distributorLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: distributor
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
