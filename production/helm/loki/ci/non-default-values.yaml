@@ -36,14 +36,25 @@ queryFrontend:
   replicas: 1
 queryScheduler:
   replicas: 1
-lokiCanary:
-  kind: Deployment
-resultsCache:
+chunksCache:
+  suffix: "l1"
+  enabled: true
+  allocatedMemory: 128
   persistence:
     labels:
       foo: bar
       baz: qux
-chunksCache:
+  l2:
+    enabled: true
+    allocatedMemory: 128
+    persistence:
+      labels:
+        foo: bar
+        baz: qux
+lokiCanary:
+  kind: Deployment
+resultsCache:
+  allocatedMemory: 128
   persistence:
     labels:
       foo: bar
