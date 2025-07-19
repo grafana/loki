@@ -85,6 +85,7 @@ const (
 	AMXTILE                              // Tile architecture
 	AMXTF32                              // Tile architecture
 	AMXCOMPLEX                           // Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile
+	AMXTRANSPOSE                         // Tile multiply where the first operand is transposed
 	APX_F                                // Intel APX
 	AVX                                  // AVX functions
 	AVX10                                // If set the Intel AVX10 Converged Vector ISA is supported
@@ -222,6 +223,8 @@ const (
 	SHA                                  // Intel SHA Extensions
 	SME                                  // AMD Secure Memory Encryption supported
 	SME_COHERENT                         // AMD Hardware cache coherency across encryption domains enforced
+	SM3_X86                              // SM3 instructions
+	SM4_X86                              // SM4 instructions
 	SPEC_CTRL_SSBD                       // Speculative Store Bypass Disable
 	SRBDS_CTRL                           // SRBDS mitigation MSR available
 	SRSO_MSR_FIX                         // Indicates that software may use MSR BP_CFG[BpSpecReduce] to mitigate SRSO.
@@ -283,7 +286,7 @@ const (
 	CRC32    // CRC32/CRC32C instructions
 	DCPOP    // Data cache clean to Point of Persistence (DC CVAP)
 	EVTSTRM  // Generic timer
-	FCMA     // Floatin point complex number addition and multiplication
+	FCMA     // Floating point complex number addition and multiplication
 	FHM      // FMLAL and FMLSL instructions
 	FP       // Single-precision and double-precision floating point
 	FPHP     // Half-precision floating point
@@ -878,7 +881,12 @@ func physicalCores() int {
 	v, _ := vendorID()
 	switch v {
 	case Intel:
-		return logicalCores() / threadsPerCore()
+		lc := logicalCores()
+		tpc := threadsPerCore()
+		if lc > 0 && tpc > 0 {
+			return lc / tpc
+		}
+		return 0
 	case AMD, Hygon:
 		lc := logicalCores()
 		tpc := threadsPerCore()
@@ -1279,6 +1287,8 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EAX
 		eax1, _, _, edx1 := cpuidex(7, 1)
 		fs.setIf(fs.inSet(AVX) && eax1&(1<<4) != 0, AVXVNNI)
+		fs.setIf(eax1&(1<<1) != 0, SM3_X86)
+		fs.setIf(eax1&(1<<2) != 0, SM4_X86)
 		fs.setIf(eax1&(1<<7) != 0, CMPCCXADD)
 		fs.setIf(eax1&(1<<10) != 0, MOVSB_ZL)
 		fs.setIf(eax1&(1<<11) != 0, STOSB_SHORT)
@@ -1290,6 +1300,7 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EDX
 		fs.setIf(edx1&(1<<4) != 0, AVXVNNIINT8)
 		fs.setIf(edx1&(1<<5) != 0, AVXNECONVERT)
+		fs.setIf(edx1&(1<<6) != 0, AMXTRANSPOSE)
 		fs.setIf(edx1&(1<<7) != 0, AMXTF32)
 		fs.setIf(edx1&(1<<8) != 0, AMXCOMPLEX)
 		fs.setIf(edx1&(1<<10) != 0, AVXVNNIINT16)
