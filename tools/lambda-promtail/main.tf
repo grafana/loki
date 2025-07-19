@@ -204,6 +204,7 @@ resource "aws_lambda_function" "this" {
       BEARER_TOKEN             = var.bearer_token
       KEEP_STREAM              = var.keep_stream
       BATCH_SIZE               = var.batch_size
+      RETRY_COUNT              = var.retry_count
       EXTRA_LABELS             = var.extra_labels
       DROP_LABELS              = var.drop_labels
       OMIT_EXTRA_LABELS_PREFIX = var.omit_extra_labels_prefix ? "true" : "false"
