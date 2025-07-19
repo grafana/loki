@@ -66,36 +66,13 @@ type Desc struct {
 	err error
 }
 
-// NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
-// and will be reported on registration time. variableLabels and constLabels can
-// be nil if no such labels should be set. fqName must not be empty.
-//
-// variableLabels only contain the label names. Their label values are variable
-// and therefore not part of the Desc. (They are managed within the Metric.)
-//
-// For constLabels, the label values are constant. Therefore, they are fully
-// specified in the Desc. See the Collector example for a usage pattern.
-func NewDesc(fqName, help string, variableLabels []string, constLabels Labels) *Desc {
-	return V2.NewDesc(fqName, help, UnconstrainedLabels(variableLabels), constLabels)
-}
-
-// NewDesc allocates and initializes a new Desc. Errors are recorded in the Desc
-// and will be reported on registration time. variableLabels and constLabels can
-// be nil if no such labels should be set. fqName must not be empty.
-//
-// variableLabels only contain the label names and normalization functions. Their
-// label values are variable and therefore not part of the Desc. (They are managed
-// within the Metric.)
-//
-// For constLabels, the label values are constant. Therefore, they are fully
-// specified in the Desc. See the Collector example for a usage pattern.
-func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, constLabels Labels) *Desc {
+func newDesc(fqName, help string, variableLabels ConstrainableLabels, constLabels Labels, scheme model.ValidationScheme) *Desc {
 	d := &Desc{
 		fqName:         fqName,
 		help:           help,
 		variableLabels: variableLabels.compile(),
 	}
-	if !model.IsValidMetricName(model.LabelValue(fqName)) {
+	if !isValidMetricName(model.LabelValue(fqName), scheme) {
 		d.err = fmt.Errorf("%q is not a valid metric name", fqName)
 		return d
 	}
@@ -107,7 +84,7 @@ func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, const
 	labelNameSet := map[string]struct{}{}
 	// First add only the const label names and sort them...
 	for labelName := range constLabels {
-		if !checkLabelName(labelName) {
+		if !checkLabelName(labelName, scheme) {
 			d.err = fmt.Errorf("%q is not a valid label name for metric %q", labelName, fqName)
 			return d
 		}
@@ -129,7 +106,7 @@ func (v2) NewDesc(fqName, help string, variableLabels ConstrainableLabels, const
 	// cannot be in a regular label name. That prevents matching the label
 	// dimension with a different mix between preset and variable labels.
 	for _, label := range d.variableLabels.names {
-		if !checkLabelName(label) {
+		if !checkLabelName(label, scheme) {
 			d.err = fmt.Errorf("%q is not a valid label name for metric %q", label, fqName)
 			return d
 		}

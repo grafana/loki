@@ -121,6 +121,8 @@ type Client struct {
 
 	writeProtoMsg    config.RemoteWriteProtoMsg
 	writeCompression compression.Type // Not exposed by ClientConfig for now.
+
+	validationScheme model.ValidationScheme
 }
 
 // ClientConfig configures a client.
@@ -136,6 +138,8 @@ type ClientConfig struct {
 	WriteProtoMsg    config.RemoteWriteProtoMsg
 	ChunkedReadLimit uint64
 	RoundRobinDNS    bool
+	// ValidationScheme for metric and label names. Defaults to model.UTF8Validation.
+	ValidationScheme model.ValidationScheme
 }
 
 // ReadClient will request the STREAMED_XOR_CHUNKS method of remote read but can
@@ -157,6 +161,9 @@ func NewReadClient(name string, conf *ClientConfig, optFuncs ...config_util.HTTP
 	}
 	httpClient.Transport = otelhttp.NewTransport(t)
 
+	if conf.ValidationScheme == model.UnsetValidation {
+		conf.ValidationScheme = model.UTF8Validation
+	}
 	return &Client{
 		remoteName:          name,
 		urlString:           conf.URL.String(),
@@ -166,6 +173,7 @@ func NewReadClient(name string, conf *ClientConfig, optFuncs ...config_util.HTTP
 		readQueries:         remoteReadQueries.WithLabelValues(name, conf.URL.String()),
 		readQueriesTotal:    remoteReadQueriesTotal.MustCurryWith(prometheus.Labels{remoteName: name, endpoint: conf.URL.String()}),
 		readQueriesDuration: remoteReadQueryDuration.MustCurryWith(prometheus.Labels{remoteName: name, endpoint: conf.URL.String()}),
+		validationScheme:    conf.ValidationScheme,
 	}, nil
 }
 
@@ -446,5 +454,5 @@ func (c *Client) handleSampledResponse(req *prompb.ReadRequest, httpResp *http.R
 	// This client does not batch queries so there's always only 1 result.
 	res := resp.Results[0]
 
-	return FromQueryResult(sortSeries, res), nil
+	return FromQueryResult(sortSeries, res, WithValidationScheme(c.validationScheme)), nil
 }

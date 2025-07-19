@@ -104,7 +104,7 @@ func Load(s string, logger *slog.Logger) (*Config, error) {
 	}
 
 	switch cfg.OTLPConfig.TranslationStrategy {
-	case UnderscoreEscapingWithSuffixes, UnderscoreEscapingWithoutSuffixes:
+	case UnderscoreEscapingWithSuffixes:
 	case "":
 	case NoTranslation, NoUTF8EscapingWithSuffixes:
 		if cfg.GlobalConfig.MetricNameValidationScheme == model.LegacyValidation {
@@ -151,9 +151,10 @@ func LoadFile(filename string, agentMode bool, logger *slog.Logger) (*Config, er
 var (
 	// DefaultConfig is the default top-level configuration.
 	DefaultConfig = Config{
-		GlobalConfig: DefaultGlobalConfig,
-		Runtime:      DefaultRuntimeConfig,
-		OTLPConfig:   DefaultOTLPConfig,
+		GlobalConfig:   DefaultGlobalConfig,
+		Runtime:        DefaultRuntimeConfig,
+		AlertingConfig: DefaultAlertingConfig,
+		OTLPConfig:     DefaultOTLPConfig,
 	}
 
 	// DefaultGlobalConfig is the default global configuration.
@@ -174,6 +175,9 @@ var (
 	DefaultRuntimeConfig = RuntimeConfig{
 		// Go runtime tuning.
 		GoGC: getGoGC(),
+	}
+	DefaultAlertingConfig = AlertingConfig{
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
 	// DefaultScrapeConfig is the default scrape configuration. Users of this
@@ -205,11 +209,12 @@ var (
 
 	// DefaultRemoteWriteConfig is the default remote write configuration.
 	DefaultRemoteWriteConfig = RemoteWriteConfig{
-		RemoteTimeout:    model.Duration(30 * time.Second),
-		ProtobufMessage:  RemoteWriteProtoMsgV1,
-		QueueConfig:      DefaultQueueConfig,
-		MetadataConfig:   DefaultMetadataConfig,
-		HTTPClientConfig: DefaultRemoteWriteHTTPClientConfig,
+		RemoteTimeout:              model.Duration(30 * time.Second),
+		ProtobufMessage:            RemoteWriteProtoMsgV1,
+		QueueConfig:                DefaultQueueConfig,
+		MetadataConfig:             DefaultMetadataConfig,
+		HTTPClientConfig:           DefaultRemoteWriteHTTPClientConfig,
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
 	// DefaultQueueConfig is the default remote queue configuration.
@@ -240,10 +245,11 @@ var (
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
 	DefaultRemoteReadConfig = RemoteReadConfig{
-		RemoteTimeout:        model.Duration(1 * time.Minute),
-		ChunkedReadLimit:     DefaultChunkedReadLimit,
-		HTTPClientConfig:     config.DefaultHTTPClientConfig,
-		FilterExternalLabels: true,
+		RemoteTimeout:              model.Duration(1 * time.Minute),
+		ChunkedReadLimit:           DefaultChunkedReadLimit,
+		HTTPClientConfig:           config.DefaultHTTPClientConfig,
+		FilterExternalLabels:       true,
+		MetricNameValidationScheme: model.UTF8Validation,
 	}
 
 	// DefaultStorageConfig is the default TSDB/Exemplar storage configuration.
@@ -382,6 +388,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		c.GlobalConfig = DefaultGlobalConfig
 	}
 
+	if c.GlobalConfig.MetricNameValidationScheme == model.UnsetValidation {
+		c.GlobalConfig.MetricNameValidationScheme = model.UTF8Validation
+	}
+
 	// If a runtime block was open but empty the default runtime config is overwritten.
 	// We have to restore it here.
 	if c.Runtime.isZero() {
@@ -417,6 +427,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if rwcfg == nil {
 			return errors.New("empty or null remote write config section")
 		}
+		rwcfg.MetricNameValidationScheme = c.GlobalConfig.MetricNameValidationScheme
+		if err := rwcfg.Validate(); err != nil {
+			return err
+		}
 		// Skip empty names, we fill their name with their config hash in remote write code.
 		if _, ok := rwNames[rwcfg.Name]; ok && rwcfg.Name != "" {
 			return fmt.Errorf("found multiple remote write configs with job name %q", rwcfg.Name)
@@ -433,6 +447,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return fmt.Errorf("found multiple remote read configs with job name %q", rrcfg.Name)
 		}
 		rrNames[rrcfg.Name] = struct{}{}
+	}
+	c.AlertingConfig.MetricNameValidationScheme = c.GlobalConfig.MetricNameValidationScheme
+	if err := c.AlertingConfig.Validate(); err != nil {
+		return errors.New("invalid alerting config: " + err.Error())
 	}
 	return nil
 }
@@ -596,7 +614,7 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if err := gc.ExternalLabels.Validate(func(l labels.Label) error {
-		if !model.LabelName(l.Name).IsValid() {
+		if !model.LabelName(l.Name).IsValid(c.MetricNameValidationScheme) {
 			return fmt.Errorf("%q is not a valid label name", l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
@@ -792,24 +810,6 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	// Check for users putting URLs in target groups.
-	if len(c.RelabelConfigs) == 0 {
-		if err := checkStaticTargets(c.ServiceDiscoveryConfigs); err != nil {
-			return err
-		}
-	}
-
-	for _, rlcfg := range c.RelabelConfigs {
-		if rlcfg == nil {
-			return errors.New("empty or null target relabeling rule in scrape config")
-		}
-	}
-	for _, rlcfg := range c.MetricRelabelConfigs {
-		if rlcfg == nil {
-			return errors.New("empty or null metric relabeling rule in scrape config")
-		}
-	}
-
 	return nil
 }
 
@@ -871,11 +871,6 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 		}
 	}
 
-	//nolint:staticcheck
-	if model.NameValidationScheme != model.UTF8Validation {
-		return errors.New("model.NameValidationScheme must be set to UTF8")
-	}
-
 	switch globalConfig.MetricNameValidationScheme {
 	case model.UnsetValidation:
 		globalConfig.MetricNameValidationScheme = model.UTF8Validation
@@ -927,6 +922,32 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	if c.AlwaysScrapeClassicHistograms == nil {
 		global := globalConfig.AlwaysScrapeClassicHistograms
 		c.AlwaysScrapeClassicHistograms = &global
+	}
+
+	// Check for users putting URLs in target groups.
+	if len(c.RelabelConfigs) == 0 {
+		if err := checkStaticTargets(c.ServiceDiscoveryConfigs); err != nil {
+			return err
+		}
+	}
+
+	for _, rlcfg := range c.RelabelConfigs {
+		if rlcfg == nil {
+			return errors.New("empty or null target relabeling rule in scrape config")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return errors.New("invalid relabel config: " + err.Error())
+		}
+	}
+	for _, rlcfg := range c.MetricRelabelConfigs {
+		if rlcfg == nil {
+			return errors.New("empty or null metric relabeling rule in scrape config")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return errors.New("invalid metric relabel config: " + err.Error())
+		}
 	}
 
 	return nil
@@ -1077,8 +1098,9 @@ type ExemplarsConfig struct {
 
 // AlertingConfig configures alerting and alertmanager related configs.
 type AlertingConfig struct {
-	AlertRelabelConfigs []*relabel.Config   `yaml:"alert_relabel_configs,omitempty"`
-	AlertmanagerConfigs AlertmanagerConfigs `yaml:"alertmanagers,omitempty"`
+	AlertRelabelConfigs        []*relabel.Config      `yaml:"alert_relabel_configs,omitempty"`
+	AlertmanagerConfigs        AlertmanagerConfigs    `yaml:"alertmanagers,omitempty"`
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1097,10 +1119,26 @@ func (c *AlertingConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (c *AlertingConfig) Validate() error {
+	for _, amcfg := range c.AlertmanagerConfigs {
+		if amcfg == nil {
+			return errors.New("empty or null alert manager config")
+		}
+		amcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := amcfg.Validate(); err != nil {
+			return err
+		}
+	}
 	for _, rlcfg := range c.AlertRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null alert relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1174,6 +1212,9 @@ type AlertmanagerConfig struct {
 	RelabelConfigs []*relabel.Config `yaml:"relabel_configs,omitempty"`
 	// Relabel alerts before sending to the specific alertmanager.
 	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty"`
+
+	// MetricNameValidationScheme configures the metric/label name validation scheme.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1188,7 +1229,10 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	if err := discovery.UnmarshalYAMLWithInlineConfigs(c, unmarshal); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (c *AlertmanagerConfig) Validate() error {
 	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
 	// Thus we just do its validation here.
@@ -1210,15 +1254,27 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 		}
 	}
 
+	if c.MetricNameValidationScheme == model.UnsetValidation {
+		return errors.New("MetricNameValidationScheme must be set in Alertmanager configuration")
+	}
+
 	for _, rlcfg := range c.RelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null Alertmanager target relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid relabel config: %w", err)
 		}
 	}
 
 	for _, rlcfg := range c.AlertRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null Alertmanager alert relabeling rule")
+		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid alert relabel config: %w", err)
 		}
 	}
 
@@ -1322,6 +1378,8 @@ type RemoteWriteConfig struct {
 	SigV4Config      *sigv4.SigV4Config      `yaml:"sigv4,omitempty"`
 	AzureADConfig    *azuread.AzureADConfig  `yaml:"azuread,omitempty"`
 	GoogleIAMConfig  *googleiam.Config       `yaml:"google_iam,omitempty"`
+
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1336,14 +1394,26 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *RemoteWriteConfig) Validate() error {
 	if c.URL == nil {
 		return errors.New("url for remote_write is empty")
+	}
+	if c.MetricNameValidationScheme == model.UnsetValidation {
+		return errors.New("MetricNameValidationScheme must be set in remote write configuration")
 	}
 	for _, rlcfg := range c.WriteRelabelConfigs {
 		if rlcfg == nil {
 			return errors.New("empty or null relabeling rule in remote write config")
 		}
+		rlcfg.MetricNameValidationScheme = c.MetricNameValidationScheme
+		if err := rlcfg.Validate(); err != nil {
+			return fmt.Errorf("invalid relabel config: %w", err)
+		}
 	}
+
 	if err := validateHeaders(c.Headers); err != nil {
 		return err
 	}
@@ -1354,7 +1424,7 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 
 	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
-	// Thus we just do its validation here.
+	// Thus, we just do its validation here.
 	if err := c.HTTPClientConfig.Validate(); err != nil {
 		return err
 	}
@@ -1477,6 +1547,9 @@ type RemoteReadConfig struct {
 
 	// Whether to use the external labels as selectors for the remote read endpoint.
 	FilterExternalLabels bool `yaml:"filter_external_labels,omitempty"`
+
+	// MetricNameValidationScheme configures the metric and label name validation scheme.
+	MetricNameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1534,67 +1607,30 @@ func getGoGC() int {
 type translationStrategyOption string
 
 var (
-	// NoUTF8EscapingWithSuffixes will accept metric/label names as they are. Unit
-	// and type suffixes may be added to metric names, according to certain rules.
+	// NoUTF8EscapingWithSuffixes will accept metric/label names as they are.
+	// Unit and type suffixes may be added to metric names, according to certain rules.
 	NoUTF8EscapingWithSuffixes translationStrategyOption = "NoUTF8EscapingWithSuffixes"
-	// UnderscoreEscapingWithSuffixes is the default option for translating OTLP
-	// to Prometheus. This option will translate metric name characters that are
-	// not alphanumerics/underscores/colons to underscores, and label name
-	// characters that are not alphanumerics/underscores to underscores. Unit and
-	// type suffixes may be appended to metric names, according to certain rules.
+	// UnderscoreEscapingWithSuffixes is the default option for translating OTLP to Prometheus.
+	// This option will translate metric name characters that are not alphanumerics/underscores/colons to underscores,
+	// and label name characters that are not alphanumerics/underscores to underscores.
+	// Unit and type suffixes may be appended to metric names, according to certain rules.
 	UnderscoreEscapingWithSuffixes translationStrategyOption = "UnderscoreEscapingWithSuffixes"
-	// UnderscoreEscapingWithoutSuffixes translates metric name characters that
-	// are not alphanumerics/underscores/colons to underscores, and label name
-	// characters that are not alphanumerics/underscores to underscores, but
-	// unlike UnderscoreEscapingWithSuffixes it does not append any suffixes to
-	// the names.
-	UnderscoreEscapingWithoutSuffixes translationStrategyOption = "UnderscoreEscapingWithoutSuffixes"
 	// NoTranslation (EXPERIMENTAL): disables all translation of incoming metric
-	// and label names. This offers a way for the OTLP users to use native metric
-	// names, reducing confusion.
+	// and label names. This offers a way for the OTLP users to use native metric names, reducing confusion.
 	//
 	// WARNING: This setting has significant known risks and limitations (see
-	// https://prometheus.io/docs/practices/naming/  for details): * Impaired UX
-	// when using PromQL in plain YAML (e.g. alerts, rules, dashboard, autoscaling
-	// configuration). * Series collisions which in the best case may result in
-	// OOO errors, in the worst case a silently malformed time series. For
-	// instance, you may end up in situation of ingesting `foo.bar` series with
-	// unit `seconds` and a separate series `foo.bar` with unit `milliseconds`.
+	// https://prometheus.io/docs/practices/naming/  for details):
+	// * Impaired UX when using PromQL in plain YAML (e.g. alerts, rules, dashboard, autoscaling configuration).
+	// * Series collisions which in the best case may result in OOO errors, in the worst case a silently malformed
+	// time series. For instance, you may end up in situation of ingesting `foo.bar` series with unit
+	// `seconds` and a separate series `foo.bar` with unit `milliseconds`.
 	//
-	// As a result, this setting is experimental and currently, should not be used
-	// in production systems.
+	// As a result, this setting is experimental and currently, should not be used in
+	// production systems.
 	//
-	// TODO(ArthurSens): Mention `type-and-unit-labels` feature
-	// (https://github.com/prometheus/proposals/pull/39) once released, as
-	// potential mitigation of the above risks.
+	// TODO(ArthurSens): Mention `type-and-unit-labels` feature (https://github.com/prometheus/proposals/pull/39) once released, as potential mitigation of the above risks.
 	NoTranslation translationStrategyOption = "NoTranslation"
 )
-
-// ShouldEscape returns true if the translation strategy requires that metric
-// names be escaped.
-func (o translationStrategyOption) ShouldEscape() bool {
-	switch o {
-	case UnderscoreEscapingWithSuffixes, UnderscoreEscapingWithoutSuffixes:
-		return true
-	case NoTranslation, NoUTF8EscapingWithSuffixes:
-		return false
-	default:
-		return false
-	}
-}
-
-// ShouldAddSuffixes returns a bool deciding whether the given translation
-// strategy should have suffixes added.
-func (o translationStrategyOption) ShouldAddSuffixes() bool {
-	switch o {
-	case UnderscoreEscapingWithSuffixes, NoUTF8EscapingWithSuffixes:
-		return true
-	case UnderscoreEscapingWithoutSuffixes, NoTranslation:
-		return false
-	default:
-		return false
-	}
-}
 
 // OTLPConfig is the configuration for writing to the OTLP endpoint.
 type OTLPConfig struct {

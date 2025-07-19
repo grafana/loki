@@ -16,10 +16,7 @@ package prometheus
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"unicode/utf8"
-
-	"github.com/prometheus/common/model"
 )
 
 // Labels represents a collection of label name -> value mappings. This type is
@@ -181,8 +178,4 @@ func validateLabelValues(vals []string, expectedNumberOfValues int) error {
 	}
 
 	return nil
-}
-
-func checkLabelName(l string) bool {
-	return model.LabelName(l).IsValid() && !strings.HasPrefix(l, reservedLabelPrefix)
 }

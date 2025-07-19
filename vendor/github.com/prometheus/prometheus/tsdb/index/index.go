@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+	"github.com/prometheus/prometheus/tsdb/hashcache"
 )
 
 const (
@@ -110,6 +111,12 @@ func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
 }
 
+type symbolCacheEntry struct {
+	index          uint32
+	lastValueIndex uint32
+	lastValue      string
+}
+
 type PostingsEncoder func(*encoding.Encbuf, []uint32) error
 
 type PostingsDecoder func(encoding.Decbuf) (int, Postings, error)
@@ -140,7 +147,7 @@ type Writer struct {
 	symbols     *Symbols
 	symbolFile  *fileutil.MmapFile
 	lastSymbol  string
-	symbolCache map[string]uint32 // From symbol to index in table.
+	symbolCache map[string]symbolCacheEntry
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
@@ -240,7 +247,7 @@ func NewWriterWithEncoder(ctx context.Context, fn string, encoder PostingsEncode
 		buf1: encoding.Encbuf{B: make([]byte, 0, 1<<22)},
 		buf2: encoding.Encbuf{B: make([]byte, 0, 1<<22)},
 
-		symbolCache:     make(map[string]uint32, 1<<16),
+		symbolCache:     make(map[string]symbolCacheEntry, 1<<8),
 		labelNames:      make(map[string]uint64, 1<<8),
 		crc32:           newCRC32(),
 		postingsEncoder: encoder,
@@ -472,16 +479,29 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	w.buf2.PutUvarint(lset.Len())
 
 	if err := lset.Validate(func(l labels.Label) error {
-		nameIndex, ok := w.symbolCache[l.Name]
+		var err error
+		cacheEntry, ok := w.symbolCache[l.Name]
+		nameIndex := cacheEntry.index
 		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", l.Name)
+			nameIndex, err = w.symbols.ReverseLookup(l.Name)
+			if err != nil {
+				return fmt.Errorf("symbol entry for %q does not exist, %w", l.Name, err)
+			}
 		}
 		w.labelNames[l.Name]++
 		w.buf2.PutUvarint32(nameIndex)
 
-		valueIndex, ok := w.symbolCache[l.Value]
-		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", l.Value)
+		valueIndex := cacheEntry.lastValueIndex
+		if !ok || cacheEntry.lastValue != l.Value {
+			valueIndex, err = w.symbols.ReverseLookup(l.Value)
+			if err != nil {
+				return fmt.Errorf("symbol entry for %q does not exist, %w", l.Value, err)
+			}
+			w.symbolCache[l.Name] = symbolCacheEntry{
+				index:          nameIndex,
+				lastValueIndex: valueIndex,
+				lastValue:      l.Value,
+			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
 		return nil
@@ -540,7 +560,6 @@ func (w *Writer) AddSymbol(sym string) error {
 		return fmt.Errorf("symbol %q out-of-order", sym)
 	}
 	w.lastSymbol = sym
-	w.symbolCache[sym] = uint32(w.numSymbols)
 	w.numSymbols++
 	w.buf1.Reset()
 	w.buf1.PutUvarintStr(sym)
@@ -610,10 +629,10 @@ func (w *Writer) writeLabelIndices() error {
 	values := []uint32{}
 	for d.Err() == nil && cnt > 0 {
 		cnt--
-		d.Uvarint()               // Keycount.
-		name := d.UvarintBytes()  // Label name.
-		value := d.UvarintBytes() // Label value.
-		d.Uvarint64()             // Offset.
+		d.Uvarint()                           // Keycount.
+		name := d.UvarintBytes()              // Label name.
+		value := yoloString(d.UvarintBytes()) // Label value.
+		d.Uvarint64()                         // Offset.
 		if len(name) == 0 {
 			continue // All index is ignored.
 		}
@@ -626,9 +645,9 @@ func (w *Writer) writeLabelIndices() error {
 			values = values[:0]
 		}
 		current = name
-		sid, ok := w.symbolCache[string(value)]
-		if !ok {
-			return fmt.Errorf("symbol entry for %q does not exist", string(value))
+		sid, err := w.symbols.ReverseLookup(value)
+		if err != nil {
+			return err
 		}
 		values = append(values, sid)
 	}
@@ -900,9 +919,9 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 		nameSymbols := map[uint32]string{}
 		for _, name := range batchNames {
-			sid, ok := w.symbolCache[name]
-			if !ok {
-				return fmt.Errorf("symbol entry for %q does not exist", name)
+			sid, err := w.symbols.ReverseLookup(name)
+			if err != nil {
+				return err
 			}
 			nameSymbols[sid] = name
 		}
@@ -939,9 +958,9 @@ func (w *Writer) writePostingsToTmpFiles() error {
 
 		for _, name := range batchNames {
 			// Write out postings for this label name.
-			sid, ok := w.symbolCache[name]
-			if !ok {
-				return fmt.Errorf("symbol entry for %q does not exist", name)
+			sid, err := w.symbols.ReverseLookup(name)
+			if err != nil {
+				return err
 			}
 			values := make([]uint32, 0, len(postings[sid]))
 			for v := range postings[sid] {
@@ -1091,6 +1110,10 @@ type StringIter interface {
 	Err() error
 }
 
+type ReaderCacheProvider interface {
+	SeriesHashCache() *hashcache.BlockSeriesHashCache
+}
+
 type Reader struct {
 	b   ByteSlice
 	toc *TOC
@@ -1112,6 +1135,9 @@ type Reader struct {
 	dec *Decoder
 
 	version int
+
+	// Provides a cache mapping series labels hash by series ID.
+	cacheProvider ReaderCacheProvider
 }
 
 type postingOffset struct {
@@ -1142,16 +1168,26 @@ func (b realByteSlice) Sub(start, end int) ByteSlice {
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice, decoder PostingsDecoder) (*Reader, error) {
-	return newReader(b, io.NopCloser(nil), decoder)
+	return newReader(b, io.NopCloser(nil), decoder, nil)
+}
+
+// NewReaderWithCache is like NewReader but allows to pass a cache provider.
+func NewReaderWithCache(b ByteSlice, decoder PostingsDecoder, cacheProvider ReaderCacheProvider) (*Reader, error) {
+	return newReader(b, io.NopCloser(nil), decoder, cacheProvider)
 }
 
 // NewFileReader returns a new index reader against the given index file.
 func NewFileReader(path string, decoder PostingsDecoder) (*Reader, error) {
+	return NewFileReaderWithOptions(path, decoder, nil)
+}
+
+// NewFileReaderWithOptions is like NewFileReader but allows to pass a cache provider.
+func NewFileReaderWithOptions(path string, decoder PostingsDecoder, cacheProvider ReaderCacheProvider) (*Reader, error) {
 	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(realByteSlice(f.Bytes()), f, decoder)
+	r, err := newReader(realByteSlice(f.Bytes()), f, decoder, cacheProvider)
 	if err != nil {
 		return nil, tsdb_errors.NewMulti(
 			err,
@@ -1162,12 +1198,13 @@ func NewFileReader(path string, decoder PostingsDecoder) (*Reader, error) {
 	return r, nil
 }
 
-func newReader(b ByteSlice, c io.Closer, postingsDecoder PostingsDecoder) (*Reader, error) {
+func newReader(b ByteSlice, c io.Closer, postingsDecoder PostingsDecoder, cacheProvider ReaderCacheProvider) (*Reader, error) {
 	r := &Reader{
-		b:        b,
-		c:        c,
-		postings: map[string][]postingOffset{},
-		st:       labels.NewSymbolTable(),
+		b:             b,
+		c:             c,
+		postings:      map[string][]postingOffset{},
+		cacheProvider: cacheProvider,
+		st:            labels.NewSymbolTable(),
 	}
 
 	// Verify header.
@@ -1856,17 +1893,41 @@ func (r *Reader) ShardedPostings(p Postings, shardIndex, shardCount uint64) Post
 		bufLbls = labels.ScratchBuilder{}
 	)
 
+	// Request the cache each time because the cache implementation requires
+	// that the cache reference is retained for a short period.
+	var seriesHashCache *hashcache.BlockSeriesHashCache
+	if r.cacheProvider != nil {
+		seriesHashCache = r.cacheProvider.SeriesHashCache()
+	}
+
 	for p.Next() {
 		id := p.At()
 
-		// Get the series labels (no chunks).
-		err := r.Series(id, &bufLbls, nil)
-		if err != nil {
-			return ErrPostings(fmt.Errorf("series %d not found", id))
+		var (
+			hash uint64
+			ok   bool
+		)
+
+		// Check if the hash is cached.
+		if seriesHashCache != nil {
+			hash, ok = seriesHashCache.Fetch(id)
+		}
+
+		if !ok {
+			// Get the series labels (no chunks).
+			err := r.Series(id, &bufLbls, nil)
+			if err != nil {
+				return ErrPostings(fmt.Errorf("series %d not found", id))
+			}
+
+			hash = labels.StableHash(bufLbls.Labels())
+			if seriesHashCache != nil {
+				seriesHashCache.Store(id, hash)
+			}
 		}
 
 		// Check if the series belong to the shard.
-		if labels.StableHash(bufLbls.Labels())%shardCount != shardIndex {
+		if hash%shardCount != shardIndex {
 			continue
 		}
 

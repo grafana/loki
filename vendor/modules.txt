@@ -640,6 +640,11 @@ github.com/davecgh/go-spew/spew
 # github.com/dennwc/varint v1.0.0
 ## explicit; go 1.12
 github.com/dennwc/varint
+# github.com/dgraph-io/ristretto v0.1.1
+## explicit; go 1.12
+github.com/dgraph-io/ristretto
+github.com/dgraph-io/ristretto/z
+github.com/dgraph-io/ristretto/z/simd
 # github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc
 ## explicit
 github.com/dgryski/go-metro
@@ -925,7 +930,7 @@ github.com/go-playground/validator/v10
 github.com/go-redsync/redsync/v4
 github.com/go-redsync/redsync/v4/redis
 github.com/go-redsync/redsync/v4/redis/goredis/v9
-# github.com/go-viper/mapstructure/v2 v2.2.1
+# github.com/go-viper/mapstructure/v2 v2.3.0
 ## explicit; go 1.18
 github.com/go-viper/mapstructure/v2
 github.com/go-viper/mapstructure/v2/internal/errors
@@ -984,6 +989,11 @@ github.com/golang-jwt/jwt/v4
 # github.com/golang-jwt/jwt/v5 v5.2.2
 ## explicit; go 1.18
 github.com/golang-jwt/jwt/v5
+# github.com/golang/glog v1.2.4
+## explicit; go 1.19
+github.com/golang/glog
+github.com/golang/glog/internal/logsink
+github.com/golang/glog/internal/stackdump
 # github.com/golang/protobuf v1.5.4
 ## explicit; go 1.17
 github.com/golang/protobuf/proto
@@ -1159,7 +1169,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
-# github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20250708083806-78f154f77d65
 ## explicit; go 1.23.0
 github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.5.1
@@ -1170,7 +1180,7 @@ github.com/grafana/otel-profiling-go
 github.com/grafana/pyroscope-go/godeltaprof
 github.com/grafana/pyroscope-go/godeltaprof/http/pprof
 github.com/grafana/pyroscope-go/godeltaprof/internal/pprof
-# github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
+# github.com/grafana/regexp v0.0.0-20240607082908-2cb410fa05da => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 ## explicit; go 1.21
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
@@ -1359,7 +1369,7 @@ github.com/knadh/koanf/maps
 # github.com/knadh/koanf/providers/confmap v1.0.0
 ## explicit; go 1.23.0
 github.com/knadh/koanf/providers/confmap
-# github.com/knadh/koanf/v2 v2.2.0
+# github.com/knadh/koanf/v2 v2.2.1
 ## explicit; go 1.23.0
 github.com/knadh/koanf/v2
 # github.com/kylelemons/godebug v1.1.0
@@ -1518,13 +1528,13 @@ github.com/oklog/ulid
 # github.com/oklog/ulid/v2 v2.1.1
 ## explicit; go 1.15
 github.com/oklog/ulid/v2
-# github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.128.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.129.0
 ## explicit; go 1.23.0
 github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity
-# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.128.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.129.0
 ## explicit; go 1.23.0
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil
-# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.128.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.129.0
 ## explicit; go 1.23.0
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/data
@@ -1545,7 +1555,7 @@ github.com/opencontainers/image-spec/specs-go/v1
 # github.com/opentracing-contrib/go-grpc v0.1.2
 ## explicit; go 1.23.8
 github.com/opentracing-contrib/go-grpc
-# github.com/opentracing-contrib/go-stdlib v1.1.0
+# github.com/opentracing-contrib/go-stdlib v1.0.0
 ## explicit; go 1.14
 github.com/opentracing-contrib/go-stdlib/nethttp
 # github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b
@@ -1625,12 +1635,12 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/prometheus/alertmanager v0.28.1
-## explicit; go 1.22.0
+# github.com/prometheus/alertmanager v0.28.1 => github.com/juliusmh/alertmanager v0.26.1-0.20250624114102-96969065f8d2
+## explicit; go 1.23.0
 github.com/prometheus/alertmanager/api/v2/models
 github.com/prometheus/alertmanager/pkg/modtimevfs
-# github.com/prometheus/client_golang v1.22.0
-## explicit; go 1.22
+# github.com/prometheus/client_golang v1.22.1-0.20250714112350-b3c02a766eb9
+## explicit; go 1.23.0
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil
@@ -1649,7 +1659,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
 # github.com/prometheus/client_model v0.6.2
 ## explicit; go 1.22.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
+# github.com/prometheus/common v0.65.1-0.20250714091050-c6ae72fb63e9
 ## explicit; go 1.23.0
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -1672,7 +1682,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.304.3-0.20250710152723-d2f1f4fb27af
+# github.com/prometheus/prometheus v0.304.3-0.20250710152723-d2f1f4fb27af => github.com/grafana/mimir-prometheus v1.8.2-0.20250716064140-3dcabdddf64d
 ## explicit; go 1.23.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -1723,6 +1733,7 @@ github.com/prometheus/prometheus/tsdb/encoding
 github.com/prometheus/prometheus/tsdb/errors
 github.com/prometheus/prometheus/tsdb/fileutil
 github.com/prometheus/prometheus/tsdb/goversion
+github.com/prometheus/prometheus/tsdb/hashcache
 github.com/prometheus/prometheus/tsdb/index
 github.com/prometheus/prometheus/tsdb/record
 github.com/prometheus/prometheus/tsdb/tombstones
@@ -2011,25 +2022,25 @@ go.opencensus.io/tag
 ## explicit; go 1.22.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/component v1.34.0
+# go.opentelemetry.io/collector/component v1.35.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/component
-# go.opentelemetry.io/collector/confmap v1.34.0
+# go.opentelemetry.io/collector/confmap v1.35.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/confmap
 go.opentelemetry.io/collector/confmap/internal/mapstructure
 go.opentelemetry.io/collector/confmap/internal/third_party/composehook
-# go.opentelemetry.io/collector/confmap/xconfmap v0.128.0
+# go.opentelemetry.io/collector/confmap/xconfmap v0.129.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/confmap/xconfmap
-# go.opentelemetry.io/collector/consumer v1.34.0
+# go.opentelemetry.io/collector/consumer v1.35.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/featuregate v1.34.0
+# go.opentelemetry.io/collector/featuregate v1.35.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/featuregate
-# go.opentelemetry.io/collector/internal/telemetry v0.128.0
+# go.opentelemetry.io/collector/internal/telemetry v0.129.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/internal/telemetry
 go.opentelemetry.io/collector/internal/telemetry/componentattribute
@@ -2055,11 +2066,11 @@ go.opentelemetry.io/collector/pdata/plog/plogotlp
 go.opentelemetry.io/collector/pdata/pmetric
 go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 go.opentelemetry.io/collector/pdata/ptrace
-# go.opentelemetry.io/collector/pipeline v0.128.0
+# go.opentelemetry.io/collector/pipeline v0.129.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.34.0
+# go.opentelemetry.io/collector/processor v1.35.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/processor
 go.opentelemetry.io/collector/processor/internal
@@ -2069,7 +2080,7 @@ go.opentelemetry.io/collector/semconv/v1.6.1
 # go.opentelemetry.io/contrib/bridges/otelzap v0.11.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/contrib/bridges/otelzap
-# go.opentelemetry.io/contrib/bridges/prometheus v0.61.0
+# go.opentelemetry.io/contrib/bridges/prometheus v0.61.0 => github.com/aknuds1/opentelemetry-go-contrib/bridges/prometheus v0.0.0-20250716061915-e4a04e1efdd8
 ## explicit; go 1.23.0
 go.opentelemetry.io/contrib/bridges/prometheus
 # go.opentelemetry.io/contrib/detectors/gcp v1.36.0
@@ -2100,7 +2111,7 @@ go.opentelemetry.io/contrib/propagators/jaeger
 ## explicit; go 1.23.0
 go.opentelemetry.io/contrib/samplers/jaegerremote
 go.opentelemetry.io/contrib/samplers/jaegerremote/internal/utils
-# go.opentelemetry.io/otel v1.37.0
+# go.opentelemetry.io/otel v1.37.0 => github.com/aknuds1/opentelemetry-go v0.0.0-20250714105753-6d10dabef4d5
 ## explicit; go 1.23.0
 go.opentelemetry.io/otel
 go.opentelemetry.io/otel/attribute
@@ -3020,6 +3031,10 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
-# github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250210100727-533688b5600d
+# github.com/prometheus/alertmanager => github.com/juliusmh/alertmanager v0.26.1-0.20250624114102-96969065f8d2
+# github.com/prometheus/prometheus => github.com/grafana/mimir-prometheus v1.8.2-0.20250716064140-3dcabdddf64d
+# opentelemetry.io/otel/exporters/prometheus => github.com/aknuds1/opentelemetry-go/exporters/prometheus v0.0.0-20250714105753-6d10dabef4d5
+# go.opentelemetry.io/otel => github.com/aknuds1/opentelemetry-go v0.0.0-20250714105753-6d10dabef4d5
+# go.opentelemetry.io/contrib/bridges/prometheus => github.com/aknuds1/opentelemetry-go-contrib/bridges/prometheus v0.0.0-20250716061915-e4a04e1efdd8

@@ -32,6 +32,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -75,7 +76,7 @@ func counterAddNonZero(v *prometheus.CounterVec, value float64, lvs ...string) {
 	}
 }
 
-func (h *Head) loadWAL(r *wlog.Reader, syms *labels.SymbolTable, multiRef map[chunks.HeadSeriesRef]chunks.HeadSeriesRef, mmappedChunks, oooMmappedChunks map[chunks.HeadSeriesRef][]*mmappedChunk, lastSegment int) (err error) {
+func (h *Head) loadWAL(r *wlog.Reader, syms *labels.SymbolTable, multiRef map[chunks.HeadSeriesRef]chunks.HeadSeriesRef, globalMissingSeriesRefs *seriesRefSet, mmappedChunks, oooMmappedChunks map[chunks.HeadSeriesRef][]*mmappedChunk, lastSegment int) (err error) {
 	// Track number of missing series records that were referenced by other records.
 	unknownSeriesRefs := &seriesRefSet{refs: make(map[chunks.HeadSeriesRef]struct{}), mtx: sync.Mutex{}}
 	// Track number of different records that referenced a series we don't know about
@@ -446,6 +447,35 @@ Outer:
 		return fmt.Errorf("read records: %w", err)
 	}
 
+	// @patryk: Check if any of the series reported as missing in prior segments now exist.
+	// This is a mimir-only change and currently purely diagnostic to gauge the size of the problem, and whether it
+	// enapsulates the whole of the instances of unknown series references we see.
+	foundSeriesForPriorSegments := 0
+	toDelete := []chunks.HeadSeriesRef{}
+	globalMissingSeriesRefs.mtx.Lock()
+	for walRef := range globalMissingSeriesRefs.refs {
+		headRef := walRef
+		// The series might be a duplicate, so use the original series ref.
+		if mr, ok := multiRef[walRef]; ok {
+			headRef = mr
+		}
+		if h.series.getByID(headRef) != nil {
+			h.logger.Warn("Series reported as missing in prior segment but was found in this WAL segment", "walRef", walRef, "headRef", headRef, "segment", r.Segment())
+			foundSeriesForPriorSegments++
+			toDelete = append(toDelete, walRef)
+		}
+	}
+	for _, walRef := range toDelete {
+		delete(globalMissingSeriesRefs.refs, walRef)
+	}
+	globalMissingSeriesRefs.mtx.Unlock()
+
+	counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(foundSeriesForPriorSegments), "found_series_for_prior_segments")
+
+	if foundSeriesForPriorSegments > 0 {
+		h.logger.Warn("Series reported as missing in prior segments but were found in this WAL segment", "count", foundSeriesForPriorSegments, "segment", r.Segment())
+	}
+
 	if unknownSampleRefs.Load()+unknownExemplarRefs.Load()+unknownHistogramRefs.Load()+unknownMetadataRefs.Load()+unknownTombstoneRefs.Load() > 0 {
 		h.logger.Warn(
 			"Unknown series references",
@@ -455,9 +485,39 @@ Outer:
 			"histograms", unknownHistogramRefs.Load(),
 			"metadata", unknownMetadataRefs.Load(),
 			"tombstones", unknownTombstoneRefs.Load(),
+			"segment", r.Segment(),
 		)
 
-		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownSeriesRefs.count()), "series")
+		// @patryk: Check if any of the series reported as missing were actually found later in the WAL segment.
+		// This is a mimir-only change and currently purely diagnostic to gauge the size of the problem, and whether it
+		// enapsulates the whole of the instances of unknown series references we see.
+		foundSeries := 0
+		toDelete := []chunks.HeadSeriesRef{}
+		unknownSeriesRefs.mtx.Lock()
+		for walRef := range unknownSeriesRefs.refs {
+			headRef := walRef
+			// The series might be a duplicate, so use the original series ref.
+			if mr, ok := multiRef[walRef]; ok {
+				headRef = mr
+			}
+			if h.series.getByID(headRef) != nil {
+				h.logger.Warn("Series reported as missing but was found later in the WAL segment", "walRef", walRef, "headRef", headRef, "segment", r.Segment())
+				foundSeries++
+				toDelete = append(toDelete, walRef)
+			}
+		}
+		for _, walRef := range toDelete {
+			delete(unknownSeriesRefs.refs, walRef)
+		}
+		unknownSeriesRefs.mtx.Unlock()
+
+		// Merge missing series refs in this segment into the global list.
+		globalMissingSeriesRefs.merge(unknownSeriesRefs.refs)
+
+		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(foundSeries), "found_series")
+		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownSeriesRefs.count()), "truly_missing_series")
+
+		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownSeriesRefs.count()+foundSeries), "series")
 		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownSampleRefs.Load()), "samples")
 		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownExemplarRefs.Load()), "exemplars")
 		counterAddNonZero(h.metrics.walReplayUnknownRefsTotal, float64(unknownHistogramRefs.Load()), "histograms")
@@ -536,6 +596,8 @@ func (h *Head) resetSeriesWithMMappedChunks(mSeries *memSeries, mmc, oooMmc []*m
 	}
 
 	// Any samples replayed till now would already be compacted. Resetting the head chunk.
+	// We do not reset oooHeadChunk because that is being replayed from a different WAL
+	// and has not been replayed here.
 	mSeries.nextAt = 0
 	mSeries.headChunks = nil
 	mSeries.app = nil
@@ -626,6 +688,9 @@ func (wp *walSubsetProcessor) processWALSamples(h *Head, mmappedChunks, oooMmapp
 			}
 			if s.T <= ms.mmMaxTime {
 				continue
+			}
+			if math.Float64bits(s.V) == value.QuietZeroNaN {
+				s.V = 0
 			}
 			if _, chunkCreated := ms.append(s.T, s.V, 0, appendChunkOpts); chunkCreated {
 				h.metrics.chunksCreated.Inc()
@@ -1035,6 +1100,9 @@ func (wp *wblSubsetProcessor) processWBLSamples(h *Head) (map[chunks.HeadSeriesR
 			if ms == nil {
 				unknownSampleRefs++
 				missingSeries[s.Ref] = struct{}{}
+				continue
+			}
+			if math.Float64bits(s.V) == value.QuietZeroNaN {
 				continue
 			}
 			ok, chunkCreated, _ := ms.insert(s.T, s.V, nil, nil, h.chunkDiskMapper, oooCapMax, h.logger)

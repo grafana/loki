@@ -24,6 +24,7 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -767,15 +768,6 @@ func (h *histogram) Observe(v float64) {
 	h.observe(v, h.findBucket(v))
 }
 
-// ObserveWithExemplar should not be called in a high-frequency setting
-// for a native histogram with configured exemplars. For this case,
-// the implementation isn't lock-free and might suffer from lock contention.
-func (h *histogram) ObserveWithExemplar(v float64, e Labels) {
-	i := h.findBucket(v)
-	h.observe(v, i)
-	h.updateExemplar(v, i, e)
-}
-
 func (h *histogram) Write(out *dto.Metric) error {
 	// For simplicity, we protect this whole method by a mutex. It is not in
 	// the hot path, i.e. Observe is called much more often than Write. The
@@ -1150,11 +1142,11 @@ func (h *histogram) resetCounts(counts *histogramCounts) {
 // With empty labels, it's a no-op. It panics if any of the labels is invalid.
 // If histogram is native, the exemplar will be cached into nativeExemplars,
 // which has a limit, and will remove one exemplar when limit is reached.
-func (h *histogram) updateExemplar(v float64, bucket int, l Labels) {
+func (h *histogram) updateExemplar(v float64, bucket int, l Labels, scheme model.ValidationScheme) {
 	if l == nil {
 		return
 	}
-	e, err := newExemplar(v, h.now(), l)
+	e, err := newExemplar(v, h.now(), l, scheme)
 	if err != nil {
 		panic(err)
 	}

@@ -195,7 +195,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			)
 		}
 
-		if err := streamLabels.Validate(); err != nil {
+		// TODO: Make configurable.
+		if err := streamLabels.Validate(model.LegacyValidation); err != nil {
 			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
 			continue
 		}
@@ -312,7 +313,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 						combinedLabels[k] = v
 					}
 
-					if err := combinedLabels.Validate(); err != nil {
+					// TODO: Make configurable.
+					if err := combinedLabels.Validate(model.LegacyValidation); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
 						continue
 					}

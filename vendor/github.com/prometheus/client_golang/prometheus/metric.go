@@ -186,21 +186,31 @@ func (m *withExemplarsMetric) Write(pb *dto.Metric) error {
 	case pb.Counter != nil:
 		pb.Counter.Exemplar = m.exemplars[len(m.exemplars)-1]
 	case pb.Histogram != nil:
+		h := pb.Histogram
 		for _, e := range m.exemplars {
-			// pb.Histogram.Bucket are sorted by UpperBound.
-			i := sort.Search(len(pb.Histogram.Bucket), func(i int) bool {
-				return pb.Histogram.Bucket[i].GetUpperBound() >= e.GetValue()
+			if (h.GetZeroThreshold() != 0 || h.GetZeroCount() != 0 ||
+				len(h.PositiveSpan) != 0 || len(h.NegativeSpan) != 0) &&
+				e.GetTimestamp() != nil {
+				h.Exemplars = append(h.Exemplars, e)
+				if len(h.Bucket) == 0 {
+					// Don't proceed to classic buckets if there are none.
+					continue
+				}
+			}
+			// h.Bucket are sorted by UpperBound.
+			i := sort.Search(len(h.Bucket), func(i int) bool {
+				return h.Bucket[i].GetUpperBound() >= e.GetValue()
 			})
-			if i < len(pb.Histogram.Bucket) {
-				pb.Histogram.Bucket[i].Exemplar = e
+			if i < len(h.Bucket) {
+				h.Bucket[i].Exemplar = e
 			} else {
 				// The +Inf bucket should be explicitly added if there is an exemplar for it, similar to non-const histogram logic in https://github.com/prometheus/client_golang/blob/main/prometheus/histogram.go#L357-L365.
 				b := &dto.Bucket{
-					CumulativeCount: proto.Uint64(pb.Histogram.GetSampleCount()),
+					CumulativeCount: proto.Uint64(h.GetSampleCount()),
 					UpperBound:      proto.Float64(math.Inf(1)),
 					Exemplar:        e,
 				}
-				pb.Histogram.Bucket = append(pb.Histogram.Bucket, b)
+				h.Bucket = append(h.Bucket, b)
 			}
 		}
 	default:
@@ -221,16 +231,7 @@ type Exemplar struct {
 	Timestamp time.Time
 }
 
-// NewMetricWithExemplars returns a new Metric wrapping the provided Metric with given
-// exemplars. Exemplars are validated.
-//
-// Only last applicable exemplar is injected from the list.
-// For example for Counter it means last exemplar is injected.
-// For Histogram, it means last applicable exemplar for each bucket is injected.
-//
-// NewMetricWithExemplars works best with MustNewConstMetric and
-// MustNewConstHistogram, see example.
-func NewMetricWithExemplars(m Metric, exemplars ...Exemplar) (Metric, error) {
+func newMetricWithExemplars(m Metric, scheme model.ValidationScheme, exemplars ...Exemplar) (Metric, error) {
 	if len(exemplars) == 0 {
 		return nil, errors.New("no exemplar was passed for NewMetricWithExemplars")
 	}
@@ -245,21 +246,11 @@ func NewMetricWithExemplars(m Metric, exemplars ...Exemplar) (Metric, error) {
 		if ts.IsZero() {
 			ts = now
 		}
-		exs[i], err = newExemplar(e.Value, ts, e.Labels)
+		exs[i], err = newExemplar(e.Value, ts, e.Labels, scheme)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &withExemplarsMetric{Metric: m, exemplars: exs}, nil
-}
-
-// MustNewMetricWithExemplars is a version of NewMetricWithExemplars that panics where
-// NewMetricWithExemplars would have returned an error.
-func MustNewMetricWithExemplars(m Metric, exemplars ...Exemplar) Metric {
-	ret, err := NewMetricWithExemplars(m, exemplars...)
-	if err != nil {
-		panic(err)
-	}
-	return ret
 }

@@ -296,7 +296,8 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	uniqueNames := map[string]struct{}{}
 	for i, n := range regex.SubexpNames() {
 		if n != "" {
-			if !model.LabelName(n).IsValid() {
+			// TODO: Make configurable.
+			if !model.LabelName(n).IsValid(model.LegacyValidation) {
 				return nil, fmt.Errorf("invalid extracted label name '%s'", n)
 			}
 			if _, ok := uniqueNames[n]; ok {
@@ -449,7 +450,8 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 		return nil, err
 	}
 	for _, name := range m.Names() {
-		if !model.LabelName(name).IsValid() {
+		// TODO: Make configurable.
+		if !model.LabelName(name).IsValid(model.LegacyValidation) {
 			return nil, fmt.Errorf("invalid capture label name '%s'", name)
 		}
 	}
@@ -505,7 +507,8 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}
 
-		if !model.LabelName(exp.Identifier).IsValid() {
+		// TODO: Make configurable.
+		if !model.LabelName(exp.Identifier).IsValid(model.LegacyValidation) {
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 		paths[exp.Identifier] = path
@@ -630,7 +633,8 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 			return nil, fmt.Errorf("cannot parse expression [%s]: %w", exp.Expression, err)
 		}
 
-		if !model.LabelName(exp.Identifier).IsValid() {
+		// TODO: Make configurable.
+		if !model.LabelName(exp.Identifier).IsValid(model.LegacyValidation) {
 			return nil, fmt.Errorf("invalid extracted label name '%s'", exp.Identifier)
 		}
 

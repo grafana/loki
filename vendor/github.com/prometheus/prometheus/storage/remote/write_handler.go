@@ -537,7 +537,7 @@ type OTLPOptions struct {
 
 // NewOTLPWriteHandler creates a http.Handler that accepts OTLP write requests and
 // writes them to the provided appendable.
-func NewOTLPWriteHandler(logger *slog.Logger, _ prometheus.Registerer, appendable storage.Appendable, configFunc func() config.Config, opts OTLPOptions) http.Handler {
+func NewOTLPWriteHandler(logger *slog.Logger, _ prometheus.Registerer, appendable storage.Appendable, configFunc func() config.Config, enableCTZeroIngestion bool, validIntervalCTZeroIngestion time.Duration, opts OTLPOptions) http.Handler {
 	if opts.NativeDelta && opts.ConvertDelta {
 		// This should be validated when iterating through feature flags, so not expected to fail here.
 		panic("cannot enable native delta ingestion and delta2cumulative conversion at the same time")
@@ -548,9 +548,11 @@ func NewOTLPWriteHandler(logger *slog.Logger, _ prometheus.Registerer, appendabl
 			logger:     logger,
 			appendable: appendable,
 		},
-		config:                configFunc,
-		allowDeltaTemporality: opts.NativeDelta,
-		lookbackDelta:         opts.LookbackDelta,
+		config:                       configFunc,
+		allowDeltaTemporality:        opts.NativeDelta,
+		lookbackDelta:                opts.LookbackDelta,
+		enableCTZeroIngestion:        enableCTZeroIngestion,
+		validIntervalCTZeroIngestion: validIntervalCTZeroIngestion,
 	}
 
 	wh := &otlpWriteHandler{logger: logger, defaultConsumer: ex}
@@ -588,23 +590,30 @@ type rwExporter struct {
 	config                func() config.Config
 	allowDeltaTemporality bool
 	lookbackDelta         time.Duration
+
+	// Mimir specifics.
+	enableCTZeroIngestion        bool
+	validIntervalCTZeroIngestion time.Duration
 }
 
 func (rw *rwExporter) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	otlpCfg := rw.config().OTLPConfig
 
 	converter := otlptranslator.NewPrometheusConverter()
-
 	annots, err := converter.FromMetrics(ctx, md, otlptranslator.Settings{
-		AddMetricSuffixes:                 otlpCfg.TranslationStrategy.ShouldAddSuffixes(),
-		AllowUTF8:                         !otlpCfg.TranslationStrategy.ShouldEscape(),
+		AddMetricSuffixes:                 otlpCfg.TranslationStrategy != config.NoTranslation,
+		AllowUTF8:                         otlpCfg.TranslationStrategy != config.UnderscoreEscapingWithSuffixes,
 		PromoteResourceAttributes:         otlptranslator.NewPromoteResourceAttributes(otlpCfg),
 		KeepIdentifyingResourceAttributes: otlpCfg.KeepIdentifyingResourceAttributes,
 		ConvertHistogramsToNHCB:           otlpCfg.ConvertHistogramsToNHCB,
 		AllowDeltaTemporality:             rw.allowDeltaTemporality,
 		PromoteScopeMetadata:              otlpCfg.PromoteScopeMetadata,
 		LookbackDelta:                     rw.lookbackDelta,
-	})
+
+		// Mimir specifics.
+		EnableCreatedTimestampZeroIngestion:        rw.enableCTZeroIngestion,
+		ValidIntervalCreatedTimestampZeroIngestion: rw.validIntervalCTZeroIngestion,
+	}, rw.logger)
 	if err != nil {
 		rw.logger.Warn("Error translating OTLP metrics to Prometheus write request", "err", err)
 	}

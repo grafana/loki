@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !slicelabels && !dedupelabels
+//go:build stringlabels
 
 package labels
 
@@ -70,7 +70,7 @@ func (ls Labels) IsZero() bool {
 
 // MatchLabels returns a subset of Labels that matches/does not match with the provided label names based on the 'on' boolean.
 // If on is set to true, it returns the subset of labels that match with the provided label names and its inverse when 'on' is set to false.
-// TODO: This is only used in printing an error message.
+// TODO: This is only used in printing an error message
 func (ls Labels) MatchLabels(on bool, names ...string) Labels {
 	b := NewBuilder(ls)
 	if on {
@@ -449,11 +449,11 @@ func (ls Labels) DropReserved(shouldDropFn func(name string) bool) Labels {
 }
 
 // InternStrings is a no-op because it would only save when the whole set of labels is identical.
-func (ls *Labels) InternStrings(_ func(string) string) {
+func (ls *Labels) InternStrings(intern func(string) string) {
 }
 
 // ReleaseStrings is a no-op for the same reason as InternStrings.
-func (ls Labels) ReleaseStrings(_ func(string)) {
+func (ls Labels) ReleaseStrings(release func(string)) {
 }
 
 // Builder allows modifying Labels.

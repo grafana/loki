@@ -565,11 +565,12 @@ func (cdm *ChunkDiskMapper) writeChunk(seriesRef HeadSeriesRef, mint, maxt int64
 }
 
 // CutNewFile makes that a new file will be created the next time a chunk is written.
-func (cdm *ChunkDiskMapper) CutNewFile() {
+func (cdm *ChunkDiskMapper) CutNewFile() error {
 	cdm.evtlPosMtx.Lock()
 	defer cdm.evtlPosMtx.Unlock()
 
 	cdm.evtlPos.cutFileOnNextChunk()
+	return nil
 }
 
 func (cdm *ChunkDiskMapper) IsQueueEmpty() bool {
@@ -958,7 +959,7 @@ func (cdm *ChunkDiskMapper) Truncate(fileNo uint32) error {
 		// There is a known race condition here because between the check of curFileSize() and the call to CutNewFile()
 		// a new file could already be cut, this is acceptable because it will simply result in an empty file which
 		// won't do any harm.
-		cdm.CutNewFile()
+		errs.Add(cdm.CutNewFile())
 	}
 	pendingDeletes, err := cdm.deleteFiles(removedFiles)
 	errs.Add(err)

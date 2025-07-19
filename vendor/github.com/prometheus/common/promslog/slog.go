@@ -197,6 +197,13 @@ func newGoKitStyleReplaceAttrFunc(lvl *Level) func(groups []string, a slog.Attr)
 			}
 		default:
 		}
+
+		// Ensure time.Duration values are _always_ formatted as a Go
+		// duration string (ie, "1d2h3m").
+		if v, ok := a.Value.Any().(time.Duration); ok {
+			a.Value = slog.StringValue(v.String())
+		}
+
 		return a
 	}
 }
@@ -238,6 +245,13 @@ func defaultReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 		}
 	default:
 	}
+
+	// Ensure time.Duration values are _always_ formatted as a Go duration
+	// string (ie, "1d2h3m").
+	if v, ok := a.Value.Any().(time.Duration); ok {
+		a.Value = slog.StringValue(v.String())
+	}
+
 	return a
 }
 

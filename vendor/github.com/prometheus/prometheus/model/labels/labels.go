@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build slicelabels
+//go:build !stringlabels && !dedupelabels
 
 package labels
 
@@ -252,7 +252,7 @@ func (ls Labels) WithoutEmpty() Labels {
 // the two string headers size for name and value.
 // Slice header size is ignored because it should be amortized to zero.
 func (ls Labels) ByteSize() uint64 {
-	var size uint64 = 0
+	var size uint64
 	for _, l := range ls {
 		size += uint64(len(l.Name)+len(l.Value)) + 2*uint64(unsafe.Sizeof(""))
 	}
@@ -477,7 +477,7 @@ func (b *ScratchBuilder) Add(name, value string) {
 }
 
 // UnsafeAddBytes adds a name/value pair, using []byte instead of string.
-// The default version of this function is unsafe, hence the name.
+// The '-tags stringlabels' version of this function is unsafe, hence the name.
 // This version is safe - it copies the strings immediately - but we keep the same name so everything compiles.
 func (b *ScratchBuilder) UnsafeAddBytes(name, value []byte) {
 	b.add = append(b.add, Label{Name: string(name), Value: string(value)})
