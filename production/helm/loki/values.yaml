@@ -3606,6 +3606,10 @@ sidecar:
     labelValue: ""
     # -- Folder into which the rules will be placed.
     folder: /rules
+    # -- The annotation overwriting the folder value.
+    # The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER.
+    # Useful for multi-tenancy setups.
+    folderAnnotation: null
     # -- Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces.
     # Otherwise the namespace in which the sidecar is running will be used.
     # It's also possible to specify 'ALL' to search in all namespaces.
