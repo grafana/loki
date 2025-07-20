@@ -38,8 +38,6 @@ func TestLazyChunkIterator(t *testing.T) {
 	}
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
-
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -51,22 +49,26 @@ func TestLazyChunkIterator(t *testing.T) {
 			{
 				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
-					Hash:   fooLabelsWithName.Hash(),
+					Hash:   labels.StableHash(fooLabelsWithName),
 					Entries: []logproto.Entry{
 						{
-							Timestamp: from,
-							Line:      "1",
+							Timestamp:          from,
+							Line:               "1",
+							Parsed:             logproto.EmptyLabelAdapters(),
+							StructuredMetadata: logproto.EmptyLabelAdapters(),
 						},
 					},
 				}),
 				[]logproto.Stream{
 					{
 						Labels: fooLabels.String(),
-						Hash:   fooLabels.Hash(),
+						Hash:   labels.StableHash(fooLabels),
 						Entries: []logproto.Entry{
 							{
-								Timestamp: from,
-								Line:      "1",
+								Timestamp:          from,
+								Line:               "1",
+								Parsed:             logproto.EmptyLabelAdapters(),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
 							},
 						},
 					},
@@ -74,7 +76,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
 				require.Nil(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				require.Nil(t, err)
@@ -208,7 +210,7 @@ func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterato
 	return nil
 }
 
-func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter.SampleIterator {
+func (fakeBlock) SampleIterator(_ context.Context, _ ...log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 

@@ -1,262 +1,53 @@
 package v1
 
 import (
-	"unicode/utf8"
+	"fmt"
+	"unsafe"
 
-	"github.com/grafana/regexp"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 
-	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type BloomTest interface {
-	Matches(bloom filter.Checker) bool
-	MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool
+	Matches(series labels.Labels, bloom filter.Checker) bool
+	MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool
 }
 
 type BloomTests []BloomTest
 
-func (b BloomTests) Matches(bloom filter.Checker) bool {
+func (b BloomTests) Matches(series labels.Labels, bloom filter.Checker) bool {
 	for _, test := range b {
-		if !test.Matches(bloom) {
+		if !test.Matches(series, bloom) {
 			return false
 		}
 	}
 	return true
 }
 
-func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (b BloomTests) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	for _, test := range b {
-		if !test.MatchesWithPrefixBuf(bloom, buf, prefixLen) {
+		if !test.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) {
 			return false
 		}
 	}
 	return true
-}
-
-// ExtractTestableLineFilters extracts all line filters from an expression
-// that can be tested against a bloom filter. This will skip any line filters
-// after a line format expression. A line format expression might add content
-// that the query later matches against, which can't be tested with a bloom filter.
-// E.g. For {app="fake"} |= "foo" | line_format "thisNewTextShouldMatch" |= "thisNewTextShouldMatch"
-// this function will return only the line filter for "foo" since the line filter for "thisNewTextShouldMatch"
-// wouldn't match against the bloom filter but should match against the query.
-func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
-	if expr == nil {
-		return nil
-	}
-
-	var filters []syntax.LineFilterExpr
-	var lineFmtFound bool
-	visitor := &syntax.DepthFirstTraversal{
-		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
-			if e != nil && !lineFmtFound {
-				filters = append(filters, *e)
-			}
-		},
-		VisitLineFmtFn: func(v syntax.RootVisitor, e *syntax.LineFmtExpr) {
-			if e != nil {
-				lineFmtFound = true
-			}
-		},
-	}
-	expr.Accept(visitor)
-	return filters
-}
-
-// FiltersToBloomTest converts a list of line filters to a BloomTest.
-// Note that all the line filters should be testable against a bloom filter.
-// Use ExtractTestableLineFilters to extract testable line filters from an expression.
-// TODO(owen-d): limits the number of bloom lookups run.
-// An arbitrarily high number can overconsume cpu and is a DoS vector.
-// TODO(owen-d): use for loop not recursion to protect callstack
-func FiltersToBloomTest(b NGramBuilder, filters ...syntax.LineFilterExpr) BloomTest {
-	tests := make(BloomTests, 0, len(filters))
-	for _, f := range filters {
-		if f.Left != nil {
-			tests = append(tests, FiltersToBloomTest(b, *f.Left))
-		}
-		if f.Or != nil {
-			left := FiltersToBloomTest(b, *f.Or)
-			right := simpleFilterToBloomTest(b, f.LineFilter)
-			tests = append(tests, newOrTest(left, right))
-			continue
-		}
-
-		tests = append(tests, simpleFilterToBloomTest(b, f.LineFilter))
-	}
-	return tests
-}
-
-func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest {
-	switch filter.Ty {
-	case log.LineMatchNotEqual, log.LineMatchNotRegexp, log.LineMatchNotPattern:
-		// We cannot test _negated_ filters with a bloom filter since blooms are probabilistic
-		// filters that can only tell us if a string _might_ exist.
-		// For example, for `!= "foo"`, the bloom filter might tell us that the string "foo" might exist
-		// but because we are not sure, we cannot discard that chunk because it might actually not be there.
-		// Therefore, we return a test that always returns true.
-		return MatchAll
-	case log.LineMatchEqual:
-		return newStringTest(b, filter.Match)
-	case log.LineMatchRegexp:
-		return MatchAll
-	case log.LineMatchPattern:
-		return newPatternTest(b, filter.Match)
-	default:
-		return MatchAll
-	}
-}
-
-type bloomCheckerWrapper struct {
-	bloom filter.Checker
-}
-
-// Test implements the log.Checker interface
-func (b bloomCheckerWrapper) Test(line []byte, _ bool, _ bool) bool {
-	return b.bloom.Test(line)
-}
-
-// TestRegex implements the log.Checker interface
-func (b bloomCheckerWrapper) TestRegex(_ *regexp.Regexp) bool {
-	// We won't support regexes in bloom filters so we just return true
-	return true
-}
-
-type logCheckerWrapper struct {
-	checker log.Checker
-}
-
-// Test implements the filter.Checker interface
-func (l logCheckerWrapper) Test(data []byte) bool {
-	return l.checker.Test(data, true, false)
-}
-
-type matcherFilterWrapper struct {
-	filter log.Matcher
-}
-
-func (m matcherFilterWrapper) Matches(bloom filter.Checker) bool {
-	return m.filter.Matches(bloomCheckerWrapper{bloom})
-}
-
-func (m matcherFilterWrapper) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return m.filter.Matches(bloomCheckerWrapper{prefixedChecker{
-		checker:   bloom,
-		buf:       buf,
-		prefixLen: prefixLen,
-	}})
-}
-
-type prefixedChecker struct {
-	checker   filter.Checker
-	buf       []byte
-	prefixLen int
-}
-
-func (p prefixedChecker) Test(data []byte) bool {
-	return p.checker.Test(append(p.buf[:p.prefixLen], data...))
 }
 
 type matchAllTest struct{}
 
 var MatchAll = matchAllTest{}
 
-func (n matchAllTest) Matches(_ filter.Checker) bool {
+// Matches implements BloomTest
+func (n matchAllTest) Matches(_ labels.Labels, _ filter.Checker) bool {
 	return true
 }
 
-func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
+// MatchesWithPrefixBuf implements BloomTest
+func (n matchAllTest) MatchesWithPrefixBuf(_ labels.Labels, _ filter.Checker, _ []byte, _ int) bool {
 	return true
-}
-
-// NGramBuilder is an interface for tokenizing strings into ngrams
-// Extracting this interface allows us to test the bloom filter without having to use the actual tokenizer
-// TODO: This should be moved to tokenizer.go
-type NGramBuilder interface {
-	Tokens(line string) iter.Iterator[[]byte]
-	N() int
-	SkipFactor() int
-}
-
-type stringTest struct {
-	ngrams [][]byte
-}
-
-func newStringTest(b NGramBuilder, search string) (res BloomTest) {
-	// search string must be longer than the combined ngram length and skip factor
-	// in order for all possible skip offsets to have at least 1 ngram
-	skip := b.SkipFactor()
-	if ct := utf8.RuneCountInString(search); ct < b.N()+skip {
-		return MatchAll
-	}
-
-	tests := make([]stringTest, 0, skip)
-
-	for i := 0; i < skip+1; i++ {
-		searchWithOffset := search
-		for j := 0; j < i; j++ {
-			_, size := utf8.DecodeRuneInString(searchWithOffset)
-			// NB(owen-d): small bounds check for invalid utf8
-			searchWithOffset = searchWithOffset[min(size, len(searchWithOffset)):]
-		}
-
-		var test stringTest
-		it := b.Tokens(searchWithOffset)
-		for it.Next() {
-			ngram := make([]byte, len(it.At()))
-			copy(ngram, it.At())
-			test.ngrams = append(test.ngrams, ngram)
-		}
-		tests = append(tests, test)
-	}
-
-	res = tests[0]
-	for _, t := range tests[1:] {
-		res = newOrTest(res, t)
-	}
-	return res
-}
-
-// Matches implements the BloomTest interface
-func (b stringTest) Matches(bloom filter.Checker) bool {
-	for _, ngram := range b.ngrams {
-		if !bloom.Test(ngram) {
-			return false
-		}
-	}
-	return true
-}
-
-// MatchesWithPrefixBuf implements the BloomTest interface
-func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	for _, ngram := range b.ngrams {
-		buf = append(buf[:prefixLen], ngram...)
-		if !bloom.Test(buf) {
-			return false
-		}
-	}
-	return true
-}
-
-type stringMatcherFilter struct {
-	test BloomTest
-}
-
-// Matches implements the log.Filterer interface
-func (b stringMatcherFilter) Matches(test log.Checker) bool {
-	return b.test.Matches(logCheckerWrapper{test})
-}
-
-func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
-	return func(match []byte, caseInsensitive bool) log.MatcherFilterer {
-		return log.WrapMatcher(stringMatcherFilter{
-			test: newStringTest(b, string(match)),
-		})
-	}
 }
 
 type orTest struct {
@@ -284,24 +75,180 @@ func newOrTest(left, right BloomTest) orTest {
 	}
 }
 
-func (o orTest) Matches(bloom filter.Checker) bool {
-	return o.left.Matches(bloom) || o.right.Matches(bloom)
+// Matches implements BloomTest
+func (o orTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	return o.left.Matches(series, bloom) || o.right.Matches(series, bloom)
 }
 
-func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+// MatchesWithPrefixBuf implements BloomTest
+func (o orTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return o.left.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(series, bloom, buf, prefixLen)
 }
 
-func newPatternTest(b NGramBuilder, match string) BloomTest {
-	lit, err := pattern.ParseLiterals(match)
-	if err != nil {
-		return MatchAll
+type andTest struct {
+	left, right BloomTest
+}
+
+func newAndTest(left, right BloomTest) andTest {
+	return andTest{
+		left:  left,
+		right: right,
+	}
+}
+
+// Matches implements BloomTest
+func (a andTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	return a.left.Matches(series, bloom) && a.right.Matches(series, bloom)
+}
+
+// MatchesWithPrefixBuf implements BloomTest
+func (a andTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return a.left.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) && a.right.MatchesWithPrefixBuf(series, bloom, buf, prefixLen)
+}
+
+func LabelMatchersToBloomTest(matchers ...LabelMatcher) BloomTest {
+	tests := make(BloomTests, 0, len(matchers))
+	for _, matcher := range matchers {
+		tests = append(tests, matcherToBloomTest(matcher))
+	}
+	return tests
+}
+
+func matcherToBloomTest(matcher LabelMatcher) BloomTest {
+	switch matcher := matcher.(type) {
+	case UnsupportedLabelMatcher:
+		return matchAllTest{}
+
+	case KeyValueMatcher:
+		return newKeyValueMatcherTest(matcher)
+
+	case KeyMatcher:
+		return newKeyMatcherTest(matcher)
+
+	case OrLabelMatcher:
+		return newOrTest(
+			matcherToBloomTest(matcher.Left),
+			matcherToBloomTest(matcher.Right),
+		)
+
+	case AndLabelMatcher:
+		return newAndTest(
+			matcherToBloomTest(matcher.Left),
+			matcherToBloomTest(matcher.Right),
+		)
+
+	default:
+		// Unhandled cases pass bloom tests by default.
+		return matchAllTest{}
+	}
+}
+
+type keyValueMatcherTest struct {
+	matcher KeyValueMatcher
+}
+
+func newKeyValueMatcherTest(matcher KeyValueMatcher) keyValueMatcherTest {
+	return keyValueMatcherTest{matcher: matcher}
+}
+
+func (kvm keyValueMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
+	// desyncing between how tokens are passed during building vs passed during
+	// querying.
+	//
+	// For a shared tokenizer to be ergonomic:
+	//
+	// 1. A prefix shouldn't be required until MatchesWithPrefixBuf is called
+	// 2. It should be possible to test for just the key
+
+	var (
+		combined    = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
+		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined)) // #nosec G103 -- we know the string is not mutated
+	)
+
+	return kvm.match(series, bloom, rawCombined)
+}
+
+func (kvm keyValueMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	var (
+		combined         = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
+		prefixedCombined = appendToBuf(buf, prefixLen, combined)
+	)
+
+	return kvm.match(series, bloom, prefixedCombined)
+}
+
+// match returns true if the series matches the matcher or is in the bloom filter.
+func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
+	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
+	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
+	if series.IsEmpty() {
+		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
+		return true
 	}
 
-	var res BloomTests
+	// It's in the series if the key is set and has the same value.
+	// By checking val != "" we handle `{env="prod"} | user=""`.
+	val := series.Get(kvm.matcher.Key)
+	inSeries := val != "" && val == kvm.matcher.Value
 
-	for _, l := range lit {
-		res = append(res, newStringTest(b, string(l)))
+	inBloom := bloom.Test(combined)
+	return inSeries || inBloom
+}
+
+// appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must
+// be greater than or equal to prefixLen+len(str) to avoid allocations.
+func appendToBuf(buf []byte, prefixLen int, str string) []byte {
+	rawString := unsafe.Slice(unsafe.StringData(str), len(str)) // #nosec G103 -- we know the string is not mutated
+	return append(buf[:prefixLen], rawString...)
+}
+
+type keyMatcherTest struct {
+	matcher KeyMatcher
+}
+
+func newKeyMatcherTest(matcher KeyMatcher) keyMatcherTest {
+	return keyMatcherTest{matcher: matcher}
+}
+
+func (km keyMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
+	// desyncing between how tokens are passed during building vs passed during
+	// querying.
+	//
+	// For a shared tokenizer to be ergonomic:
+	//
+	// 1. A prefix shouldn't be required until MatchesWithPrefixBuf is called
+	// 2. It should be possible to test for just the key
+
+	var (
+		key    = km.matcher.Key
+		rawKey = unsafe.Slice(unsafe.StringData(key), len(key))
+	)
+
+	return km.match(series, bloom, rawKey)
+}
+
+func (km keyMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	var (
+		key         = km.matcher.Key
+		prefixedKey = appendToBuf(buf, prefixLen, key)
+	)
+
+	return km.match(series, bloom, prefixedKey)
+}
+
+// match returns true if the series matches the matcher or is in the bloom
+// filter.
+func (km keyMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
+	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
+	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
+	if series.IsEmpty() {
+		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
+		return true
 	}
-	return res
+
+	inSeries := series.Get(km.matcher.Key) != ""
+	inBloom := bloom.Test(key)
+	return inSeries || inBloom
 }

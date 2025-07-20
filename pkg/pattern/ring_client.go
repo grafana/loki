@@ -16,7 +16,7 @@ import (
 type RingClient interface {
 	services.Service
 	Ring() ring.ReadRing
-	Pool() *ring_client.Pool
+	GetClientFor(addr string) (ring_client.PoolClient, error)
 }
 
 type ringClient struct {
@@ -86,10 +86,6 @@ func (r *ringClient) Ring() ring.ReadRing {
 	return r.ring
 }
 
-func (r *ringClient) Pool() *ring_client.Pool {
-	return r.pool
-}
-
 func (r *ringClient) StartAsync(ctx context.Context) error {
 	return r.ring.StartAsync(ctx)
 }
@@ -114,6 +110,10 @@ func (r *ringClient) State() services.State {
 	return r.ring.State()
 }
 
-func (r *ringClient) AddListener(listener services.Listener) {
-	r.ring.AddListener(listener)
+func (r *ringClient) AddListener(listener services.Listener) func() {
+	return r.ring.AddListener(listener)
+}
+
+func (r *ringClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
+	return r.pool.GetClientFor(addr)
 }

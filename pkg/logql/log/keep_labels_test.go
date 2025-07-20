@@ -12,14 +12,14 @@ import (
 func Test_KeepLabels(t *testing.T) {
 	for _, tc := range []struct {
 		Name       string
-		keepLabels []KeepLabel
+		keepLabels []NamedLabelMatcher
 		lbs        labels.Labels
 
 		want labels.Labels
 	}{
 		{
 			"keep all",
-			[]KeepLabel{},
+			[]NamedLabelMatcher{},
 			labels.FromStrings(
 				"app", "foo",
 				"namespace", "prod",
@@ -35,7 +35,7 @@ func Test_KeepLabels(t *testing.T) {
 		},
 		{
 			"keep by name",
-			[]KeepLabel{
+			[]NamedLabelMatcher{
 				{
 					nil,
 					"app",
@@ -58,7 +58,7 @@ func Test_KeepLabels(t *testing.T) {
 		},
 		{
 			"keep labels with names and matcher",
-			[]KeepLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, "namespace", "prod"),
 					"",
@@ -85,7 +85,7 @@ func Test_KeepLabels(t *testing.T) {
 		},
 		{
 			"preserve special labels",
-			[]KeepLabel{
+			[]NamedLabelMatcher{
 				{
 					labels.MustNewMatcher(labels.MatchEqual, "namespace", "prod"),
 					"",
@@ -111,7 +111,7 @@ func Test_KeepLabels(t *testing.T) {
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
 			keepLabels := NewKeepLabels(tc.keepLabels)
-			lbls := NewBaseLabelsBuilder().ForLabels(tc.lbs, tc.lbs.Hash())
+			lbls := NewBaseLabelsBuilder().ForLabels(tc.lbs, labels.StableHash(tc.lbs))
 			lbls.Reset()
 			keepLabels.Process(0, []byte(""), lbls)
 			require.Equal(t, tc.want, lbls.LabelsResult().Labels())

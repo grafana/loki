@@ -17,8 +17,12 @@ func parseInt(bytes []byte) (v int64, ok bool, overflow bool) {
 	}
 
 	var n uint64 = 0
-	for _, c := range bytes {
+	for idx, c := range bytes {
 		if c < '0' || c > '9' {
+			return 0, false, false
+		}
+		// Deal with invalid data such as "00"
+		if n == 0 && idx != 0 {
 			return 0, false, false
 		}
 		if n > maxUint64/10 {

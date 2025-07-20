@@ -27,9 +27,9 @@ package xdsresource
 import (
 	"fmt"
 
-	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdsinternal "google.golang.org/grpc/xds/internal"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -40,8 +40,6 @@ func init() {
 	xdsinternal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
 	xdsinternal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
 	xdsinternal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
-
-	internal.TriggerXDSResourceNameNotFoundForTesting = triggerResourceNotFoundForTesting
 }
 
 // Producer contains a single method to discover resource configuration from a
@@ -51,33 +49,36 @@ func init() {
 type Producer interface {
 	// WatchResource uses xDS to discover the resource associated with the
 	// provided resource name. The resource type implementation determines how
-	// xDS requests are sent out and how responses are deserialized and
-	// validated. Upon receipt of a response from the management server, an
-	// appropriate callback on the watcher is invoked.
+	// xDS responses are are deserialized and validated, as received from the
+	// xDS management server. Upon receipt of a response from the management
+	// server, an appropriate callback on the watcher is invoked.
 	WatchResource(rType Type, resourceName string, watcher ResourceWatcher) (cancel func())
 }
 
-// ResourceWatcher wraps the callbacks to be invoked for different events
-// corresponding to the resource being watched.
+// ResourceWatcher is notified of the resource updates and errors that are
+// received by the xDS client from the management server.
+//
+// All methods contain a done parameter which should be called when processing
+// of the update has completed.  For example, if processing a resource requires
+// watching new resources, registration of those new watchers should be
+// completed before done is called, which can happen after the ResourceWatcher
+// method has returned. Failure to call done will prevent the xDS client from
+// providing future ResourceWatcher notifications.
 type ResourceWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	// The ResourceData parameter needs to be type asserted to the appropriate
-	// type for the resource being watched.
-	OnUpdate(ResourceData)
+	// ResourceChanged indicates a new version of the resource is available.
+	ResourceChanged(resourceData ResourceData, done func())
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error)
+	// ResourceError indicates an error occurred while trying to fetch or
+	// decode the associated resource. The previous version of the resource
+	// should be considered invalid.
+	ResourceError(err error, done func())
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	// AmbientError indicates an error occurred after a resource has been
+	// received that should not modify the use of that resource but may provide
+	// useful information about the state of the XDSClient for debugging
+	// purposes. The previous version of the resource should still be
+	// considered valid.
+	AmbientError(err error, done func())
 }
 
 // TODO: Once the implementation is complete, rename this interface as
@@ -118,11 +119,9 @@ type Type interface {
 // provide an implementation of this interface to represent the configuration
 // received from the xDS management server.
 type ResourceData interface {
-	isResourceData()
-
-	// Equal returns true if the passed in resource data is equal to that of the
-	// receiver.
-	Equal(ResourceData) bool
+	// RawEqual returns true if the passed in resource data is equal to that of
+	// the receiver, based on the underlying raw protobuf message.
+	RawEqual(ResourceData) bool
 
 	// ToJSON returns a JSON string representation of the resource data.
 	ToJSON() string
@@ -133,9 +132,13 @@ type ResourceData interface {
 // DecodeOptions wraps the options required by ResourceType implementation for
 // decoding configuration received from the xDS management server.
 type DecodeOptions struct {
-	// BootstrapConfig contains the bootstrap configuration passed to the
-	// top-level xdsClient. This contains useful data for resource validation.
+	// BootstrapConfig contains the complete bootstrap configuration passed to
+	// the xDS client. This contains useful data for resource validation.
 	BootstrapConfig *bootstrap.Config
+	// ServerConfig contains the server config (from the above bootstrap
+	// configuration) of the xDS server from which the current resource, for
+	// which Decode() is being invoked, was received.
+	ServerConfig *bootstrap.ServerConfig
 }
 
 // DecodeResult is the result of a decode operation.
@@ -168,19 +171,118 @@ func (r resourceTypeState) AllResourcesRequiredInSotW() bool {
 	return r.allResourcesRequiredInSotW
 }
 
-func triggerResourceNotFoundForTesting(cb func(Type, string) error, typeName, resourceName string) error {
-	var typ Type
-	switch typeName {
-	case ListenerResourceTypeName:
-		typ = listenerType
-	case RouteConfigTypeName:
-		typ = routeConfigType
-	case ClusterResourceTypeName:
-		typ = clusterType
-	case EndpointsResourceTypeName:
-		typ = endpointsType
-	default:
-		return fmt.Errorf("unknown type name %q", typeName)
+// GenericResourceTypeDecoder wraps an xdsresource.Type and implements
+// xdsclient.Decoder.
+//
+// TODO: #8313 - Delete this once the internal xdsclient usages are updated
+// to use the generic xdsclient.ResourceType interface directly.
+type GenericResourceTypeDecoder struct {
+	ResourceType    Type
+	BootstrapConfig *bootstrap.Config
+	ServerConfigMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig
+}
+
+// Decode deserialize and validate resource bytes of an xDS resource received
+// from the xDS management server.
+func (gd *GenericResourceTypeDecoder) Decode(resource xdsclient.AnyProto, gOpts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
+	rProto := &anypb.Any{
+		TypeUrl: resource.TypeURL,
+		Value:   resource.Value,
 	}
-	return cb(typ, resourceName)
+	opts := &DecodeOptions{BootstrapConfig: gd.BootstrapConfig}
+	if gOpts.ServerConfig != nil {
+		opts.ServerConfig = gd.ServerConfigMap[*gOpts.ServerConfig]
+	}
+
+	result, err := gd.ResourceType.Decode(opts, rProto)
+	if result == nil {
+		return nil, err
+	}
+	if err != nil {
+		return &xdsclient.DecodeResult{Name: result.Name}, err
+	}
+
+	return &xdsclient.DecodeResult{Name: result.Name, Resource: &genericResourceData{resourceData: result.Resource}}, nil
+}
+
+// genericResourceData embed an xdsresource.ResourceData and implements
+// xdsclient.ResourceData.
+//
+// TODO: #8313 - Delete this once the internal xdsclient usages are updated
+// to use the generic xdsclient.ResourceData interface directly.
+type genericResourceData struct {
+	resourceData ResourceData
+}
+
+// Equal returns true if the passed in xdsclient.ResourceData
+// is equal to that of the receiver.
+func (grd *genericResourceData) Equal(other xdsclient.ResourceData) bool {
+	if other == nil {
+		return false
+	}
+	otherResourceData, ok := other.(*genericResourceData)
+	if !ok {
+		return false
+	}
+	return grd.resourceData.RawEqual(otherResourceData.resourceData)
+}
+
+// Bytes returns the underlying raw bytes of the wrapped resource.
+func (grd *genericResourceData) Bytes() []byte {
+	rawAny := grd.resourceData.Raw()
+	if rawAny == nil {
+		return nil
+	}
+	return rawAny.Value
+}
+
+// genericResourceWatcher wraps xdsresource.ResourceWatcher and implements
+// xdsclient.ResourceWatcher.
+//
+// TODO: #8313 - Delete this once the internal xdsclient usages are updated
+// to use the generic xdsclient.ResourceWatcher interface directly.
+type genericResourceWatcher struct {
+	xdsResourceWatcher ResourceWatcher
+}
+
+// ResourceChanged indicates a new version of the wrapped resource is
+// available.
+func (gw *genericResourceWatcher) ResourceChanged(gData xdsclient.ResourceData, done func()) {
+	if gData == nil {
+		gw.xdsResourceWatcher.ResourceChanged(nil, done)
+		return
+	}
+
+	grd, ok := gData.(*genericResourceData)
+	if !ok {
+		err := fmt.Errorf("genericResourceWatcher received unexpected xdsclient.ResourceData type %T, want *genericResourceData", gData)
+		gw.xdsResourceWatcher.ResourceError(err, done)
+		return
+	}
+	gw.xdsResourceWatcher.ResourceChanged(grd.resourceData, done)
+}
+
+// ResourceError indicates an error occurred while trying to fetch or
+// decode the associated wrapped resource. The previous version of the
+// wrapped resource should be considered invalid.
+func (gw *genericResourceWatcher) ResourceError(err error, done func()) {
+	gw.xdsResourceWatcher.ResourceError(err, done)
+}
+
+// AmbientError indicates an error occurred after a resource has been
+// received that should not modify the use of that wrapped resource but may
+// provide useful information about the state of the XDSClient for debugging
+// purposes. The previous version of the wrapped resource should still be
+// considered valid.
+func (gw *genericResourceWatcher) AmbientError(err error, done func()) {
+	gw.xdsResourceWatcher.AmbientError(err, done)
+}
+
+// GenericResourceWatcher returns a xdsclient.ResourceWatcher that wraps an
+// xdsresource.ResourceWatcher to make it compatible with xdsclient.ResourceWatcher.
+func GenericResourceWatcher(xdsResourceWatcher ResourceWatcher) xdsclient.ResourceWatcher {
+	if xdsResourceWatcher == nil {
+		return nil
+	}
+	return &genericResourceWatcher{xdsResourceWatcher: xdsResourceWatcher}
 }

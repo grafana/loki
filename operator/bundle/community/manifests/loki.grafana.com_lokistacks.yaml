@@ -2,14 +2,15 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
+    controller-gen.kubebuilder.io/version: v0.17.2
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.6.1
+    app.kubernetes.io/instance: loki-operator-v0.8.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.6.1
+    app.kubernetes.io/version: 0.8.0
   name: lokistacks.loki.grafana.com
 spec:
   conversion:
@@ -69,7 +70,6 @@ spec:
                       enableIPv6:
                         description: |-
                           EnableIPv6 enables IPv6 support for the memberlist based hash ring.
-
 
                           Currently this also forces the instanceAddrType to podIP to avoid local address lookup
                           for the memberlist.
@@ -164,6 +164,104 @@ spec:
                             format: int32
                             type: integer
                         type: object
+                      otlp:
+                        description: |-
+                          OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                          Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                          enforce the use of some required attributes.
+                        properties:
+                          drop:
+                            description: Drop configures which attributes are dropped
+                              from the log entry.
+                            properties:
+                              logAttributes:
+                                description: LogAttributes lists the names of log
+                                  attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                              resourceAttributes:
+                                description: ResourceAttributes lists the names of
+                                  resource attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                              scopeAttributes:
+                                description: ScopeAttributes lists the names of scope
+                                  attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                            type: object
+                          streamLabels:
+                            description: StreamLabels configures which resource attributes
+                              are converted to Loki stream labels.
+                            properties:
+                              resourceAttributes:
+                                description: ResourceAttributes lists the names of
+                                  the resource attributes that should be converted
+                                  into Loki stream labels.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                            type: object
+                        type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
@@ -181,7 +279,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -242,7 +340,7 @@ spec:
                     type: object
                   tenants:
                     additionalProperties:
-                      description: LimitsTemplateSpec defines the limits  applied
+                      description: PerTenantLimitsTemplateSpec defines the limits  applied
                         at ingestion or query path.
                       properties:
                         ingestion:
@@ -307,6 +405,106 @@ spec:
                               format: int32
                               type: integer
                           type: object
+                        otlp:
+                          description: |-
+                            OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                            Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                            enforce the use of some required attributes.
+
+                            The per-tenant configuration for OTLP attributes will be merged with the global configuration.
+                          properties:
+                            drop:
+                              description: Drop configures which attributes are dropped
+                                from the log entry.
+                              properties:
+                                logAttributes:
+                                  description: LogAttributes lists the names of log
+                                    attributes that should be included in structured
+                                    metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                                resourceAttributes:
+                                  description: ResourceAttributes lists the names
+                                    of resource attributes that should be included
+                                    in structured metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                                scopeAttributes:
+                                  description: ScopeAttributes lists the names of
+                                    scope attributes that should be included in structured
+                                    metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                              type: object
+                            streamLabels:
+                              description: StreamLabels configures which resource
+                                attributes are converted to Loki stream labels.
+                              properties:
+                                resourceAttributes:
+                                  description: ResourceAttributes lists the names
+                                    of the resource attributes that should be converted
+                                    into Loki stream labels.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                              type: object
+                          type: object
                         queries:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
@@ -361,7 +559,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer
@@ -594,6 +792,7 @@ spec:
                   out sizes.
                 enum:
                 - 1x.demo
+                - 1x.pico
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium
@@ -614,7 +813,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -3458,6 +3656,14 @@ spec:
                           type: object
                         type: array
                     type: object
+                  useRequestsAsLimits:
+                    description: |-
+                      When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+                      requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+                      spikes, whether on the ingestion or query side.
+
+                      Note: This is currently a tech-preview feature.
+                    type: boolean
                 type: object
               tenants:
                 description: Tenants defines the per-tenant authentication and authorization
@@ -3661,7 +3867,6 @@ spec:
                           AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
                           Setting this to an empty array disables admin groups.
 
-
                           By default the following groups are considered admin-groups:
                            - system:cluster-admins
                            - cluster-admin
@@ -3669,6 +3874,38 @@ spec:
                         items:
                           type: string
                         type: array
+                      otlp:
+                        description: OTLP contains settings for ingesting data using
+                          OTLP in the OpenShift tenancy mode.
+                        properties:
+                          disableRecommendedAttributes:
+                            description: |-
+                              DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
+
+                              Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+                              to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
+
+                              The recommended attributes are:
+
+                               - k8s.container.name
+                               - k8s.cronjob.name
+                               - k8s.daemonset.name
+                               - k8s.deployment.name
+                               - k8s.job.name
+                               - k8s.node.name
+                               - k8s.pod.name
+                               - k8s.statefulset.name
+                               - kubernetes.container_name
+                               - kubernetes.host
+                               - kubernetes.pod_name
+                               - service.name
+
+                              This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+                              should continue to exist.
+
+                              See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
+                            type: boolean
+                        type: object
                     type: object
                 required:
                 - mode
@@ -3754,16 +3991,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -3804,12 +4033,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -3845,7 +4069,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -3963,7 +4186,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -4038,7 +4261,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer
@@ -4867,6 +5090,7 @@ spec:
                 - mode
                 type: object
             required:
+            - managementState
             - size
             - storage
             - storageClassName
@@ -4947,16 +5171,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -4997,12 +5213,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

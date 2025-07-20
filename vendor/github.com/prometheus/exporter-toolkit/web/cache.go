@@ -18,14 +18,9 @@ package web
 import (
 	weakrand "math/rand"
 	"sync"
-	"time"
 )
 
 var cacheSize = 100
-
-func init() {
-	weakrand.Seed(time.Now().UnixNano())
-}
 
 type cache struct {
 	cache map[string]bool

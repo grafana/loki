@@ -4,6 +4,8 @@
 package pcommon // import "go.opentelemetry.io/collector/pdata/pcommon"
 
 import (
+	"iter"
+
 	"go.uber.org/multierr"
 
 	"go.opentelemetry.io/collector/pdata/internal"
@@ -53,12 +55,14 @@ func (m Map) EnsureCapacity(capacity int) {
 	copy(*m.getOrig(), oldOrig)
 }
 
-// Get returns the Value associated with the key and true. Returned
+// Get returns the Value associated with the key and true. The returned
 // Value is not a copy, it is a reference to the value stored in this map.
 // It is allowed to modify the returned value using Value.Set* functions.
 // Such modification will be applied to the value stored in this map.
+// Accessing the returned value after modifying the underlying map
+// (removing or adding new values) is an undefined behavior.
 //
-// If the key does not exist returns a zero-initialized KeyValue and false.
+// If the key does not exist, returns a zero-initialized KeyValue and false.
 // Calling any functions on the returned invalid instance may cause a panic.
 func (m Map) Get(key string) (Value, bool) {
 	for i := range *m.getOrig() {
@@ -225,36 +229,44 @@ func (m Map) Range(f func(k string, v Value) bool) {
 	}
 }
 
+// All returns an iterator over key-value pairs in the Map.
+//
+//	for k, v := range es.All() {
+//	    ... // Do something with key-value pair
+//	}
+func (m Map) All() iter.Seq2[string, Value] {
+	return func(yield func(string, Value) bool) {
+		for i := range *m.getOrig() {
+			kv := &(*m.getOrig())[i]
+			if !yield(kv.Key, Value(internal.NewValue(&kv.Value, m.getState()))) {
+				return
+			}
+		}
+	}
+}
+
+// MoveTo moves all key/values from the current map overriding the destination and
+// resetting the current instance to its zero value
+func (m Map) MoveTo(dest Map) {
+	m.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if m.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = *m.getOrig()
+	*m.getOrig() = nil
+}
+
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
 	dest.getState().AssertMutable()
-	newLen := len(*m.getOrig())
-	oldCap := cap(*dest.getOrig())
-	if newLen <= oldCap {
-		// New slice fits in existing slice, no need to reallocate.
-		*dest.getOrig() = (*dest.getOrig())[:newLen:oldCap]
-		for i := range *m.getOrig() {
-			akv := &(*m.getOrig())[i]
-			destAkv := &(*dest.getOrig())[i]
-			destAkv.Key = akv.Key
-			newValue(&akv.Value, m.getState()).CopyTo(newValue(&destAkv.Value, dest.getState()))
-		}
-		return
-	}
-
-	// New slice is bigger than exist slice. Allocate new space.
-	origs := make([]otlpcommon.KeyValue, len(*m.getOrig()))
-	for i := range *m.getOrig() {
-		akv := &(*m.getOrig())[i]
-		origs[i].Key = akv.Key
-		newValue(&akv.Value, m.getState()).CopyTo(newValue(&origs[i].Value, dest.getState()))
-	}
-	*dest.getOrig() = origs
+	*dest.getOrig() = internal.CopyOrigMap(*dest.getOrig(), *m.getOrig())
 }
 
 // AsRaw returns a standard go map representation of this Map.
 func (m Map) AsRaw() map[string]any {
-	rawMap := make(map[string]any)
+	rawMap := make(map[string]any, m.Len())
 	m.Range(func(k string, v Value) bool {
 		rawMap[k] = v.AsRaw()
 		return true
@@ -280,4 +292,27 @@ func (m Map) FromRaw(rawMap map[string]any) error {
 	}
 	*m.getOrig() = origs
 	return errs
+}
+
+// Equal checks equality with another Map
+func (m Map) Equal(val Map) bool {
+	if m.Len() != val.Len() {
+		return false
+	}
+
+	fullEqual := true
+
+	m.Range(func(k string, v Value) bool {
+		vv, ok := val.Get(k)
+		if !ok {
+			fullEqual = false
+			return fullEqual
+		}
+
+		if !v.Equal(vv) {
+			fullEqual = false
+		}
+		return fullEqual
+	})
+	return fullEqual
 }

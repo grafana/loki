@@ -37,9 +37,9 @@ type CreateOptions struct {
 
 	HTTPHeaders *blob.HTTPHeaders
 
-	CpkInfo *blob.CpkInfo
+	CPKInfo *blob.CPKInfo
 
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 
 	// Optional. Used to set blob tags in various blob operations.
 	Tags map[string]string
@@ -49,10 +49,10 @@ type CreateOptions struct {
 	// are specified, the destination blob is created with the specified metadata, and metadata is not copied from the source
 	// blob or file. Note that beginning with version 2009-09-19, metadata names must adhere to the naming rules for C# identifiers.
 	// See Naming and Referencing Containers, Blobs, and Metadata for more information.
-	Metadata map[string]string
+	Metadata map[string]*string
 }
 
-func (o *CreateOptions) format() (*generated.AppendBlobClientCreateOptions, *generated.BlobHTTPHeaders, *generated.LeaseAccessConditions, *generated.CpkInfo, *generated.CpkScopeInfo, *generated.ModifiedAccessConditions) {
+func (o *CreateOptions) format() (*generated.AppendBlobClientCreateOptions, *generated.BlobHTTPHeaders, *generated.LeaseAccessConditions, *generated.CPKInfo, *generated.CPKScopeInfo, *generated.ModifiedAccessConditions) {
 	if o == nil {
 		return nil, nil, nil, nil, nil, nil
 	}
@@ -66,57 +66,51 @@ func (o *CreateOptions) format() (*generated.AppendBlobClientCreateOptions, *gen
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return &options, o.HTTPHeaders, leaseAccessConditions, o.CpkInfo, o.CpkScopeInfo, modifiedAccessConditions
+	return &options, o.HTTPHeaders, leaseAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
 // AppendBlockOptions contains the optional parameters for the Client.AppendBlock method.
 type AppendBlockOptions struct {
-	// Specify the transactional crc64 for the body, to be validated by the service.
-	TransactionalContentCRC64 []byte
-	// Specify the transactional md5 for the body, to be validated by the service.
-	TransactionalContentMD5 []byte
+	// TransactionalValidation specifies the transfer validation type to use.
+	// The default is nil (no transfer validation).
+	TransactionalValidation blob.TransferValidationType
 
 	AppendPositionAccessConditions *AppendPositionAccessConditions
 
-	CpkInfo *blob.CpkInfo
+	CPKInfo *blob.CPKInfo
 
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 
 	AccessConditions *blob.AccessConditions
 }
 
 func (o *AppendBlockOptions) format() (*generated.AppendBlobClientAppendBlockOptions, *generated.AppendPositionAccessConditions,
-	*generated.CpkInfo, *generated.CpkScopeInfo, *generated.ModifiedAccessConditions, *generated.LeaseAccessConditions) {
+	*generated.CPKInfo, *generated.CPKScopeInfo, *generated.ModifiedAccessConditions, *generated.LeaseAccessConditions) {
 	if o == nil {
 		return nil, nil, nil, nil, nil, nil
 	}
 
-	options := &generated.AppendBlobClientAppendBlockOptions{
-		TransactionalContentCRC64: o.TransactionalContentCRC64,
-		TransactionalContentMD5:   o.TransactionalContentMD5,
-	}
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return options, o.AppendPositionAccessConditions, o.CpkInfo, o.CpkScopeInfo, modifiedAccessConditions, leaseAccessConditions
+	return &generated.AppendBlobClientAppendBlockOptions{}, o.AppendPositionAccessConditions, o.CPKInfo, o.CPKScopeInfo, modifiedAccessConditions, leaseAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
 // AppendBlockFromURLOptions contains the optional parameters for the Client.AppendBlockFromURL method.
 type AppendBlockFromURLOptions struct {
-	// Specify the md5 calculated for the range of bytes that must be read from the copy source.
-	SourceContentMD5 []byte
-	// Specify the crc64 calculated for the range of bytes that must be read from the copy source.
-	SourceContentCRC64 []byte
-	// Specify the transactional md5 for the body, to be validated by the service.
-	TransactionalContentMD5 []byte
+	// Only Bearer type is supported. Credentials should be a valid OAuth access token to copy source.
+	CopySourceAuthorization *string
+
+	// SourceContentValidation contains the validation mechanism used on the range of bytes read from the source.
+	SourceContentValidation blob.SourceContentValidationType
 
 	AppendPositionAccessConditions *AppendPositionAccessConditions
 
-	CpkInfo *blob.CpkInfo
+	CPKInfo *blob.CPKInfo
 
-	CpkScopeInfo *blob.CpkScopeInfo
+	CPKScopeInfo *blob.CPKScopeInfo
 
 	SourceModifiedAccessConditions *blob.SourceModifiedAccessConditions
 
@@ -126,8 +120,8 @@ type AppendBlockFromURLOptions struct {
 	Range blob.HTTPRange
 }
 
-func (o *AppendBlockFromURLOptions) format() (*generated.AppendBlobClientAppendBlockFromURLOptions, *generated.CpkInfo,
-	*generated.CpkScopeInfo, *generated.LeaseAccessConditions, *generated.AppendPositionAccessConditions,
+func (o *AppendBlockFromURLOptions) format() (*generated.AppendBlobClientAppendBlockFromURLOptions, *generated.CPKInfo,
+	*generated.CPKScopeInfo, *generated.LeaseAccessConditions, *generated.AppendPositionAccessConditions,
 	*generated.ModifiedAccessConditions, *generated.SourceModifiedAccessConditions) {
 	if o == nil {
 		return nil, nil, nil, nil, nil, nil, nil
@@ -135,13 +129,15 @@ func (o *AppendBlockFromURLOptions) format() (*generated.AppendBlobClientAppendB
 
 	options := &generated.AppendBlobClientAppendBlockFromURLOptions{
 		SourceRange:             exported.FormatHTTPRange(o.Range),
-		SourceContentMD5:        o.SourceContentMD5,
-		SourceContentcrc64:      o.SourceContentCRC64,
-		TransactionalContentMD5: o.TransactionalContentMD5,
+		CopySourceAuthorization: o.CopySourceAuthorization,
+	}
+
+	if o.SourceContentValidation != nil {
+		o.SourceContentValidation.Apply(options)
 	}
 
 	leaseAccessConditions, modifiedAccessConditions := exported.FormatBlobAccessConditions(o.AccessConditions)
-	return options, o.CpkInfo, o.CpkScopeInfo, leaseAccessConditions, o.AppendPositionAccessConditions, modifiedAccessConditions, o.SourceModifiedAccessConditions
+	return options, o.CPKInfo, o.CPKScopeInfo, leaseAccessConditions, o.AppendPositionAccessConditions, modifiedAccessConditions, o.SourceModifiedAccessConditions
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -164,3 +160,21 @@ func (o *SealOptions) format() (*generated.LeaseAccessConditions,
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+
+// ExpiryType defines values for ExpiryType
+type ExpiryType = exported.ExpiryType
+
+// ExpiryTypeAbsolute defines the absolute time for the blob expiry
+type ExpiryTypeAbsolute = exported.ExpiryTypeAbsolute
+
+// ExpiryTypeRelativeToNow defines the duration relative to now for the blob expiry
+type ExpiryTypeRelativeToNow = exported.ExpiryTypeRelativeToNow
+
+// ExpiryTypeRelativeToCreation defines the duration relative to creation for the blob expiry
+type ExpiryTypeRelativeToCreation = exported.ExpiryTypeRelativeToCreation
+
+// ExpiryTypeNever defines that the blob will be set to never expire
+type ExpiryTypeNever = exported.ExpiryTypeNever
+
+// SetExpiryOptions contains the optional parameters for the Client.SetExpiry method.
+type SetExpiryOptions = exported.SetExpiryOptions

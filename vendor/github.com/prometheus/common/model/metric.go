@@ -14,30 +14,48 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/yaml.v2"
 )
 
 var (
-	// NameValidationScheme determines the method of name validation to be used by
-	// all calls to IsValidMetricName() and LabelName IsValid(). Setting UTF-8 mode
-	// in isolation from other components that don't support UTF-8 may result in
-	// bugs or other undefined behavior. This value is intended to be set by
-	// UTF-8-aware binaries as part of their startup. To avoid need for locking,
-	// this value should be set once, ideally in an init(), before multiple
-	// goroutines are started.
-	NameValidationScheme = LegacyValidation
+	// NameValidationScheme determines the global default method of the name
+	// validation to be used by all calls to IsValidMetricName() and LabelName
+	// IsValid().
+	//
+	// Deprecated: This variable should not be used and might be removed in the
+	// far future. If you wish to stick to the legacy name validation use
+	// `IsValidLegacyMetricName()` and `LabelName.IsValidLegacy()` methods
+	// instead. This variable is here as an escape hatch for emergency cases,
+	// given the recent change from `LegacyValidation` to `UTF8Validation`, e.g.,
+	// to delay UTF-8 migrations in time or aid in debugging unforeseen results of
+	// the change. In such a case, a temporary assignment to `LegacyValidation`
+	// value in the `init()` function in your main.go or so, could be considered.
+	//
+	// Historically we opted for a global variable for feature gating different
+	// validation schemes in operations that were not otherwise easily adjustable
+	// (e.g. Labels yaml unmarshaling). That could have been a mistake, a separate
+	// Labels structure or package might have been a better choice. Given the
+	// change was made and many upgraded the common already, we live this as-is
+	// with this warning and learning for the future.
+	NameValidationScheme = UTF8Validation
 
-	// NameEscapingScheme defines the default way that names will be
-	// escaped when presented to systems that do not support UTF-8 names. If the
-	// Content-Type "escaping" term is specified, that will override this value.
-	NameEscapingScheme = ValueEncodingEscaping
+	// NameEscapingScheme defines the default way that names will be escaped when
+	// presented to systems that do not support UTF-8 names. If the Content-Type
+	// "escaping" term is specified, that will override this value.
+	// NameEscapingScheme should not be set to the NoEscaping value. That string
+	// is used in content negotiation to indicate that a system supports UTF-8 and
+	// has that feature enabled.
+	NameEscapingScheme = UnderscoreEscaping
 )
 
 // ValidationScheme is a Go enum for determining how metric and label names will
@@ -45,15 +63,69 @@ var (
 type ValidationScheme int
 
 const (
-	// LegacyValidation is a setting that requirets that metric and label names
+	// UnsetValidation represents an undefined ValidationScheme.
+	// Should not be used in practice.
+	UnsetValidation ValidationScheme = iota
+
+	// LegacyValidation is a setting that requires that all metric and label names
 	// conform to the original Prometheus character requirements described by
 	// MetricNameRE and LabelNameRE.
-	LegacyValidation ValidationScheme = iota
+	LegacyValidation
 
 	// UTF8Validation only requires that metric and label names be valid UTF-8
 	// strings.
 	UTF8Validation
 )
+
+var (
+	_ yaml.Marshaler = UnsetValidation
+	_ fmt.Stringer   = UnsetValidation
+)
+
+// String returns the string representation of s.
+func (s ValidationScheme) String() string {
+	switch s {
+	case UnsetValidation:
+		return "unset"
+	case LegacyValidation:
+		return "legacy"
+	case UTF8Validation:
+		return "utf8"
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (s ValidationScheme) MarshalYAML() (any, error) {
+	switch s {
+	case UnsetValidation:
+		return "", nil
+	case LegacyValidation, UTF8Validation:
+		return s.String(), nil
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (s *ValidationScheme) UnmarshalYAML(unmarshal func(any) error) error {
+	var scheme string
+	if err := unmarshal(&scheme); err != nil {
+		return err
+	}
+	switch scheme {
+	case "":
+		// Don't change the value.
+	case "legacy":
+		*s = LegacyValidation
+	case "utf8":
+		*s = UTF8Validation
+	default:
+		return fmt.Errorf("unrecognized ValidationScheme: %q", scheme)
+	}
+	return nil
+}
 
 type EscapingScheme int
 
@@ -161,14 +233,14 @@ func (m Metric) FastFingerprint() Fingerprint {
 func IsValidMetricName(n LabelValue) bool {
 	switch NameValidationScheme {
 	case LegacyValidation:
-		return IsValidLegacyMetricName(n)
+		return IsValidLegacyMetricName(string(n))
 	case UTF8Validation:
 		if len(n) == 0 {
 			return false
 		}
 		return utf8.ValidString(string(n))
 	default:
-		panic(fmt.Sprintf("Invalid name validation scheme requested: %d", NameValidationScheme))
+		panic(fmt.Sprintf("Invalid name validation scheme requested: %s", NameValidationScheme.String()))
 	}
 }
 
@@ -176,7 +248,7 @@ func IsValidMetricName(n LabelValue) bool {
 // legacy validation scheme regardless of the value of NameValidationScheme.
 // This function, however, does not use MetricNameRE for the check but a much
 // faster hardcoded implementation.
-func IsValidLegacyMetricName(n LabelValue) bool {
+func IsValidLegacyMetricName(n string) bool {
 	if len(n) == 0 {
 		return false
 	}
@@ -204,10 +276,11 @@ func EscapeMetricFamily(v *dto.MetricFamily, scheme EscapingScheme) *dto.MetricF
 	out := &dto.MetricFamily{
 		Help: v.Help,
 		Type: v.Type,
+		Unit: v.Unit,
 	}
 
 	// If the name is nil, copy as-is, don't try to escape.
-	if v.Name == nil || IsValidLegacyMetricName(LabelValue(v.GetName())) {
+	if v.Name == nil || IsValidLegacyMetricName(v.GetName()) {
 		out.Name = v.Name
 	} else {
 		out.Name = proto.String(EscapeName(v.GetName(), scheme))
@@ -229,7 +302,7 @@ func EscapeMetricFamily(v *dto.MetricFamily, scheme EscapingScheme) *dto.MetricF
 
 		for _, l := range m.Label {
 			if l.GetName() == MetricNameLabel {
-				if l.Value == nil || IsValidLegacyMetricName(LabelValue(l.GetValue())) {
+				if l.Value == nil || IsValidLegacyMetricName(l.GetValue()) {
 					escaped.Label = append(escaped.Label, l)
 					continue
 				}
@@ -239,7 +312,7 @@ func EscapeMetricFamily(v *dto.MetricFamily, scheme EscapingScheme) *dto.MetricF
 				})
 				continue
 			}
-			if l.Name == nil || IsValidLegacyMetricName(LabelValue(l.GetName())) {
+			if l.Name == nil || IsValidLegacyMetricName(l.GetName()) {
 				escaped.Label = append(escaped.Label, l)
 				continue
 			}
@@ -255,19 +328,15 @@ func EscapeMetricFamily(v *dto.MetricFamily, scheme EscapingScheme) *dto.MetricF
 
 func metricNeedsEscaping(m *dto.Metric) bool {
 	for _, l := range m.Label {
-		if l.GetName() == MetricNameLabel && !IsValidLegacyMetricName(LabelValue(l.GetValue())) {
+		if l.GetName() == MetricNameLabel && !IsValidLegacyMetricName(l.GetValue()) {
 			return true
 		}
-		if !IsValidLegacyMetricName(LabelValue(l.GetName())) {
+		if !IsValidLegacyMetricName(l.GetName()) {
 			return true
 		}
 	}
 	return false
 }
-
-const (
-	lowerhex = "0123456789abcdef"
-)
 
 // EscapeName escapes the incoming name according to the provided escaping
 // scheme. Depending on the rules of escaping, this may cause no change in the
@@ -282,7 +351,7 @@ func EscapeName(name string, scheme EscapingScheme) string {
 	case NoEscaping:
 		return name
 	case UnderscoreEscaping:
-		if IsValidLegacyMetricName(LabelValue(name)) {
+		if IsValidLegacyMetricName(name) {
 			return name
 		}
 		for i, b := range name {
@@ -303,31 +372,25 @@ func EscapeName(name string, scheme EscapingScheme) string {
 			} else if isValidLegacyRune(b, i) {
 				escaped.WriteRune(b)
 			} else {
-				escaped.WriteRune('_')
+				escaped.WriteString("__")
 			}
 		}
 		return escaped.String()
 	case ValueEncodingEscaping:
-		if IsValidLegacyMetricName(LabelValue(name)) {
+		if IsValidLegacyMetricName(name) {
 			return name
 		}
 		escaped.WriteString("U__")
 		for i, b := range name {
-			if isValidLegacyRune(b, i) {
+			if b == '_' {
+				escaped.WriteString("__")
+			} else if isValidLegacyRune(b, i) {
 				escaped.WriteRune(b)
 			} else if !utf8.ValidRune(b) {
 				escaped.WriteString("_FFFD_")
-			} else if b < 0x100 {
+			} else {
 				escaped.WriteRune('_')
-				for s := 4; s >= 0; s -= 4 {
-					escaped.WriteByte(lowerhex[b>>uint(s)&0xF])
-				}
-				escaped.WriteRune('_')
-			} else if b < 0x10000 {
-				escaped.WriteRune('_')
-				for s := 12; s >= 0; s -= 4 {
-					escaped.WriteByte(lowerhex[b>>uint(s)&0xF])
-				}
+				escaped.WriteString(strconv.FormatInt(int64(b), 16))
 				escaped.WriteRune('_')
 			}
 		}
@@ -385,8 +448,9 @@ func UnescapeName(name string, scheme EscapingScheme) string {
 			// We think we are in a UTF-8 code, process it.
 			var utf8Val uint
 			for j := 0; i < len(escapedName); j++ {
-				// This is too many characters for a utf8 value.
-				if j > 4 {
+				// This is too many characters for a utf8 value based on the MaxRune
+				// value of '\U0010FFFF'.
+				if j >= 6 {
 					return name
 				}
 				// Found a closing underscore, convert to a rune, check validity, and append.
@@ -439,7 +503,7 @@ func (e EscapingScheme) String() string {
 
 func ToEscapingScheme(s string) (EscapingScheme, error) {
 	if s == "" {
-		return NoEscaping, fmt.Errorf("got empty string instead of escaping scheme")
+		return NoEscaping, errors.New("got empty string instead of escaping scheme")
 	}
 	switch s {
 	case AllowUTF8:
@@ -451,6 +515,6 @@ func ToEscapingScheme(s string) (EscapingScheme, error) {
 	case EscapeValues:
 		return ValueEncodingEscaping, nil
 	default:
-		return NoEscaping, fmt.Errorf("unknown format scheme " + s)
+		return NoEscaping, fmt.Errorf("unknown format scheme %s", s)
 	}
 }

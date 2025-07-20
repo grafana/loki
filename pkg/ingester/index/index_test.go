@@ -32,7 +32,6 @@ func Test_GetShards(t *testing.T) {
 		{32, &index.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31}},
 		{64, &index.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31, 47, 63}},
 	} {
-		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
 			ii := NewWithShards(tt.total)
 			res := ii.getShards(tt.shard)
@@ -78,18 +77,18 @@ func BenchmarkHash(b *testing.B) {
 
 func TestDeleteAddLoopkup(t *testing.T) {
 	index := NewWithShards(DefaultIndexShards)
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
+
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
 
 	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
 	// make sure we consistent
 	require.Equal(t, uint32(26), labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs))%32)
-	index.Add(lbs, model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash())))
-	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	index.Add(lbs, model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
+	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
 	ids, err := index.Lookup([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 	}, nil)
@@ -98,14 +97,14 @@ func TestDeleteAddLoopkup(t *testing.T) {
 }
 
 func Test_hash_mapping(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "compose_project", Value: "loki-tsdb-storage-s3"},
-		labels.Label{Name: "compose_service", Value: "ingester-2"},
-		labels.Label{Name: "container_name", Value: "loki-tsdb-storage-s3_ingester-2_1"},
-		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
-		labels.Label{Name: "host", Value: "docker-desktop"},
-		labels.Label{Name: "source", Value: "stderr"},
-	}
+	lbs := labels.FromStrings(
+		"compose_project", "loki-tsdb-storage-s3",
+		"compose_service", "ingester-2",
+		"container_name", "loki-tsdb-storage-s3_ingester-2_1",
+		"filename", "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log",
+		"host", "docker-desktop",
+		"source", "stderr",
+	)
 
 	for _, shard := range []uint32{16, 32, 64, 128} {
 		t.Run(fmt.Sprintf("%d", shard), func(t *testing.T) {
@@ -122,10 +121,10 @@ func Test_hash_mapping(t *testing.T) {
 }
 
 func Test_NoMatcherLookup(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "foo", Value: "bar"},
-		labels.Label{Name: "hi", Value: "hello"},
-	}
+	lbs := labels.FromStrings(
+		"foo", "bar",
+		"hi", "hello",
+	)
 	// with no shard param
 	ii := NewWithShards(16)
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), 1)
@@ -147,10 +146,10 @@ func Test_ConsistentMapping(t *testing.T) {
 	b := NewWithShards(32)
 
 	for i := 0; i < 100; i++ {
-		lbs := labels.Labels{
-			labels.Label{Name: "foo", Value: "bar"},
-			labels.Label{Name: "hi", Value: fmt.Sprint(i)},
-		}
+		lbs := labels.FromStrings(
+			"foo", "bar",
+			"hi", fmt.Sprint(i),
+		)
 		a.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
 		b.Add(logproto.FromLabelsToLabelAdapters(lbs), model.Fingerprint(i))
 	}

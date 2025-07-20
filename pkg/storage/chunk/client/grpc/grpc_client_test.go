@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -81,7 +82,7 @@ func TestGrpcStore(t *testing.T) {
 	newChunkData := func() chunk.Data {
 		return chunkenc.NewFacade(
 			chunkenc.NewMemChunk(
-				chunkenc.ChunkFormatV3, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
+				chunkenc.ChunkFormatV3, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
 			), 0, 0)
 	}
 
@@ -94,20 +95,20 @@ func TestGrpcStore(t *testing.T) {
 				Through:     1587997054298,
 				Checksum:    3651208117,
 			},
-			Metric: labels.Labels{
-				{
+			Metric: labels.New(
+				labels.Label{
 					Name:  "_name_",
 					Value: "prometheus_sd_file_scan_duration_seconds_sum",
 				},
-				{
+				labels.Label{
 					Name:  "instance",
 					Value: "localhost:9090",
 				},
-				{
+				labels.Label{
 					Name:  "job",
 					Value: "prometheus",
 				},
-			},
+			),
 			Encoding: chunkenc.LogChunk,
 			Data:     newChunkData(),
 		},
@@ -124,20 +125,20 @@ func TestGrpcStore(t *testing.T) {
 				Through:     1587997054298,
 				Checksum:    3651208117,
 			},
-			Metric: labels.Labels{
-				{
+			Metric: labels.New(
+				labels.Label{
 					Name:  "_name_",
 					Value: "prometheus_sd_file_scan_duration_seconds_sum",
 				},
-				{
+				labels.Label{
 					Name:  "instance",
 					Value: "localhost:9090",
 				},
-				{
+				labels.Label{
 					Name:  "job",
 					Value: "prometheus",
 				},
-			},
+			),
 			Encoding: chunkenc.LogChunk,
 			Data:     newChunkData(),
 		},
@@ -157,7 +158,7 @@ func TestGrpcStore(t *testing.T) {
 		{TableName: "table", HashValue: "foo"},
 	}
 	results := 0
-	err = storageClient.QueryPages(context.Background(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = storageClient.QueryPages(context.Background(), queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++

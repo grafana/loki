@@ -7,7 +7,6 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/internal/math"
 	"github.com/grafana/dskit/multierror"
 )
 
@@ -31,7 +30,7 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	errsMx := sync.Mutex{}
 
 	wg := sync.WaitGroup{}
-	for ix := 0; ix < math.Min(concurrency, len(userIDs)); ix++ {
+	for ix := 0; ix < min(concurrency, len(userIDs)); ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -108,7 +107,7 @@ func ForEachJob(ctx context.Context, jobs int, concurrency int, jobFunc func(ctx
 
 	// Start workers to process jobs.
 	g, ctx := errgroup.WithContext(ctx)
-	for ix := 0; ix < math.Min(concurrency, jobs); ix++ {
+	for ix := 0; ix < min(concurrency, jobs); ix++ {
 		g.Go(func() error {
 			for ctx.Err() == nil {
 				idx := int(indexes.Inc())

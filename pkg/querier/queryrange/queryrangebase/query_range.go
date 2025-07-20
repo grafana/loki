@@ -5,26 +5,28 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
 
-	"golang.org/x/exp/maps"
-
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/log"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
+
+var tracer = otel.Tracer("pkg/querier/queryrange/queryrangebase")
 
 // StatusSuccess Prometheus success result.
 const StatusSuccess = "success"
@@ -83,12 +85,12 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 }
 
 // LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
-func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
-	sp.LogFields(
-		otlog.String("query", q.GetQuery()),
-		otlog.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
-		otlog.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
-		otlog.Int64("step (ms)", q.GetStep()),
+func (q *PrometheusRequest) LogToSpan(sp trace.Span) {
+	sp.SetAttributes(
+		attribute.String("query", q.GetQuery()),
+		attribute.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
+		attribute.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
+		attribute.Int64("step (ms)", q.GetStep()),
 	)
 }
 
@@ -173,8 +175,7 @@ func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) 
 		}
 	}
 
-	warnings := maps.Keys(uniqueWarnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(uniqueWarnings))
 
 	if len(warnings) == 0 {
 		// When there are no warnings, keep it nil so it can be compared against
@@ -204,17 +205,17 @@ func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) 
 func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ Request) (Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
-		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "ParseQueryRangeResponse")
+	defer sp.End() //nolint:ineffassign,staticcheck
 
 	buf, err := bodyBuffer(r)
 	if err != nil {
-		log.Error(err)
+		sp.RecordError(err)
 		return nil, err
 	}
-	sp.LogKV(otlog.Int("bytes", len(buf)))
+	sp.SetAttributes(attribute.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {
@@ -252,22 +253,22 @@ func bodyBuffer(res *http.Response) ([]byte, error) {
 
 // TODO(karsten): remove prometheusCodec from code base since only MergeResponse is used.
 func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res Response) (*http.Response, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "APIResponse.ToHTTPResponse")
+	defer sp.End()
 
 	a, ok := res.(*PrometheusResponse)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	sp.LogFields(otlog.Int("series", len(a.Data.Result)))
+	sp.SetAttributes(attribute.Int("series", len(a.Data.Result)))
 
 	b, err := json.Marshal(a)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error encoding response: %v", err)
 	}
 
-	sp.LogFields(otlog.Int("bytes", len(b)))
+	sp.SetAttributes(attribute.Int("bytes", len(b)))
 
 	resp := http.Response{
 		Header: http.Header{

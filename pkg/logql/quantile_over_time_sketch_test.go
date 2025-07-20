@@ -16,14 +16,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-func TestProbabilisticMQuantileMatrixSerialization(t *testing.T) {
+func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 	emptySketch := sketch.NewDDSketch()
 	ddsketchBytes := make([]byte, 0)
 	emptySketch.Encode(&ddsketchBytes, false)
 
 	matrix := ProbabilisticQuantileMatrix([]ProbabilisticQuantileVector{
 		[]ProbabilisticQuantileSample{
-			{T: 0, F: emptySketch, Metric: []labels.Label{{Name: "foo", Value: "bar"}}},
+			{T: 0, F: emptySketch, Metric: labels.FromStrings("foo", "bar")},
 		},
 	})
 
@@ -51,7 +51,7 @@ func TestProbabilisticMQuantileMatrixSerialization(t *testing.T) {
 func TestQuantileSketchStepEvaluatorError(t *testing.T) {
 	iter := errorRangeVectorIterator{
 		result: ProbabilisticQuantileVector([]ProbabilisticQuantileSample{
-			{T: 43, F: nil, Metric: labels.Labels{{Name: logqlmodel.ErrorLabel, Value: "my error"}}},
+			{T: 43, F: nil, Metric: labels.FromStrings(logqlmodel.ErrorLabel, "my error")},
 		}),
 	}
 	ev := QuantileSketchStepEvaluator{
@@ -69,7 +69,7 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	ev := errorStepEvaluator{
 		err: errors.New("could not evaluate"),
 	}
-	_, err := MergeQuantileSketchVector(true, result, ev, LiteralParams{})
+	_, err := JoinQuantileSketchVector(true, result, ev, LiteralParams{})
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
@@ -113,7 +113,6 @@ func (e errorStepEvaluator) Error() error {
 func (e errorStepEvaluator) Explain(Node) {}
 
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
-
 	selRange := (5 * time.Second).Nanoseconds()
 	step := (30 * time.Second)
 	offset := int64(0)
@@ -136,7 +135,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 			iter: iter,
 		}
 		_, _, r := ev.Next()
-		m, err := MergeQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
+		m, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
 		require.NoError(b, err)
 		m.(ProbabilisticQuantileMatrix).Release()
 	}

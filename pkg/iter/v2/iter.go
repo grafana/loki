@@ -227,10 +227,10 @@ func (it *CounterIter[T]) Count() int {
 	return it.count
 }
 
-func WithClose[T any](itr Iterator[T], close func() bool) *CloseIter[T] {
+func WithClose[T any](itr Iterator[T], closeFunc func() bool) *CloseIter[T] {
 	return &CloseIter[T]{
 		Iterator: itr,
-		close:    close,
+		close:    closeFunc,
 	}
 }
 

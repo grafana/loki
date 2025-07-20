@@ -1,0 +1,33 @@
+---
+gateway:
+  ingress:
+    enabled: true
+    annotations: {}
+    hosts:
+      - host: gateway.loki.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3100"
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+read:
+  replicas: 1
+write:
+  replicas: 1
+backend:
+  replicas: 1
+monitoring:
+  lokiCanary:
+    enabled: false
+test:
+  enabled: false

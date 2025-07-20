@@ -1,0 +1,34 @@
+# Purpose
+blockbuilder is responsible for consuming ingested data in the queue (kafka, etc) and writing it in an optimized form to long term storage. While this should always remain true, it can be built and iterated upon in phases. First, let's look at the simplest possible architecture:
+
+* [interface] loads "jobs": partitions+offset ranges in kafka
+* For each job, process data, building the storage format 
+* [interface] Upon completion (inc flushing to storage), commit work
+  * e.g. update consumer group processed offset in kafka
+* consumes 
+
+# First Impl: Alongside existing multi-zone ingester writers
+Goal: modify ingester architecture towards RF1, but don't actually write to storage yet, b/c we haven't solved coordinating interim reads/writes.
+Deliverable: RF1 metrics proof
+* run replicas==partitions (from ingesters)
+* run every $INTERVAL (5m?), 
+* slim down ingester write path
+  * remove disk (all WALs).
+  * ignore limits if too complex (for now)
+  * /dev/null backend
+
+
+# TODO improvements
+* metadata store
+  * include offsets committed for coordination b/w ingester-readers & long term storage
+* planner/scheduler+worker architecture
+* shuffle sharding
+
+
+# Things to solve
+* limits application
+* job sizing -- coordinate kafka offsets w/ underlying bytes added?
+  * ideally we can ask kafka for "the next 1GB" in a partition, but to do this we'd need the kafka offsets (auto-incremented integers for messages within a partition) to be derived from the message size. Right now, different batch sizes can cause kafka msgs to have very different sizes.
+  * idea: another set of partitions to store offsets->datasize? Sounds shitty tbh & breaks the consistency bound on writes (what if kafka acks first write but doesnt ack the second?)
+  * what if we stored byte counter metadata in kafka records so we could O(log(n)) seek an offset range w/ the closest $SIZE
+    * Likely a reasonable perf tradeoff as this isn't called often (only in job planner in the future).

@@ -220,20 +220,44 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	if _, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists"); err != nil {
+		if b.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (b *BlobStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return b.objectAttributes(ctx, objectKey, "azure.GetAttributes")
+}
+
+func (b *BlobStorage) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
+	var objectSize int64
+	err := loki_instrument.TimeRequest(ctx, source, instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err
 		}
 
-		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
-		return err
+		response, err := blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		if err != nil {
+			return err
+		}
+		if response != nil {
+			rawResponse := response.Response()
+			if rawResponse != nil {
+				objectSize = rawResponse.ContentLength
+			}
+		}
+		return nil
 	})
 	if err != nil {
-		return false, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key.
@@ -249,7 +273,7 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	)
 	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		rc, size, err = b.getObject(ctx, objectKey)
+		rc, size, err = b.getObject(ctx, objectKey, 0, 0)
 		return err
 	})
 	b.metrics.egressBytesTotal.Add(float64(size))
@@ -262,14 +286,43 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	return client_util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
-func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
+// GetObject returns a reader and the size for the specified object key.
+func (b *BlobStorage) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var cancel context.CancelFunc = func() {}
+	if b.cfg.RequestTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, (time.Duration(b.cfg.MaxRetries)*b.cfg.RequestTimeout)+(time.Duration(b.cfg.MaxRetries-1)*b.cfg.MaxRetryDelay)) // timeout only after azure client's built in retries
+	}
+
+	var (
+		size int64
+		rc   io.ReadCloser
+	)
+	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		rc, size, err = b.getObject(ctx, objectKey, offset, length)
+		return err
+	})
+	b.metrics.egressBytesTotal.Add(float64(size))
+	if err != nil {
+		// cancel the context if there is an error.
+		cancel()
+		return nil, err
+	}
+	// else return a wrapped ReadCloser which cancels the context while closing the reader.
+	return client_util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
+}
+
+func (b *BlobStorage) getObject(ctx context.Context, objectKey string, offset, length int64) (rc io.ReadCloser, size int64, err error) {
+	if offset == 0 && length == 0 {
+		length = azblob.CountToEnd // azblob.CountToEnd == 0 but leaving this here for clarity
+	}
 	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
+	downloadResponse, err := blockBlobURL.Download(ctx, offset, length, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -332,7 +385,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 
 	client := defaultClientFactory()
 
-	opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+	opts.HTTPSender = pipeline.FactoryFunc(func(_ pipeline.Policy, _ *pipeline.PolicyOptions) pipeline.PolicyFunc {
 		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 			resp, err := client.Do(request.WithContext(ctx))
 			return pipeline.NewHTTPResponse(resp), err
@@ -344,7 +397,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		if err != nil {
 			return nil, err
 		}
-		opts.HTTPSender = pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
+		opts.HTTPSender = pipeline.FactoryFunc(func(_ pipeline.Policy, _ *pipeline.PolicyOptions) pipeline.PolicyFunc {
 			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
 				resp, err := client.Do(request.WithContext(ctx))
 				return pipeline.NewHTTPResponse(resp), err
@@ -421,7 +474,11 @@ func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*ad
 
 	if b.cfg.UseFederatedToken {
 		token, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
-		var customRefreshFunc adal.TokenRefresh = func(context context.Context, resource string) (*adal.Token, error) {
+		if err != nil {
+			return nil, err
+		}
+
+		var customRefreshFunc adal.TokenRefresh = func(_ context.Context, resource string) (*adal.Token, error) {
 			newToken, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
 			if err != nil {
 				return nil, err

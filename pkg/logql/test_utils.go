@@ -7,10 +7,12 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -20,6 +22,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
+
+const ConCurrency = 100
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 	return MockQuerier{
@@ -45,7 +49,6 @@ func (q MockQuerier) extractOldShard(xs []string) (*index.ShardAnnotation, error
 	}
 
 	return parsed[0].PowerOfTwo, nil
-
 }
 
 func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
@@ -75,7 +78,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -113,9 +116,9 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	resByStream := map[string]*logproto.Stream{}
 
 	for _, stream := range in {
+		sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			sp := pipeline.ForStream(mustParseLabels(stream.Labels))
-			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -137,34 +140,46 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	return streams
 }
 
-func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Series {
+func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.Series, error) {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
-		for _, e := range stream.Entries {
-			exs := ex.ForStream(mustParseLabels(stream.Labels))
-			if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
-				var s *logproto.Series
-				var found bool
-				s, found = resBySeries[lbs.String()]
-				if !found {
-					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
-					resBySeries[lbs.String()] = s
+		for _, extractor := range ex {
+			exs := extractor.ForStream(mustParseLabels(stream.Labels))
+			for _, e := range stream.Entries {
+
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
+					for _, sample := range samples {
+						lbs := sample.Labels
+						f := sample.Value
+						var s *logproto.Series
+						var found bool
+						s, found = resBySeries[lbs.String()]
+						if !found {
+							s = &logproto.Series{
+								Labels:     lbs.String(),
+								StreamHash: exs.BaseLabels().Hash(),
+							}
+							resBySeries[lbs.String()] = s
+						}
+
+						s.Samples = append(s.Samples, logproto.Sample{
+							Timestamp: e.Timestamp.UnixNano(),
+							Value:     f,
+							Hash:      xxhash.Sum64([]byte(e.Line)),
+						})
+					}
 				}
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.Timestamp.UnixNano(),
-					Value:     f,
-					Hash:      xxhash.Sum64([]byte(e.Line)),
-				})
 			}
 		}
 	}
+
 	series := []logproto.Series{}
 	for _, s := range resBySeries {
 		sort.Sort(s)
 		series = append(series, *s)
 	}
-	return series
+	return series, nil
 }
 
 func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
@@ -178,7 +193,7 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 		return nil, err
 	}
 
-	extractor, err := expr.Extractor()
+	extractors, err := expr.Extractors()
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +215,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -212,7 +227,10 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	filtered := processSeries(matched, extractor)
+	filtered, err := processSeries(matched, extractors)
+	if err != nil {
+		return nil, err
+	}
 
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(filtered),
@@ -222,50 +240,46 @@ outer:
 }
 
 type MockDownstreamer struct {
-	*Engine
+	*QueryEngine
 }
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
-	results := make([]logqlmodel.Result, 0, len(queries))
-	for _, query := range queries {
-		res, err := m.Query(query.Params).Exec(ctx)
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	mu := sync.Mutex{}
+	err := concurrency.ForEachJob(ctx, len(queries), ConCurrency, func(ctx context.Context, idx int) error {
+		res, err := m.Query(queries[idx].Params).Exec(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		results = append(results, res)
+		mu.Lock()
+		defer mu.Unlock()
+		err = acc.Accumulate(ctx, res, idx)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	if matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix); ok {
-		if len(results) == 1 {
-			return results, nil
-		}
-		for _, m := range results[1:] {
-			matrix, _ = matrix.Merge(m.Data.(ProbabilisticQuantileMatrix))
-		}
-		return []logqlmodel.Result{{Data: matrix}}, nil
-	}
-	return results, nil
+	return acc.Result(), nil
 }
 
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
-	r := rand.New(rand.NewSource(42))
+	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		ls := []labels.Label{{Name: "index", Value: fmt.Sprintf("%d", i)}}
 
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := append(ls, labels.Label{
+			shard := labels.StableHash(labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			}).Hash() % uint64(nShards)
+			})...)) % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -284,8 +298,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			})
 		}
 
-		stream.Labels = ls.String()
-		stream.Hash = ls.Hash()
+		r := labels.New(ls...)
+		stream.Labels = r.String()
+		stream.Hash = labels.StableHash(r)
 		streams = append(streams, stream)
 	}
 	return streams

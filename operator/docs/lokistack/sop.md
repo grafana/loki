@@ -309,6 +309,38 @@ The query queue is currently under high load.
 
 - Increase the number of queriers
 
+## Loki Discarded Samples Warning
+
+### Impact
+
+Loki is discarding samples (log entries) because they fail validation. This alert only fires for errors that are not retryable. This means that the discarded samples are lost.
+
+### Summary
+
+Loki can reject log entries (samples) during submission when they fail validation. This happens on a per-stream basis, so only the specific samples or streams failing validation are lost.
+
+The possible validation errors are documented in the [Loki documentation](https://grafana.com/docs/loki/latest/operations/request-validation-rate-limits/#validation-errors). This alert only fires for the validation errors that are not retryable, which means that discarded samples are permanently lost.
+
+The alerting can only show the affected Loki tenant. Since Loki 3.1.0 more detailed information about the affected streams is provided in an error message emitted by the distributor component.
+
+This information can be used to pinpoint the application sending the offending logs. For some of the validations there are configuration parameters that can be tuned in LokiStack's `limits` structure, if the messages should be accepted. Usually it is recommended to fix the issue either on the emitting application (if possible) or by changing collector configuration to fix non-compliant messages before sending them to Loki.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- View access in the namespace where the LokiStack is deployed
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+
+### Steps
+
+- View detailed log output from the Loki distributors to identify affected streams
+- Decide on further steps depending on log source and validation error
+
 ## Lokistack Storage Schema Warning
 
 ### Impact

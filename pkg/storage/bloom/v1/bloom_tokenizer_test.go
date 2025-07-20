@@ -8,176 +8,125 @@ import (
 	"testing"
 	"time"
 
+	logger "github.com/go-kit/log"
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
-	"github.com/prometheus/common/model"
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
-const (
-	DefaultNGramLength = 4
-	DefaultNGramSkip   = 0
-)
-
-var (
-	four    = NewNGramTokenizer(4, 0)
-	metrics = NewMetrics(prometheus.DefaultRegisterer)
-)
-
-func TestPrefixedKeyCreation(t *testing.T) {
-	t.Parallel()
-	var ones uint64 = 0xffffffffffffffff
-
-	ref := ChunkRef{
-		From:     0,
-		Through:  model.Time(int64(ones)),
-		Checksum: 0xffffffff,
-	}
-	for _, tc := range []struct {
-		desc          string
-		ngram, expLen int
-	}{
-		{
-			desc:   "0-gram",
-			ngram:  0,
-			expLen: 20,
-		},
-		{
-			desc:   "4-gram",
-			ngram:  4,
-			expLen: 20 + 4*MaxRuneLen,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
-			require.Equal(t, 20, prefixLn)
-			require.Equal(t, tc.expLen, len(token))
-			// first 8 bytes should be zeros from `from`
-			for i := 0; i < 8; i++ {
-				require.Equal(t, byte(0), token[i])
-			}
-			// next 8 bytes should be ones from `through`
-			for i := 8; i < 16; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-			// next 4 bytes should be ones from `checksum`
-			for i := 16; i < 20; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-		})
-	}
-}
-
-func TestSetLineTokenizer(t *testing.T) {
-	t.Parallel()
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
-
-	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
-
-	// Set new tokenizer, and validate against that
-	bt.lineTokenizer = NewNGramTokenizer(6, 7)
-	require.Equal(t, bt.lineTokenizer.N(), 6)
-	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
-}
+var metrics = NewMetrics(prometheus.DefaultRegisterer)
 
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
-	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	metadata := push.LabelsAdapter{
+		{Name: "pod", Value: "loki-1"},
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      testLine,
+		Timestamp:          time.Unix(0, 1),
+		Line:               testLine,
+		StructuredMetadata: metadata,
 	})
 	itr, err := memChunk.Iterator(
 		context.Background(),
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
 		logproto.FORWARD,
-		log.NewNoopPipeline().ForStream(nil),
+		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	require.Nil(t, err)
 
-	bloom := Bloom{
-		ScalableBloomFilter: *sbf,
-	}
+	ref := ChunkRef{}
 
+	bloom := NewBloom()
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		v2.NewSliceIter([]*Bloom{&bloom}),
-		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
-			Itr: itr}}),
+		v2.NewSliceIter([]*Bloom{bloom}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
 
-	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	toks := tokenizer.Tokens(testLine)
-	for toks.Next() {
-		token := toks.At()
-		require.True(t, blooms[0].Test(token))
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
+
+	for _, kv := range metadata {
+		tokens := tokenizer.Tokens(kv)
+		for tokens.Next() {
+			token := tokens.At()
+			require.True(t, blooms[0].Test([]byte(token)))
+		}
 	}
 }
 
 func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	metadata := push.LabelsAdapter{
+		{Name: "pod", Value: "loki-1"},
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      testLine,
+		Timestamp:          time.Unix(0, 1),
+		Line:               testLine,
+		StructuredMetadata: metadata,
 	})
 	itr, err := memChunk.Iterator(
 		context.Background(),
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
 		logproto.FORWARD,
-		log.NewNoopPipeline().ForStream(nil),
+		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	require.Nil(t, err)
+
+	ref := ChunkRef{}
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
 		v2.NewEmptyIter[*Bloom](),
-		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
-			Itr: itr}}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
 
-	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	toks := tokenizer.Tokens(testLine)
-	for toks.Next() {
-		token := toks.At()
-		require.True(t, blooms[0].Test(token))
-	}
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 
+	for _, kv := range metadata {
+		tokens := tokenizer.Tokens(kv)
+		for tokens.Next() {
+			token := tokens.At()
+			require.True(t, blooms[0].Test([]byte(token)))
+		}
+	}
 }
 
-func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	for i, line := range lines {
+func chunkRefItrFromMetadata(metadata ...push.LabelsAdapter) (iter.EntryIterator, error) {
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	for i, md := range metadata {
 		if _, err := memChunk.Append(&push.Entry{
-			Timestamp: time.Unix(0, int64(i)),
-			Line:      line,
+			Timestamp:          time.Unix(0, int64(i)),
+			Line:               "line content",
+			StructuredMetadata: md,
 		}); err != nil {
 			return nil, err
 		}
@@ -188,13 +137,13 @@ func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
 		logproto.FORWARD,
-		log.NewNoopPipeline().ForStream(nil),
+		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	return itr, err
 }
 
 func randomStr(ln int) string {
-	rng := rand.New(rand.NewSource(0))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	charset := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!@#$%^&*() ")
 
 	res := make([]rune, ln)
@@ -205,35 +154,32 @@ func randomStr(ln int) string {
 }
 
 func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
-	maxSize := 2048
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, maxSize, NewMetrics(nil))
+	maxSize := 4 << 10
+	bt := NewBloomTokenizer(maxSize, NewMetrics(nil), logger.NewNopLogger())
 	ch := make(chan *BloomCreation)
-	line := randomStr(10e3)
-	itr, err := chunkRefItrFromLines(line)
+
+	metadata := make([]push.LabelsAdapter, 0, 4<<10)
+	for i := 0; i < cap(metadata); i++ {
+		metadata = append(metadata, push.LabelsAdapter{{Name: "trace_id", Value: randomStr(12)}})
+	}
+
+	itr, err := chunkRefItrFromMetadata(metadata...)
 	require.NoError(t, err)
 	go bt.Populate(
-		v2.NewSliceIter([]*Bloom{
-			{
-				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-			},
-		}),
-		v2.NewSliceIter([]ChunkRefWithIter{
-			{
-				Ref: ChunkRef{},
-				Itr: itr,
-			},
-		}),
+		v2.NewEmptyIter[*Bloom](),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}),
 		ch,
 	)
 
 	var ct int
 	for created := range ch {
 		ct++
-		capacity := created.Bloom.ScalableBloomFilter.Capacity() / 8
+		capacity := created.Bloom.Capacity() / 8
+		t.Log(ct, int(capacity), maxSize)
 		require.Less(t, int(capacity), maxSize)
 	}
 	// ensure we created two bloom filters from this dataset
-	require.Equal(t, 2, ct)
+	require.Greater(t, ct, 2)
 }
 
 func populateAndConsumeBloom(
@@ -256,22 +202,25 @@ func populateAndConsumeBloom(
 
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		var testLine = lorem + lorem + lorem
-		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+		bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
-		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
-			Line:      testLine,
+			Line:      "",
+			StructuredMetadata: push.LabelsAdapter{
+				push.LabelAdapter{Name: "trace_id", Value: fmt.Sprintf("%04x", i)},
+				push.LabelAdapter{Name: "org_id", Value: fmt.Sprintf("%d", i%1000)},
+			},
 		})
 		itr, err := memChunk.Iterator(
 			context.Background(),
 			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
-			log.NewNoopPipeline().ForStream(nil),
+			log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 		)
 		require.Nil(b, err)
 
@@ -290,22 +239,20 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 }
 
 func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil))
-	line := "foobarbazz"
+	bt := NewBloomTokenizer(0, NewMetrics(nil), logger.NewNopLogger())
+	md := push.LabelsAdapter{
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
 	var blooms []*Bloom
+	ref := ChunkRef{}
 
 	for i := 0; i < 2; i++ {
 		ch := make(chan *BloomCreation)
-		itr, err := chunkRefItrFromLines(line)
+		itr, err := chunkRefItrFromMetadata(md)
 		require.NoError(t, err)
 		go bt.Populate(
 			v2.NewEmptyIter[*Bloom](),
-			v2.NewSliceIter([]ChunkRefWithIter{
-				{
-					Ref: ChunkRef{},
-					Itr: itr,
-				},
-			}),
+			v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 			ch,
 		)
 		var ct int
@@ -318,18 +265,19 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 
 	}
 
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 	for _, bloom := range blooms {
-		toks := bt.lineTokenizer.Tokens(line)
+		toks := tokenizer.Tokens(md[0])
 		for toks.Next() {
 			token := toks.At()
-			require.True(t, bloom.Test(token))
+			require.True(t, bloom.Test([]byte(token)))
 		}
 		require.NoError(t, toks.Err())
 	}
 }
 
 func BenchmarkMapClear(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
@@ -340,7 +288,7 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k

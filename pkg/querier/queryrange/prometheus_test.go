@@ -16,7 +16,8 @@ var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
-		"shardsDuration": 0
+		"shardsDuration": 0,
+		"usedBloomFilters": false
 	},
 	"ingester" : {
 		"store": {
@@ -37,6 +38,20 @@ var emptyStats = `"stats": {
 				"headChunkStructuredMetadataBytes": 0,
                 "postFilterLines": 0,
 				"totalDuplicates": 0
+			},
+			"dataobj": {
+				"pageBatches": 0,
+				"pagesDownloaded": 0,
+				"pagesDownloadedBytes": 0,
+				"pagesScanned": 0,
+				"postFilterRows": 0,
+				"postPredicateRows": 0,
+				"postPredicateDecompressedBytes": 0,
+				"postPredicateStructuredMetadataBytes": 0,
+				"prePredicateDecompressedRows": 0,
+				"prePredicateDecompressedBytes": 0,
+				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalRowsAvailable": 0
 			}
 		},
 		"totalBatches": 0,
@@ -63,6 +78,20 @@ var emptyStats = `"stats": {
 				"headChunkStructuredMetadataBytes": 0,
                 "postFilterLines": 0,
 				"totalDuplicates": 0
+			},
+			"dataobj": {
+				"pageBatches": 0,
+				"pagesDownloaded": 0,
+				"pagesDownloadedBytes": 0,
+				"pagesScanned": 0,
+				"postFilterRows": 0,
+				"postPredicateRows": 0,
+				"postPredicateDecompressedBytes": 0,
+				"postPredicateStructuredMetadataBytes": 0,
+				"prePredicateDecompressedRows": 0,
+				"prePredicateDecompressedBytes": 0,
+				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalRowsAvailable": 0
 			}
 		}
 	},
@@ -269,7 +298,6 @@ func Test_encodePromResponse(t *testing.T) {
 			}`,
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			r, err := tt.resp.encode(context.Background())
 			require.NoError(t, err)

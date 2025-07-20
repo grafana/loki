@@ -4,6 +4,7 @@ package parse
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/grpcclient"
@@ -12,10 +13,9 @@ import (
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -124,14 +125,14 @@ var (
 			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
 		},
 		{
-			Name:       "bloom_compactor",
-			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
-			Desc:       "Experimental: The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.",
-		},
-		{
 			Name:       "bloom_gateway",
 			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
 			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+		},
+		{
+			Name:       "bloom_build",
+			StructType: []reflect.Type{reflect.TypeOf(bloombuild.Config{})},
+			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
 		},
 		{
 			Name:       "limits_config",
@@ -280,18 +281,26 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 			Desc: `Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+` + "```yaml" + `
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+` + "```" + `
 Named store from this example can be used by setting object_store to store-1 in period_config.`,
 		},
 		{
 			Name:       "attributes_config",
 			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
 			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
+		},
+		{
+			Name:       "thanos_object_store_config",
+			StructType: []reflect.Type{reflect.TypeOf(bucket.Config{})},
+			Desc: `The thanos_object_store_config block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
+Currently this is opt-in and takes effect only when ` + "`-use-thanos-objstore` " + "is set to true.",
 		},
 	}
 )

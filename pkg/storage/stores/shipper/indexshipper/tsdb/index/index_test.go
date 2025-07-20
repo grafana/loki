@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -71,14 +72,14 @@ func (m mockIndex) AddSeries(ref storage.SeriesRef, l labels.Labels, chunks ...C
 	if _, ok := m.series[ref]; ok {
 		return errors.Errorf("series with reference %d already added", ref)
 	}
-	for _, lbl := range l {
+	l.Range(func(lbl labels.Label) {
 		m.symbols[lbl.Name] = struct{}{}
 		m.symbols[lbl.Value] = struct{}{}
 		if _, ok := m.postings[lbl]; !ok {
 			m.postings[lbl] = []storage.SeriesRef{}
 		}
 		m.postings[lbl] = append(m.postings[lbl], ref)
-	}
+	})
 	m.postings[allPostingsKey] = append(m.postings[allPostingsKey], ref)
 
 	s := series{l: l}
@@ -117,7 +118,8 @@ func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]Ch
 	if !ok {
 		return errors.New("not found")
 	}
-	*lset = append((*lset)[:0], s.l...)
+
+	lset.CopyFrom(s.l)
 	*chks = append((*chks)[:0], s.chunks...)
 
 	return nil
@@ -131,7 +133,8 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	// An empty index must still result in a readable file.
 	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -172,12 +175,13 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// Postings lists are only written if a series with the respective
 	// reference was added before.
-	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
-	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
-	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
-	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(labels.StableHash(series[0]))))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(labels.StableHash(series[1]))))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(labels.StableHash(series[2]))))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(labels.StableHash(series[3]))))
 
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -198,28 +202,30 @@ func TestIndexRW_Postings(t *testing.T) {
 	require.NoError(t, p.Err())
 
 	// The label indices are no longer used, so test them by hand here.
-	labelIndices := map[string][]string{}
-	require.NoError(t, ReadOffsetTable(ir.b, ir.toc.LabelIndicesTable, func(key []string, off uint64, _ int) error {
-		if len(key) != 1 {
-			return errors.Errorf("unexpected key length for label indices table %d", len(key))
-		}
+	labelValuesOffsets := map[string]uint64{}
+	d := tsdb_enc.NewDecbufAt(ir.b, int(ir.toc.LabelIndicesTable), castagnoliTable)
+	cnt := d.Be32()
 
+	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
+		require.Equal(t, 1, d.Uvarint(), "Unexpected number of keys for label indices table")
+		lbl := d.UvarintStr()
+		off := d.Uvarint64()
+		labelValuesOffsets[lbl] = off
+		cnt--
+	}
+	require.NoError(t, d.Err())
+
+	labelIndices := map[string][]string{}
+	for lbl, off := range labelValuesOffsets {
 		d := tsdb_enc.NewDecbufAt(ir.b, int(off), castagnoliTable)
-		vals := []string{}
-		nc := d.Be32int()
-		if nc != 1 {
-			return errors.Errorf("unexpected number of label indices table names %d", nc)
-		}
-		for i := d.Be32(); i > 0; i-- {
+		require.Equal(t, 1, d.Be32int(), "Unexpected number of label indices table names")
+		for i := d.Be32(); i > 0 && d.Err() == nil; i-- {
 			v, err := ir.lookupSymbol(d.Be32())
-			if err != nil {
-				return err
-			}
-			vals = append(vals, v)
+			require.NoError(t, err)
+			labelIndices[lbl] = append(labelIndices[lbl], v)
 		}
-		labelIndices[key[0]] = vals
-		return d.Err()
-	}))
+		require.NoError(t, d.Err())
+	}
 	require.Equal(t, map[string][]string{
 		"a": {"1"},
 		"b": {"1", "2", "3", "4"},
@@ -257,13 +263,14 @@ func TestPostingsMany(t *testing.T) {
 	}
 
 	sort.Slice(series, func(i, j int) bool {
-		return series[i].Hash() < series[j].Hash()
+		return labels.StableHash(series[i]) < labels.StableHash(series[j])
 	})
 
 	for i, s := range series {
-		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(labels.StableHash(s))))
 	}
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -322,7 +329,7 @@ func TestPostingsMany(t *testing.T) {
 
 		// sort expected values by label hash instead of lexicographically by labelset
 		sort.Slice(exp, func(i, j int) bool {
-			return labels.FromStrings("i", exp[i], "foo", "bar").Hash() < labels.FromStrings("i", exp[j], "foo", "bar").Hash()
+			return labels.StableHash(labels.FromStrings("i", exp[i], "foo", "bar")) < labels.StableHash(labels.FromStrings("i", exp[j], "foo", "bar"))
 		})
 
 		require.Equal(t, exp, got, fmt.Sprintf("input: %v", c.in))
@@ -337,15 +344,15 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 	// Sort labels as the index writer expects series in sorted order by fingerprint.
 	sort.Slice(lbls, func(i, j int) bool {
-		return lbls[i].Hash() < lbls[j].Hash()
+		return labels.StableHash(lbls[i]) < labels.StableHash(lbls[j])
 	})
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	var input indexWriterSeriesSlice
@@ -388,22 +395,22 @@ func TestPersistence_index_e2e(t *testing.T) {
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(labels.StableHash(s.labels)), s.chunks...)
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
-		for _, l := range s.labels {
+		s.labels.Range(func(l labels.Label) {
 			valset, ok := values[l.Name]
 			if !ok {
 				valset = map[string]struct{}{}
 				values[l.Name] = valset
 			}
 			valset[l.Value] = struct{}{}
-		}
+		})
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
-	err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
@@ -443,9 +450,10 @@ func TestPersistence_index_e2e(t *testing.T) {
 	for k, v := range labelPairs {
 		sort.Strings(v)
 
-		res, err := ir.SortedLabelValues(k)
+		res, err := ir.LabelValues(k)
 		require.NoError(t, err)
 
+		sort.Strings(res)
 		require.Equal(t, len(v), len(res))
 		for i := 0; i < len(v); i++ {
 			require.Equal(t, v[i], res[i])
@@ -553,16 +561,16 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 	dir := t.TempDir()
 
 	lbls := []labels.Labels{
-		{{Name: "fizz", Value: "buzz"}},
-		{{Name: "ping", Value: "pong"}},
+		labels.New(labels.Label{Name: "fizz", Value: "buzz"}),
+		labels.New(labels.Label{Name: "ping", Value: "pong"}),
 	}
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	now := model.Now()
@@ -721,7 +729,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			iw, err := NewFileWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
@@ -734,11 +742,11 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			}
 
 			for i, l := range lbls {
-				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(labels.StableHash(l)), tc.chunkMetas...)
 				require.NoError(t, err)
 			}
 
-			err = iw.Close()
+			_, err = iw.Close(false)
 			require.NoError(t, err)
 
 			ir, err := NewFileReader(filepath.Join(dir, name))
@@ -938,5 +946,73 @@ func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
 			require.NotNil(t, chunkSample)
 			require.Equal(t, tc.chunkSamples.chunks[tc.expectedChunkSampleIdx], *chunkSample)
 		})
+	}
+}
+
+func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
+	dir := b.TempDir()
+	idxFile := filepath.Join(dir, IndexFilename)
+
+	lbls, err := labels.ReadLabels(filepath.Join("..", "testdata", "20kseries.json"), 1000)
+	require.NoError(b, err)
+
+	// Sort labels as the index writer expects series in sorted order by fingerprint.
+	sort.Slice(lbls, func(i, j int) bool {
+		return labels.StableHash(lbls[i]) < labels.StableHash(lbls[j])
+	})
+
+	symbols := map[string]struct{}{}
+	for _, lset := range lbls {
+		lset.Range(func(l labels.Label) {
+			symbols[l.Name] = struct{}{}
+			symbols[l.Value] = struct{}{}
+		})
+	}
+
+	var input indexWriterSeriesSlice
+
+	// Generate ChunkMetas for every label set.
+	for _, lset := range lbls {
+		input = append(input, &indexWriterSeries{
+			labels: lset,
+			chunks: []ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  1,
+					Checksum: rand.Uint32(),
+				},
+			},
+		})
+	}
+
+	iw, err := NewWriter(context.Background(), FormatV3, idxFile)
+	require.NoError(b, err)
+
+	var syms []string
+	for s := range symbols {
+		syms = append(syms, s)
+	}
+	sort.Strings(syms)
+	for _, s := range syms {
+		require.NoError(b, iw.AddSymbol(s))
+	}
+
+	for i, s := range input {
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(labels.StableHash(s.labels)), s.chunks...)
+		require.NoError(b, err)
+	}
+
+	_, err = iw.Close(false)
+	require.NoError(b, err)
+
+	bs, err := os.ReadFile(idxFile)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r, err := newReader(RealByteSlice(bs), io.NopCloser(nil))
+		require.NoError(b, err)
+		require.NoError(b, r.Close())
 	}
 }

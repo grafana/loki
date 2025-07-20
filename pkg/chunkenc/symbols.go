@@ -10,16 +10,15 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
-var structuredMetadataPool = sync.Pool{
-	New: func() interface{} {
-		return make(labels.Labels, 0, 8)
-	},
-}
+var errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")
 
 // symbol holds reference to a label name and value pair
 type symbol struct {
@@ -32,43 +31,41 @@ type symbols []symbol
 // symbols are actually index numbers assigned based on when the entry is seen for the first time.
 type symbolizer struct {
 	mtx            sync.RWMutex
-	symbolsMap     map[string]uint32
+	symbolsMap     map[string]uint32 // symbolsMap is only used on the write path for deduping symbol writes
 	labels         []string
 	size           int
 	compressedSize int
+	readOnly       bool
+	// Runtime-only map to track which symbols are label names and have been normalized
+	normalizedNames map[uint32]string
 }
 
 func newSymbolizer() *symbolizer {
 	return &symbolizer{
-		symbolsMap: map[string]uint32{},
+		symbolsMap:      map[string]uint32{},
+		normalizedNames: map[uint32]string{},
 	}
-}
-
-// Reset resets all the data and makes the symbolizer ready for reuse
-func (s *symbolizer) Reset() {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	s.symbolsMap = map[string]uint32{}
-	s.labels = s.labels[:0]
-	s.size = 0
-	s.compressedSize = 0
 }
 
 // Add adds new labels pairs to the collection and returns back a symbol for each existing and new label pair
-func (s *symbolizer) Add(lbls labels.Labels) symbols {
-	if len(lbls) == 0 {
-		return nil
+func (s *symbolizer) Add(lbls labels.Labels) (symbols, error) {
+	if s.readOnly {
+		return nil, errSymbolizerReadOnly
+	}
+	if lbls.IsEmpty() {
+		return nil, nil
 	}
 
-	syms := make([]symbol, len(lbls))
+	syms := make([]symbol, 0, lbls.Len())
 
-	for i, label := range lbls {
-		syms[i].Name = s.add(label.Name)
-		syms[i].Value = s.add(label.Value)
-	}
+	lbls.Range(func(label labels.Label) {
+		syms = append(syms, symbol{
+			Name:  s.add(label.Name),
+			Value: s.add(label.Value),
+		})
+	})
 
-	return syms
+	return syms, nil
 }
 
 func (s *symbolizer) add(lbl string) uint32 {
@@ -96,25 +93,47 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) labels.Labels {
 	if len(syms) == 0 {
-		return nil
+		return labels.EmptyLabels()
 	}
+
 	if buf == nil {
-		buf = structuredMetadataPool.Get().(labels.Labels)
+		buf = labelpool.Get()
+		defer labelpool.Put(buf)
+	} else {
+		buf.Reset()
 	}
-	buf = buf[:0]
 
+	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
-		buf = append(buf, labels.Label{Name: s.lookup(symbol.Name), Value: s.lookup(symbol.Value)})
+		// First check if we have a normalized name for this symbol
+		s.mtx.RLock()
+		normalized, exists := s.normalizedNames[symbol.Name]
+		s.mtx.RUnlock()
+
+		var name string
+		if exists {
+			name = normalized
+		} else {
+			// If we haven't seen this name before, look it up and normalize it
+			name = s.lookup(symbol.Name)
+			normalized := labelNamer.Build(name)
+			s.mtx.Lock()
+			s.normalizedNames[symbol.Name] = normalized
+			s.mtx.Unlock()
+			name = normalized
+		}
+
+		buf.Add(name, s.lookup(symbol.Value))
 	}
 
-	return buf
+	return buf.Labels()
 }
 
 func (s *symbolizer) lookup(idx uint32) string {
 	// take a read lock only if we will be getting new entries
-	if s.symbolsMap != nil {
+	if !s.readOnly {
 		s.mtx.RLock()
 		defer s.mtx.RUnlock()
 	}
@@ -163,7 +182,7 @@ func (s *symbolizer) CheckpointSize() int {
 
 // SerializeTo serializes all the labels and writes to the writer in compressed format.
 // It returns back the number of bytes written and a checksum of the data written.
-func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, error) {
+func (s *symbolizer) SerializeTo(w io.Writer, pool compression.WriterPool) (int, []byte, error) {
 	crc32Hash := crc32HashPool.Get().(hash.Hash32)
 	defer crc32HashPool.Put(crc32Hash)
 
@@ -311,6 +330,9 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 	s := symbolizer{
 		symbolsMap: make(map[string]uint32, numLabels),
 		labels:     make([]string, 0, numLabels),
+		// Labels are key-value pairs, preallocate to half the number to store just the keys,
+		// likely less memory than the exponential growth Go will do.
+		normalizedNames: make(map[uint32]string, numLabels/2),
 	}
 
 	for i := 0; i < numLabels; i++ {
@@ -324,7 +346,8 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 }
 
 // symbolizerFromEnc builds symbolizer from the bytes generated during serialization.
-func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
+// It sets the symbolizer to read-only mode because deserialization is usually done using data from a flushed chunk.
+func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, error) {
 	db := decbuf{b: b}
 	numLabels := db.uvarint()
 
@@ -337,8 +360,11 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 	defer pool.PutReader(reader)
 
 	s := symbolizer{
-		labels:         make([]string, 0, numLabels),
-		compressedSize: len(b),
+		labels: make([]string, 0, numLabels),
+		// Same as symbolizerFromCheckpoint
+		normalizedNames: make(map[uint32]string, numLabels/2),
+		compressedSize:  len(b),
+		readOnly:        true,
 	}
 
 	var (
@@ -399,7 +425,8 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 				return nil, err
 			}
 		}
-		s.labels = append(s.labels, string(buf))
+		label := string(buf)
+		s.labels = append(s.labels, label)
 		s.size += len(buf)
 	}
 

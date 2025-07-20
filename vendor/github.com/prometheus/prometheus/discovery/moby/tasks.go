@@ -19,7 +19,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/prometheus/common/model"
 
@@ -43,7 +42,7 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 		Source: "DockerSwarm",
 	}
 
-	tasks, err := d.client.TaskList(ctx, types.TaskListOptions{Filters: d.filters})
+	tasks, err := d.client.TaskList(ctx, swarm.TaskListOptions{Filters: d.filters})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing swarm services: %w", err)
 	}
@@ -150,7 +149,7 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 						labels[model.LabelName(k)] = model.LabelValue(v)
 					}
 
-					addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", d.port))
+					addr := net.JoinHostPort(ip.String(), strconv.Itoa(d.port))
 					labels[model.AddressLabel] = model.LabelValue(addr)
 
 					tg.Targets = append(tg.Targets, labels)

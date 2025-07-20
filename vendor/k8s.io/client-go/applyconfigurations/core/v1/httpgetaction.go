@@ -19,21 +19,21 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// HTTPGetActionApplyConfiguration represents an declarative configuration of the HTTPGetAction type for use
+// HTTPGetActionApplyConfiguration represents a declarative configuration of the HTTPGetAction type for use
 // with apply.
 type HTTPGetActionApplyConfiguration struct {
 	Path        *string                        `json:"path,omitempty"`
 	Port        *intstr.IntOrString            `json:"port,omitempty"`
 	Host        *string                        `json:"host,omitempty"`
-	Scheme      *v1.URIScheme                  `json:"scheme,omitempty"`
+	Scheme      *corev1.URIScheme              `json:"scheme,omitempty"`
 	HTTPHeaders []HTTPHeaderApplyConfiguration `json:"httpHeaders,omitempty"`
 }
 
-// HTTPGetActionApplyConfiguration constructs an declarative configuration of the HTTPGetAction type for use with
+// HTTPGetActionApplyConfiguration constructs a declarative configuration of the HTTPGetAction type for use with
 // apply.
 func HTTPGetAction() *HTTPGetActionApplyConfiguration {
 	return &HTTPGetActionApplyConfiguration{}
@@ -66,7 +66,7 @@ func (b *HTTPGetActionApplyConfiguration) WithHost(value string) *HTTPGetActionA
 // WithScheme sets the Scheme field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Scheme field is set to the value of the last call.
-func (b *HTTPGetActionApplyConfiguration) WithScheme(value v1.URIScheme) *HTTPGetActionApplyConfiguration {
+func (b *HTTPGetActionApplyConfiguration) WithScheme(value corev1.URIScheme) *HTTPGetActionApplyConfiguration {
 	b.Scheme = &value
 	return b
 }

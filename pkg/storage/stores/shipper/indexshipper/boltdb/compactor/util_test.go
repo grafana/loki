@@ -128,7 +128,7 @@ type testObjectClient struct {
 }
 
 func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
-	c, err := storage.NewObjectClient("filesystem", storage.Config{
+	c, err := storage.NewObjectClient("filesystem", "test", storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
@@ -173,9 +173,9 @@ func (t *testStore) HasChunk(c chunk.Chunk) bool {
 func (t *testStore) GetChunks(userID string, from, through model.Time, metric labels.Labels) []chunk.Chunk {
 	t.t.Helper()
 	var matchers []*labels.Matcher
-	for _, l := range metric {
+	metric.Range(func(l labels.Label) {
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
-	}
+	})
 	ctx := user.InjectOrgID(context.Background(), userID)
 	chunks, fetchers, err := t.Store.GetChunks(ctx, userID, from, through, chunk.NewPredicate(matchers, nil), nil)
 	require.NoError(t.t, err)

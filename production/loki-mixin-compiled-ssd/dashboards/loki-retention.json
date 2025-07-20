@@ -495,7 +495,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum(increase(loki_compactor_skipped_compacting_locked_table_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__range]))",
+                        "expr": "sum(loki_compactor_locked_table_successive_compaction_skips{cluster=~\"$cluster\", namespace=~\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "{{table_name}}",
                         "legendLink": null

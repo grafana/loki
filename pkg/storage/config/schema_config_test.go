@@ -384,8 +384,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			actual := testData.config.Validate()
 			assert.ErrorIs(t, actual, testData.err)
@@ -1119,11 +1117,11 @@ const (
 )
 
 var (
-	labelsForDummyChunks = labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	}
+	labelsForDummyChunks = labels.New(
+		labels.Label{Name: labels.MetricName, Value: "foo"},
+		labels.Label{Name: "bar", Value: "baz"},
+		labels.Label{Name: "toms", Value: "code"},
+	)
 )
 
 func TestChunkKeys(t *testing.T) {

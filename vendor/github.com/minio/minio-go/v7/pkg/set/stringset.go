@@ -21,13 +21,11 @@ import (
 	"fmt"
 	"sort"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/minio/minio-go/v7/internal/json"
 )
 
 // StringSet - uses map as set of strings.
 type StringSet map[string]struct{}
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // ToSlice - returns StringSet as string slice.
 func (set StringSet) ToSlice() []string {
@@ -36,6 +34,30 @@ func (set StringSet) ToSlice() []string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	return keys
+}
+
+// ToByteSlices - returns StringSet as a sorted
+// slice of byte slices, using only one allocation.
+func (set StringSet) ToByteSlices() [][]byte {
+	length := 0
+	for k := range set {
+		length += len(k)
+	}
+	// Preallocate the slice with the total length of all strings
+	// to avoid multiple allocations.
+	dst := make([]byte, length)
+
+	// Add keys to this...
+	keys := make([][]byte, 0, len(set))
+	for k := range set {
+		n := copy(dst, k)
+		keys = append(keys, dst[:n])
+		dst = dst[n:]
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return string(keys[i]) < string(keys[j])
+	})
 	return keys
 }
 
@@ -149,22 +171,19 @@ func (set StringSet) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON - parses JSON data and creates new set with it.
-// If 'data' contains JSON string array, the set contains each string.
-// If 'data' contains JSON string, the set contains the string as one element.
-// If 'data' contains Other JSON types, JSON parse error is returned.
 func (set *StringSet) UnmarshalJSON(data []byte) error {
-	sl := []string{}
+	sl := []interface{}{}
 	var err error
 	if err = json.Unmarshal(data, &sl); err == nil {
 		*set = make(StringSet)
 		for _, s := range sl {
-			set.Add(s)
+			set.Add(fmt.Sprintf("%v", s))
 		}
 	} else {
-		var s string
+		var s interface{}
 		if err = json.Unmarshal(data, &s); err == nil {
 			*set = make(StringSet)
-			set.Add(s)
+			set.Add(fmt.Sprintf("%v", s))
 		}
 	}
 
@@ -183,7 +202,7 @@ func NewStringSet() StringSet {
 
 // CreateStringSet - creates new string set with given string values.
 func CreateStringSet(sl ...string) StringSet {
-	set := make(StringSet)
+	set := make(StringSet, len(sl))
 	for _, k := range sl {
 		set.Add(k)
 	}
@@ -192,7 +211,7 @@ func CreateStringSet(sl ...string) StringSet {
 
 // CopyStringSet - returns copy of given set.
 func CopyStringSet(set StringSet) StringSet {
-	nset := NewStringSet()
+	nset := make(StringSet, len(set))
 	for k, v := range set {
 		nset[k] = v
 	}

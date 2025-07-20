@@ -19,10 +19,9 @@ import (
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
@@ -31,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
-	util_math "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -136,10 +134,12 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		done:                              make(chan struct{}),
 	}
 
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(instrumentation(cfg, sgClient.storeGatewayClientRequestDuration))
+	unaryInterceptors, streamInterceptors := instrumentation(cfg, sgClient.storeGatewayClientRequestDuration)
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(unaryInterceptors, streamInterceptors, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
+	dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	factory := func(addr string) (client.PoolClient, error) {
 		igPool, err := NewClientPool(addr, dialOpts)
 		if err != nil {
@@ -225,7 +225,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 		jobsCount++
 	}
 	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
-		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:util_math.Min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
+		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
 	})
 }
 
@@ -349,7 +349,7 @@ func (s *GatewayClient) GetShards(
 
 			return nil
 		},
-		func(err error) bool {
+		func(_ error) bool {
 			errCt++
 			return errCt <= maxErrs
 		},
@@ -544,13 +544,11 @@ func (b *grpcIter) Value() []byte {
 func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
-	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(clientRequestDuration))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
-	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(clientRequestDuration))
 

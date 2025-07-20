@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -32,8 +33,8 @@ import (
 )
 
 var (
-	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
-	fooLabels         = labels.Labels{{Name: "foo", Value: "bar"}}
+	fooLabelsWithName = labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "__name__", Value: "logs"})
+	fooLabels         = labels.New(labels.Label{Name: "foo", Value: "bar"})
 )
 
 var from = time.Unix(0, time.Millisecond.Nanoseconds())
@@ -108,7 +109,7 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, headBlockFmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkFormat, compression.GZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_, _ = chk.Append(&e)
 	}
@@ -260,7 +261,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0, 0)
 	if err != nil {
 		panic(err)
 	}

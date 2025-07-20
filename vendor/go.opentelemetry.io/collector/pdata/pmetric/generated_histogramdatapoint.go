@@ -42,6 +42,10 @@ func NewHistogramDataPoint() HistogramDataPoint {
 func (ms HistogramDataPoint) MoveTo(dest HistogramDataPoint) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlpmetrics.HistogramDataPoint{}
 }
@@ -182,24 +186,46 @@ func (ms HistogramDataPoint) RemoveMax() {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms HistogramDataPoint) CopyTo(dest HistogramDataPoint) {
 	dest.state.AssertMutable()
-	ms.Attributes().CopyTo(dest.Attributes())
-	dest.SetStartTimestamp(ms.StartTimestamp())
-	dest.SetTimestamp(ms.Timestamp())
-	dest.SetCount(ms.Count())
-	ms.BucketCounts().CopyTo(dest.BucketCounts())
-	ms.ExplicitBounds().CopyTo(dest.ExplicitBounds())
-	ms.Exemplars().CopyTo(dest.Exemplars())
-	dest.SetFlags(ms.Flags())
-	if ms.HasSum() {
-		dest.SetSum(ms.Sum())
-	}
+	copyOrigHistogramDataPoint(dest.orig, ms.orig)
+}
 
-	if ms.HasMin() {
-		dest.SetMin(ms.Min())
+func copyOrigHistogramDataPoint(dest, src *otlpmetrics.HistogramDataPoint) {
+	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
+	dest.StartTimeUnixNano = src.StartTimeUnixNano
+	dest.TimeUnixNano = src.TimeUnixNano
+	dest.Count = src.Count
+	dest.BucketCounts = internal.CopyOrigUInt64Slice(dest.BucketCounts, src.BucketCounts)
+	dest.ExplicitBounds = internal.CopyOrigFloat64Slice(dest.ExplicitBounds, src.ExplicitBounds)
+	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
+	dest.Flags = src.Flags
+	if srcSum, ok := src.Sum_.(*otlpmetrics.HistogramDataPoint_Sum); ok {
+		destSum, ok := dest.Sum_.(*otlpmetrics.HistogramDataPoint_Sum)
+		if !ok {
+			destSum = &otlpmetrics.HistogramDataPoint_Sum{}
+			dest.Sum_ = destSum
+		}
+		destSum.Sum = srcSum.Sum
+	} else {
+		dest.Sum_ = nil
 	}
-
-	if ms.HasMax() {
-		dest.SetMax(ms.Max())
+	if srcMin, ok := src.Min_.(*otlpmetrics.HistogramDataPoint_Min); ok {
+		destMin, ok := dest.Min_.(*otlpmetrics.HistogramDataPoint_Min)
+		if !ok {
+			destMin = &otlpmetrics.HistogramDataPoint_Min{}
+			dest.Min_ = destMin
+		}
+		destMin.Min = srcMin.Min
+	} else {
+		dest.Min_ = nil
 	}
-
+	if srcMax, ok := src.Max_.(*otlpmetrics.HistogramDataPoint_Max); ok {
+		destMax, ok := dest.Max_.(*otlpmetrics.HistogramDataPoint_Max)
+		if !ok {
+			destMax = &otlpmetrics.HistogramDataPoint_Max{}
+			dest.Max_ = destMax
+		}
+		destMax.Max = srcMax.Max
+	} else {
+		dest.Max_ = nil
+	}
 }

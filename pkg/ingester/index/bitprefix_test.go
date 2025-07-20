@@ -38,7 +38,6 @@ func Test_BitPrefixGetShards(t *testing.T) {
 		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 4, Of: 16}).Ptr(), []uint32{2}},
 		{8, true, logql.NewPowerOfTwoShard(index.ShardAnnotation{Shard: 15, Of: 16}).Ptr(), []uint32{7}},
 	} {
-		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
 			ii, err := NewBitPrefixWithShards(tt.total)
 			require.Nil(t, err)
@@ -167,15 +166,15 @@ func Test_BitPrefixCreation(t *testing.T) {
 func Test_BitPrefixDeleteAddLoopkup(t *testing.T) {
 	index, err := NewBitPrefixWithShards(DefaultIndexShards)
 	require.Nil(t, err)
-	lbs := []logproto.LabelAdapter{
-		{Name: "foo", Value: "foo"},
-		{Name: "bar", Value: "bar"},
-		{Name: "buzz", Value: "buzz"},
-	}
-	sort.Sort(logproto.FromLabelAdaptersToLabels(lbs))
 
-	index.Add(lbs, model.Fingerprint((logproto.FromLabelAdaptersToLabels(lbs).Hash())))
-	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(logproto.FromLabelAdaptersToLabels(lbs).Hash()))
+	lbs := logproto.FromLabelsToLabelAdapters(labels.New(
+		labels.Label{Name: "foo", Value: "foo"},
+		labels.Label{Name: "bar", Value: "bar"},
+		labels.Label{Name: "buzz", Value: "buzz"},
+	))
+
+	index.Add(lbs, model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
+	index.Delete(logproto.FromLabelAdaptersToLabels(lbs), model.Fingerprint(labels.StableHash(logproto.FromLabelAdaptersToLabels(lbs))))
 	ids, err := index.Lookup([]*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "foo"),
 	}, nil)
@@ -184,14 +183,14 @@ func Test_BitPrefixDeleteAddLoopkup(t *testing.T) {
 }
 
 func Test_BitPrefix_hash_mapping(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "compose_project", Value: "loki-tsdb-storage-s3"},
-		labels.Label{Name: "compose_service", Value: "ingester-2"},
-		labels.Label{Name: "container_name", Value: "loki-tsdb-storage-s3_ingester-2_1"},
-		labels.Label{Name: "filename", Value: "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log"},
-		labels.Label{Name: "host", Value: "docker-desktop"},
-		labels.Label{Name: "source", Value: "stderr"},
-	}
+	lbs := labels.FromStrings(
+		"compose_project", "loki-tsdb-storage-s3",
+		"compose_service", "ingester-2",
+		"container_name", "loki-tsdb-storage-s3_ingester-2_1",
+		"filename", "/var/log/docker/790fef4c6a587c3b386fe85c07e03f3a1613f4929ca3abaa4880e14caadb5ad1/json.log",
+		"host", "docker-desktop",
+		"source", "stderr",
+	)
 
 	// for _, shard := range []uint32{2, 4, 8, 16, 32, 64, 128} {
 	for _, shard := range []uint32{2} {
@@ -201,11 +200,11 @@ func Test_BitPrefix_hash_mapping(t *testing.T) {
 
 			requestedFactor := 16
 
-			fp := model.Fingerprint(lbs.Hash())
+			fp := model.Fingerprint(labels.StableHash(lbs))
 			ii.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 
 			requiredBits := index.NewShard(0, uint32(requestedFactor)).RequiredBits()
-			expShard := uint32(lbs.Hash() >> (64 - requiredBits))
+			expShard := uint32(labels.StableHash(lbs) >> (64 - requiredBits))
 
 			res, err := ii.Lookup(
 				[]*labels.Matcher{{Type: labels.MatchEqual,
@@ -224,14 +223,14 @@ func Test_BitPrefix_hash_mapping(t *testing.T) {
 }
 
 func Test_BitPrefixNoMatcherLookup(t *testing.T) {
-	lbs := labels.Labels{
-		labels.Label{Name: "foo", Value: "bar"},
-		labels.Label{Name: "hi", Value: "hello"},
-	}
+	lbs := labels.FromStrings(
+		"foo", "bar",
+		"hi", "hello",
+	)
 	// with no shard param
 	ii, err := NewBitPrefixWithShards(16)
 	require.Nil(t, err)
-	fp := model.Fingerprint(lbs.Hash())
+	fp := model.Fingerprint(labels.StableHash(lbs))
 	ii.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 	ids, err := ii.Lookup(nil, nil)
 	require.Nil(t, err)
@@ -254,12 +253,12 @@ func Test_BitPrefixConsistentMapping(t *testing.T) {
 	require.Nil(t, err)
 
 	for i := 0; i < 100; i++ {
-		lbs := labels.Labels{
-			labels.Label{Name: "foo", Value: "bar"},
-			labels.Label{Name: "hi", Value: fmt.Sprint(i)},
-		}
+		lbs := labels.FromStrings(
+			"foo", "bar",
+			"hi", fmt.Sprint(i),
+		)
 
-		fp := model.Fingerprint(lbs.Hash())
+		fp := model.Fingerprint(labels.StableHash(lbs))
 		a.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 		b.Add(logproto.FromLabelsToLabelAdapters(lbs), fp)
 	}

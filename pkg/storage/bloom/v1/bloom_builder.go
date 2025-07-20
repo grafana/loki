@@ -28,20 +28,13 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	}
 }
 
-func (b *BloomBlockBuilder) WriteSchema() error {
-	b.scratch.Reset()
-	b.opts.Schema.Encode(b.scratch)
-	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
-		return errors.Wrap(err, "writing schema")
-	}
-	b.writtenSchema = true
-	b.offset += b.scratch.Len()
-	return nil
+func (b *BloomBlockBuilder) UnflushedSize() int {
+	return b.scratch.Len() + b.page.UnflushedSize()
 }
 
 func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 	if !b.writtenSchema {
-		if err := b.WriteSchema(); err != nil {
+		if err := b.writeSchema(); err != nil {
 			return BloomOffset{}, errors.Wrap(err, "writing schema")
 		}
 	}
@@ -63,7 +56,30 @@ func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 	}, nil
 }
 
+func (b *BloomBlockBuilder) writeSchema() error {
+	if b.writtenSchema {
+		return nil
+	}
+
+	b.scratch.Reset()
+	b.opts.Schema.Encode(b.scratch)
+	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
+		return errors.Wrap(err, "writing schema")
+	}
+	b.writtenSchema = true
+	b.offset += b.scratch.Len()
+	return nil
+}
+
 func (b *BloomBlockBuilder) Close() (uint32, error) {
+	if !b.writtenSchema {
+		// We will get here only if we haven't appended any bloom filters to the block
+		// This would happen only if all series yielded empty blooms
+		if err := b.writeSchema(); err != nil {
+			return 0, errors.Wrap(err, "writing schema")
+		}
+	}
+
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
 			return 0, errors.Wrap(err, "flushing final bloom page")

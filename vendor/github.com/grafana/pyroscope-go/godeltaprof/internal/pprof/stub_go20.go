@@ -3,7 +3,10 @@
 
 package pprof
 
-import "runtime"
+import (
+	"runtime"
+	_ "unsafe"
+)
 
 // runtime_FrameStartLine is defined in runtime/symtab.go.
 func runtime_FrameStartLine(f *runtime.Frame) int {
@@ -14,3 +17,9 @@ func runtime_FrameStartLine(f *runtime.Frame) int {
 func runtime_FrameSymbolName(f *runtime.Frame) string {
 	return f.Function
 }
+
+//go:linkname runtime_expandFinalInlineFrame runtime/pprof.runtime_expandFinalInlineFrame
+func runtime_expandFinalInlineFrame(stk []uintptr) []uintptr
+
+//go:linkname runtime_cyclesPerSecond runtime/pprof.runtime_cyclesPerSecond
+func runtime_cyclesPerSecond() int64

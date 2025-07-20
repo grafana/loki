@@ -28,7 +28,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // ErrWALClosed is an error returned when a WAL operation can't run because the
@@ -67,8 +70,8 @@ type Storage struct {
 }
 
 // NewStorage makes a new Storage.
-func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
-	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
+func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string, enableReplay bool) (*Storage, error) {
+	w, err := wlog.NewSize(util_log.SlogFromGoKit(logger), registerer, SubDirectory(path), wlog.DefaultSegmentSize, compression.Snappy)
 	if err != nil {
 		return nil, err
 	}
@@ -104,20 +107,23 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	start := time.Now()
-	if err := storage.replayWAL(); err != nil {
-		metrics.TotalCorruptions.Inc()
+	if enableReplay {
+		if err := storage.replayWAL(); err != nil {
+			metrics.TotalCorruptions.Inc()
 
-		level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
-		if err := w.Repair(err); err != nil {
-			metrics.TotalFailedRepairs.Inc()
-			metrics.ReplayDuration.Observe(time.Since(start).Seconds())
-			return nil, errors.Wrap(err, "repair corrupted WAL")
+			level.Warn(storage.logger).Log("msg", "encountered WAL read error, attempting repair", "err", err)
+			if err := w.Repair(err); err != nil {
+				metrics.TotalFailedRepairs.Inc()
+				metrics.ReplayDuration.Observe(time.Since(start).Seconds())
+				return nil, errors.Wrap(err, "repair corrupted WAL")
+			}
+
+			metrics.TotalSucceededRepairs.Inc()
 		}
-
-		metrics.TotalSucceededRepairs.Inc()
+		metrics.ReplayDuration.Observe(time.Since(start).Seconds())
+	} else {
+		level.Info(storage.logger).Log("msg", "WAL replay disabled")
 	}
-
-	metrics.ReplayDuration.Observe(time.Since(start).Seconds())
 
 	go storage.recordSize()
 
@@ -261,7 +267,7 @@ func (w *Storage) loadWAL(r *wlog.Reader) (err error) {
 				// the truncation is performed.
 				if w.series.getByID(s.Ref) == nil {
 					series := &memSeries{ref: s.Ref, lset: s.Labels, lastTs: 0}
-					w.series.set(s.Labels.Hash(), series)
+					w.series.set(labels.StableHash(s.Labels), series)
 
 					w.metrics.NumActiveSeries.Inc()
 					w.metrics.TotalCreatedSeries.Inc()
@@ -368,7 +374,7 @@ func (w *Storage) Truncate(mint int64) error {
 		return nil
 	}
 
-	keep := func(id chunks.HeadSeriesRef) bool {
+	keep := func(id chunks.HeadSeriesRef, _ int) bool {
 		if w.series.getByID(id) != nil {
 			return true
 		}
@@ -378,7 +384,7 @@ func (w *Storage) Truncate(mint int64) error {
 		w.deletedMtx.Unlock()
 		return ok
 	}
-	if _, err = wlog.Checkpoint(w.logger, w.wal, first, last, keep, mint); err != nil {
+	if _, err = wlog.Checkpoint(util_log.SlogFromGoKit(w.logger), w.wal, first, last, keep, mint); err != nil {
 		return errors.Wrap(err, "create checkpoint")
 	}
 	if err := w.wal.Truncate(last + 1); err != nil {
@@ -560,7 +566,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 		// Ensure no empty or duplicate labels have gotten through. This mirrors the
 		// equivalent validation code in the TSDB's headAppender.
 		l = l.WithoutEmpty()
-		if len(l) == 0 {
+		if l.IsEmpty() {
 			return 0, errors.Wrap(tsdb.ErrInvalidSample, "empty labelset")
 		}
 
@@ -599,7 +605,7 @@ func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v flo
 }
 
 func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool) {
-	hash := l.Hash()
+	hash := labels.StableHash(l)
 
 	series = a.w.series.getByHash(hash, l)
 	if series != nil {
@@ -607,7 +613,7 @@ func (a *appender) getOrCreate(l labels.Labels) (series *memSeries, created bool
 	}
 
 	series = &memSeries{ref: chunks.HeadSeriesRef(a.w.ref.Inc()), lset: l}
-	a.w.series.set(l.Hash(), series)
+	a.w.series.set(labels.StableHash(l), series)
 	return series, true
 }
 
@@ -627,13 +633,18 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 	// Exemplar label length does not include chars involved in text rendering such as quotes
 	// equals sign, or commas. See definition of const ExemplarMaxLabelLength.
 	labelSetLen := 0
-	for _, l := range e.Labels {
+
+	err := e.Labels.Validate(func(l labels.Label) error {
 		labelSetLen += utf8.RuneCountInString(l.Name)
 		labelSetLen += utf8.RuneCountInString(l.Value)
 
 		if labelSetLen > exemplar.ExemplarMaxLabelSetLength {
-			return 0, storage.ErrExemplarLabelLength
+			return storage.ErrExemplarLabelLength
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	a.exemplars = append(a.exemplars, record.RefExemplar{
@@ -655,10 +666,17 @@ func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64
 	return 0, nil
 }
 
+func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram created timestamps
+	return 0, nil
+}
+
 func (a *appender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	// TODO: support created timestamp
 	return 0, nil
 }
+
+func (a *appender) SetOptions(_ *storage.AppendOptions) {}
 
 // Commit submits the collected samples and purges the batch.
 func (a *appender) Commit() error {

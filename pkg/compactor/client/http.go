@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -45,13 +46,17 @@ type compactorHTTPClient struct {
 
 // NewHTTPClient creates a client which talks to compactor over HTTP.
 // It uses provided TLS config which creating HTTP client.
-func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error) {
+func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
 		return nil, err
 	}
+
 	u.Path = getDeletePath
+	q := u.Query()
+	q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
+	u.RawQuery = q.Encode()
 	deleteRequestsURL := u.String()
 
 	u.Path = cacheGenNumPath
@@ -146,4 +151,8 @@ func (c *compactorHTTPClient) GetCacheGenerationNumber(ctx context.Context, user
 	}
 
 	return genNumber, err
+}
+
+func (c *compactorHTTPClient) JobQueueClient() grpc.JobQueueClient {
+	panic("compactor does not support interacting with job queue over HTTP")
 }

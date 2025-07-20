@@ -3,9 +3,11 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -109,13 +111,14 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		}
 
 		userID := entry.Name()
+		logger := loggerWithUserID(table.logger, userID)
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, loggerWithUserID(table.logger, userID))
+			table.baseUserIndexSet, openIndexFileFunc, logger)
 		if err != nil {
 			return nil, err
 		}
 
-		err = userIndexSet.Init(false)
+		err = userIndexSet.Init(false, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +132,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	err = commonIndexSet.Init(false)
+	err = commonIndexSet.Init(false, table.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -270,9 +273,22 @@ func (t *table) Sync(ctx context.Context) error {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	t.indexSetsMtx.RLock()
-	defer t.indexSetsMtx.RUnlock()
+	users := slices.Collect(maps.Keys(t.indexSets))
+	t.indexSetsMtx.RUnlock()
 
-	for userID, indexSet := range t.indexSets {
+	for _, userID := range users {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		t.indexSetsMtx.RLock()
+		indexSet, ok := t.indexSets[userID]
+		t.indexSetsMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
 		if err := indexSet.Sync(ctx); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}
@@ -287,7 +303,7 @@ func (t *table) Sync(ctx context.Context) error {
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
 func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
-	logger := spanlogger.FromContextWithFallback(ctx, log.With(t.logger, "user", id, "table", t.name))
+	logger := spanlogger.FromContext(ctx, loggerWithUserID(t.logger, id))
 
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
@@ -311,7 +327,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, logger)
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id))
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +337,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	// it is up to the caller to wait for its readiness using IndexSet.AwaitReady()
 	go func() {
 		start := time.Now()
-		err := indexSet.Init(forQuerying)
+		err := indexSet.Init(forQuerying, logger)
 		duration := time.Since(start)
 
 		level.Info(logger).Log("msg", "init index set", "duration", duration, "success", err == nil)

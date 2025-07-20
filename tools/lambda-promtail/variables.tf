@@ -16,6 +16,18 @@ variable "bucket_names" {
   default     = []
 }
 
+variable "filter_prefix" {
+  type        = string
+  description = "Prefix for S3 bucket notification filter"
+  default     = "AWSLogs/"
+}
+
+variable "filter_suffix" {
+  type        = string
+  description = "Suffix for S3 bucket notification filter"
+  default     = ".gz"
+}
+
 variable "log_group_names" {
   type        = set(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."

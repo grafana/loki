@@ -12,7 +12,7 @@ import (
 )
 
 func Test_MiddlewareWithoutHeader(t *testing.T) {
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		limits := ExtractQueryLimitsContext(r.Context())
 		require.Nil(t, limits)
 	})
@@ -28,7 +28,7 @@ func Test_MiddlewareWithoutHeader(t *testing.T) {
 }
 
 func Test_MiddlewareWithBrokenHeader(t *testing.T) {
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		limits := ExtractQueryLimitsContext(r.Context())
 		require.Nil(t, limits)
 	})
@@ -56,7 +56,7 @@ func Test_MiddlewareWithHeader(t *testing.T) {
 		10,
 	}
 
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		actual := ExtractQueryLimitsContext(r.Context())
 		require.Equal(t, limits, *actual)
 	})

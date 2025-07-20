@@ -34,11 +34,13 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ValidateClusterAndConstructClusterUpdateForTesting exports the
@@ -49,7 +51,7 @@ var ValidateClusterAndConstructClusterUpdateForTesting = validateClusterAndConst
 // to this value by the management server.
 const transportSocketName = "envoy.transport_sockets.tls"
 
-func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
+func unmarshalClusterResource(r *anypb.Any, serverCfg *bootstrap.ServerConfig) (string, ClusterUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -63,7 +65,7 @@ func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
 	if err := proto.Unmarshal(r.GetValue(), cluster); err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
-	cu, err := validateClusterAndConstructClusterUpdate(cluster)
+	cu, err := validateClusterAndConstructClusterUpdate(cluster, serverCfg)
 	if err != nil {
 		return cluster.GetName(), ClusterUpdate{}, err
 	}
@@ -80,7 +82,34 @@ const (
 	defaultLeastRequestChoiceCount = 2
 )
 
-func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
+func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serverCfg *bootstrap.ServerConfig) (ClusterUpdate, error) {
+	telemetryLabels := make(map[string]string)
+	if fmd := cluster.GetMetadata().GetFilterMetadata(); fmd != nil {
+		if val, ok := fmd["com.google.csm.telemetry_labels"]; ok {
+			if fields := val.GetFields(); fields != nil {
+				if val, ok := fields["service_name"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_name"] = val.GetStringValue()
+					}
+				}
+				if val, ok := fields["service_namespace"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_namespace_name"] = val.GetStringValue()
+					}
+				}
+			}
+		}
+	}
+	// "The values for the service labels csm.service_name and
+	// csm.service_namespace_name come from xDS, “unknown” if not present." -
+	// CSM Design.
+	if _, ok := telemetryLabels["csm.service_name"]; !ok {
+		telemetryLabels["csm.service_name"] = "unknown"
+	}
+	if _, ok := telemetryLabels["csm.service_namespace_name"]; !ok {
+		telemetryLabels["csm.service_namespace_name"] = "unknown"
+	}
+
 	var lbPolicy json.RawMessage
 	var err error
 	switch cluster.GetLbPolicy() {
@@ -104,10 +133,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
 	case v3clusterpb.Cluster_LEAST_REQUEST:
-		if !envconfig.LeastRequestLB {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
-
 		// "The configuration for the Least Request LB policy is the
 		// least_request_lb_config field. The field is optional; if not present,
 		// defaults will be assumed for all of its values." - A48
@@ -160,23 +185,14 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		MaxRequests:      circuitBreakersFromCluster(cluster),
 		LBPolicy:         lbPolicy,
 		OutlierDetection: od,
+		TelemetryLabels:  telemetryLabels,
 	}
 
-	// Note that this is different from the gRFC (gRFC A47 says to include the
-	// full ServerConfig{URL,creds,server feature} here). This information is
-	// not available here, because this function doesn't have access to the
-	// xdsclient bootstrap information now (can be added if necessary). The
-	// ServerConfig will be read and populated by the CDS balancer when
-	// processing this field.
-	// According to A27:
-	// If the `lrs_server` field is set, it must have its `self` field set, in
-	// which case the client should use LRS for load reporting. Otherwise
-	// (the `lrs_server` field is not set), LRS load reporting will be disabled.
 	if lrs := cluster.GetLrsServer(); lrs != nil {
 		if lrs.GetSelf() == nil {
 			return ClusterUpdate{}, fmt.Errorf("unsupported config_source_specifier %T in lrs_server field", lrs.ConfigSourceSpecifier)
 		}
-		ret.LRSServerConfig = ClusterLRSServerSelf
+		ret.LRSServerConfig = serverCfg
 	}
 
 	// Validate and set cluster type from the response.
@@ -258,7 +274,7 @@ func dnsHostNameFromCluster(cluster *v3clusterpb.Cluster) (string, error) {
 // the received Cluster resource.
 func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, error) {
 	if tsm := cluster.GetTransportSocketMatches(); len(tsm) != 0 {
-		return nil, fmt.Errorf("unsupport transport_socket_matches field is non-empty: %+v", tsm)
+		return nil, fmt.Errorf("unsupported transport_socket_matches field is non-empty: %+v", tsm)
 	}
 	// The Cluster resource contains a `transport_socket` field, which contains
 	// a oneof `typed_config` field of type `protobuf.Any`. The any proto
@@ -270,12 +286,12 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 	if name := ts.GetName(); name != transportSocketName {
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
-	any := ts.GetTypedConfig()
-	if any == nil || any.TypeUrl != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", any.TypeUrl)
+	tc := ts.GetTypedConfig()
+	if tc == nil || tc.TypeUrl != version.V3UpstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
-	if err := proto.Unmarshal(any.GetValue(), upstreamCtx); err != nil {
+	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal UpstreamTlsContext in CDS response: %v", err)
 	}
 	// The following fields from `UpstreamTlsContext` are ignored:
@@ -302,12 +318,13 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext, server
 	// For now, if we can't get a valid security config from the new fields, we
 	// fallback to the old deprecated fields.
 	// TODO: Drop support for deprecated fields. NACK if err != nil here.
-	sc, _ := securityConfigFromCommonTLSContextUsingNewFields(common, server)
+	sc, err1 := securityConfigFromCommonTLSContextUsingNewFields(common, server)
 	if sc == nil || sc.Equal(&SecurityConfig{}) {
 		var err error
 		sc, err = securityConfigFromCommonTLSContextWithDeprecatedFields(common, server)
 		if err != nil {
-			return nil, err
+			// Retain the validation error from using the new fields.
+			return nil, errors.Join(err1, fmt.Errorf("failed to parse config using deprecated fields: %v", err))
 		}
 	}
 	if sc != nil {
@@ -318,7 +335,7 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext, server
 				return nil, errors.New("security configuration on the server-side does not contain identity certificate provider instance name")
 			}
 		} else {
-			if sc.RootInstanceName == "" {
+			if !sc.UseSystemRootCerts && sc.RootInstanceName == "" {
 				return nil, errors.New("security configuration on the client-side does not contain root certificate provider instance name")
 			}
 		}
@@ -417,6 +434,8 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	// we are interested in:
 	//  - `ca_certificate_provider_instance`
 	//    - this is of type `CertificateProviderPluginInstance`
+	//  - `system_root_certs`:
+	//    - This indicates the usage of system root certs for validation.
 	//  - `match_subject_alt_names`
 	//    - this is a list of string matchers
 	//
@@ -440,12 +459,32 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	}
 	// If we get here, it means that the `CertificateValidationContext` message
 	// was found through one of the supported ways. It is an error if the
-	// validation context is specified, but it does not contain the
-	// ca_certificate_provider_instance field which contains information about
-	// the certificate provider to be used for the root certificates.
-	if validationCtx.GetCaCertificateProviderInstance() == nil {
-		return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing in CommonTlsContext message: %+v", common)
+	// validation context is specified, but it does not specify a way to
+	// validate TLS certificates. Peer TLS certs can be verified in the
+	// following ways:
+	// 1. If the ca_certificate_provider_instance field is set, it contains
+	//    information about the certificate provider to be used for the root
+	//    certificates, else
+	// 2. If the system_root_certs field is set, and the config is for a client,
+	//    use the system default root certs.
+	useSystemRootCerts := false
+	if validationCtx.GetCaCertificateProviderInstance() == nil && envconfig.XDSSystemRootCertsEnabled {
+		if server {
+			if validationCtx.GetSystemRootCerts() != nil {
+				// The `system_root_certs` field will not be supported on the
+				// gRPC server side. If `ca_certificate_provider_instance` is
+				// unset and `system_root_certs` is set, the LDS resource will
+				// be NACKed.
+				// - A82
+				return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing and unexpected field system_root_certs is set for server in CommonTlsContext message: %+v", common)
+			}
+		} else {
+			if validationCtx.GetSystemRootCerts() != nil {
+				useSystemRootCerts = true
+			}
+		}
 	}
+
 	// The following fields are ignored:
 	// - trusted_ca
 	// - watched_directory
@@ -457,7 +496,7 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	case len(validationCtx.GetVerifyCertificateHash()) != 0:
 		return nil, fmt.Errorf("unsupported verify_certificate_hash field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetRequireSignedCertificateTimestamp().GetValue():
-		return nil, fmt.Errorf("unsupported require_sugned_ceritificate_timestamp field in CommonTlsContext message: %+v", common)
+		return nil, fmt.Errorf("unsupported require_signed_certificate_timestamp field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCrl() != nil:
 		return nil, fmt.Errorf("unsupported crl field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCustomValidatorConfig() != nil:
@@ -467,7 +506,15 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	if rootProvider := validationCtx.GetCaCertificateProviderInstance(); rootProvider != nil {
 		sc.RootInstanceName = rootProvider.GetInstanceName()
 		sc.RootCertName = rootProvider.GetCertificateName()
+	} else if useSystemRootCerts {
+		sc.UseSystemRootCerts = true
+	} else if !server && envconfig.XDSSystemRootCertsEnabled {
+		return nil, fmt.Errorf("expected fields ca_certificate_provider_instance and system_root_certs are missing in CommonTlsContext message: %+v", common)
+	} else {
+		// Don't mention the system_root_certs field if it was not checked.
+		return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing in CommonTlsContext message: %+v", common)
 	}
+
 	var matchers []matcher.StringMatcher
 	for _, m := range validationCtx.GetMatchSubjectAltNames() {
 		matcher, err := matcher.StringMatcherFromProto(m)

@@ -17,6 +17,11 @@ import (
 const credNameUserPassword = "UsernamePasswordCredential"
 
 // UsernamePasswordCredentialOptions contains optional parameters for UsernamePasswordCredential.
+//
+// Deprecated: UsernamePasswordCredential is deprecated because it can't support multifactor
+// authentication. See [Entra ID documentation] for migration guidance.
+//
+// [Entra ID documentation]: https://aka.ms/azsdk/identity/mfa
 type UsernamePasswordCredentialOptions struct {
 	azcore.ClientOptions
 
@@ -25,24 +30,31 @@ type UsernamePasswordCredentialOptions struct {
 	// application is registered.
 	AdditionallyAllowedTenants []string
 
-	// authenticationRecord returned by a call to a credential's Authenticate method. Set this option
+	// AuthenticationRecord returned by a call to a credential's Authenticate method. Set this option
 	// to enable the credential to use data from a previous authentication.
-	authenticationRecord authenticationRecord
+	AuthenticationRecord AuthenticationRecord
+
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
-
-	// tokenCachePersistenceOptions enables persistent token caching when not nil.
-	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 // UsernamePasswordCredential authenticates a user with a password. Microsoft doesn't recommend this kind of authentication,
 // because it's less secure than other authentication flows. This credential is not interactive, so it isn't compatible
-// with any form of multi-factor authentication, and the application must already have user or admin consent.
+// with any form of multifactor authentication, and the application must already have user or admin consent.
 // This credential can only authenticate work and school accounts; it can't authenticate Microsoft accounts.
+//
+// Deprecated: this credential is deprecated because it can't support multifactor authentication. See [Entra ID documentation]
+// for migration guidance.
+//
+// [Entra ID documentation]: https://aka.ms/azsdk/identity/mfa
 type UsernamePasswordCredential struct {
 	client *publicClient
 }
@@ -54,13 +66,13 @@ func NewUsernamePasswordCredential(tenantID string, clientID string, username st
 		options = &UsernamePasswordCredentialOptions{}
 	}
 	opts := publicClientOptions{
-		AdditionallyAllowedTenants:   options.AdditionallyAllowedTenants,
-		ClientOptions:                options.ClientOptions,
-		DisableInstanceDiscovery:     options.DisableInstanceDiscovery,
-		Password:                     password,
-		Record:                       options.authenticationRecord,
-		TokenCachePersistenceOptions: options.tokenCachePersistenceOptions,
-		Username:                     username,
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		Password:                   password,
+		Record:                     options.AuthenticationRecord,
+		Username:                   username,
 	}
 	c, err := newPublicClient(tenantID, clientID, credNameUserPassword, opts)
 	if err != nil {
@@ -70,7 +82,7 @@ func NewUsernamePasswordCredential(tenantID string, clientID string, username st
 }
 
 // Authenticate the user. Subsequent calls to GetToken will automatically use the returned AuthenticationRecord.
-func (c *UsernamePasswordCredential) authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (authenticationRecord, error) {
+func (c *UsernamePasswordCredential) Authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (AuthenticationRecord, error) {
 	var err error
 	ctx, endSpan := runtime.StartSpan(ctx, credNameUserPassword+"."+traceOpAuthenticate, c.client.azClient.Tracer(), nil)
 	defer func() { endSpan(err) }()

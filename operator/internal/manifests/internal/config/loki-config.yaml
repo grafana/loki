@@ -99,11 +99,19 @@ common:
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
-{{- if .Retention.Enabled }}{{- with .Retention }}
+{{- if .Retention.Enabled }}
+{{- with .Retention }}
   retention_enabled: true
   retention_delete_delay: 4h
   retention_delete_worker_count: {{.DeleteWorkerCount}}
-{{- end }}{{- end }}
+{{- end }}
+  delete_request_store: {{.ObjectStorage.SharedStore}}
+{{- end }}
+{{- if .OTLPAttributes.RemoveDefaultLabels }}
+distributor:
+  otlp_config:
+    default_resource_attributes_as_index_labels: []
+{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
@@ -139,6 +147,7 @@ ingester:
   chunk_target_size: 2097152
   flush_op_timeout: 10m
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   lifecycler:
     final_sleep: 0s
     join_after: 30s
@@ -189,6 +198,8 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
   max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
+  discover_service_name: []
+  discover_log_levels: {{ .DiscoverLogLevels }}
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
@@ -219,11 +230,64 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: {{ . }}MB
+    time_sharding_enabled: true
 {{- end }}
-  allow_structured_metadata: true
+{{- with .OTLPAttributes.Global }}
+  otlp_config:
+    {{- if .ResourceAttributes }}
+    resource_attributes:
+      {{- with .ResourceAttributes}}
+      attributes_config:
+      {{- range . }}
+      - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Names }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- with .ScopeAttributes }}
+    scope_attributes:
+    {{- range . }}
+    - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Names }}
+      attributes:
+      {{- range . }}
+      - {{ . }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .LogAttributes }}
+    log_attributes:
+    {{- range . }}
+    - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Names }}
+      attributes:
+      {{- range . }}
+      - {{ . }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+  allow_structured_metadata: {{ .ObjectStorage.AllowStructuredMetadata }}
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
+  rejoin_interval: 90s
   {{- with .InstanceAddr }}
   advertise_addr: {{ . }}
   {{- end }}

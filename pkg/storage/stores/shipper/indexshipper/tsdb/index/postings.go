@@ -349,9 +349,9 @@ func (p *MemPostings) Iter(f func(labels.Label, Postings) error) error {
 func (p *MemPostings) Add(id storage.SeriesRef, lset labels.Labels) {
 	p.mtx.Lock()
 
-	for _, l := range lset {
+	lset.Range(func(l labels.Label) {
 		p.addFor(id, l)
-	}
+	})
 	p.addFor(id, allPostingsKey)
 
 	p.mtx.Unlock()
@@ -422,6 +422,13 @@ var emptyPostings = errPostings{}
 // It triggers optimized flow in other functions like Intersect, Without etc.
 func EmptyPostings() Postings {
 	return emptyPostings
+}
+
+// IsEmptyPostingsType returns true if the postings are an empty postings list.
+// When this function returns false, it doesn't mean that the postings isn't empty
+// (it could be an empty intersection of two non-empty postings, for example).
+func IsEmptyPostingsType(p Postings) bool {
+	return p == emptyPostings
 }
 
 // ErrPostings returns new postings that immediately error.
@@ -846,11 +853,11 @@ type ShardedPostings struct {
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
 func NewShardedPostings(p Postings, fpFilter FingerprintFilter, offsets FingerprintOffsets) *ShardedPostings {
-	min, max := offsets.Range(fpFilter)
+	minVal, maxVal := offsets.Range(fpFilter)
 	return &ShardedPostings{
 		p:         p,
-		minOffset: min,
-		maxOffset: max,
+		minOffset: minVal,
+		maxOffset: maxVal,
 	}
 }
 

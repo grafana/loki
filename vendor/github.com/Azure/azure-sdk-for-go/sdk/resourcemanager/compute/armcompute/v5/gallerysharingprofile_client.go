@@ -47,7 +47,7 @@ func NewGallerySharingProfileClient(subscriptionID string, credential azcore.Tok
 // BeginUpdate - Update sharing profile of a gallery.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2022-08-03
+// Generated from API version 2023-07-03
 //   - resourceGroupName - The name of the resource group.
 //   - galleryName - The name of the Shared Image Gallery.
 //   - sharingUpdate - Parameters supplied to the update gallery sharing profile.
@@ -73,7 +73,7 @@ func (client *GallerySharingProfileClient) BeginUpdate(ctx context.Context, reso
 // Update - Update sharing profile of a gallery.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2022-08-03
+// Generated from API version 2023-07-03
 func (client *GallerySharingProfileClient) update(ctx context.Context, resourceGroupName string, galleryName string, sharingUpdate SharingUpdate, options *GallerySharingProfileClientBeginUpdateOptions) (*http.Response, error) {
 	var err error
 	const operationName = "GallerySharingProfileClient.BeginUpdate"
@@ -115,7 +115,7 @@ func (client *GallerySharingProfileClient) updateCreateRequest(ctx context.Conte
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2022-08-03")
+	reqQP.Set("api-version", "2023-07-03")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	if err := runtime.MarshalAsJSON(req, sharingUpdate); err != nil {

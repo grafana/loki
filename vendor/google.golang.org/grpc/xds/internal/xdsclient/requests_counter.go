@@ -25,7 +25,7 @@ import (
 )
 
 type clusterNameAndServiceName struct {
-	clusterName, edsServcieName string
+	clusterName, edsServiceName string
 }
 
 type clusterRequestsCounter struct {
@@ -52,7 +52,7 @@ func GetClusterRequestsCounter(clusterName, edsServiceName string) *ClusterReque
 	defer src.mu.Unlock()
 	k := clusterNameAndServiceName{
 		clusterName:    clusterName,
-		edsServcieName: edsServiceName,
+		edsServiceName: edsServiceName,
 	}
 	c, ok := src.clusters[k]
 	if !ok {
@@ -89,7 +89,7 @@ func ClearCounterForTesting(clusterName, edsServiceName string) {
 	defer src.mu.Unlock()
 	k := clusterNameAndServiceName{
 		clusterName:    clusterName,
-		edsServcieName: edsServiceName,
+		edsServiceName: edsServiceName,
 	}
 	c, ok := src.clusters[k]
 	if !ok {

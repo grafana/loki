@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/gorilla/mux"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -185,9 +185,14 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
+				// Parse the string to properly handle escaped characters like newlines
+				parsedVal, err := jsonparser.ParseString(val)
+				if err != nil {
+					return err
+				}
 				structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
 					Name:  string(key),
-					Value: string(val),
+					Value: parsedVal,
 				})
 				return nil
 			})
@@ -265,13 +270,25 @@ func (s Streams) ToProto() []logproto.Stream {
 	}
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
-		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
 		result = append(result, logproto.Stream{
 			Labels:  s.Labels.String(),
-			Entries: entries,
+			Entries: protoEntries(s.Entries),
 		})
 	}
 	return result
+}
+
+func protoEntries(in []Entry) []logproto.Entry {
+	out := make([]logproto.Entry, 0, len(in))
+	for _, ent := range in {
+		out = append(out, logproto.Entry{
+			Timestamp:          ent.Timestamp,
+			Line:               ent.Line,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(ent.StructuredMetadata),
+			Parsed:             logproto.FromLabelsToLabelAdapters(ent.Parsed),
+		})
+	}
+	return out
 }
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.
@@ -506,7 +523,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	if GetVersion(r.URL.Path) == VersionLegacy {
 		result.Query, err = parseRegexQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		expr, err := syntax.ParseExpr(result.Query)
@@ -650,6 +667,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	result := &logproto.DetectedFieldsRequest{}
 
 	result.Query = query(r)
+	result.Values, result.Name = values(r)
 	result.Start, result.End, err = bounds(r)
 	if err != nil {
 		return nil, err
@@ -664,7 +682,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 		return nil, err
 	}
 
-	result.FieldLimit, err = fieldLimit(r)
+	result.Limit, err = detectedFieldsLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -684,7 +702,13 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	if (result.End.Sub(result.Start) / step) > 11000 {
 		return nil, errStepTooSmall
 	}
+
 	return result, nil
+}
+
+func values(r *http.Request) (bool, string) {
+	name, ok := mux.Vars(r)["name"]
+	return ok, name
 }
 
 func targetLabels(r *http.Request) []string {

@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,28 +32,66 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on ResourceName with the rules defined in
-// the proto definition for this message. If any rules are violated, an error
-// is returned.
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *ResourceName) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ResourceName with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in ResourceNameMultiError, or
+// nil if none found.
+func (m *ResourceName) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ResourceName) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
+
+	var errors []error
 
 	// no validation rules for Id
 
 	// no validation rules for Authority
 
 	if utf8.RuneCountInString(m.GetResourceType()) < 1 {
-		return ResourceNameValidationError{
+		err := ResourceNameValidationError{
 			field:  "ResourceType",
 			reason: "value length must be at least 1 runes",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
-	if v, ok := interface{}(m.GetContext()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetContext()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ResourceNameValidationError{
+					field:  "Context",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ResourceNameValidationError{
+					field:  "Context",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetContext()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return ResourceNameValidationError{
 				field:  "Context",
@@ -62,8 +101,28 @@ func (m *ResourceName) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return ResourceNameMultiError(errors)
+	}
+
 	return nil
 }
+
+// ResourceNameMultiError is an error wrapping multiple validation errors
+// returned by ResourceName.ValidateAll() if the designated constraints aren't met.
+type ResourceNameMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ResourceNameMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ResourceNameMultiError) AllErrors() []error { return m }
 
 // ResourceNameValidationError is the validation error returned by
 // ResourceName.Validate if the designated constraints aren't met.

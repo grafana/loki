@@ -9,9 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
-type QueueTask struct {
-	*protos.Task
-
+type TaskMeta struct {
 	resultsChannel chan *protos.TaskResult
 
 	// Tracking
@@ -20,16 +18,23 @@ type QueueTask struct {
 	ctx           context.Context
 }
 
+type QueueTask struct {
+	*protos.ProtoTask
+	*TaskMeta
+}
+
 func NewQueueTask(
 	ctx context.Context,
 	queueTime time.Time,
-	task *protos.Task,
+	task *protos.ProtoTask,
 	resultsChannel chan *protos.TaskResult,
 ) *QueueTask {
 	return &QueueTask{
-		Task:           task,
-		resultsChannel: resultsChannel,
-		ctx:            ctx,
-		queueTime:      queueTime,
+		ProtoTask: task,
+		TaskMeta: &TaskMeta{
+			resultsChannel: resultsChannel,
+			ctx:            ctx,
+			queueTime:      queueTime,
+		},
 	}
 }

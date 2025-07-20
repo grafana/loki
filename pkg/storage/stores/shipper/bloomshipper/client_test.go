@@ -14,11 +14,24 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
+
+var supportedCompressions = []compression.Codec{
+	compression.None,
+	compression.GZIP,
+	compression.Snappy,
+	compression.LZ4_64k,
+	compression.LZ4_256k,
+	compression.LZ4_1M,
+	compression.LZ4_4M,
+	compression.Flate,
+	compression.Zstd,
+}
 
 func parseTime(s string) model.Time {
 	t, err := time.Parse("2006-01-02 15:04", s)
@@ -196,18 +209,18 @@ func TestBloomClient_DeleteMetas(t *testing.T) {
 	})
 }
 
-func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Block, error) {
+func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint, enc compression.Codec) (Block, error) {
 	step := int64((24 * time.Hour).Seconds())
 	day := start.Unix() / step
 
 	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+	fp, _ := os.CreateTemp(t.TempDir(), "*"+blockExtension+compression.ToFileExtension(enc))
 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	err = v1.TarCompress(enc, fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
 	_, _ = fp.Seek(0, 0)
@@ -221,40 +234,48 @@ func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, min
 				StartTimestamp: start,
 				EndTimestamp:   start.Add(12 * time.Hour),
 			},
+			Codec: enc,
 		},
 		Data: fp,
 	}
-	return block, c.client.PutObject(context.Background(), c.Block(block.BlockRef).Addr(), block.Data)
+	key := c.Block(block.BlockRef).Addr()
+	t.Logf("PUT block to storage: %s", key)
+	return block, c.client.PutObject(context.Background(), key, block.Data)
 }
 
 func TestBloomClient_GetBlock(t *testing.T) {
-	c, _ := newMockBloomClient(t)
-	ctx := context.Background()
+	for _, enc := range supportedCompressions {
+		c, _ := newMockBloomClient(t)
+		ctx := context.Background()
 
-	b, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff)
-	require.NoError(t, err)
-
-	t.Run("exists", func(t *testing.T) {
-		blockDir, err := c.GetBlock(ctx, b.BlockRef)
+		b, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff, enc)
 		require.NoError(t, err)
-		require.Equal(t, b.BlockRef, blockDir.BlockRef)
-	})
 
-	t.Run("does not exist", func(t *testing.T) {
-		blockDir, err := c.GetBlock(ctx, BlockRef{})
-		require.Error(t, err)
-		require.True(t, c.client.IsObjectNotFoundErr(err))
-		require.Equal(t, blockDir, BlockDirectory{})
-	})
+		t.Run(enc.String(), func(t *testing.T) {
+
+			t.Run("exists", func(t *testing.T) {
+				blockDir, err := c.GetBlock(ctx, b.BlockRef)
+				require.NoError(t, err)
+				require.Equal(t, b.BlockRef, blockDir.BlockRef)
+			})
+
+			t.Run("does not exist", func(t *testing.T) {
+				blockDir, err := c.GetBlock(ctx, BlockRef{})
+				require.Error(t, err)
+				require.True(t, c.client.IsObjectNotFoundErr(err))
+				require.Equal(t, blockDir, BlockDirectory{})
+			})
+		})
+	}
 }
 
 func TestBloomClient_GetBlocks(t *testing.T) {
 	c, _ := newMockBloomClient(t)
 	ctx := context.Background()
 
-	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0x0fff)
+	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0x0fff, compression.GZIP)
 	require.NoError(t, err)
-	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x1000, 0xffff)
+	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x1000, 0xffff, compression.None)
 	require.NoError(t, err)
 
 	t.Run("exists", func(t *testing.T) {
@@ -271,57 +292,62 @@ func TestBloomClient_GetBlocks(t *testing.T) {
 }
 
 func TestBloomClient_PutBlock(t *testing.T) {
-	c, _ := newMockBloomClient(t)
-	ctx := context.Background()
+	for _, enc := range supportedCompressions {
+		t.Run(enc.String(), func(t *testing.T) {
+			c, _ := newMockBloomClient(t)
+			ctx := context.Background()
 
-	start := parseTime("2024-02-05 12:00")
+			start := parseTime("2024-02-05 12:00")
 
-	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+			tmpDir := t.TempDir()
+			fp, _ := os.CreateTemp(t.TempDir(), "*"+blockExtension+compression.ToFileExtension(enc))
 
-	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
-	err := blockWriter.Init()
-	require.NoError(t, err)
+			blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
+			err := blockWriter.Init()
+			require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
-	require.NoError(t, err)
+			err = v1.TarCompress(enc, fp, v1.NewDirectoryBlockReader(tmpDir))
+			require.NoError(t, err)
 
-	block := Block{
-		BlockRef: BlockRef{
-			Ref: Ref{
-				TenantID:       "tenant",
-				Bounds:         v1.NewBounds(0x0000, 0xffff),
-				TableName:      "table_1234",
-				StartTimestamp: start,
-				EndTimestamp:   start.Add(12 * time.Hour),
-			},
-		},
-		Data: fp,
+			block := Block{
+				BlockRef: BlockRef{
+					Ref: Ref{
+						TenantID:       "tenant",
+						Bounds:         v1.NewBounds(0x0000, 0xffff),
+						TableName:      "table_1234",
+						StartTimestamp: start,
+						EndTimestamp:   start.Add(12 * time.Hour),
+					},
+					Codec: enc,
+				},
+				Data: fp,
+			}
+
+			err = c.PutBlock(ctx, block)
+			require.NoError(t, err)
+
+			oc := c.client.(*testutils.InMemoryObjectClient)
+			stored := oc.Internals()
+			_, found := stored[c.Block(block.BlockRef).Addr()]
+			require.True(t, found)
+
+			blockDir, err := c.GetBlock(ctx, block.BlockRef)
+			require.NoError(t, err)
+
+			require.Equal(t, block.BlockRef, blockDir.BlockRef)
+		})
 	}
-
-	err = c.PutBlock(ctx, block)
-	require.NoError(t, err)
-
-	oc := c.client.(*testutils.InMemoryObjectClient)
-	stored := oc.Internals()
-	_, found := stored[c.Block(block.BlockRef).Addr()]
-	require.True(t, found)
-
-	blockDir, err := c.GetBlock(ctx, block.BlockRef)
-	require.NoError(t, err)
-
-	require.Equal(t, block.BlockRef, blockDir.BlockRef)
 }
 
 func TestBloomClient_DeleteBlocks(t *testing.T) {
 	c, _ := newMockBloomClient(t)
 	ctx := context.Background()
 
-	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff)
+	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff, compression.None)
 	require.NoError(t, err)
-	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-06 00:00"), 0x0000, 0xffff)
+	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-06 00:00"), 0x0000, 0xffff, compression.GZIP)
 	require.NoError(t, err)
-	b3, err := putBlock(t, c, "tenant", parseTime("2024-02-07 00:00"), 0x0000, 0xffff)
+	b3, err := putBlock(t, c, "tenant", parseTime("2024-02-07 00:00"), 0x0000, 0xffff, compression.Snappy)
 	require.NoError(t, err)
 
 	oc := c.client.(*testutils.InMemoryObjectClient)

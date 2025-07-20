@@ -21,17 +21,18 @@ type ownedStreamService struct {
 	tenantID         string
 	limiter          *Limiter
 	fixedLimit       *atomic.Int32
-	ownedStreamCount int
+	ownedStreamCount *atomic.Int64
 	lock             sync.RWMutex
 	notOwnedStreams  map[model.Fingerprint]any
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
 	svc := &ownedStreamService{
-		tenantID:        tenantID,
-		limiter:         limiter,
-		fixedLimit:      atomic.NewInt32(0),
-		notOwnedStreams: make(map[model.Fingerprint]any),
+		tenantID:         tenantID,
+		limiter:          limiter,
+		fixedLimit:       atomic.NewInt32(0),
+		ownedStreamCount: atomic.NewInt64(0),
+		notOwnedStreams:  make(map[model.Fingerprint]any),
 	}
 
 	svc.updateFixedLimit()
@@ -39,12 +40,10 @@ func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamServic
 }
 
 func (s *ownedStreamService) getOwnedStreamCount() int {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	return s.ownedStreamCount
+	return int(s.ownedStreamCount.Load())
 }
 
-func (s *ownedStreamService) updateFixedLimit() (old, new int32) {
+func (s *ownedStreamService) updateFixedLimit() (old, newVal int32) {
 	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
 	return s.fixedLimit.Swap(int32(newLimit)), int32(newLimit)
 
@@ -55,12 +54,15 @@ func (s *ownedStreamService) getFixedLimit() int {
 }
 
 func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	// only need to inc the owned count; can use sync atomics.
 	if owned {
-		s.ownedStreamCount++
+		s.ownedStreamCount.Inc()
 		return
 	}
+
+	// need to update map; lock required
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	notOwnedStreamsMetric.Inc()
 	s.notOwnedStreams[fp] = nil
 }
@@ -74,13 +76,13 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint) {
 		delete(s.notOwnedStreams, fp)
 		return
 	}
-	s.ownedStreamCount--
+	s.ownedStreamCount.Dec()
 }
 
 func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.ownedStreamCount = 0
+	s.ownedStreamCount.Store(0)
 	notOwnedStreamsMetric.Sub(float64(len(s.notOwnedStreams)))
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
 }

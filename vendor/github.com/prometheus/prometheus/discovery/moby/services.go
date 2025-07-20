@@ -19,7 +19,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/prometheus/common/model"
 
@@ -46,7 +45,7 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 		Source: "DockerSwarm",
 	}
 
-	services, err := d.client.ServiceList(ctx, types.ServiceListOptions{Filters: d.filters})
+	services, err := d.client.ServiceList(ctx, swarm.ServiceListOptions{Filters: d.filters})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing swarm services: %w", err)
 	}
@@ -116,7 +115,7 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 					labels[model.LabelName(k)] = model.LabelValue(v)
 				}
 
-				addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", d.port))
+				addr := net.JoinHostPort(ip.String(), strconv.Itoa(d.port))
 				labels[model.AddressLabel] = model.LabelValue(addr)
 
 				tg.Targets = append(tg.Targets, labels)
@@ -127,7 +126,7 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 }
 
 func (d *Discovery) getServicesLabelsAndPorts(ctx context.Context) (map[string]map[string]string, map[string][]swarm.PortConfig, error) {
-	services, err := d.client.ServiceList(ctx, types.ServiceListOptions{})
+	services, err := d.client.ServiceList(ctx, swarm.ServiceListOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

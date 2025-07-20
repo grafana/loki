@@ -7,9 +7,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type WAL interface {
@@ -204,7 +206,7 @@ func newHeadWAL(log log.Logger, dir string, t time.Time) (*headWAL, error) {
 	// NB: if we use a non-nil Prometheus Registerer, ensure
 	// that the underlying metrics won't conflict with existing WAL metrics in the ingester.
 	// Likely, this can be done by adding extra label(s)
-	wal, err := wlog.NewSize(log, nil, dir, walSegmentSize, wlog.CompressionNone)
+	wal, err := wlog.NewSize(util_log.SlogFromGoKit(log), nil, dir, walSegmentSize, compression.None)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +230,7 @@ func (w *headWAL) Log(record *WALRecord) error {
 	var buf []byte
 
 	// Always write series before chunks
-	if len(record.Series.Labels) > 0 {
+	if !record.Series.Labels.IsEmpty() {
 		buf = record.encodeSeriesWithFingerprint(buf[:0])
 		if err := w.wal.Log(buf); err != nil {
 			return err

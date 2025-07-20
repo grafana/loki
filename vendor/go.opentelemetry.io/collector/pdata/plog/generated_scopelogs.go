@@ -42,6 +42,10 @@ func NewScopeLogs() ScopeLogs {
 func (ms ScopeLogs) MoveTo(dest ScopeLogs) {
 	ms.state.AssertMutable()
 	dest.state.AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.orig == dest.orig {
+		return
+	}
 	*dest.orig = *ms.orig
 	*ms.orig = otlplogs.ScopeLogs{}
 }
@@ -70,7 +74,11 @@ func (ms ScopeLogs) LogRecords() LogRecordSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeLogs) CopyTo(dest ScopeLogs) {
 	dest.state.AssertMutable()
-	ms.Scope().CopyTo(dest.Scope())
-	dest.SetSchemaUrl(ms.SchemaUrl())
-	ms.LogRecords().CopyTo(dest.LogRecords())
+	copyOrigScopeLogs(dest.orig, ms.orig)
+}
+
+func copyOrigScopeLogs(dest, src *otlplogs.ScopeLogs) {
+	internal.CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
+	dest.SchemaUrl = src.SchemaUrl
+	dest.LogRecords = copyOrigLogRecordSlice(dest.LogRecords, src.LogRecords)
 }

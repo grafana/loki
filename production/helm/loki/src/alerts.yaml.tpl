@@ -52,7 +52,7 @@ groups:
           message: |
             {{`{{`}} $labels.cluster {{`}}`}} {{`{{`}} $labels.namespace {{`}}`}} has had {{`{{`}} printf "%.0f" $value {{`}}`}} compactors running for more than 5m. Only one compactor should run at a time.
         expr: |
-          sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
+          sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
         for: "5m"
         labels:
           severity: "warning"

@@ -37,14 +37,16 @@ type ClientAssertionCredentialOptions struct {
 	// application is registered.
 	AdditionallyAllowedTenants []string
 
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
+
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
-
-	// tokenCachePersistenceOptions enables persistent token caching when not nil.
-	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 // NewClientAssertionCredential constructs a ClientAssertionCredential. The getAssertion function must be thread safe. Pass nil for options to accept defaults.
@@ -61,10 +63,10 @@ func NewClientAssertionCredential(tenantID, clientID string, getAssertion func(c
 		},
 	)
 	msalOpts := confidentialClientOptions{
-		AdditionallyAllowedTenants:   options.AdditionallyAllowedTenants,
-		ClientOptions:                options.ClientOptions,
-		DisableInstanceDiscovery:     options.DisableInstanceDiscovery,
-		tokenCachePersistenceOptions: options.tokenCachePersistenceOptions,
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		Cache:                      options.Cache,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
 	}
 	c, err := newConfidentialClient(tenantID, clientID, credNameAssertion, cred, msalOpts)
 	if err != nil {

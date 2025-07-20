@@ -629,7 +629,7 @@ func ioOpenFile(L *LState) int {
 		mode = os.O_RDONLY
 		writable = false
 	case "w", "wb":
-		mode = os.O_WRONLY | os.O_CREATE
+		mode = os.O_WRONLY | os.O_TRUNC | os.O_CREATE
 		readable = false
 	case "a", "ab":
 		mode = os.O_WRONLY | os.O_APPEND | os.O_CREATE
@@ -657,6 +657,9 @@ var ioPopenOptions = []string{"r", "w"}
 func ioPopen(L *LState) int {
 	cmd := L.CheckString(1)
 	if L.GetTop() == 1 {
+		L.Push(LString("r"))
+	} else if L.GetTop() > 1 && (L.Get(2)).Type() == LTNil {
+		L.SetTop(1)
 		L.Push(LString("r"))
 	}
 	var file *LUserData

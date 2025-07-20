@@ -21,7 +21,7 @@ go get -u github.com/Azure/azure-sdk-for-go/sdk/azidentity
 ## Prerequisites
 
 - an [Azure subscription](https://azure.microsoft.com/free/)
-- Go 1.18
+- [Supported](https://aka.ms/azsdk/go/supported-versions) version of Go
 
 ### Authenticating during local development
 
@@ -54,17 +54,7 @@ The `azidentity` module focuses on OAuth authentication with Microsoft Entra ID.
 
 ### DefaultAzureCredential
 
-`DefaultAzureCredential` is appropriate for most apps that will be deployed to Azure. It combines common production credentials with development credentials. It attempts to authenticate via the following mechanisms in this order, stopping when one succeeds:
-
-![DefaultAzureCredential authentication flow](img/mermaidjs/DefaultAzureCredentialAuthFlow.svg)
-
-1. **Environment** - `DefaultAzureCredential` will read account information specified via [environment variables](#environment-variables) and use it to authenticate.
-1. **Workload Identity** - If the app is deployed on Kubernetes with environment variables set by the workload identity webhook, `DefaultAzureCredential` will authenticate the configured identity.
-1. **Managed Identity** - If the app is deployed to an Azure host with managed identity enabled, `DefaultAzureCredential` will authenticate with it.
-1. **Azure CLI** - If a user or service principal has authenticated via the Azure CLI `az login` command, `DefaultAzureCredential` will authenticate that identity.
-1. **Azure Developer CLI** - If the developer has authenticated via the Azure Developer CLI `azd auth login` command, the `DefaultAzureCredential` will authenticate with that account.
-
-> Note: `DefaultAzureCredential` is intended to simplify getting started with the SDK by handling common scenarios with reasonable default behaviors. Developers who want more control or whose scenario isn't served by the default settings should use other credential types.
+`DefaultAzureCredential` simplifies authentication while developing apps that deploy to Azure by combining credentials used in Azure hosting environments with credentials used in local development. For more information, see [DefaultAzureCredential overview][dac_overview].
 
 ## Managed Identity
 
@@ -126,12 +116,17 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 
 ## Credential Types
 
-### Authenticating Azure Hosted Applications
+### Credential chains
+
+|Credential|Usage|Reference
+|-|-|-
+|[DefaultAzureCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#DefaultAzureCredential)|Simplified authentication experience for getting started developing Azure apps|[DefaultAzureCredential overview][dac_overview]|
+|[ChainedTokenCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ChainedTokenCredential)|Define custom authentication flows, composing multiple credentials|[ChainedTokenCredential overview][ctc_overview]|
+
+### Authenticating Azure-Hosted Applications
 
 |Credential|Usage
 |-|-
-|[DefaultAzureCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#DefaultAzureCredential)|Simplified authentication experience for getting started developing Azure apps
-|[ChainedTokenCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ChainedTokenCredential)|Define custom authentication flows, composing multiple credentials
 |[EnvironmentCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#EnvironmentCredential)|Authenticate a service principal or user configured by environment variables
 |[ManagedIdentityCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ManagedIdentityCredential)|Authenticate the managed identity of an Azure resource
 |[WorkloadIdentityCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#WorkloadIdentityCredential)|Authenticate a workload identity on Kubernetes
@@ -140,6 +135,7 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 
 |Credential|Usage
 |-|-
+|[AzurePipelinesCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzurePipelinesCredential)|Authenticate an Azure Pipelines [service connection](https://learn.microsoft.com/azure/devops/pipelines/library/service-endpoints?view=azure-devops&tabs=yaml)
 |[ClientAssertionCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientAssertionCredential)|Authenticate a service principal with a signed client assertion
 |[ClientCertificateCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientCertificateCredential)|Authenticate a service principal with a certificate
 |[ClientSecretCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientSecretCredential)|Authenticate a service principal with a secret
@@ -150,20 +146,19 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 |-|-
 |[InteractiveBrowserCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#InteractiveBrowserCredential)|Interactively authenticate a user with the default web browser
 |[DeviceCodeCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#DeviceCodeCredential)|Interactively authenticate a user on a device with limited UI
-|[UsernamePasswordCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#UsernamePasswordCredential)|Authenticate a user with a username and password
 
 ### Authenticating via Development Tools
 
 |Credential|Usage
 |-|-
 |[AzureCLICredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzureCLICredential)|Authenticate as the user signed in to the Azure CLI
-|[`AzureDeveloperCLICredential`](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzureDeveloperCLICredential)|Authenticates as the user signed in to the Azure Developer CLI
+|[AzureDeveloperCLICredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#AzureDeveloperCLICredential)|Authenticates as the user signed in to the Azure Developer CLI
 
 ## Environment Variables
 
 `DefaultAzureCredential` and `EnvironmentCredential` can be configured with environment variables. Each type of authentication requires values for specific variables:
 
-#### Service principal with secret
+### Service principal with secret
 
 |variable name|value
 |-|-
@@ -171,7 +166,7 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 |`AZURE_TENANT_ID`|ID of the application's Microsoft Entra tenant
 |`AZURE_CLIENT_SECRET`|one of the application's client secrets
 
-#### Service principal with certificate
+### Service principal with certificate
 
 |variable name|value
 |-|-
@@ -180,16 +175,7 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 |`AZURE_CLIENT_CERTIFICATE_PATH`|path to a certificate file including private key
 |`AZURE_CLIENT_CERTIFICATE_PASSWORD`|password of the certificate file, if any
 
-#### Username and password
-
-|variable name|value
-|-|-
-|`AZURE_CLIENT_ID`|ID of a Microsoft Entra application
-|`AZURE_USERNAME`|a username (usually an email address)
-|`AZURE_PASSWORD`|that user's password
-
-Configuration is attempted in the above order. For example, if values for a
-client secret and certificate are both present, the client secret will be used.
+Configuration is attempted in the above order. For example, if values for a client secret and certificate are both present, the client secret will be used.
 
 ## Token caching
 
@@ -254,4 +240,8 @@ For more information, see the
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any
 additional questions or comments.
 
-![Impressions](https://azure-sdk-impressions.azurewebsites.net/api/impressions/azure-sdk-for-go%2Fsdk%2Fazidentity%2FREADME.png)
+<!-- LINKS -->
+[ctc_overview]: https://aka.ms/azsdk/go/identity/credential-chains#chainedtokencredential-overview
+[dac_overview]: https://aka.ms/azsdk/go/identity/credential-chains#defaultazurecredential-overview
+
+

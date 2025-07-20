@@ -18,7 +18,7 @@ func TestMergeDedupeIter(t *testing.T) {
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](dataPtr))
+		queriers[i] = iter.NewPeekIter(iter.NewSliceIter(dataPtr))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
@@ -28,11 +28,11 @@ func TestMergeDedupeIter(t *testing.T) {
 	merge := func(a, _ *SeriesWithBlooms) *SeriesWithBlooms {
 		return a
 	}
-	deduper := iter.NewDedupingIter[*SeriesWithBlooms, *SeriesWithBlooms](
+	deduper := iter.NewDedupingIter(
 		eq,
 		iter.Identity[*SeriesWithBlooms],
 		merge,
-		iter.NewPeekIter[*SeriesWithBlooms](mbq),
+		iter.NewPeekIter(mbq),
 	)
 
 	for i := 0; i < len(data); i++ {

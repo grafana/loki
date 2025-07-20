@@ -1,16 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - bases/config.yaml
-patchesJson6902:
+
+patches:
 - path: patches/basic.config.yaml
   target:
     group: scorecard.operatorframework.io
-    version: v1alpha3
     kind: Configuration
     name: config
+    version: v1alpha3
 - path: patches/olm.config.yaml
   target:
     group: scorecard.operatorframework.io
-    version: v1alpha3
     kind: Configuration
     name: config
-# +kubebuilder:scaffold:patchesJson6902
+    version: v1alpha3

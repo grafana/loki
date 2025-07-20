@@ -52,9 +52,8 @@ func accessPointResourceParser(a awsarn.ARN) (arn.Resource, error) {
 // outpost access-point resource.
 //
 // Supported Outpost AccessPoint ARN format:
-//	- ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/accesspoint/{accesspointName}
-//	- example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/accesspoint/myaccesspoint
-//
+//   - ARN format: arn:{partition}:s3-outposts:{region}:{accountId}:outpost/{outpostId}/accesspoint/{accesspointName}
+//   - example: arn:aws:s3-outposts:us-west-2:012345678901:outpost/op-1234567890123456/accesspoint/myaccesspoint
 func parseOutpostAccessPointResource(a awsarn.ARN, resParts []string) (arn.OutpostAccessPointARN, error) {
 	// outpost accesspoint arn is only valid if service is s3-outposts
 	if a.Service != "s3-outposts" {

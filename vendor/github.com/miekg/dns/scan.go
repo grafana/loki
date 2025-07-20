@@ -101,12 +101,15 @@ type ttlState struct {
 	isByDirective bool   // isByDirective indicates whether ttl was set by a $TTL directive
 }
 
-// NewRR reads the RR contained in the string s. Only the first RR is returned.
+// NewRR reads a string s and returns the first RR.
 // If s contains no records, NewRR will return nil with no error.
 //
-// The class defaults to IN and TTL defaults to 3600. The full zone file syntax
-// like $TTL, $ORIGIN, etc. is supported. All fields of the returned RR are
-// set, except RR.Header().Rdlength which is set to 0.
+// The class defaults to IN, TTL defaults to 3600, and
+// origin for resolving relative domain names defaults to the DNS root (.).
+// Full zone file syntax is supported, including directives like $TTL and $ORIGIN.
+// All fields of the returned RR are set from the read data, except RR.Header().Rdlength which is set to 0.
+// Is you need a partial resource record with no rdata - for instance - for dynamic updates, see the [ANY]
+// documentation.
 func NewRR(s string) (RR, error) {
 	if len(s) > 0 && s[len(s)-1] != '\n' { // We need a closing newline
 		return ReadRR(strings.NewReader(s+"\n"), "")
@@ -1282,7 +1285,7 @@ func stringToCm(token string) (e, m uint8, ok bool) {
 			cmeters *= 10
 		}
 	}
-	// This slighly ugly condition will allow omitting the 'meter' part, like .01 (meaning 0.01m = 1cm).
+	// This slightly ugly condition will allow omitting the 'meter' part, like .01 (meaning 0.01m = 1cm).
 	if !hasCM || mStr != "" {
 		meters, err = strconv.Atoi(mStr)
 		// RFC1876 states the max value is 90000000.00.  The latter two conditions enforce it.
@@ -1313,6 +1316,13 @@ func toAbsoluteName(name, origin string) (absolute string, ok bool) {
 			return "", false
 		}
 		return origin, true
+	}
+
+	// this can happen when we have a comment after a RR that has a domain, '...   MX 20 ; this is wrong'.
+	// technically a newline can be in a domain name, but this is clearly an error and the newline only shows
+	// because of the scanning and the comment.
+	if name == "\n" {
+		return "", false
 	}
 
 	// require a valid domain name

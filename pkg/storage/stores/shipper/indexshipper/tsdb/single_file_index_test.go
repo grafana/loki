@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
@@ -78,7 +79,7 @@ func TestSingleIdx(t *testing.T) {
 			fn: func() Index {
 				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
-					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
+					_, _ = head.Append(x.Labels, labels.StableHash(x.Labels), x.Chunks)
 				}
 				reader := head.Index()
 				return NewTSDBIndex(reader)
@@ -94,28 +95,28 @@ func TestSingleIdx(t *testing.T) {
 				expected := []ChunkRef{
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       0,
 						End:         3,
 						Checksum:    0,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       1,
 						End:         4,
 						Checksum:    1,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       2,
 						End:         5,
 						Checksum:    2,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 						Start:       1,
 						End:         10,
 						Checksum:    3,
@@ -135,12 +136,11 @@ func TestSingleIdx(t *testing.T) {
 
 				require.Equal(t, []ChunkRef{{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 					Start:       1,
 					End:         10,
 					Checksum:    3,
 				}}, shardedRefs)
-
 			})
 
 			t.Run("Series", func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestSingleIdx(t *testing.T) {
 				expected := []Series{
 					{
 						Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 					},
 				}
 				require.Equal(t, expected, xs)
@@ -168,7 +168,7 @@ func TestSingleIdx(t *testing.T) {
 				expected := []Series{
 					{
 						Labels:      mustParseLabels(`{foo="bar"}`),
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 					},
 				}
 				require.Equal(t, expected, xs)
@@ -202,10 +202,8 @@ func TestSingleIdx(t *testing.T) {
 				require.Nil(t, err)
 				require.Equal(t, []string{"bar"}, vs)
 			})
-
 		})
 	}
-
 }
 
 func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
@@ -743,8 +741,48 @@ func TestTSDBIndex_Volume(t *testing.T) {
 					Limit: 10,
 				}, acc.Volumes())
 			})
+			// todo(cyriltovena): tests with chunk filterer
 		})
 	})
+}
+
+func BenchmarkTSDBIndex_Volume(b *testing.B) {
+	var series []LoadableSeries
+	for i := 0; i < 1000; i++ {
+		series = append(series, LoadableSeries{
+			Labels: mustParseLabels(fmt.Sprintf(`{foo="bar", fizz="fizz%d", buzz="buzz%d",bar="bar%d", bozz="bozz%d"}`, i, i, i, i)),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: uint32(i),
+					KB:       10,
+					Entries:  10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: uint32(i),
+					KB:       10,
+					Entries:  10,
+				},
+			},
+		})
+	}
+	ctx := context.Background()
+	from := model.Earliest
+	through := model.Latest
+	// Create the TSDB index
+	tempDir := b.TempDir()
+	tsdbIndex := BuildIndex(b, tempDir, series)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.Volume(ctx, "fake", from, through, acc, nil, nil, nil, seriesvolume.Series, labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"))
+		require.NoError(b, err)
+	}
 }
 
 type filterAll struct{}
@@ -757,4 +795,8 @@ type filterAllFilterer struct{}
 
 func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 	return true
+}
+
+func (f *filterAllFilterer) RequiredLabelNames() []string {
+	return nil
 }

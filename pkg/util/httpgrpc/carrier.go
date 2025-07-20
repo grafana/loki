@@ -1,8 +1,11 @@
 package httpgrpc
 
 import (
+	"context"
+
 	weaveworks_httpgrpc "github.com/grafana/dskit/httpgrpc"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 )
@@ -14,6 +17,31 @@ type Request interface {
 
 // Used to transfer trace information from/to HTTP request.
 type HeadersCarrier weaveworks_httpgrpc.HTTPRequest
+
+func (c *HeadersCarrier) Get(key string) string {
+	// Check if the key exists in the headers
+	for _, h := range c.Headers {
+		if h.Key == key {
+			// Return the first value for the key
+			if len(h.Values) > 0 {
+				return h.Values[0]
+			}
+			break
+		}
+	}
+	return ""
+}
+
+func (c *HeadersCarrier) Keys() []string {
+	// Collect all unique keys from the headers
+	keys := make([]string, 0, len(c.Headers))
+	for _, h := range c.Headers {
+		if h.Key != "" {
+			keys = append(keys, h.Key)
+		}
+	}
+	return keys
+}
 
 func (c *HeadersCarrier) Set(key, val string) {
 	c.Headers = append(c.Headers, &weaveworks_httpgrpc.Header{
@@ -33,32 +61,22 @@ func (c *HeadersCarrier) ForeachKey(handler func(key, val string) error) error {
 	return nil
 }
 
-func GetParentSpanForHTTPRequest(tracer opentracing.Tracer, req *weaveworks_httpgrpc.HTTPRequest) (opentracing.SpanContext, error) {
-	if tracer == nil {
-		return nil, nil
-	}
-
-	carrier := (*HeadersCarrier)(req)
-	return tracer.Extract(opentracing.HTTPHeaders, carrier)
+func ExtractSpanFromHTTPRequest(ctx context.Context, req *weaveworks_httpgrpc.HTTPRequest) context.Context {
+	return otel.GetTextMapPropagator().Extract(ctx, (*HeadersCarrier)(req))
 }
 
-func GetParentSpanForQueryRequest(tracer opentracing.Tracer, req *queryrange.QueryRequest) (opentracing.SpanContext, error) {
-	if tracer == nil {
-		return nil, nil
-	}
-
-	carrier := opentracing.TextMapCarrier(req.Metadata)
-	return tracer.Extract(opentracing.TextMap, carrier)
+func ExtractSpanFromQueryRequest(ctx context.Context, req *queryrange.QueryRequest) context.Context {
+	return otel.GetTextMapPropagator().Extract(ctx, propagation.MapCarrier(req.Metadata))
 }
 
-func GetParentSpanForRequest(tracer opentracing.Tracer, req Request) (opentracing.SpanContext, error) {
+func ExtractSpanFromRequest(ctx context.Context, req Request) context.Context {
 	if r := req.GetQueryRequest(); r != nil {
-		return GetParentSpanForQueryRequest(tracer, r)
+		return ExtractSpanFromQueryRequest(ctx, r)
 	}
 
 	if r := req.GetHttpRequest(); r != nil {
-		return GetParentSpanForHTTPRequest(tracer, r)
+		return ExtractSpanFromHTTPRequest(ctx, r)
 	}
 
-	return nil, nil
+	return ctx
 }

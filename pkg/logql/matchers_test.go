@@ -5,6 +5,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func Test_match(t *testing.T) {
@@ -51,7 +53,10 @@ func Test_match(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
-				require.Equal(t, tt.want, got)
+				require.Len(t, got, len(tt.want))
+				for i, expectedMatchers := range tt.want {
+					syntax.AssertMatchers(t, expectedMatchers, got[i])
+				}
 			}
 		})
 	}

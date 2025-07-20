@@ -59,7 +59,7 @@ func newDque(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Cl
 		logger: log.With(logger, "component", "queue", "name", cfg.bufferConfig.dqueConfig.queueName),
 	}
 
-	err = os.MkdirAll(cfg.bufferConfig.dqueConfig.queueDir, 0644)
+	err = os.MkdirAll(cfg.bufferConfig.dqueConfig.queueDir, 0640)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create queue directory: %s", err)
 	}

@@ -9,14 +9,16 @@ weight:
 
 # match
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The match stage is a filtering stage that conditionally applies a set of stages
 or drop entries when a log entry matches a configurable LogQL
-[stream selector]({{< relref "../../../query/log_queries#log-stream-selector" >}}) and
-[filter expressions]({{< relref "../../../query/log_queries#line-filter-expression" >}}).
+[stream selector](../../../../query/log_queries/#log-stream-selector) and
+[filter expressions](../../../../query/log_queries/#line-filter-expression).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The filters do not include label filter expressions such as `| label == "foobar"`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Schema
 
@@ -48,7 +50,7 @@ match:
     [<stages>...]
 ```
 
-Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#promtail-pipeline-stages" >}}) for the
+Refer to the [Promtail Stages Configuration Reference](./#promtail-pipeline-stages) for the
 schema on the various stages supported here.
 
 ### Example

@@ -19,7 +19,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
@@ -50,7 +50,7 @@ type memcachedClient struct {
 	addresses []string
 	provider  *dns.Provider
 
-	cbs        map[ /*address*/ string]*gobreaker.CircuitBreaker
+	cbs        map[string]*gobreaker.CircuitBreaker[interface{}]
 	cbFailures uint
 	cbTimeout  time.Duration
 	cbInterval time.Duration
@@ -114,7 +114,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = jumphash.DefaultSelector()
+		selector = jumphash.DefaultSelector("memcached")
 	} else {
 		selector = &memcache.ServerList{}
 	}
@@ -152,7 +152,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		service:     cfg.Service,
 		logger:      logger,
 		provider:    dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
-		cbs:         make(map[string]*gobreaker.CircuitBreaker),
+		cbs:         make(map[string]*gobreaker.CircuitBreaker[interface{}]),
 		cbFailures:  cfg.CBFailures,
 		cbInterval:  cfg.CBInterval,
 		cbTimeout:   cfg.CBTimeout,
@@ -201,7 +201,7 @@ func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout
 	c.Lock()
 	cb := c.cbs[address]
 	if cb == nil {
-		cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		cb = gobreaker.NewCircuitBreaker[interface{}](gobreaker.Settings{
 			Name:          c.name + ":" + address,
 			Interval:      c.cbInterval,
 			Timeout:       c.cbTimeout,
@@ -295,7 +295,7 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		// Copy across circuit-breakers for current set of addresses, thus
 		// leaving behind any for servers we won't talk to again
 		c.Lock()
-		newCBs := make(map[string]*gobreaker.CircuitBreaker, len(servers))
+		newCBs := make(map[string]*gobreaker.CircuitBreaker[interface{}], len(servers))
 		for _, address := range servers {
 			if cb, exists := c.cbs[address]; exists {
 				newCBs[address] = cb

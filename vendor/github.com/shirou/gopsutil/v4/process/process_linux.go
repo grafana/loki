@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -193,7 +194,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	return nice, nil
 }
 
-func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
+func (p *Process) IOniceWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
@@ -309,7 +310,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 	return cpuTimes, nil
 }
 
-func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
+func (p *Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -338,43 +339,48 @@ func (p *Process) PageFaultsWithContext(ctx context.Context) (*PageFaultsStat, e
 }
 
 func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
-	pids, err := common.CallPgrepWithContext(ctx, invoke, p.Pid)
+	statFiles, err := filepath.Glob(common.HostProcWithContext(ctx, "[0-9]*/stat"))
 	if err != nil {
 		return nil, err
 	}
-	if len(pids) == 0 {
-		return nil, ErrorNoChildren
-	}
-	ret := make([]*Process, 0, len(pids))
-	for _, pid := range pids {
-		np, err := NewProcessWithContext(ctx, pid)
+	ret := make([]*Process, 0, len(statFiles))
+	for _, statFile := range statFiles {
+		statContents, err := os.ReadFile(statFile)
 		if err != nil {
-			return nil, err
+			continue
 		}
-		ret = append(ret, np)
+		fields := splitProcStat(statContents)
+		pid, err := strconv.ParseInt(fields[1], 10, 32)
+		if err != nil {
+			continue
+		}
+		ppid, err := strconv.ParseInt(fields[4], 10, 32)
+		if err != nil {
+			continue
+		}
+		if ppid == int64(p.Pid) {
+			np, err := NewProcessWithContext(ctx, int32(pid))
+			if err != nil {
+				continue
+			}
+			ret = append(ret, np)
+		}
 	}
+	sort.Slice(ret, func(i, j int) bool { return ret[i].Pid < ret[j].Pid })
 	return ret, nil
 }
 
 func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, error) {
 	_, ofs, err := p.fillFromfdWithContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]OpenFilesStat, len(ofs))
-	for i, o := range ofs {
-		ret[i] = *o
-	}
-
-	return ret, nil
+	return ofs, err
 }
 
 func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionStat, error) {
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
-	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, max)
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
+	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, maxConn)
 }
 
 func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]MemoryMapsStat, error) {
@@ -399,7 +405,9 @@ func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]M
 	// function of parsing a block
 	getBlock := func(firstLine []string, block []string) (MemoryMapsStat, error) {
 		m := MemoryMapsStat{}
-		m.Path = firstLine[len(firstLine)-1]
+		if len(firstLine) >= 6 {
+			m.Path = strings.Join(firstLine[5:], " ")
+		}
 
 		for _, line := range block {
 			if strings.Contains(line, "VmFlags") {
@@ -613,17 +621,17 @@ func (p *Process) fillFromfdListWithContext(ctx context.Context) (string, []stri
 }
 
 // Get num_fds from /proc/(pid)/fd
-func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []*OpenFilesStat, error) {
+func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []OpenFilesStat, error) {
 	statPath, fnames, err := p.fillFromfdListWithContext(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
 	numFDs := int32(len(fnames))
 
-	var openfiles []*OpenFilesStat
+	openfiles := make([]OpenFilesStat, 0, numFDs)
 	for _, fd := range fnames {
 		fpath := filepath.Join(statPath, fd)
-		filepath, err := os.Readlink(fpath)
+		path, err := common.Readlink(fpath)
 		if err != nil {
 			continue
 		}
@@ -631,8 +639,8 @@ func (p *Process) fillFromfdWithContext(ctx context.Context) (int32, []*OpenFile
 		if err != nil {
 			return numFDs, openfiles, err
 		}
-		o := &OpenFilesStat{
-			Path: filepath,
+		o := OpenFilesStat{
+			Path: path,
 			Fd:   t,
 		}
 		openfiles = append(openfiles, o)
@@ -727,8 +735,12 @@ func (p *Process) fillFromIOWithContext(ctx context.Context) (*IOCountersStat, e
 		case "syscw":
 			ret.WriteCount = t
 		case "read_bytes":
-			ret.ReadBytes = t
+			ret.DiskReadBytes = t
 		case "write_bytes":
+			ret.DiskWriteBytes = t
+		case "rchar":
+			ret.ReadBytes = t
+		case "wchar":
 			ret.WriteBytes = t
 		}
 	}
@@ -1076,8 +1088,7 @@ func (p *Process) fillFromTIDStatWithContext(ctx context.Context, tid int32) (ui
 	if err != nil {
 		return 0, 0, nil, 0, 0, 0, nil, err
 	}
-	ctime := (t / uint64(clockTicks)) + uint64(bootTime)
-	createTime := int64(ctime * 1000)
+	createTime := int64((t * 1000 / uint64(clockTicks)) + uint64(bootTime*1000))
 
 	rtpriority, err := strconv.ParseInt(fields[18], 10, 32)
 	if err != nil {

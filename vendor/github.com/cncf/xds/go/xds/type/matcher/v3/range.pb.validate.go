@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,20 +32,54 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on Int64RangeMatcher with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *Int64RangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Int64RangeMatcher with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Int64RangeMatcherMultiError, or nil if none found.
+func (m *Int64RangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Int64RangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	for idx, item := range m.GetRangeMatchers() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, Int64RangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, Int64RangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return Int64RangeMatcherValidationError{
 					field:  fmt.Sprintf("RangeMatchers[%v]", idx),
@@ -56,8 +91,29 @@ func (m *Int64RangeMatcher) Validate() error {
 
 	}
 
+	if len(errors) > 0 {
+		return Int64RangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// Int64RangeMatcherMultiError is an error wrapping multiple validation errors
+// returned by Int64RangeMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type Int64RangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Int64RangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Int64RangeMatcherMultiError) AllErrors() []error { return m }
 
 // Int64RangeMatcherValidationError is the validation error returned by
 // Int64RangeMatcher.Validate if the designated constraints aren't met.
@@ -116,17 +172,50 @@ var _ interface {
 } = Int64RangeMatcherValidationError{}
 
 // Validate checks the field values on Int32RangeMatcher with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *Int32RangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Int32RangeMatcher with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// Int32RangeMatcherMultiError, or nil if none found.
+func (m *Int32RangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Int32RangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	for idx, item := range m.GetRangeMatchers() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, Int32RangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, Int32RangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return Int32RangeMatcherValidationError{
 					field:  fmt.Sprintf("RangeMatchers[%v]", idx),
@@ -138,8 +227,29 @@ func (m *Int32RangeMatcher) Validate() error {
 
 	}
 
+	if len(errors) > 0 {
+		return Int32RangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// Int32RangeMatcherMultiError is an error wrapping multiple validation errors
+// returned by Int32RangeMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type Int32RangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Int32RangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Int32RangeMatcherMultiError) AllErrors() []error { return m }
 
 // Int32RangeMatcherValidationError is the validation error returned by
 // Int32RangeMatcher.Validate if the designated constraints aren't met.
@@ -199,16 +309,49 @@ var _ interface {
 
 // Validate checks the field values on DoubleRangeMatcher with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *DoubleRangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on DoubleRangeMatcher with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// DoubleRangeMatcherMultiError, or nil if none found.
+func (m *DoubleRangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *DoubleRangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	for idx, item := range m.GetRangeMatchers() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, DoubleRangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, DoubleRangeMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return DoubleRangeMatcherValidationError{
 					field:  fmt.Sprintf("RangeMatchers[%v]", idx),
@@ -220,8 +363,29 @@ func (m *DoubleRangeMatcher) Validate() error {
 
 	}
 
+	if len(errors) > 0 {
+		return DoubleRangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// DoubleRangeMatcherMultiError is an error wrapping multiple validation errors
+// returned by DoubleRangeMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type DoubleRangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m DoubleRangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m DoubleRangeMatcherMultiError) AllErrors() []error { return m }
 
 // DoubleRangeMatcherValidationError is the validation error returned by
 // DoubleRangeMatcher.Validate if the designated constraints aren't met.
@@ -281,23 +445,60 @@ var _ interface {
 
 // Validate checks the field values on Int64RangeMatcher_RangeMatcher with the
 // rules defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *Int64RangeMatcher_RangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Int64RangeMatcher_RangeMatcher with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// Int64RangeMatcher_RangeMatcherMultiError, or nil if none found.
+func (m *Int64RangeMatcher_RangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Int64RangeMatcher_RangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if len(m.GetRanges()) < 1 {
-		return Int64RangeMatcher_RangeMatcherValidationError{
+		err := Int64RangeMatcher_RangeMatcherValidationError{
 			field:  "Ranges",
 			reason: "value must contain at least 1 item(s)",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetRanges() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, Int64RangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, Int64RangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return Int64RangeMatcher_RangeMatcherValidationError{
 					field:  fmt.Sprintf("Ranges[%v]", idx),
@@ -309,7 +510,26 @@ func (m *Int64RangeMatcher_RangeMatcher) Validate() error {
 
 	}
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetOnMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Int64RangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Int64RangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return Int64RangeMatcher_RangeMatcherValidationError{
 				field:  "OnMatch",
@@ -319,8 +539,29 @@ func (m *Int64RangeMatcher_RangeMatcher) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return Int64RangeMatcher_RangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// Int64RangeMatcher_RangeMatcherMultiError is an error wrapping multiple
+// validation errors returned by Int64RangeMatcher_RangeMatcher.ValidateAll()
+// if the designated constraints aren't met.
+type Int64RangeMatcher_RangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Int64RangeMatcher_RangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Int64RangeMatcher_RangeMatcherMultiError) AllErrors() []error { return m }
 
 // Int64RangeMatcher_RangeMatcherValidationError is the validation error
 // returned by Int64RangeMatcher_RangeMatcher.Validate if the designated
@@ -381,23 +622,60 @@ var _ interface {
 
 // Validate checks the field values on Int32RangeMatcher_RangeMatcher with the
 // rules defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *Int32RangeMatcher_RangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on Int32RangeMatcher_RangeMatcher with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// Int32RangeMatcher_RangeMatcherMultiError, or nil if none found.
+func (m *Int32RangeMatcher_RangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *Int32RangeMatcher_RangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if len(m.GetRanges()) < 1 {
-		return Int32RangeMatcher_RangeMatcherValidationError{
+		err := Int32RangeMatcher_RangeMatcherValidationError{
 			field:  "Ranges",
 			reason: "value must contain at least 1 item(s)",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetRanges() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, Int32RangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, Int32RangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return Int32RangeMatcher_RangeMatcherValidationError{
 					field:  fmt.Sprintf("Ranges[%v]", idx),
@@ -409,7 +687,26 @@ func (m *Int32RangeMatcher_RangeMatcher) Validate() error {
 
 	}
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetOnMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Int32RangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Int32RangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return Int32RangeMatcher_RangeMatcherValidationError{
 				field:  "OnMatch",
@@ -419,8 +716,29 @@ func (m *Int32RangeMatcher_RangeMatcher) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return Int32RangeMatcher_RangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// Int32RangeMatcher_RangeMatcherMultiError is an error wrapping multiple
+// validation errors returned by Int32RangeMatcher_RangeMatcher.ValidateAll()
+// if the designated constraints aren't met.
+type Int32RangeMatcher_RangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m Int32RangeMatcher_RangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m Int32RangeMatcher_RangeMatcherMultiError) AllErrors() []error { return m }
 
 // Int32RangeMatcher_RangeMatcherValidationError is the validation error
 // returned by Int32RangeMatcher_RangeMatcher.Validate if the designated
@@ -481,23 +799,60 @@ var _ interface {
 
 // Validate checks the field values on DoubleRangeMatcher_RangeMatcher with the
 // rules defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *DoubleRangeMatcher_RangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on DoubleRangeMatcher_RangeMatcher with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// DoubleRangeMatcher_RangeMatcherMultiError, or nil if none found.
+func (m *DoubleRangeMatcher_RangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *DoubleRangeMatcher_RangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if len(m.GetRanges()) < 1 {
-		return DoubleRangeMatcher_RangeMatcherValidationError{
+		err := DoubleRangeMatcher_RangeMatcherValidationError{
 			field:  "Ranges",
 			reason: "value must contain at least 1 item(s)",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetRanges() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, DoubleRangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, DoubleRangeMatcher_RangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return DoubleRangeMatcher_RangeMatcherValidationError{
 					field:  fmt.Sprintf("Ranges[%v]", idx),
@@ -509,7 +864,26 @@ func (m *DoubleRangeMatcher_RangeMatcher) Validate() error {
 
 	}
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetOnMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, DoubleRangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, DoubleRangeMatcher_RangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return DoubleRangeMatcher_RangeMatcherValidationError{
 				field:  "OnMatch",
@@ -519,8 +893,29 @@ func (m *DoubleRangeMatcher_RangeMatcher) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return DoubleRangeMatcher_RangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// DoubleRangeMatcher_RangeMatcherMultiError is an error wrapping multiple
+// validation errors returned by DoubleRangeMatcher_RangeMatcher.ValidateAll()
+// if the designated constraints aren't met.
+type DoubleRangeMatcher_RangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m DoubleRangeMatcher_RangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m DoubleRangeMatcher_RangeMatcherMultiError) AllErrors() []error { return m }
 
 // DoubleRangeMatcher_RangeMatcherValidationError is the validation error
 // returned by DoubleRangeMatcher_RangeMatcher.Validate if the designated

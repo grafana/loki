@@ -234,7 +234,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		_, ok := objectClient.(client.PrefixedObjectClient)
@@ -246,7 +246,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -259,7 +259,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -272,7 +272,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "/my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)

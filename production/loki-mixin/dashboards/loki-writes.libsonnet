@@ -21,14 +21,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
                             else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
                             ingester: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(ingester|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
                             ingester_zone: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(ingester-zone.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
-                            any_ingester: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
                           },
 
                           local selector(matcherId) =
@@ -41,7 +38,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
                           ingesterZoneSelector:: selector('ingester_zone'),
-                          anyIngester:: selector('any_ingester'),
                         } +
                         $.dashboard('Loki / Writes', uid='writes')
                         .addCluster()
@@ -52,7 +48,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Frontend (cortex_gw)')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push"}' % dashboards['loki-writes.json'].cortexGwSelector)
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs"}' % dashboards['loki-writes.json'].cortexGwSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
@@ -60,7 +56,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
                               dashboards['loki-writes.json'].matchers.cortexgateway +
-                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
                             )
                           )
                           .addPanel(
@@ -69,7 +65,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               $.toPrometheusSelector(
                                 dashboards['loki-writes.json'].clusterMatchers +
                                 dashboards['loki-writes.json'].matchers.cortexgateway +
-                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
                               ),
                             )
                           )
@@ -78,7 +74,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
@@ -86,7 +82,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
                               dashboards['loki-writes.json'].matchers.distributor +
-                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
                             )
                           )
                           .addPanel(
@@ -95,7 +91,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               $.toPrometheusSelector(
                                 dashboards['loki-writes.json'].clusterMatchers +
                                 dashboards['loki-writes.json'].matchers.distributor +
-                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
                               ),
                             )
                           )
@@ -177,16 +173,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
+                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
-                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.p99LatencyByPod(
                               'loki_index_request_duration_seconds',
-                              '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester,
+                              '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
                         )

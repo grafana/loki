@@ -45,7 +45,20 @@ message CountMinSketch {
   uint32 width = 2;
 
   // counters is a matrix of depth * width.
-  repeated uint32 counters = 3;
+  repeated double counters = 3;
+
+  bytes hyperloglog = 4;
+}
+
+message CountMinSketchVector {
+  int64 timestamp_ms = 1;
+  CountMinSketch sketch = 2;
+
+  repeated Labels metrics = 3;
+}
+
+message Labels {
+  repeated LabelPair metric = 1;
 }
 
 message TopK {
@@ -53,7 +66,7 @@ message TopK {
 
   message Pair {
     string event = 1;
-    uint32 count = 2;
+    double count = 2;
   }
   repeated Pair list = 2;
 

@@ -48,11 +48,14 @@ type defaultIBMCImplementation struct {
 
 // newIBMClient constructor
 // Parameters:
-// 		AWS Config
-//		Initial Backoff of the refresh
-//		Duration of backoff progression
+//
+//	AWS Config
+//	Initial Backoff of the refresh
+//	Duration of backoff progression
+//
 // Returns:
-//		Default IBM Client Implementation
+//
+//	Default IBM Client Implementation
 func newIBMClient(config *aws.Config, initialBackOff time.Duration,
 	backOffProgression func(time.Duration) time.Duration) *defaultIBMCImplementation {
 	var httpClient *http.Client
@@ -96,9 +99,12 @@ func newIBMClient(config *aws.Config, initialBackOff time.Duration,
 
 // Default IBM Client
 // Parameter:
-//		AWS Config
+//
+//	AWS Config
+//
 // Returns:
-//		A HTTP Client with IBM IAM Credentials in the config
+//
+//	A HTTP Client with IBM IAM Credentials in the config
 func defaultIBMClient(config *aws.Config) *defaultIBMCImplementation {
 	f := func(duration time.Duration) time.Duration {
 		return time.Duration(float64(duration.Nanoseconds())*1.75) * time.Nanosecond
@@ -108,10 +114,13 @@ func defaultIBMClient(config *aws.Config) *defaultIBMCImplementation {
 
 // Internal IBM Client HTTP Client request execution
 // Parameter:
-//		An HTTP Request Object
+//
+//	An HTTP Request Object
+//
 // Returns:
-//		An HTTP Response Object
-//		Error
+//
+//	An HTTP Response Object
+//	Error
 func (c *defaultIBMCImplementation) Do(req *http.Request) (r *http.Response, e error) {
 
 	// Enablese Log if Debugger is turned on
@@ -160,9 +169,12 @@ func (c *defaultIBMCImplementation) Do(req *http.Request) (r *http.Response, e e
 // only copies method, url, body , headers
 // tight coupled to the token manager and the way request is build
 // Paramter:
-//		An HTTP Request object
+//
+//	An HTTP Request object
+//
 // Returns:
-//		A built HTTP Request object with header
+//
+//	A built HTTP Request object with header
 func copyRequest(r *http.Request) *http.Request {
 	buf, _ := ioutil.ReadAll(r.Body)
 	newReader := ioutil.NopCloser(bytes.NewBuffer(buf))

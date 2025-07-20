@@ -94,15 +94,18 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 			return nil
 		}
 
-		ref, err := resolver.ParseBlockKey(key(path))
+		// The block file extension (.tar) needs to be added so the key can be parsed.
+		// This is because the extension is stripped off when the tar archive is extracted.
+		ref, err := resolver.ParseBlockKey(key(path + blockExtension))
 		if err != nil {
 			return nil
 		}
 
 		if ok, clean := isBlockDir(path, logger); ok {
-			keys = append(keys, resolver.Block(ref).Addr())
+			key := cacheKey(ref)
+			keys = append(keys, key)
 			values = append(values, NewBlockDirectory(ref, path))
-			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
+			level.Debug(logger).Log("msg", "found block directory", "path", path, "key", key)
 		} else {
 			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
 			_ = clean(path)
@@ -164,13 +167,13 @@ func (b *BlockDirectory) resolveSize() error {
 // The passed function `close` is called when the the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(
 	alloc mempool.Allocator,
-	close func() error,
+	closeFunc func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
-		close:        close,
+		close:        closeFunc,
 	}
 }

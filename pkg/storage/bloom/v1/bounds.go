@@ -5,11 +5,9 @@ import (
 	"hash"
 	"math"
 	"strings"
-	"unsafe"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,13 +39,6 @@ func BoundsFromProto(pb logproto.FPBounds) FingerprintBounds {
 	return FingerprintBounds(pb)
 }
 
-// Unsafe cast to avoid allocation. This _requires_ that the underlying types are the same
-// which is checked by the compiler above
-func MultiBoundsFromProto(pb []logproto.FPBounds) MultiFingerprintBounds {
-	//nolint:unconvert
-	return MultiFingerprintBounds(*(*MultiFingerprintBounds)(unsafe.Pointer(&pb)))
-}
-
 // ParseBoundsFromAddr parses a fingerprint bounds from a string
 func ParseBoundsFromAddr(s string) (FingerprintBounds, error) {
 	parts := strings.Split(s, "-")
@@ -68,8 +59,8 @@ func ParseBoundsFromParts(a, b string) (FingerprintBounds, error) {
 	return NewBounds(minFingerprint, maxFingerprint), nil
 }
 
-func NewBounds(min, max model.Fingerprint) FingerprintBounds {
-	return FingerprintBounds{Min: min, Max: max}
+func NewBounds(minVal, maxVal model.Fingerprint) FingerprintBounds {
+	return FingerprintBounds{Min: minVal, Max: maxVal}
 }
 
 func (b FingerprintBounds) Hash(h hash.Hash32) error {
@@ -129,8 +120,8 @@ func (b FingerprintBounds) Bounds() (model.Fingerprint, model.Fingerprint) {
 }
 
 // Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
-func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds {
-	return b.Intersection(FingerprintBounds{Min: min, Max: max})
+func (b FingerprintBounds) Slice(minVal, maxVal model.Fingerprint) *FingerprintBounds {
+	return b.Intersection(FingerprintBounds{Min: minVal, Max: maxVal})
 }
 
 // Within returns whether the fingerprint is fully within the target bounds
@@ -207,40 +198,6 @@ func (b FingerprintBounds) Range() uint64 {
 	return uint64(b.Max - b.Min)
 }
 
-type MultiFingerprintBounds []FingerprintBounds
-
-func (mb MultiFingerprintBounds) Union(target FingerprintBounds) MultiFingerprintBounds {
-	if len(mb) == 0 {
-		return MultiFingerprintBounds{target}
-	}
-	if len(mb) == 1 {
-		return mb[0].Union(target)
-	}
-
-	mb = append(mb, target)
-	slices.SortFunc(mb, func(a, b FingerprintBounds) int {
-		if a.Less(b) {
-			return -1
-		} else if a.Equal(b) {
-			return 0
-		}
-		return 1
-	})
-
-	var union MultiFingerprintBounds
-	for i := 0; i < len(mb); i++ {
-		j := len(union) - 1 // index of last item of union
-		if j >= 0 && union[j].Max >= mb[i].Min-1 {
-			union[j] = NewBounds(union[j].Min, max(mb[i].Max, union[j].Max))
-		} else {
-			union = append(union, mb[i])
-		}
-	}
-
-	mb = union
-	return mb
-}
-
 // unused, but illustrative
 type BoundedIter[V any] struct {
 	iter.Iterator[V]
@@ -249,7 +206,7 @@ type BoundedIter[V any] struct {
 
 func (bi *BoundedIter[V]) Next() bool {
 	for bi.Iterator.Next() {
-		switch bi.cmp(bi.Iterator.At()) {
+		switch bi.cmp(bi.At()) {
 		case Before:
 			continue
 		case After:

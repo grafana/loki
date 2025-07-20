@@ -31,6 +31,12 @@ type flagValue struct {
 }
 
 func (f *flagValue) String() string {
+	// This function can be called by isZeroValue https://github.com/golang/go/blob/go1.23.3/src/flag/flag.go#L630
+	// which creates an instance of flagValue using reflect.New. In this case, the field `reg` is nil.
+	if f.reg == nil {
+		return ""
+	}
+
 	var ids []string
 	f.reg.VisitAll(func(g *Gate) {
 		id := g.ID()

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -81,10 +81,10 @@ func (t *Target) run() {
 
 		// TODO: Possibly need to format after merging with discovered labels because we can specify multiple labels in source labels
 		// https://github.com/grafana/loki/pull/4745#discussion_r750022234
-		lbs := format([]labels.Label{{
+		lbs := format(labels.New(labels.Label{
 			Name:  labelKeyKafkaMessageKey,
 			Value: mk,
-		}}, t.relabelConfig)
+		}), t.relabelConfig)
 
 		out := t.lbs.Clone()
 		if len(lbs) > 0 {

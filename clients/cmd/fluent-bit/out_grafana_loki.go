@@ -53,7 +53,7 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	conf, err := parseConfig(&pluginConfig{ctx: ctx})
 	if err != nil {
-		level.Error(logger).Log("[flb-go]", "failed to launch", "error", err)
+		level.Error(logger).Log("[flb-go]", "failed to parse plugin config for out-grafana-loki", "error", err)
 		return output.FLB_ERROR
 	}
 

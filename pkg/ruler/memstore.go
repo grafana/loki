@@ -185,7 +185,7 @@ type memStoreQuerier struct {
 // Select implements storage.Querier but takes advantage of the fact that it's only called when restoring for state
 // in order to lookup & cache previous rule evaluations. This results in a sort of synthetic metric store.
 func (m *memStoreQuerier) Select(ctx context.Context, _ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	b := labels.NewBuilder(nil)
+	b := labels.NewBuilder(labels.EmptyLabels())
 	var ruleKey string
 	for _, matcher := range matchers {
 		// Since Select is only called to restore the for state of an alert, we can deduce two things:
@@ -297,12 +297,12 @@ func (m *memStoreQuerier) findRule(name string) (rulefmt.Rule, bool) {
 }
 
 // LabelValues returns all potential values for a label name.
-func (*memStoreQuerier) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (*memStoreQuerier) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (*memStoreQuerier) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (*memStoreQuerier) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
@@ -332,7 +332,7 @@ func (c *RuleCache) Set(ts time.Time, vec promql.Vector) {
 	}
 
 	for _, sample := range vec {
-		tsMap[sample.Metric.Hash()] = sample
+		tsMap[labels.StableHash(sample.Metric)] = sample
 	}
 	c.metrics.samples.Add(float64(len(vec)))
 }
@@ -347,7 +347,7 @@ func (c *RuleCache) Get(ts time.Time, ls labels.Labels) (*promql.Sample, bool) {
 		return nil, false
 	}
 
-	smp, ok := match[ls.Hash()]
+	smp, ok := match[labels.StableHash(ls)]
 	if !ok {
 		return nil, true
 	}

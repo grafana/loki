@@ -3,10 +3,7 @@ package logproto
 import (
 	"testing"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestShard_SpaceFor(t *testing.T) {
@@ -44,90 +41,126 @@ func TestShard_SpaceFor(t *testing.T) {
 	}
 }
 
-func TestQueryPatternsResponse_UnmarshalJSON(t *testing.T) {
-	mockData := []byte(`{
-		"status": "success",
-		"data": [
-			{
-				"pattern": "foo <*> bar",
-				"samples": [[1609459200, 10], [1609545600, 15]]
-			},
-			{
-				"pattern": "foo <*> buzz",
-				"samples": [[1609459200, 20], [1609545600, 25]]
-			}
-		]
-	}`)
-
-	expectedSeries := []*PatternSeries{
-		NewPatternSeries("foo <*> bar", []*PatternSample{
-			{Timestamp: model.TimeFromUnix(1609459200), Value: 10},
-			{Timestamp: model.TimeFromUnix(1609545600), Value: 15},
-		}),
-		NewPatternSeries("foo <*> buzz", []*PatternSample{
-			{Timestamp: model.TimeFromUnix(1609459200), Value: 20},
-			{Timestamp: model.TimeFromUnix(1609545600), Value: 25},
-		}),
+func TestQueryPatternsRequest_GetSampleQuery(t *testing.T) {
+	tests := []struct {
+		name          string
+		query         string
+		step          int64
+		expected      string
+		expectedError bool
+	}{
+		{
+			name:  "simple selector with service_name",
+			query: `{service_name="test-service"}`,
+			step:  60000, // 1 minute in milliseconds
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__="test-service"} | logfmt | ` +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [1m0s]))`,
+		},
+		{
+			name:  "selector with service_name and additional labels",
+			query: `{service_name="test-service", env="prod", cluster="us-east-1"}`,
+			step:  300000, // 5 minutes in milliseconds
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__="test-service"} | logfmt | ` +
+				"env=\"prod\" | cluster=\"us-east-1\" | " +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [5m0s]))`,
+		},
+		{
+			name:  "selector with service_name and additional labels and match types",
+			query: `{service_name="test-service", env=~"prod", cluster!="us-east-1", foo!~"bar"}`,
+			step:  300000, // 5 minutes in milliseconds
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__="test-service"} | logfmt | ` +
+				"env=~\"prod\" | cluster!=\"us-east-1\" | foo!~\"bar\" | " +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [5m0s]))`,
+		},
+		{
+			name:  "small step gets minimum 10s window",
+			query: `{service_name="test-service"}`,
+			step:  5000, // 5 seconds in milliseconds
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__="test-service"} | logfmt | ` +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [10s]))`,
+		},
+		{
+			name:  "simple regex selector with service_name",
+			query: `{service_name=~"test-service"}`,
+			step:  10000, // 10 seconds in milliseconds
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__=~"test-service"} | logfmt | ` +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [10s]))`,
+		},
 	}
 
-	r := &QueryPatternsResponse{}
-	err := r.UnmarshalJSON(mockData)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &QueryPatternsRequest{
+				Query: tc.query,
+				Step:  tc.step,
+			}
 
-	require.Nil(t, err)
-	require.Equal(t, expectedSeries, r.Series)
+			result, err := req.GetSampleQuery()
+
+			if tc.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, result)
+			}
+		})
+	}
 }
 
-func TestQuerySamplesResponse_UnmarshalJSON(t *testing.T) {
-	mockData := []byte(`{
-    "status": "success",
-    "data": [{
-      "metric": {
-        "foo": "bar"
-      },
-      "values": [
-        [0.001, "1"],
-        [0.002, "2"]
-      ]
-    },
-    {
-      "metric": {
-        "foo": "baz",
-        "bar": "qux"
-      },
-      "values": [
-        [0.003, "3"],
-        [0.004, "4"]
-      ]
-    }]
-  }`)
-
-	lbls1, err := syntax.ParseLabels(`{foo="bar"}`)
-	require.NoError(t, err)
-	lbls2, err := syntax.ParseLabels(`{bar="qux", foo="baz"}`)
-	require.NoError(t, err)
-
-	expectedSamples := []Series{
+func TestQueryPatternsRequest_GetSampleQuery_NoServiceName(t *testing.T) {
+	tests := []struct {
+		name          string
+		query         string
+		expected      string
+		expectedError bool
+	}{
 		{
-			Labels: lbls1.String(),
-			Samples: []Sample{
-				{Timestamp: 1e6, Value: 1}, // 1ms after epoch in ns
-				{Timestamp: 2e6, Value: 2}, // 2ms after epoch in ns
-			},
-			StreamHash: lbls1.Hash(),
+			name:  "no service_name label",
+			query: `{env="prod", cluster="us-east-1"}`,
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__=~".+"} | logfmt | ` +
+				"env=\"prod\" | cluster=\"us-east-1\" | " +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [1m0s]))`,
 		},
 		{
-			Labels: lbls2.String(),
-			Samples: []Sample{
-				{Timestamp: 3e6, Value: 3}, // 3ms after epoch in ns
-				{Timestamp: 4e6, Value: 4}, // 4ms after epoch in ns
-			},
-			StreamHash: lbls2.Hash(),
+			name:  "no service_name label, mixed match types",
+			query: `{env!="prod", cluster=~"us-east-1", app!~"foo"}`,
+			expected: `sum by (decoded_pattern, detected_level) (sum_over_time({__pattern__=~".+"} | logfmt | ` +
+				"env!=\"prod\" | cluster=~\"us-east-1\" | app!~\"foo\" | " +
+				"label_format decoded_pattern=`{{urldecode .detected_pattern}}` " +
+				`| unwrap count [1m0s]))`,
 		},
 	}
 
-	r := &QuerySamplesResponse{}
-	err = r.UnmarshalJSON(mockData)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &QueryPatternsRequest{
+				Query: tc.query,
+				Step:  60000,
+			}
 
-	require.Nil(t, err)
-	require.Equal(t, expectedSamples, r.Series)
+			result, err := req.GetSampleQuery()
+			if tc.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestQueryPatternsRequest_GetSampleQuery_InvalidQuery(t *testing.T) {
+	req := &QueryPatternsRequest{
+		Query: `{invalid query syntax`,
+		Step:  60000,
+	}
+
+	_, err := req.GetSampleQuery()
+	require.Error(t, err)
 }

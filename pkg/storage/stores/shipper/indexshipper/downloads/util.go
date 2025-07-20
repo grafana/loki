@@ -23,6 +23,15 @@ func (m *mtxWithReadiness) markReady() {
 	close(m.ready)
 }
 
+func (m *mtxWithReadiness) isReady() bool {
+	select {
+	case <-m.ready:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *mtxWithReadiness) awaitReady(ctx context.Context) error {
 	ctx, cancel := context.WithTimeoutCause(ctx, 30*time.Second, errors.New("exceeded 30 seconds in awaitReady"))
 	defer cancel()

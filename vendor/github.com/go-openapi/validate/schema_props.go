@@ -70,7 +70,7 @@ func newSchemaPropsValidator(
 
 	var s *schemaPropsValidator
 	if opts.recycleValidators {
-		s = poolOfSchemaPropsValidators.BorrowValidator()
+		s = pools.poolOfSchemaPropsValidators.BorrowValidator()
 	} else {
 		s = new(schemaPropsValidator)
 	}
@@ -100,8 +100,8 @@ func (s *schemaPropsValidator) Applies(source interface{}, _ reflect.Kind) bool 
 
 func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 	var mainResult *Result
-	if s.Options.recycleValidators {
-		mainResult = poolOfResults.BorrowResult()
+	if s.Options.recycleResult {
+		mainResult = pools.poolOfResults.BorrowResult()
 	} else {
 		mainResult = new(Result)
 	}
@@ -109,179 +109,240 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 	// Intermediary error results
 
 	// IMPORTANT! messages from underlying validators
-	keepResultAnyOf := poolOfResults.BorrowResult()
-	keepResultOneOf := poolOfResults.BorrowResult()
-	keepResultAllOf := poolOfResults.BorrowResult()
+	var keepResultAnyOf, keepResultOneOf, keepResultAllOf *Result
 
 	if s.Options.recycleValidators {
 		defer func() {
+			s.redeemChildren()
 			s.redeem()
 
 			// results are redeemed when merged
 		}()
 	}
 
-	// Validates at least one in anyOf schemas
-	var firstSuccess *Result
 	if len(s.anyOfValidators) > 0 {
-		var bestFailures *Result
-		succeededOnce := false
-		for _, anyOfSchema := range s.anyOfValidators {
-			result := anyOfSchema.Validate(data)
-			// We keep inner IMPORTANT! errors no matter what MatchCount tells us
-			keepResultAnyOf.Merge(result.keepRelevantErrors())
-			if result.IsValid() {
-				bestFailures = nil
-				succeededOnce = true
-				firstSuccess = result
-				_ = keepResultAnyOf.cleared()
-
-				break
-			}
-			// MatchCount is used to select errors from the schema with most positive checks
-			if bestFailures == nil || result.MatchCount > bestFailures.MatchCount {
-				bestFailures = result
-			}
-		}
-
-		if !succeededOnce {
-			mainResult.AddErrors(mustValidateAtLeastOneSchemaMsg(s.Path))
-		}
-		if bestFailures != nil {
-			mainResult.Merge(bestFailures)
-			if firstSuccess != nil && firstSuccess.wantsRedeemOnMerge {
-				poolOfResults.RedeemResult(firstSuccess)
-			}
-		} else if firstSuccess != nil {
-			mainResult.Merge(firstSuccess)
-		}
+		keepResultAnyOf = pools.poolOfResults.BorrowResult()
+		s.validateAnyOf(data, mainResult, keepResultAnyOf)
 	}
 
-	// Validates exactly one in oneOf schemas
 	if len(s.oneOfValidators) > 0 {
-		var bestFailures *Result
-		var firstSuccess *Result
-		validated := 0
-
-		for _, oneOfSchema := range s.oneOfValidators {
-			result := oneOfSchema.Validate(data)
-			// We keep inner IMPORTANT! errors no matter what MatchCount tells us
-			keepResultOneOf.Merge(result.keepRelevantErrors())
-			if result.IsValid() {
-				validated++
-				bestFailures = nil
-				if firstSuccess == nil {
-					firstSuccess = result
-				}
-				_ = keepResultOneOf.cleared()
-				continue
-			}
-			// MatchCount is used to select errors from the schema with most positive checks
-			if validated == 0 && (bestFailures == nil || result.MatchCount > bestFailures.MatchCount) {
-				bestFailures = result
-			}
-		}
-
-		if validated != 1 {
-			var additionalMsg string
-			if validated == 0 {
-				additionalMsg = "Found none valid"
-			} else {
-				additionalMsg = fmt.Sprintf("Found %d valid alternatives", validated)
-			}
-
-			mainResult.AddErrors(mustValidateOnlyOneSchemaMsg(s.Path, additionalMsg))
-			if bestFailures != nil {
-				mainResult.Merge(bestFailures)
-			}
-			if firstSuccess != nil && firstSuccess.wantsRedeemOnMerge {
-				poolOfResults.RedeemResult(firstSuccess)
-			}
-		} else if firstSuccess != nil {
-			mainResult.Merge(firstSuccess)
-			if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
-				poolOfResults.RedeemResult(bestFailures)
-			}
-		}
+		keepResultOneOf = pools.poolOfResults.BorrowResult()
+		s.validateOneOf(data, mainResult, keepResultOneOf)
 	}
 
-	// Validates all of allOf schemas
 	if len(s.allOfValidators) > 0 {
-		validated := 0
-
-		for _, allOfSchema := range s.allOfValidators {
-			result := allOfSchema.Validate(data)
-			// We keep inner IMPORTANT! errors no matter what MatchCount tells us
-			keepResultAllOf.Merge(result.keepRelevantErrors())
-			if result.IsValid() {
-				validated++
-			}
-			mainResult.Merge(result)
-		}
-
-		if validated != len(s.allOfValidators) {
-			additionalMsg := ""
-			if validated == 0 {
-				additionalMsg = ". None validated"
-			}
-
-			mainResult.AddErrors(mustValidateAllSchemasMsg(s.Path, additionalMsg))
-		}
+		keepResultAllOf = pools.poolOfResults.BorrowResult()
+		s.validateAllOf(data, mainResult, keepResultAllOf)
 	}
 
 	if s.notValidator != nil {
-		result := s.notValidator.Validate(data)
-		// We keep inner IMPORTANT! errors no matter what MatchCount tells us
-		if result.IsValid() {
-			mainResult.AddErrors(mustNotValidatechemaMsg(s.Path))
-		}
+		s.validateNot(data, mainResult)
 	}
 
 	if s.Dependencies != nil && len(s.Dependencies) > 0 && reflect.TypeOf(data).Kind() == reflect.Map {
-		val := data.(map[string]interface{})
-		for key := range val {
-			if dep, ok := s.Dependencies[key]; ok {
-
-				if dep.Schema != nil {
-					mainResult.Merge(
-						newSchemaValidator(dep.Schema, s.Root, s.Path+"."+key, s.KnownFormats, s.Options).Validate(data),
-					)
-					continue
-				}
-
-				if len(dep.Property) > 0 {
-					for _, depKey := range dep.Property {
-						if _, ok := val[depKey]; !ok {
-							mainResult.AddErrors(hasADependencyMsg(s.Path, depKey))
-						}
-					}
-				}
-			}
-		}
+		s.validateDependencies(data, mainResult)
 	}
 
 	mainResult.Inc()
+
 	// In the end we retain best failures for schema validation
 	// plus, if any, composite errors which may explain special cases (tagged as IMPORTANT!).
 	return mainResult.Merge(keepResultAllOf, keepResultOneOf, keepResultAnyOf)
 }
 
+func (s *schemaPropsValidator) validateAnyOf(data interface{}, mainResult, keepResultAnyOf *Result) {
+	// Validates at least one in anyOf schemas
+	var bestFailures *Result
+
+	for i, anyOfSchema := range s.anyOfValidators {
+		result := anyOfSchema.Validate(data)
+		if s.Options.recycleValidators {
+			s.anyOfValidators[i] = nil
+		}
+		// We keep inner IMPORTANT! errors no matter what MatchCount tells us
+		keepResultAnyOf.Merge(result.keepRelevantErrors()) // merges (and redeems) a new instance of Result
+
+		if result.IsValid() {
+			if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
+				pools.poolOfResults.RedeemResult(bestFailures)
+			}
+
+			_ = keepResultAnyOf.cleared()
+			mainResult.Merge(result)
+
+			return
+		}
+
+		// MatchCount is used to select errors from the schema with most positive checks
+		if bestFailures == nil || result.MatchCount > bestFailures.MatchCount {
+			if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
+				pools.poolOfResults.RedeemResult(bestFailures)
+			}
+			bestFailures = result
+
+			continue
+		}
+
+		if result.wantsRedeemOnMerge {
+			pools.poolOfResults.RedeemResult(result) // this result is ditched
+		}
+	}
+
+	mainResult.AddErrors(mustValidateAtLeastOneSchemaMsg(s.Path))
+	mainResult.Merge(bestFailures)
+}
+
+func (s *schemaPropsValidator) validateOneOf(data interface{}, mainResult, keepResultOneOf *Result) {
+	// Validates exactly one in oneOf schemas
+	var (
+		firstSuccess, bestFailures *Result
+		validated                  int
+	)
+
+	for i, oneOfSchema := range s.oneOfValidators {
+		result := oneOfSchema.Validate(data)
+		if s.Options.recycleValidators {
+			s.oneOfValidators[i] = nil
+		}
+
+		// We keep inner IMPORTANT! errors no matter what MatchCount tells us
+		keepResultOneOf.Merge(result.keepRelevantErrors()) // merges (and redeems) a new instance of Result
+
+		if result.IsValid() {
+			validated++
+			_ = keepResultOneOf.cleared()
+
+			if firstSuccess == nil {
+				firstSuccess = result
+			} else if result.wantsRedeemOnMerge {
+				pools.poolOfResults.RedeemResult(result) // this result is ditched
+			}
+
+			continue
+		}
+
+		// MatchCount is used to select errors from the schema with most positive checks
+		if validated == 0 && (bestFailures == nil || result.MatchCount > bestFailures.MatchCount) {
+			if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
+				pools.poolOfResults.RedeemResult(bestFailures)
+			}
+			bestFailures = result
+		} else if result.wantsRedeemOnMerge {
+			pools.poolOfResults.RedeemResult(result) // this result is ditched
+		}
+	}
+
+	switch validated {
+	case 0:
+		mainResult.AddErrors(mustValidateOnlyOneSchemaMsg(s.Path, "Found none valid"))
+		mainResult.Merge(bestFailures)
+		// firstSucess necessarily nil
+	case 1:
+		mainResult.Merge(firstSuccess)
+		if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
+			pools.poolOfResults.RedeemResult(bestFailures)
+		}
+	default:
+		mainResult.AddErrors(mustValidateOnlyOneSchemaMsg(s.Path, fmt.Sprintf("Found %d valid alternatives", validated)))
+		mainResult.Merge(bestFailures)
+		if firstSuccess != nil && firstSuccess.wantsRedeemOnMerge {
+			pools.poolOfResults.RedeemResult(firstSuccess)
+		}
+	}
+}
+
+func (s *schemaPropsValidator) validateAllOf(data interface{}, mainResult, keepResultAllOf *Result) {
+	// Validates all of allOf schemas
+	var validated int
+
+	for i, allOfSchema := range s.allOfValidators {
+		result := allOfSchema.Validate(data)
+		if s.Options.recycleValidators {
+			s.allOfValidators[i] = nil
+		}
+		// We keep inner IMPORTANT! errors no matter what MatchCount tells us
+		keepResultAllOf.Merge(result.keepRelevantErrors())
+		if result.IsValid() {
+			validated++
+		}
+		mainResult.Merge(result)
+	}
+
+	switch validated {
+	case 0:
+		mainResult.AddErrors(mustValidateAllSchemasMsg(s.Path, ". None validated"))
+	case len(s.allOfValidators):
+	default:
+		mainResult.AddErrors(mustValidateAllSchemasMsg(s.Path, ""))
+	}
+}
+
+func (s *schemaPropsValidator) validateNot(data interface{}, mainResult *Result) {
+	result := s.notValidator.Validate(data)
+	if s.Options.recycleValidators {
+		s.notValidator = nil
+	}
+	// We keep inner IMPORTANT! errors no matter what MatchCount tells us
+	if result.IsValid() {
+		mainResult.AddErrors(mustNotValidatechemaMsg(s.Path))
+	}
+	if result.wantsRedeemOnMerge {
+		pools.poolOfResults.RedeemResult(result) // this result is ditched
+	}
+}
+
+func (s *schemaPropsValidator) validateDependencies(data interface{}, mainResult *Result) {
+	val := data.(map[string]interface{})
+	for key := range val {
+		dep, ok := s.Dependencies[key]
+		if !ok {
+			continue
+		}
+
+		if dep.Schema != nil {
+			mainResult.Merge(
+				newSchemaValidator(dep.Schema, s.Root, s.Path+"."+key, s.KnownFormats, s.Options).Validate(data),
+			)
+			continue
+		}
+
+		if len(dep.Property) > 0 {
+			for _, depKey := range dep.Property {
+				if _, ok := val[depKey]; !ok {
+					mainResult.AddErrors(hasADependencyMsg(s.Path, depKey))
+				}
+			}
+		}
+	}
+}
+
 func (s *schemaPropsValidator) redeem() {
-	poolOfSchemaPropsValidators.RedeemValidator(s)
+	pools.poolOfSchemaPropsValidators.RedeemValidator(s)
 }
 
 func (s *schemaPropsValidator) redeemChildren() {
 	for _, v := range s.anyOfValidators {
+		if v == nil {
+			continue
+		}
 		v.redeemChildren()
 		v.redeem()
 	}
 	s.anyOfValidators = nil
+
 	for _, v := range s.allOfValidators {
+		if v == nil {
+			continue
+		}
 		v.redeemChildren()
 		v.redeem()
 	}
 	s.allOfValidators = nil
+
 	for _, v := range s.oneOfValidators {
+		if v == nil {
+			continue
+		}
 		v.redeemChildren()
 		v.redeem()
 	}

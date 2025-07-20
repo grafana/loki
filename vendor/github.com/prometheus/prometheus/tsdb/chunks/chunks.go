@@ -14,8 +14,8 @@
 package chunks
 
 import (
-	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -133,15 +133,6 @@ type Meta struct {
 	// Time range the data covers.
 	// When MaxTime == math.MaxInt64 the chunk is still open and being appended to.
 	MinTime, MaxTime int64
-
-	// OOOLastRef, OOOLastMinTime and OOOLastMaxTime are kept as markers for
-	// overlapping chunks.
-	// These fields point to the last created out of order Chunk (the head) that existed
-	// when Series() was called and was overlapping.
-	// Series() and Chunk() method responses should be consistent for the same
-	// query even if new data is added in between the calls.
-	OOOLastRef                     ChunkRef
-	OOOLastMinTime, OOOLastMaxTime int64
 }
 
 // ChunkFromSamples requires all samples to have the same type.
@@ -181,7 +172,7 @@ func ChunkFromSamplesGeneric(s Samples) (Meta, error) {
 				return emptyChunk, err
 			}
 			if newChunk != nil {
-				return emptyChunk, fmt.Errorf("did not expect to start a second chunk")
+				return emptyChunk, errors.New("did not expect to start a second chunk")
 			}
 		case chunkenc.ValFloatHistogram:
 			newChunk, _, ca, err = ca.AppendFloatHistogram(nil, s.Get(i).T(), s.Get(i).FH(), false)
@@ -189,7 +180,7 @@ func ChunkFromSamplesGeneric(s Samples) (Meta, error) {
 				return emptyChunk, err
 			}
 			if newChunk != nil {
-				return emptyChunk, fmt.Errorf("did not expect to start a second chunk")
+				return emptyChunk, errors.New("did not expect to start a second chunk")
 			}
 		default:
 			panic(fmt.Sprintf("unknown sample type %s", sampleType.String()))
@@ -200,15 +191,6 @@ func ChunkFromSamplesGeneric(s Samples) (Meta, error) {
 		MaxTime: maxt,
 		Chunk:   c,
 	}, nil
-}
-
-// PopulatedChunk creates a chunk populated with samples every second starting at minTime.
-func PopulatedChunk(numSamples int, minTime int64) (Meta, error) {
-	samples := make([]Sample, numSamples)
-	for i := 0; i < numSamples; i++ {
-		samples[i] = sample{t: minTime + int64(i*1000), f: 1.0}
-	}
-	return ChunkFromSamples(samples)
 }
 
 // ChunkMetasToSamples converts a slice of chunk meta data to a slice of samples.
@@ -242,7 +224,7 @@ func ChunkMetasToSamples(chunks []Meta) (result []Sample) {
 // Iterator iterates over the chunks of a single time series.
 type Iterator interface {
 	// At returns the current meta.
-	// It depends on implementation if the chunk is populated or not.
+	// It depends on the implementation whether the chunk is populated or not.
 	At() Meta
 	// Next advances the iterator by one.
 	Next() bool
@@ -268,7 +250,7 @@ func (cm *Meta) OverlapsClosedInterval(mint, maxt int64) bool {
 	return cm.MinTime <= maxt && mint <= cm.MaxTime
 }
 
-var errInvalidSize = fmt.Errorf("invalid size")
+var errInvalidSize = errors.New("invalid size")
 
 var castagnoliTable *crc32.Table
 
@@ -298,12 +280,13 @@ func checkCRC32(data, sum []byte) error {
 type Writer struct {
 	dirFile *os.File
 	files   []*os.File
-	wbuf    *bufio.Writer
+	wbuf    fileutil.BufWriter
 	n       int64
 	crc32   hash.Hash
 	buf     [binary.MaxVarintLen32]byte
 
-	segmentSize int64
+	segmentSize   int64
+	useUncachedIO bool
 }
 
 const (
@@ -311,21 +294,40 @@ const (
 	DefaultChunkSegmentSize = 512 * 1024 * 1024
 )
 
-// NewWriterWithSegSize returns a new writer against the given directory
-// and allows setting a custom size for the segments.
-func NewWriterWithSegSize(dir string, segmentSize int64) (*Writer, error) {
-	return newWriter(dir, segmentSize)
+type writerOptions struct {
+	segmentSize   int64
+	useUncachedIO bool
 }
 
-// NewWriter returns a new writer against the given directory
-// using the default segment size.
-func NewWriter(dir string) (*Writer, error) {
-	return newWriter(dir, DefaultChunkSegmentSize)
+type WriterOption func(*writerOptions)
+
+func WithUncachedIO(enabled bool) WriterOption {
+	return func(o *writerOptions) {
+		o.useUncachedIO = enabled
+	}
 }
 
-func newWriter(dir string, segmentSize int64) (*Writer, error) {
-	if segmentSize <= 0 {
-		segmentSize = DefaultChunkSegmentSize
+// WithSegmentSize sets the chunk segment size for the writer.
+// Passing a value less than or equal to 0 causes the default segment size (DefaultChunkSegmentSize) to be used.
+func WithSegmentSize(segmentSize int64) WriterOption {
+	return func(o *writerOptions) {
+		if segmentSize <= 0 {
+			segmentSize = DefaultChunkSegmentSize
+		}
+
+		o.segmentSize = segmentSize
+	}
+}
+
+// NewWriter returns a new writer against the given directory.
+// It uses DefaultChunkSegmentSize as the default segment size.
+func NewWriter(dir string, opts ...WriterOption) (*Writer, error) {
+	options := &writerOptions{
+		segmentSize: DefaultChunkSegmentSize,
+	}
+
+	for _, opt := range opts {
+		opt(options)
 	}
 
 	if err := os.MkdirAll(dir, 0o777); err != nil {
@@ -336,10 +338,11 @@ func newWriter(dir string, segmentSize int64) (*Writer, error) {
 		return nil, err
 	}
 	return &Writer{
-		dirFile:     dirFile,
-		n:           0,
-		crc32:       newCRC32(),
-		segmentSize: segmentSize,
+		dirFile:       dirFile,
+		n:             0,
+		crc32:         newCRC32(),
+		segmentSize:   options.segmentSize,
+		useUncachedIO: options.useUncachedIO,
 	}, nil
 }
 
@@ -350,7 +353,7 @@ func (w *Writer) tail() *os.File {
 	return w.files[len(w.files)-1]
 }
 
-// finalizeTail writes all pending data to the current tail file,
+// finalizeTail writes all pending data to the current tail file if any,
 // truncates its size, and closes it.
 func (w *Writer) finalizeTail() error {
 	tf := w.tail()
@@ -358,8 +361,10 @@ func (w *Writer) finalizeTail() error {
 		return nil
 	}
 
-	if err := w.wbuf.Flush(); err != nil {
-		return err
+	if w.wbuf != nil {
+		if err := w.wbuf.Flush(); err != nil {
+			return err
+		}
 	}
 	if err := tf.Sync(); err != nil {
 		return err
@@ -390,9 +395,25 @@ func (w *Writer) cut() error {
 
 	w.files = append(w.files, f)
 	if w.wbuf != nil {
-		w.wbuf.Reset(f)
+		if err := w.wbuf.Reset(f); err != nil {
+			return err
+		}
 	} else {
-		w.wbuf = bufio.NewWriterSize(f, 8*1024*1024)
+		var (
+			wbuf fileutil.BufWriter
+			err  error
+		)
+		size := 8 * 1024 * 1024
+		if w.useUncachedIO {
+			// Uncached IO is implemented using direct I/O for now.
+			wbuf, err = fileutil.NewDirectIOWriter(f, size)
+		} else {
+			wbuf, err = fileutil.NewBufioWriterWithSeek(f, size)
+		}
+		if err != nil {
+			return err
+		}
+		w.wbuf = wbuf
 	}
 
 	return nil
@@ -451,8 +472,9 @@ func cutSegmentFile(dirFile *os.File, magicNumber uint32, chunksFormat byte, all
 		return 0, nil, 0, fmt.Errorf("open final file: %w", err)
 	}
 	// Skip header for further writes.
-	if _, err := f.Seek(int64(n), 0); err != nil {
-		return 0, nil, 0, fmt.Errorf("seek in final file: %w", err)
+	offset := int64(n)
+	if _, err := f.Seek(offset, 0); err != nil {
+		return 0, nil, 0, fmt.Errorf("seek to %d in final file: %w", offset, err)
 	}
 	return n, f, seq, nil
 }
@@ -487,7 +509,7 @@ func (w *Writer) WriteChunks(chks ...Meta) error {
 		// the batch is too large to fit in the current segment.
 		cutNewBatch := (i != 0) && (batchSize+SegmentHeaderSize > w.segmentSize)
 
-		// When the segment already has some data than
+		// If the segment already has some data then
 		// the first batch size calculation should account for that.
 		if firstBatch && w.n > SegmentHeaderSize {
 			cutNewBatch = batchSize+w.n > w.segmentSize
@@ -726,7 +748,7 @@ func nextSequenceFile(dir string) (string, int, error) {
 		}
 		// It is not necessary that we find the files in number order,
 		// for example with '1000000' and '200000', '1000000' would come first.
-		// Though this is a very very race case, we check anyway for the max id.
+		// Though this is a very very rare case, we check anyway for the max id.
 		if j > i {
 			i = j
 		}

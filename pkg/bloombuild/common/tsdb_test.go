@@ -35,7 +35,7 @@ func (f forSeriesTestImpl) ForSeries(
 			})
 		}
 
-		fn(nil, f[i].Fingerprint, unmapped)
+		fn(labels.EmptyLabels(), f[i].Fingerprint, unmapped)
 	}
 	return nil
 }
@@ -66,7 +66,7 @@ func TestTSDBSeriesIter(t *testing.T) {
 	itr, err := NewTSDBSeriesIter(context.Background(), "", forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
 	require.NoError(t, err)
 
-	v1.EqualIterators[*v1.Series](
+	v1.EqualIterators(
 		t,
 		func(a, b *v1.Series) {
 			require.Equal(t, a, b)

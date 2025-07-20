@@ -170,3 +170,48 @@ func TestStartCPUCollection(t *testing.T) {
 		return cpuUsage.Value() > 0
 	}, 5*time.Second, 1*time.Second)
 }
+
+func Test_ProxyURL(t *testing.T) {
+	// Create a channel to track received messages
+	received := make(chan bool, 1)
+
+	// Using this variable to use `http` for this test as `https` is not supported by `httptest`.
+	target := "http://stats.grafana.org/loki-usage-report"
+
+	// Start local test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, target, r.URL.String())
+		received <- true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	proxyStr := server.URL
+	reporterCfg := Config{
+		Leader:        true,
+		Enabled:       true,
+		UsageStatsURL: target,
+		ProxyURL:      proxyStr,
+	}
+	reporter, err := NewReporter(
+		reporterCfg,
+		kv.Config{
+			Store: "inmemory",
+		},
+		nil,
+		log.NewLogfmtLogger(os.Stdout),
+		prometheus.NewPedanticRegistry(),
+	)
+	require.NoError(t, err)
+	reporter.cluster = &ClusterSeed{
+		UID: "test",
+	}
+	require.NoError(t, reporter.reportUsage(context.Background(), time.Now()))
+
+	// Verify we received the report
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for report")
+	}
+}
