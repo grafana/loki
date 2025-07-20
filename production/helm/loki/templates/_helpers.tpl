@@ -221,14 +221,13 @@ Storage config for ruler
 type: "s3"
 s3:
   bucketnames: ruler
-{{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
+{{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
 type: {{ .Values.loki.storage.object_store.type | quote }}
 {{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
 {{- else }}
 type: "local"
+{{- end }}
 {{- end -}}
-{{- end -}}
-
 
 
 {{/*
@@ -236,8 +235,8 @@ Storage config
 */}}
 {{- define "loki.lokiStorageConfig" -}}
 {{- $bucketName := .bucketName }}
-{{- if eq .Values.loki.storage.type "s3" -}}
-{{- with .Values.loki.storage.s3 }}
+{{- if eq .ctx.Values.loki.storage.type "s3" -}}
+{{- with .ctx.Values.loki.storage.s3 }}
 s3:
   {{- toYaml (mergeOverwrite
     dict
@@ -281,8 +280,8 @@ s3:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 {{- end }}
-{{- else if eq .Values.loki.storage.type "gcs" -}}
-{{- with .Values.loki.storage.gcs }}
+{{- else if eq .ctx.Values.loki.storage.type "gcs" -}}
+{{- with .ctx.Values.loki.storage.gcs }}
 gcs:
   {{- toYaml (mergeOverwrite
     dict
@@ -295,8 +294,8 @@ gcs:
     (omit . "bucket_name" "chunkBufferSize" "requestTimeout" "enableHttp2")
   ) | nindent 2 }}
 {{- end -}}
-{{- else if eq .Values.loki.storage.type "azure" -}}
-{{- with .Values.loki.storage.azure }}
+{{- else if eq .ctx.Values.loki.storage.type "azure" -}}
+{{- with .ctx.Values.loki.storage.azure }}
 azure:
   {{- toYaml (mergeOverwrite
     dict
@@ -327,8 +326,8 @@ azure:
   chunk_delimiter: {{ . }}
   {{- end }}
 {{- end -}}
-{{- else if eq .ctx.Values.loki.storage.type "alibabacloud" -}}
-{{- with .ctx.Values.loki.storage.alibabacloud }}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "alibabacloud" -}}
+{{- with .ctx.ctx.Values.loki.storage.alibabacloud }}
 alibabacloud:
   {{- toYaml (mergeOverwrite dict
     (dict
@@ -339,25 +338,26 @@ alibabacloud:
     (omit . "bucket" "accessKeyId" "secretAccessKey")
   ) | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.Values.loki.storage.type "swift" -}}
-{{- with .Values.loki.storage.swift }}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "swift" -}}
+{{- with .ctx.Values.loki.storage.swift }}
 swift:
   container_name: {{ $bucketName }}
 {{- toYaml (omit . "container_name") | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.Values.loki.storage.type "bos" -}}
-{{- with .Values.loki.storage.bos }}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "bos" -}}
+{{- with .ctx.Values.loki.storage.bos }}
 bos:
   bucket_name: {{ $bucketName }}
 {{- toYaml (omit . "bucketName") | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.Values.loki.storage.type "cos" -}}
-{{- with .Values.loki.storage.cos }}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "cos" -}}
+{{- with .ctx.Values.loki.storage.cos }}
 cos:
   bucketnames: {{ $bucketName }}
 {{- toYaml (omit . "bucketnames") | nindent 2 }}
 {{- end -}}
-{{- end }}
+{{- end -}}
+{{- end -}}
 
 
 {{/* Loki ruler config */}}
