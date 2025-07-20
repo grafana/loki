@@ -263,7 +263,7 @@ spec:
         {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.singleBinary.persistence.accessModes | nindent 10 }}
         {{- with .Values.singleBinary.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

@@ -254,7 +254,7 @@ spec:
         {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.ruler.persistence.accessModes | nindent 10 }}
         {{- with .Values.ruler.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
