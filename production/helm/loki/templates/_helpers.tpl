@@ -422,11 +422,7 @@ type: "local"
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
 ruler:
-  storage:
-    {{- include "loki.rulerStorageConfig" . | nindent 4}}
-{{- if (not (empty .Values.loki.rulerConfig)) }}
-{{- toYaml .Values.loki.rulerConfig | nindent 2}}
-{{- end }}
+{{- mergeOverwrite (dict "storage" (include "loki.rulerStorageConfig" . | fromYaml)) (.Values.loki.rulerConfig | default dict) | toYaml | nindent 2 }}
 {{- end }}
 
 {{/* Ruler Thanos Storage Config */}}
