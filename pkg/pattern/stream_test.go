@@ -24,7 +24,7 @@ func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
 	mockWriter := &mockEntryWriter{}
 	stream, err := newStream(
-		model.Fingerprint(lbs.Hash()),
+		model.Fingerprint(labels.StableHash(lbs)),
 		lbs,
 		newIngesterMetrics(nil, "test"),
 		log.NewNopLogger(),
@@ -68,7 +68,7 @@ func TestPruneStream(t *testing.T) {
 	mockWriter := &mockEntryWriter{}
 	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	stream, err := newStream(
-		model.Fingerprint(lbs.Hash()),
+		model.Fingerprint(labels.StableHash(lbs)),
 		lbs,
 		newIngesterMetrics(nil, "test"),
 		log.NewNopLogger(),

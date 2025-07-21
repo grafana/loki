@@ -268,7 +268,7 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
 	s, ok := i.streams.LoadByFP(fp)
 	if !ok {
-		return nil
+		return labels.EmptyLabels()
 	}
 	return s.labels
 }
@@ -357,9 +357,9 @@ func (i *instance) writeAggregatedMetrics(
 		service = push.ServiceUnknown
 	}
 
-	newLbls := labels.Labels{
+	newLbls := labels.New(
 		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
-	}
+	)
 
 	sturcturedMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: level},

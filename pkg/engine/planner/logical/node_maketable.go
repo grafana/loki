@@ -2,6 +2,7 @@ package logical
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
@@ -17,6 +18,10 @@ type MakeTable struct {
 	// It is invalid for Selector to include a [ColumnRef] that is not
 	// [ColumnTypeBuiltin] or [ColumnTypeLabel].
 	Selector Value
+
+	// Predicates are used to further filter the Selector table relation by utilising additional indexes in the catalogue.
+	// Unlike the Selector, there are no restrictions on the type of [ColumnRef] in Predicates.
+	Predicates []Value
 
 	// Shard is used to indicate that the table relation does not contain all data
 	// of the relation but only a subset of it.
@@ -39,7 +44,11 @@ func (t *MakeTable) Name() string {
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {
-	return fmt.Sprintf("MAKETABLE [selector=%s, shard=%s]", t.Selector.Name(), t.Shard.Name())
+	predicateNames := make([]string, len(t.Predicates))
+	for i, predicate := range t.Predicates {
+		predicateNames[i] = predicate.Name()
+	}
+	return fmt.Sprintf("MAKETABLE [selector=%s, predicates=[%s], shard=%s]", t.Selector.Name(), strings.Join(predicateNames, ", "), t.Shard.Name())
 }
 
 // Schema returns the schema of the table.

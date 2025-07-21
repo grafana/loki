@@ -94,8 +94,9 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
-			Selector: selector,
-			Shard:    shard,
+			Selector:   selector,
+			Predicates: predicates,
+			Shard:      shard,
 		},
 	)
 

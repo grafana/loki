@@ -54,15 +54,6 @@ func (m *mockChunkClient) PutChunks(_ context.Context, chunks []storage_chunk.Ch
 	return nil
 }
 
-// Helper to convert prometheus labels.Labels to push.LabelsAdapter
-func toLabelsAdapter(lbls labels.Labels) push.LabelsAdapter {
-	out := make(push.LabelsAdapter, 0, len(lbls))
-	for _, l := range lbls {
-		out = append(out, push.LabelAdapter{Name: l.Name, Value: l.Value})
-	}
-	return out
-}
-
 // Helper to generate a unique key for a chunk (for test map)
 func chunkKey(c storage_chunk.Chunk) string {
 	return fmt.Sprintf("%s/%x/%x:%x:%x", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
@@ -78,7 +69,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
-	fp := model.Fingerprint(lbs.Hash())
+	fp := model.Fingerprint(labels.StableHash(lbs))
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(logInterval) {
@@ -108,7 +99,7 @@ func TestJobRunner_Run(t *testing.T) {
 	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
 
-	chk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.Start.Add(-6*time.Hour), yesterdaysTableInterval.Start.Add(6*time.Hour), "test data", toLabelsAdapter(labels.FromStrings("foo", "bar")), time.Minute)
+	chk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.Start.Add(-6*time.Hour), yesterdaysTableInterval.Start.Add(6*time.Hour), "test data", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
 
 	for _, tc := range []struct {
 		name           string
@@ -156,7 +147,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -183,7 +174,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -216,7 +207,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -237,7 +228,7 @@ func TestJobRunner_Run(t *testing.T) {
 					{
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
@@ -346,11 +337,11 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	for i := 0; i < 24; i++ {
 		chkStart := yesterdaysTableInterval.Start.Add(time.Duration(i) * time.Hour)
 		chkEnd := chkStart.Add(time.Hour)
-		chk := createTestChunk(t, userID, lblFoo, chkStart, chkEnd, "test data", toLabelsAdapter(labels.FromStrings("foo", "bar")), time.Minute)
+		chk := createTestChunk(t, userID, lblFoo, chkStart, chkEnd, "test data", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
 		chks = append(chks, chk)
 	}
 
-	overlappingChunk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.End.Add(-30*time.Minute), yesterdaysTableInterval.End.Add(30*time.Minute), "test data overlapping multiple tables", toLabelsAdapter(labels.FromStrings("foo", "bar")), time.Minute)
+	overlappingChunk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.End.Add(-30*time.Minute), yesterdaysTableInterval.End.Add(30*time.Minute), "test data overlapping multiple tables", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
 	chks = append(chks, overlappingChunk)
 
 	chunksMap := map[string]storage_chunk.Chunk{}
@@ -408,19 +399,19 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 				// chunk recreated by test-request-0
 				From:        yesterdaysTableInterval.Start.Add(31 * time.Minute),
 				Through:     yesterdaysTableInterval.Start.Add(time.Hour),
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 			{
 				// chunk recreated by test-request-1, removing just last line
 				From:        chks[5].From,
 				Through:     chks[5].Through.Add(-time.Minute),
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 			{
 				// chunk recreated by test-request-1, removing just first line
 				From:        chks[10].From.Add(time.Minute),
 				Through:     chks[10].Through,
-				Fingerprint: lblFoo.Hash(),
+				Fingerprint: labels.StableHash(lblFoo),
 			},
 		},
 		ChunksToDeIndex: []string{

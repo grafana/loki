@@ -776,7 +776,7 @@ func TestStreamShard(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 
 	totalEntries := generateEntries(100)
@@ -871,7 +871,7 @@ func TestStreamShard(t *testing.T) {
 				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, labels.StableHash(lbls), s.Stream.Hash)
 				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
@@ -884,7 +884,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 	baseStream.Entries = generateEntries(2)
 
@@ -1175,7 +1175,7 @@ func TestStreamShardByTime(t *testing.T) {
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels:  tc.labels,
-				Hash:    lbls.Hash(),
+				Hash:    labels.StableHash(lbls),
 				Entries: tc.entries,
 			}
 
@@ -1210,10 +1210,9 @@ func generateEntries(n int) []logproto.Entry {
 
 func BenchmarkShardStream(b *testing.B) {
 	stream := logproto.Stream{}
-	labels := "{app='myapp', job='fizzbuzz'}"
-	lbs, err := syntax.ParseLabels(labels)
+	lbs, err := syntax.ParseLabels("{app='myapp', job='fizzbuzz'}")
 	require.NoError(b, err)
-	stream.Hash = lbs.Hash()
+	stream.Hash = labels.StableHash(lbs)
 	stream.Labels = lbs.String()
 
 	allEntries := generateEntries(25000)
@@ -1344,7 +1343,7 @@ func TestParseStreamLabels(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedLabels.String(), lbsString)
 			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, tc.expectedLabels.Hash(), hash)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
 		})
 	}
 }

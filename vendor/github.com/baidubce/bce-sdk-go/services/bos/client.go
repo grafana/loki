@@ -28,6 +28,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -61,25 +62,107 @@ type Client struct {
 
 // BosClientConfiguration defines the config components structure by user.
 type BosClientConfiguration struct {
-	Ak                string
-	Sk                string
-	Endpoint          string
-	RedirectDisabled  bool
-	PathStyleEnable   bool
-	DisableKeepAlives bool
+	Ak                    string
+	Sk                    string
+	Endpoint              string
+	RedirectDisabled      bool
+	PathStyleEnable       bool
+	DisableKeepAlives     bool
+	DialTimeout           *time.Duration // timeout of building a connection
+	KeepAlive             *time.Duration // interval between keep-alive probes for an active connection
+	ReadTimeout           *time.Duration // read timeout of net.Conn
+	WriteTimeOut          *time.Duration // write timeout of net.Conn
+	TLSHandshakeTimeout   *time.Duration // http.Transport.TLSHandshakeTimeout
+	IdleConnectionTimeout *time.Duration // http.Transport.IdleConnTimeout
+	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
+	HTTPClientTimeout     *time.Duration // http.Client.Timeout
 }
 
-// NewClient make the BOS service client with default configuration.
-// Use `cli.Config.xxx` to access the config or change it to non-default value.
-func NewClient(ak, sk, endpoint string) (*Client, error) {
-	return NewClientWithConfig(&BosClientConfiguration{
+func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
+	return &BosClientConfiguration{
 		Ak:                ak,
 		Sk:                sk,
 		Endpoint:          endpoint,
 		RedirectDisabled:  false,
 		PathStyleEnable:   false,
-		DisableKeepAlives: true,
-	})
+		DisableKeepAlives: false,
+	}
+}
+
+func (cfg *BosClientConfiguration) WithAk(val string) *BosClientConfiguration {
+	cfg.Ak = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithSk(val string) *BosClientConfiguration {
+	cfg.Sk = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithEndpoint(val string) *BosClientConfiguration {
+	cfg.Endpoint = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithRedirectDisabled(val bool) *BosClientConfiguration {
+	cfg.RedirectDisabled = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithPathStyleEnable(val bool) *BosClientConfiguration {
+	cfg.PathStyleEnable = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithDisableKeepAlives(val bool) *BosClientConfiguration {
+	cfg.DisableKeepAlives = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithDialTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.DialTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithKeepAlive(val time.Duration) *BosClientConfiguration {
+	cfg.KeepAlive = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithReadTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.ReadTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithWriteTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.WriteTimeOut = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithTLSHandshakeTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.TLSHandshakeTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithIdleConnectionTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.IdleConnectionTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithResponseHeaderTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.ResponseHeaderTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithHttpClientTimeout(val time.Duration) *BosClientConfiguration {
+	cfg.HTTPClientTimeout = &val
+	return cfg
+}
+
+// NewClient make the BOS service client with default configuration.
+// Use `cli.Config.xxx` to access the config or change it to non-default value.
+func NewClient(ak, sk, endpoint string) (*Client, error) {
+	return NewClientWithConfig(NewBosClientConfig(ak, sk, endpoint))
 }
 
 // NewStsClient make the BOS service client with STS configuration, it will first apply stsAK,stsSK, sessionToken, then return bosClient using temporary sts Credential
@@ -140,12 +223,20 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
 		RedirectDisabled:          config.RedirectDisabled,
 		DisableKeepAlives:         config.DisableKeepAlives,
+		DialTimeout:               config.DialTimeout,
+		KeepAlive:                 config.KeepAlive,
+		ReadTimeout:               config.ReadTimeout,
+		WriteTimeOut:              config.WriteTimeOut,
+		TLSHandshakeTimeout:       config.TLSHandshakeTimeout,
+		IdleConnectionTimeout:     config.IdleConnectionTimeout,
+		ResponseHeaderTimeout:     config.ResponseHeaderTimeout,
+		HTTPClientTimeout:         config.HTTPClientTimeout,
 	}
 	v1Signer := &auth.BceV1Signer{}
 	defaultContext := &api.BosContext{
 		PathStyleEnable: config.PathStyleEnable,
 	}
-	client := &Client{bce.NewBceClient(defaultConf, v1Signer),
+	client := &Client{bce.NewBceClientWithTimeout(defaultConf, v1Signer),
 		DEFAULT_MAX_PARALLEL, DEFAULT_MULTIPART_SIZE, defaultContext}
 	return client, nil
 }
@@ -161,8 +252,11 @@ func (c *Client) ListBuckets() (*api.ListBucketsResult, error) {
 
 // ListBucketsWithContext - support to cancel request by context.Context
 func (c *Client) ListBucketsWithContext(ctx context.Context) (*api.ListBucketsResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.ListBuckets(c, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.ListBuckets(c, bosContext)
 }
 
 // ListObjects - list all objects of the given bucket
@@ -186,8 +280,11 @@ func (c *Client) ListObjectVersions(bucket string, args *api.ListObjectsArgs) (*
 // ListObjectsWithContext - support to cancel request by context.Context
 func (c *Client) ListObjectsWithContext(ctx context.Context, bucket string,
 	args *api.ListObjectsArgs) (*api.ListObjectsResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.ListObjects(c, bucket, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.ListObjects(c, bucket, args, bosContext)
 }
 
 // SimpleListObjects - list all objects of the given bucket with simple arguments
@@ -205,7 +302,7 @@ func (c *Client) ListObjectsWithContext(ctx context.Context, bucket string,
 func (c *Client) SimpleListObjects(bucket, prefix string, maxKeys int, marker,
 	delimiter string) (*api.ListObjectsResult, error) {
 	args := &api.ListObjectsArgs{
-		Delimiter:       prefix,
+		Delimiter:       delimiter,
 		Marker:          marker,
 		MaxKeys:         maxKeys,
 		Prefix:          prefix,
@@ -228,8 +325,11 @@ func (c *Client) HeadBucket(bucket string) error {
 
 // HeadBucket - support to cancel request by context.Context
 func (c *Client) HeadBucketWithContext(ctx context.Context, bucket string) error {
-	c.BosContext.Ctx = ctx
-	err, _ := api.HeadBucket(c, bucket, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	err, _ := api.HeadBucket(c, bucket, bosContext)
 	return err
 }
 
@@ -930,8 +1030,11 @@ func (c *Client) PutObject(bucket, object string, body *bce.Body,
 // PutObjectWithContext - support to cancel request by context.Context
 func (c *Client) PutObjectWithContext(ctx context.Context, bucket, object string, body *bce.Body,
 	args *api.PutObjectArgs) (string, error) {
-	c.BosContext.Ctx = ctx
-	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
 	return etag, err
 }
 
@@ -984,8 +1087,11 @@ func (c *Client) PutObjectFromBytesWithContext(ctx context.Context, bucket, obje
 	if args != nil && args.ContentCrc32cFlag {
 		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
 	return etag, err
 }
 
@@ -1023,8 +1129,11 @@ func (c *Client) PutObjectFromStringWithContext(ctx context.Context,
 	if args != nil && args.ContentCrc32cFlag {
 		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
 	return etag, err
 }
 
@@ -1062,8 +1171,11 @@ func (c *Client) PutObjectFromFileWithContext(ctx context.Context,
 	if args != nil && args.ContentCrc32cFlag {
 		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
 	return etag, err
 }
 
@@ -1101,8 +1213,11 @@ func (c *Client) PutObjectFromStreamWithContext(ctx context.Context, bucket, obj
 	if args != nil && args.ContentCrc32cFlag {
 		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	etag, _, err := api.PutObject(c, bucket, object, body, args, bosContext)
 	return etag, err
 }
 
@@ -1151,8 +1266,11 @@ func (c *Client) CopyObject(bucket, object, srcBucket, srcObject string,
 func (c *Client) CopyObjectWithContext(ctx context.Context, bucket, object, srcBucket, srcObject string,
 	args *api.CopyObjectArgs) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
-	c.BosContext.Ctx = ctx
-	return api.CopyObject(c, bucket, object, source, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.CopyObject(c, bucket, object, source, args, bosContext)
 }
 
 // BasicCopyObject - the basic interface of copying a object to another one
@@ -1192,8 +1310,11 @@ func (c *Client) GetObject(bucket, object string, args map[string]string,
 // GetObjectWithContext - support to cancel request by context.Context
 func (c *Client) GetObjectWithContext(ctx context.Context, bucket, object string,
 	args map[string]string, ranges ...int64) (*api.GetObjectResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.GetObject(c, bucket, object, c.BosContext, args, ranges...)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.GetObject(c, bucket, object, bosContext, args, ranges...)
 }
 
 // BasicGetObject - the basic interface of geting the given object
@@ -1244,8 +1365,11 @@ func (c *Client) BasicGetObjectToFile(bucket, object, filePath string) error {
 
 // GetObjectToFileWithContext - support to cancel request by context.Context
 func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object, filePath string) error {
-	c.BosContext.Ctx = ctx
-	res, err := api.GetObject(c, bucket, object, c.BosContext, nil)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	res, err := api.GetObject(c, bucket, object, bosContext, nil)
 	if err != nil {
 		return err
 	}
@@ -1284,8 +1408,11 @@ func (c *Client) GetObjectMeta(bucket, object string) (*api.GetObjectMetaResult,
 // GetObjectMetaWithContext - support to cancel request by context.Context
 func (c *Client) GetObjectMetaWithContext(ctx context.Context,
 	bucket, object string) (*api.GetObjectMetaResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.GetObjectMeta(c, bucket, object, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.GetObjectMeta(c, bucket, object, bosContext)
 }
 
 // SelectObject - select the object content
@@ -1305,8 +1432,11 @@ func (c *Client) SelectObject(bucket, object string, args *api.SelectObjectArgs)
 // SelectObjectWithContext - support to cancel request by context.Context
 func (c *Client) SelectObjectWithContext(ctx context.Context, bucket, object string,
 	args *api.SelectObjectArgs) (*api.SelectObjectResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.SelectObject(c, bucket, object, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.SelectObject(c, bucket, object, args, bosContext)
 }
 
 // FetchObject - fetch the object content from the given source and store
@@ -1328,8 +1458,11 @@ func (c *Client) FetchObject(bucket, object, source string,
 // FetchObjectWithContext - support to cancel request by context.Context
 func (c *Client) FetchObjectWithContext(ctx context.Context, bucket, object, source string,
 	args *api.FetchObjectArgs) (*api.FetchObjectResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.FetchObject(c, bucket, object, source, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.FetchObject(c, bucket, object, source, args, bosContext)
 }
 
 // BasicFetchObject - the basic interface of the fetch object api
@@ -1389,8 +1522,11 @@ func (c *Client) AppendObjectWithContext(ctx context.Context, bucket, object str
 	if args != nil && args.ContentCrc32cFlag {
 		content.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	return api.AppendObject(c, bucket, object, content, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.AppendObject(c, bucket, object, content, args, bosContext)
 }
 
 // SimpleAppendObject - the interface to append object with simple offset argument
@@ -1602,8 +1738,11 @@ func (c *Client) UploadPart(bucket, object, uploadId string, partNumber int,
 // UploadPartWithContext - support to cancel request by context.Context
 func (c *Client) UploadPartWithContext(ctx context.Context, bucket, object, uploadId string,
 	partNumber int, content *bce.Body, args *api.UploadPartArgs) (string, error) {
-	c.BosContext.Ctx = ctx
-	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, content, args, bosContext)
 }
 
 // BasicUploadPart - basic interface to upload the single part in the multipart upload process
@@ -1660,8 +1799,11 @@ func (c *Client) UploadPartFromSectionFileWithContext(ctx context.Context, bucke
 	if args != nil && args.ContentCrc32cFlag {
 		body.SetWriter(crc32.New(crc32.MakeTable(crc32.Castagnoli)))
 	}
-	c.BosContext.Ctx = ctx
-	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.UploadPart(c, bucket, object, uploadId, partNumber, body, args, bosContext)
 }
 
 // UploadPartFromBytes - upload the single part in the multipart upload process
@@ -1685,8 +1827,11 @@ func (c *Client) UploadPartFromBytes(bucket, object, uploadId string, partNumber
 // UploadPartFromBytesWithContext - support to cancel request by context.Context
 func (c *Client) UploadPartFromBytesWithContext(ctx context.Context, bucket, object, uploadId string,
 	partNumber int, content []byte, args *api.UploadPartArgs) (string, error) {
-	c.BosContext.Ctx = ctx
-	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.UploadPartFromBytes(c, bucket, object, uploadId, partNumber, content, args, bosContext)
 }
 
 // UploadPartCopy - copy the multipart object
@@ -1713,8 +1858,11 @@ func (c *Client) UploadPartCopy(bucket, object, srcBucket, srcObject, uploadId s
 func (c *Client) UploadPartCopyWithContext(ctx context.Context, bucket, object, srcBucket, srcObject, uploadId string,
 	partNumber int, args *api.UploadPartCopyArgs) (*api.CopyObjectResult, error) {
 	source := fmt.Sprintf("/%s/%s", srcBucket, srcObject)
-	c.BosContext.Ctx = ctx
-	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.UploadPartCopy(c, bucket, object, source, uploadId, partNumber, args, bosContext)
 }
 
 // BasicUploadPartCopy - basic interface to copy the multipart object
@@ -1809,8 +1957,11 @@ func (c *Client) ListParts(bucket, object, uploadId string,
 // ListPartsWithContext - support to cancel request by context.Context
 func (c *Client) ListPartsWithContext(ctx context.Context, bucket, object, uploadId string,
 	args *api.ListPartsArgs) (*api.ListPartsResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.ListParts(c, bucket, object, uploadId, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.ListParts(c, bucket, object, uploadId, args, bosContext)
 }
 
 // BasicListParts - basic interface to list the successfully uploaded parts info by upload id
@@ -1844,8 +1995,11 @@ func (c *Client) ListMultipartUploads(bucket string,
 // ListMultipartUploadsWithContext - support to cancel request by context.Context
 func (c *Client) ListMultipartUploadsWithContext(ctx context.Context, bucket string,
 	args *api.ListMultipartUploadsArgs) (*api.ListMultipartUploadsResult, error) {
-	c.BosContext.Ctx = ctx
-	return api.ListMultipartUploads(c, bucket, args, c.BosContext)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	return api.ListMultipartUploads(c, bucket, args, bosContext)
 }
 
 // BasicListMultipartUploads - basic interface to list the unfinished uploaded parts

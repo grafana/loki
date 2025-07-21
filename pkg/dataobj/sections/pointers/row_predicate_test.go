@@ -29,7 +29,6 @@ var (
 )
 
 func TestMatchBloomExistencePredicate(t *testing.T) {
-
 	bf := bloom.New(100, 100)
 	bf.AddString("testValuePresent")
 	bfBytes, err := bf.MarshalBinary()
@@ -48,7 +47,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
-			pred: BloomExistencePredicate{
+			pred: BloomExistenceRowPredicate{
 				Name:  "pod",
 				Value: "testValuePresent",
 			},
@@ -61,7 +60,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
-			pred: BloomExistencePredicate{
+			pred: BloomExistenceRowPredicate{
 				Name:  "pod",
 				Value: "testValueAbsent",
 			},
@@ -71,7 +70,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			predicate := convertBloomExistencePredicate(tt.pred.(BloomExistencePredicate), fakeNameColumn, fakePodColumn)
+			predicate := convertBloomExistenceRowPredicate(tt.pred.(BloomExistenceRowPredicate), fakeNameColumn, fakePodColumn)
 			result := evaluateBloomExistencePredicate(predicate, tt.pointer)
 			require.Equal(t, tt.expected, result, "matchBloomExistencePredicate returned unexpected result")
 		})
