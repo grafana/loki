@@ -49,16 +49,16 @@ type SampledQuery struct {
 
 // ComparisonOutcome represents a comparison result from the database
 type ComparisonOutcome struct {
-	CorrelationID      string      `json:"correlationId" db:"correlation_id"`
-	ComparisonStatus   string      `json:"comparisonStatus" db:"comparison_status"`
-	DifferenceDetails  interface{} `json:"differenceDetails" db:"difference_details"`
-	PerformanceMetrics interface{} `json:"performanceMetrics" db:"performance_metrics"`
-	ComparedAt         time.Time   `json:"comparedAt" db:"compared_at"`
-	CreatedAt          time.Time   `json:"createdAt" db:"created_at"`
+	CorrelationID      string    `json:"correlationId" db:"correlation_id"`
+	ComparisonStatus   string    `json:"comparisonStatus" db:"comparison_status"`
+	DifferenceDetails  any       `json:"differenceDetails" db:"difference_details"`
+	PerformanceMetrics any       `json:"performanceMetrics" db:"performance_metrics"`
+	ComparedAt         time.Time `json:"comparedAt" db:"compared_at"`
+	CreatedAt          time.Time `json:"createdAt" db:"created_at"`
 }
 
-// GoldfishApiResponse represents the paginated API response
-type GoldfishApiResponse struct {
+// GoldfishAPIResponse represents the paginated API response
+type GoldfishAPIResponse struct {
 	Queries  []SampledQuery `json:"queries"`
 	Total    int            `json:"total"`
 	Page     int            `json:"page"`
@@ -66,7 +66,7 @@ type GoldfishApiResponse struct {
 }
 
 // GetSampledQueries retrieves sampled queries from the database with pagination
-func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishApiResponse, error) {
+func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishAPIResponse, error) {
 	if !s.cfg.Goldfish.Enable {
 		return nil, ErrGoldfishDisabled
 	}
@@ -129,7 +129,7 @@ func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishApiResponse, e
 		return nil, err
 	}
 
-	return &GoldfishApiResponse{
+	return &GoldfishAPIResponse{
 		Queries:  queries,
 		Total:    total,
 		Page:     page,
