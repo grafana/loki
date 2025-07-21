@@ -168,9 +168,7 @@ func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*DeleteReque
 func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
 	requests := make([]*DeleteRequest, 0, b.count)
 	for _, ur := range b.deleteRequestsToProcess {
-		for _, request := range ur.requests {
-			requests = append(requests, request)
-		}
+		requests = append(requests, ur.requests...)
 	}
 
 	return requests
