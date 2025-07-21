@@ -17,27 +17,13 @@ spec:
       behavior:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-  pollingInterval: {{ .Values.kedaAutoscaling.pollingInterval }}
+  pollingInterval: {{ .Values.querier.kedaAutoscaling.pollingInterval | default .Values.loki.kedaAutoscaling.pollingInterval }}
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "loki.querierFullname" . }}
   minReplicas: {{ .Values.querier.kedaAutoscaling.minReplicas }}
   maxReplicas: {{ .Values.querier.kedaAutoscaling.maxReplicas }}
-  triggers:
-  - metadata:
-      {{- if .Values.kedaAutoscaling.authentication.enabled }}
-      authModes: "{{ .Values.kedaAutoscaling.authentication.authModes }}"
-      {{- end }}
-      query: sum(max_over_time(loki_query_scheduler_inflight_requests{namespace="{{ .Release.Namespace }}", quantile="0.75"}[2m]))
-      serverAddress: {{ .Values.kedaAutoscaling.prometheusAddress }}
-      threshold: {{ .Values.querier.kedaAutoscaling.querySchedulerInflightRequestsThreshold | quote }}
-      ignoreNullValues: "{{ .Values.kedaAutoscaling.ignoreNullValues }}"
-      unsafeSsl: "{{ .Values.kedaAutoscaling.unsafeSsl }}"
-    name: querier_autoscaling_metric
-    type: prometheus
-    {{- if .Values.kedaAutoscaling.authentication.enabled }}
-    authenticationRef:
-        name: "keda-triggger-auth"
-    {{- end }}
+  triggers: 
+    {{- tpl (.Values.querier.kedaAutoscaling.triggers | toYaml) $ | nindent 4 }}
 {{- end }}
