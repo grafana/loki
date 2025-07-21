@@ -2934,6 +2934,28 @@ tenant_topic:
   # Target throughput per partition in bytes for the automatic strategy
   # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
   [target_throughput_per_partition: <int> | default = 10MiB]
+
+multi_tenant_topic:
+  # Experimental: Enable the multi-tenant topic tee.
+  # CLI flag: -distributor.multi-tenant-topic-tee.enabled
+  [enabled: <boolean> | default = false]
+
+  # Experimental: The name of the multi-tenant topic.
+  # CLI flag: -distributor.multi-tenant-topic-tee.topic
+  [topic: <string> | default = "loki.multi-tenant"]
+
+  # Experimental: The number of partitions
+  # CLI flag: -distributor.multi-tenant-topic-tee.num-partitions
+  [num_partitions: <int> | default = 64]
+
+  # Experimental: Maximum number of bytes that can be buffered before producing
+  # to Kafka
+  # CLI flag: -distributor.multi-tenant-topic-tee.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 100MiB]
+
+  # Experimental: Maximum size of a single Kafka record in bytes
+  # CLI flag: -distributor.multi-tenant-topic-tee.max-record-size-bytes
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
 ```
 
 ### etcd
