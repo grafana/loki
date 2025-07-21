@@ -44,6 +44,23 @@ type SectionPointer struct {
 	ValuesBloomFilter []byte
 }
 
+func (p *SectionPointer) Reset() {
+	p.Path = ""
+	p.Section = 0
+	p.PointerKind = PointerKindInvalid
+
+	p.StreamID = 0
+	p.StreamIDRef = 0
+	p.StartTs = time.Time{}
+	p.EndTs = time.Time{}
+	p.LineCount = 0
+	p.UncompressedSize = 0
+
+	p.ColumnIndex = 0
+	p.ColumnName = ""
+	p.ValuesBloomFilter = p.ValuesBloomFilter[:0]
+}
+
 type PointerKind int
 
 const (
@@ -108,7 +125,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 
 	b.key.objectPath = path
 	b.key.section = section
-	b.key.streamID = indexStreamID
+	b.key.streamID = idInObject
 
 	pointer, ok := b.streamLookup[b.key]
 	if ok {
@@ -214,13 +231,13 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 // sortPointerObjects sorts the pointers so all the column indexes are together and all the stream indexes are ordered by StreamID then Timestamp.
 func (b *Builder) sortPointerObjects() {
 	sort.Slice(b.pointers, func(i, j int) bool {
-		if b.pointers[i].StreamID == 0 && b.pointers[j].StreamID == 0 {
+		if b.pointers[i].PointerKind == PointerKindColumnIndex && b.pointers[j].PointerKind == PointerKindColumnIndex {
 			// A column index
 			if b.pointers[i].ColumnIndex == b.pointers[j].ColumnIndex {
 				return b.pointers[i].Section < b.pointers[j].Section
 			}
 			return b.pointers[i].ColumnIndex < b.pointers[j].ColumnIndex
-		} else if b.pointers[i].StreamID != 0 && b.pointers[j].StreamID != 0 {
+		} else if b.pointers[i].PointerKind == PointerKindStreamIndex && b.pointers[j].PointerKind == PointerKindStreamIndex {
 			// A stream
 			if b.pointers[i].StartTs.Equal(b.pointers[j].StartTs) {
 				return b.pointers[i].EndTs.Before(b.pointers[j].EndTs)

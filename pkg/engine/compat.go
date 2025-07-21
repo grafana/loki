@@ -46,7 +46,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		stream, entry := b.collectRow(rec, row)
 
 		// Ignore rows that don't have stream labels, log line, or timestamp
-		if stream.Len() == 0 || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
+		if stream.IsEmpty() || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
 			continue
 		}
 

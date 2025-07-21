@@ -18,19 +18,19 @@ func Test(t *testing.T) {
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "foo"}},
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "foo"}),
 			Line:      []byte("foo bar"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  nil,
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "bar"}},
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "bar"}),
 			Line:      []byte("goodbye world"),
 		},
 	}
@@ -55,19 +55,19 @@ func Test(t *testing.T) {
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "bar"}, {Name: "cluster", Value: "test"}},
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{},
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "foo"}, {Name: "cluster", Value: "test"}},
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("foo bar"),
 		},
 	}

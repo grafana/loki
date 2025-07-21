@@ -24,6 +24,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
 - [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
+- [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
+- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 
 ## 6.31.0
 
