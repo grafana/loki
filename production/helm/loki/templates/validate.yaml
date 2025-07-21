@@ -50,7 +50,7 @@
 {{- fail "Please define loki.storage.bucketName.ruler" }}
 {{- end }}
 
-{{- if not (hasKey $bucketNames "admin") }}
+{{- if and (.Values.enterprise.adminApi.enabled) (hasKey $bucketNames "admin") }}
 {{- fail "Please define loki.storage.bucketName.admin" }}
 {{- end }}
 {{- end }}
