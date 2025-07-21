@@ -45,17 +45,17 @@ GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-  GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
+  GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
 else
-  GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
+  GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 endif
-DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo,slicelabels
+DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
 # the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
 # Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo,slicelabels
-DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo,slicelabels
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
+DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Image names
 IMAGE_PREFIX           ?= grafana
@@ -276,7 +276,7 @@ PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
 endif
 endif
 ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
-PROMTAIL_GO_TAGS = promtail_journal_enabled slicelabels
+PROMTAIL_GO_TAGS = promtail_journal_enabled
 endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
 promtail: clients/cmd/promtail/promtail ## build promtail executable
@@ -345,16 +345,16 @@ ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/lokitool
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled,slicelabels  -osarch="linux/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/lokitool
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled,slicelabels  -osarch="linux/arm64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled,slicelabels  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled,slicelabels  -osarch="linux/amd64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
+	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -377,8 +377,8 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled,slicelabels
-	GOFLAGS="-tags=linux,promtail_journal_enabled,slicelabels" faillint -paths \
+	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
+	GOFLAGS="-tags=linux,promtail_journal_enabled" faillint -paths \
 		"sync/atomic=go.uber.org/atomic" \
 		./...
 
@@ -403,7 +403,7 @@ test: all ## run the unit tests
 
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration,slicelabels -timeout 15m ./integration
+	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
