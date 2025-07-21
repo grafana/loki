@@ -75,7 +75,7 @@ func newStream(
 
 	return &stream{
 		fp:                     fp,
-		labels:                 labels,
+		labels:                 ls,
 		labelsString:           ls.String(),
 		labelHash:              labels.StableHash(ls),
 		logger:                 logger,
@@ -204,9 +204,7 @@ func (s *stream) writePattern(
 		service = push.ServiceUnknown
 	}
 
-	newLbls := labels.Labels{
-		labels.Label{Name: constants.PatternLabel, Value: service},
-	}
+	newLbls := labels.FromStrings(constants.PatternLabel, service)
 
 	newStructuredMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: lvl},

@@ -357,9 +357,7 @@ func (i *instance) writeAggregatedMetrics(
 		service = push.ServiceUnknown
 	}
 
-	newLbls := labels.New(
-		labels.Label{Name: constants.AggregatedMetricLabel, Value: service},
-	)
+	newLbls := labels.FromStrings(constants.AggregatedMetricLabel, service)
 
 	sturcturedMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: level},
