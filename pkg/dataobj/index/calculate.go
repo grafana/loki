@@ -13,6 +13,7 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -149,9 +150,9 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 
 		for i, log := range logsBuf[:n] {
 			cnt++
-			for _, md := range log.Metadata {
+			log.Metadata.Range(func(md labels.Label) {
 				columnBloomBuilders[md.Name].Add([]byte(md.Value))
-			}
+			})
 			logsInfo[i].objectPath = objectPath
 			logsInfo[i].sectionIdx = sectionIdx
 			logsInfo[i].streamID = log.StreamID
