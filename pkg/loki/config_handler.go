@@ -114,6 +114,31 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 	}
 }
 
+func filterLimitFields(limits any, allowlist []string) (any, error) {
+	if len(allowlist) == 0 {
+		return limits, nil
+	}
+
+	limitsMap, err := yamlMarshalUnmarshal(limits)
+	if err != nil {
+		return nil, err
+	}
+
+	allowSet := make(map[string]bool)
+	for _, field := range allowlist {
+		allowSet[field] = true
+	}
+
+	filtered := make(map[any]any)
+	for key, value := range limitsMap {
+		if keyStr, ok := key.(string); ok && allowSet[keyStr] {
+			filtered[key] = value
+		}
+	}
+
+	return filtered, nil
+}
+
 func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if t.TenantLimits == nil {
@@ -138,7 +163,15 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 			}
 		}
 
-		writeYAMLResponse(w, limit)
+		// Apply allowlist filtering if configured
+		allowlist := t.Cfg.LimitsConfig.TenantLimitsAllowPublish
+		filteredLimits, err := filterLimitFields(limit, allowlist)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		writeYAMLResponse(w, filteredLimits)
 	}
 }
 

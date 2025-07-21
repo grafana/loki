@@ -250,6 +250,10 @@ type Limits struct {
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
 
+	// TenantLimitsAllowPublish specifies which limit fields to return from the tenant limits endpoint.
+	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
+	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
+
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
@@ -487,6 +491,19 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
+
+	l.TenantLimitsAllowPublish = []string{
+		"max_query_series",
+		"max_query_length",
+		"max_query_range",
+		"query_timeout",
+		"retention_period",
+		"retention_stream",
+		"max_query_lookback",
+		"max_line_size_truncate",
+		"otlp_config",
+	}
+	f.Var((*dskit_flagext.StringSlice)(&l.TenantLimitsAllowPublish), "limits.tenant-limits-allow-publish", "List of limit fields to publish from the tenant limits endpoint. If empty, all fields are returned. Use YAML field names (e.g., 'retention_period', 'max_query_series').")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
