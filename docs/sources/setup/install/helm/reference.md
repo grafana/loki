@@ -9616,6 +9616,7 @@ null
         "stabilizationWindowSeconds": 1800
       }
     },
+    "cooldownPeriod": 300,
     "enabled": true,
     "maxReplicas": 10,
     "minReplicas": 1,
@@ -9911,6 +9912,7 @@ null
       "stabilizationWindowSeconds": 1800
     }
   },
+  "cooldownPeriod": 300,
   "enabled": true,
   "maxReplicas": 10,
   "minReplicas": 1,
