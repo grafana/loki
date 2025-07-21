@@ -35,10 +35,11 @@ const (
 )
 
 type ObjectMetastore struct {
-	bucket      objstore.Bucket
-	parallelism int
-	logger      log.Logger
-	metrics     *objectMetastoreMetrics
+	bucket                        objstore.Bucket
+	parallelism                   int
+	logger                        log.Logger
+	metrics                       *objectMetastoreMetrics
+	useEstimatedSectionMembership bool
 }
 
 type SectionKey struct {
@@ -99,12 +100,13 @@ func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
 	}
 }
 
-func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
+func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer, useEstimatedSectionMembership bool) *ObjectMetastore {
 	store := &ObjectMetastore{
-		bucket:      bucket,
-		parallelism: 64,
-		logger:      logger,
-		metrics:     newObjectMetastoreMetrics(),
+		bucket:                        bucket,
+		parallelism:                   64,
+		logger:                        logger,
+		metrics:                       newObjectMetastoreMetrics(),
+		useEstimatedSectionMembership: useEstimatedSectionMembership,
 	}
 	if reg != nil {
 		store.metrics.register(reg)
@@ -237,7 +239,14 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, err
 	}
 
-	streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+	if m.useEstimatedSectionMembership {
+		streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+	} else {
+		// Do it anyway, but only log the result
+		debugSectionPointers := intersectSections(streamSectionPointers, sectionMembershipEstimates)
+		level.Debug(m.logger).Log("msg", "skipping estimated section membership", "sections", len(streamSectionPointers), "estimated", len(sectionMembershipEstimates), "debugIntersection", len(debugSectionPointers))
+	}
+
 	if len(streamSectionPointers) == 0 {
 		return nil, errors.New("no relevant sections returned")
 	}

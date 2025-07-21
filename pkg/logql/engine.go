@@ -169,6 +169,9 @@ type EngineOpts struct {
 
 	// CataloguePath is the path to the catalogue in the object store.
 	CataloguePath string `yaml:"-" doc:"hidden" category:"experimental"`
+
+	// UseEstimatedSectionMembership is used to determine if the section membership should be estimated.
+	UseEstimatedSectionMembership bool `yaml:"use_estimated_section_membership" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -177,6 +180,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.StringVar(&opts.CataloguePath, prefix+"catalogue-path", "", "The path to the catalogue in the object store.")
+	f.BoolVar(&opts.UseEstimatedSectionMembership, prefix+"use-estimated-section-membership", false, "Experimental: Use estimated section membership (bloom filters) for queries.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }

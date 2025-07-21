@@ -254,7 +254,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 		builder.addStreamAndFlush(stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil, true)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()

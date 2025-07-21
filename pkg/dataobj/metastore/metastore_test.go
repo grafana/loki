@@ -283,7 +283,7 @@ func TestDataObjectsPathsV1(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil, true)
 
 			t.Run("finds objects within current window", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
