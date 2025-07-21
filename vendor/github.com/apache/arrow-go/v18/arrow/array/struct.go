@@ -312,7 +312,7 @@ func (b *StructBuilder) Append(v bool) {
 	// the underlying children they already ensure they have enough space
 	// reserved. The only thing we must do is ensure we have enough space in
 	// the validity bitmap of the struct builder itself.
-	b.builder.reserve(1, b.resizeHelper)
+	b.reserve(1, b.resizeHelper)
 	b.unsafeAppendBoolToBitmap(v)
 	if !v {
 		for _, f := range b.fields {
@@ -323,7 +323,7 @@ func (b *StructBuilder) Append(v bool) {
 
 func (b *StructBuilder) AppendValues(valids []bool) {
 	b.Reserve(len(valids))
-	b.builder.unsafeAppendBoolsToBitmap(valids, len(valids))
+	b.unsafeAppendBoolsToBitmap(valids, len(valids))
 }
 
 func (b *StructBuilder) AppendNull() { b.Append(false) }
@@ -363,7 +363,7 @@ func (b *StructBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *StructBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.resizeHelper)
+	b.reserve(n, b.resizeHelper)
 	for _, f := range b.fields {
 		f.Reserve(n)
 	}
@@ -386,7 +386,7 @@ func (b *StructBuilder) resizeHelper(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.builder.init)
+		b.resize(n, b.builder.init)
 	}
 }
 
