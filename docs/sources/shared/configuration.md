@@ -4429,6 +4429,12 @@ otlp_config:
 # CLI flag: -limits.pattern-persistence-enabled
 [pattern_persistence_enabled: <boolean> | default = false]
 
+# List of limit fields to publish from the tenant limits endpoint. If empty, all
+# fields are returned. Use YAML field names (e.g., 'retention_period',
+# 'max_query_series').
+# CLI flag: -limits.tenant-limits-allow-publish
+[tenant_limits_allow_publish: <list of strings> | default = [max_query_series max_query_length max_query_range query_timeout retention_period retention_stream max_query_lookback max_line_size_truncate otlp_config]]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
