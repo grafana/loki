@@ -305,9 +305,9 @@ func (d *Drain) writePattern(
 		service = push.ServiceUnknown
 	}
 
-	newLbls := labels.Labels{
+	newLbls := labels.New(
 		labels.Label{Name: constants.PatternLabel, Value: service},
-	}
+	)
 
 	newStructuredMetadata := []logproto.LabelAdapter{
 		{Name: constants.LevelLabel, Value: lvl},

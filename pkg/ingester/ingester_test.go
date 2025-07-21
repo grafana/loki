@@ -1020,7 +1020,7 @@ func Test_DedupeIngester(t *testing.T) {
 	for i := int64(0); i < streamCount; i++ {
 		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
 		streams = append(streams, s)
-		streamHashes = append(streamHashes, s.Hash())
+		streamHashes = append(streamHashes, labels.StableHash(s))
 	}
 	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
 

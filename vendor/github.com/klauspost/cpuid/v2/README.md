@@ -285,6 +285,7 @@ Exit Code 1
 | AMXCOMPLEX         | Tile computational operations on complex numbers                                                                                                                                   |
 | AMXTILE            | Tile architecture                                                                                                                                                                  |
 | AMXTF32            | Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile                                                                                                              |
+| AMXTRANSPOSE       | Tile multiply where the first operand is transposed                                                                                                                                |
 | APX_F              | Intel APX                                                                                                                                                                          |
 | AVX                | AVX functions                                                                                                                                                                      |
 | AVX10              | If set the Intel AVX10 Converged Vector ISA is supported                                                                                                                           |
@@ -420,6 +421,8 @@ Exit Code 1
 | SHA                | Intel SHA Extensions                                                                                                                                                               |
 | SME                | AMD Secure Memory Encryption supported                                                                                                                                             |
 | SME_COHERENT       | AMD Hardware cache coherency across encryption domains enforced                                                                                                                    |
+| SM3_X86            | SM3 instructions                                                                                                                                                                   |
+| SM4_X86            | SM4 instructions                                                                                                                                                                   |
 | SPEC_CTRL_SSBD     | Speculative Store Bypass Disable                                                                                                                                                   |
 | SRBDS_CTRL         | SRBDS mitigation MSR available                                                                                                                                                     |
 | SSE                | SSE functions                                                                                                                                                                      |
