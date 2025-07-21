@@ -24,16 +24,14 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-var (
-	ErrNotSupported = errors.New("feature not supported in new query engine")
-)
+var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
 func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
-
 	var ms metastore.Metastore
 	if bucket != nil {
-		ms = metastore.NewObjectMetastore(bucket, logger)
+		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
+		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -97,7 +95,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for physical planning
 	statsCtx, ctx := stats.NewContext(ctx)
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalogueType := physical.CatalogueTypeDirect
+	if e.opts.CataloguePath != "" {
+		catalogueType = physical.CatalogueTypeIndex
+	}
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {

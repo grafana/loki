@@ -66,7 +66,7 @@ func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expressi
 	}
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyPredicatePushdown(child, predicate); !ok {
-			return ok
+			return false
 		}
 	}
 	return true

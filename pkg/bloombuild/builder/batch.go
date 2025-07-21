@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/multierror"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -133,7 +134,7 @@ func newBatchedChunkLoader(
 			time.Unix(0, 0),
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
-			logql_log.NewNoopPipeline().ForStream(nil),
+			logql_log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 		)
 
 		if err != nil {

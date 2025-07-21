@@ -93,7 +93,7 @@ func TestConvertAST_Success(t *testing.T) {
 	expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
-%4 = MAKETABLE [selector=%3, shard=0_of_1]
+%4 = MAKETABLE [selector=%3, predicates=[%12, %18], shard=0_of_1]
 %5 = SORT %4 [column=builtin.timestamp, asc=false, nulls_first=false]
 %6 = GTE builtin.timestamp 1970-01-01T01:00:00Z
 %7 = SELECT %5 [predicate=%6]
@@ -136,16 +136,17 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 	expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
-%4 = MAKETABLE [selector=%3, shard=0_of_1]
-%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
-%6 = SELECT %4 [predicate=%5]
-%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%8 = SELECT %6 [predicate=%7]
-%9 = MATCH_STR builtin.message "metric.go"
-%10 = SELECT %8 [predicate=%9]
-%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
-RETURN %12
+%4 = MAKETABLE [selector=%3, predicates=[%10], shard=0_of_1]
+%5 = SORT %4 [column=builtin.timestamp, asc=false, nulls_first=false]
+%6 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%9 = SELECT %7 [predicate=%8]
+%10 = MATCH_STR builtin.message "metric.go"
+%11 = SELECT %9 [predicate=%10]
+%12 = RANGE_AGGREGATION %11 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%13 = VECTOR_AGGREGATION %12 [operation=sum, group_by=(ambiguous.level)]
+RETURN %13
 `
 
 	require.Equal(t, expected, logicalPlan.String())

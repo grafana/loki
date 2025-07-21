@@ -13,11 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+
+## 6.32.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.5.2
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.5.2
 - [FEATURE] Add support for templated `loki.operational_config` [#17045](https://github.com/grafana/loki/pull/17045)
+- [FEATURE] Add option to use deployment type instead of daemonset in canary. [#17364](https://github.com/grafana/loki/pull/17364)
 - [ENHANCEMENT] Allow specifying additional labels for memcached statefulsets volume claim templates [#15554](https://github.com/grafana/loki/pull/15554)
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
 - [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
+- [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
+- [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
+- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 
 ## 6.31.0
 
@@ -32,6 +41,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
 - [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
 - [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
+- [FEATURE] Allow passing tenant password hash instead of password to avoid idempotency issue with the gateway secret [12032](https://github.com/grafana/loki/issues/12032).
 
 ## 6.30.1
 
@@ -54,8 +64,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.29.0
 
-- [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
+
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
+- [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
 
 ## 6.28.0
