@@ -4433,7 +4433,7 @@ otlp_config:
 # fields are returned. Use YAML field names (e.g., 'retention_period',
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
-[tenant_limits_allow_publish: <list of strings> | default = [max_query_series max_query_length max_query_range query_timeout retention_period retention_stream max_query_lookback max_line_size_truncate otlp_config]]
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

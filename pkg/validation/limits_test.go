@@ -245,7 +245,7 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig: defaultOTLPConfig,
 				TenantLimitsAllowPublish: []string{
 					"ingestion_rate_mb",
 					"max_query_series",
@@ -286,7 +286,7 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig: defaultOTLPConfig,
 				TenantLimitsAllowPublish: []string{
 					"ingestion_rate_mb",
 					"max_query_series",
@@ -330,8 +330,8 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
-				OTLPConfig:                defaultOTLPConfig,
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				OTLPConfig:              defaultOTLPConfig,
 				TenantLimitsAllowPublish: []string{
 					"ingestion_rate_mb",
 					"max_query_series",
@@ -375,7 +375,7 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig: defaultOTLPConfig,
 				TenantLimitsAllowPublish: []string{
 					"ingestion_rate_mb",
 					"max_query_series",
@@ -420,7 +420,7 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig: defaultOTLPConfig,
 				TenantLimitsAllowPublish: []string{
 					"ingestion_rate_mb",
 					"max_query_series",
