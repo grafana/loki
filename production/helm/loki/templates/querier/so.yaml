@@ -18,6 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
   pollingInterval: {{ .Values.querier.kedaAutoscaling.pollingInterval | default .Values.loki.kedaAutoscaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.querier.kedaAutoscaling.cooldownPeriod }}
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment

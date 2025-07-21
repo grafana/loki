@@ -2299,6 +2299,7 @@ querier:
     enabled: true
     minReplicas: 1
     maxReplicas: 10
+    cooldownPeriod: 300
     behavior:
       scaleDown:
         stabilizationWindowSeconds: 1800
