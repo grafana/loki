@@ -322,7 +322,7 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 		[]logproto.LabelAdapter{
 			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
 		},
-  ).Times(8) // Expect at least 8: 8 full buckets + 1 remainder bucket, but allowing for some variance in timing
+	).Times(8) // Expect at least 8: 8 full buckets + 1 remainder bucket, but allowing for some variance in timing
 
 	// Prune old data - this should trigger pattern writing with remainder handling
 	isEmpty := stream.prune(time.Hour)
