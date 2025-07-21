@@ -275,7 +275,7 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 
 	// Push entries across a 1-hour span that will be pruned
 	// Use current time but make old data clearly older than 1 hour prune threshold
-	now := time.Now()
+	now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
 	baseTime := now.Add(-2 * time.Hour) // 2 hours old - clearly older than 1-hour prune threshold
 
 	// Push entries across 65 minutes, ensuring at least 2 samples per bucket
@@ -322,7 +322,7 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 		[]logproto.LabelAdapter{
 			{Name: constants.LevelLabel, Value: constants.LogLevelUnknown},
 		},
-	).Times(8) // Expect at least 8: 8 full buckets + 1 remainder bucket, but allowing for some variance in timing
+	).Times(9) // Expect 9 calls: 8 full buckets + 1 remainder bucket
 
 	// Prune old data - this should trigger pattern writing with remainder handling
 	isEmpty := stream.prune(time.Hour)
