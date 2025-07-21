@@ -41,6 +41,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
 - [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
 - [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
+- [FEATURE] Allow passing tenant password hash instead of password to avoid idempotency issue with the gateway secret [12032](https://github.com/grafana/loki/issues/12032).
 
 ## 6.30.1
 
