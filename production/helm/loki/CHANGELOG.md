@@ -25,6 +25,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
 - [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
+- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 
 ## 6.31.0
 
