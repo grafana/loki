@@ -32,12 +32,13 @@ var slowTests = flag.Bool("slow-tests", false, "run slow tests")
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj         = "dataobj"
-	StoreDataObjV2Engine = "dataobj-engine"
-	StoreChunk           = "chunk"
+	StoreDataObj                    = "dataobj"
+	StoreDataObjV2Engine            = "dataobj-engine"
+	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
+	StoreChunk                      = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -64,6 +65,12 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (logql.Engine, *Ge
 			tb.Fatal(err)
 		}
 
+		return store.engine, config
+	case StoreDataObjV2EngineWithIndexes:
+		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
 		return store.engine, config
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
@@ -240,7 +247,6 @@ func TestLogQLQueries(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
-
 			// Uncomment this to run only log queries
 			// if c.Kind() != "log" {
 			// 	continue

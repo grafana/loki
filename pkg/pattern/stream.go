@@ -33,7 +33,7 @@ type stream struct {
 
 func newStream(
 	fp model.Fingerprint,
-	labels labels.Labels,
+	ls labels.Labels,
 	metrics *ingesterMetrics,
 	logger log.Logger,
 	guessedFormat string,
@@ -61,9 +61,9 @@ func newStream(
 
 	return &stream{
 		fp:           fp,
-		labels:       labels,
-		labelsString: labels.String(),
-		labelHash:    labels.Hash(),
+		labels:       ls,
+		labelsString: ls.String(),
+		labelHash:    labels.StableHash(ls),
 		logger:       logger,
 		patterns:     patterns,
 	}, nil

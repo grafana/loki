@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -576,14 +575,10 @@ func labelsSize(lbls push.LabelsAdapter) int {
 }
 
 func modelLabelsSetToLabelsList(m model.LabelSet) labels.Labels {
-	l := make(labels.Labels, 0, len(m))
+	builder := labels.NewScratchBuilder(len(m))
 	for lName, lValue := range m {
-		l = append(l, labels.Label{
-			Name:  string(lName),
-			Value: string(lValue),
-		})
+		builder.Add(string(lName), string(lValue))
 	}
-
-	sort.Sort(l)
-	return l
+	builder.Sort()
+	return builder.Labels()
 }
