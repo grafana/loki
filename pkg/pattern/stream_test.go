@@ -315,6 +315,9 @@ func TestStreamPersistenceGranularityWithRemainder(t *testing.T) {
 	// Each bucket has 2 samples, so all should meet the very low threshold
 	// So we expect 9 pattern entries total
 
+	// On CI this test fails when either 8 or 9 calls are expected, with it observing the oppposite in either case.
+	// Hopefully this sleep will help to resolve the issue?
+	time.Sleep(time.Second)
 	mockWriter.On("WriteEntry",
 		mock.MatchedBy(func(_ time.Time) bool { return true }), // Any timestamp
 		mock.MatchedBy(func(_ string) bool { return true }),    // Any pattern entry
