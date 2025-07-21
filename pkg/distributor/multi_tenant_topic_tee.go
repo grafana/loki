@@ -27,13 +27,13 @@ type MultiTenantTopicConfig struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *MultiTenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, "distributor.multi-tenant-topic-tee.enabled", false, "Enable the multi-tenant topic tee.")
-	f.StringVar(&cfg.Topic, "distributor.multi-tenant-topic-tee.topic", "loki.multi-tenant", "The name of the multi-tenant topic.")
-	f.IntVar(&cfg.NumPartitions, "distributor.multi-tenant-topic-tee.num-partitions", 64, "The number of partitions")
+	f.BoolVar(&cfg.Enabled, "distributor.multi-tenant-topic-tee.enabled", false, "Experimental: Enable the multi-tenant topic tee.")
+	f.StringVar(&cfg.Topic, "distributor.multi-tenant-topic-tee.topic", "loki.multi-tenant", "Experimental: The name of the multi-tenant topic.")
+	f.IntVar(&cfg.NumPartitions, "distributor.multi-tenant-topic-tee.num-partitions", 64, "Experimental: The number of partitions")
 	cfg.MaxBufferedBytes = 100 << 20 // 100MB
-	f.Var(&cfg.MaxBufferedBytes, "distributor.multi-tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
+	f.Var(&cfg.MaxBufferedBytes, "distributor.multi-tenant-topic-tee.max-buffered-bytes", "Experimental: Maximum number of bytes that can be buffered before producing to Kafka")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
-	f.Var(&cfg.MaxRecordSizeBytes, "distributor.multi-tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
+	f.Var(&cfg.MaxRecordSizeBytes, "distributor.multi-tenant-topic-tee.max-record-size-bytes", "Experimental: Maximum size of a single Kafka record in bytes")
 }
 
 type MultiTenantTopicWriter struct {
