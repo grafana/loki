@@ -111,7 +111,7 @@ func (t *Target) run() {
 }
 
 func (t *Target) handleMessage(msg *gelf.Message) {
-	lb := labels.NewBuilder(nil)
+	lb := labels.NewBuilder(labels.EmptyLabels())
 
 	// Add all labels from the config.
 	for k, v := range t.config.Labels {
@@ -125,12 +125,12 @@ func (t *Target) handleMessage(msg *gelf.Message) {
 	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
 
 	filtered := make(model.LabelSet)
-	for _, lbl := range processed {
+	processed.Range(func(lbl labels.Label) {
 		if strings.HasPrefix(lbl.Name, "__") {
-			continue
+			return // (will continue Range loop, not abort)
 		}
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-	}
+	})
 
 	var timestamp time.Time
 	if t.config.UseIncomingTimestamp && msg.TimeUnix != 0 {
