@@ -9692,10 +9692,22 @@ null
         "stabilizationWindowSeconds": 1800
       }
     },
-    "enabled": false,
-    "maxReplicaCount": 10,
-    "minReplicaCount": 1,
-    "querySchedulerInflightRequestsThreshold": "4"
+    "enabled": true,
+    "maxReplicas": 10,
+    "minReplicas": 1,
+    "triggers": [
+      {
+        "metadata": {
+          "ignoreNullValues": "{{ .Values.loki.kedaAutoscaling.ignoreNullValues }}",
+          "query": "sum(max_over_time(loki_query_scheduler_inflight_requests{quantile=\"0.75\"}[2m]))",
+          "serverAddress": "{{ .Values.loki.kedaAutoscaling.prometheusAddress }}",
+          "threshold": "4",
+          "unsafeSsl": "{{ .Values.loki.kedaAutoscaling.unsafeSsl }}"
+        },
+        "name": "querier_autoscaling_metric",
+        "type": "prometheus"
+      }
+    ]
   },
   "maxSurge": 0,
   "maxUnavailable": null,
@@ -9975,10 +9987,22 @@ null
       "stabilizationWindowSeconds": 1800
     }
   },
-  "enabled": false,
-  "maxReplicaCount": 10,
-  "minReplicaCount": 1,
-  "querySchedulerInflightRequestsThreshold": "4"
+  "enabled": true,
+  "maxReplicas": 10,
+  "minReplicas": 1,
+  "triggers": [
+    {
+      "metadata": {
+        "ignoreNullValues": "{{ .Values.loki.kedaAutoscaling.ignoreNullValues }}",
+        "query": "sum(max_over_time(loki_query_scheduler_inflight_requests{quantile=\"0.75\"}[2m]))",
+        "serverAddress": "{{ .Values.loki.kedaAutoscaling.prometheusAddress }}",
+        "threshold": "4",
+        "unsafeSsl": "{{ .Values.loki.kedaAutoscaling.unsafeSsl }}"
+      },
+      "name": "querier_autoscaling_metric",
+      "type": "prometheus"
+    }
+  ]
 }
 </pre>
 </td>
