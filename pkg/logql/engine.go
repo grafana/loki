@@ -451,7 +451,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
@@ -487,7 +487,7 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 

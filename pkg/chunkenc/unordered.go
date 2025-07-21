@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -262,15 +263,15 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
-	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
+	labelsBuilder := labelpool.Get()
+
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
@@ -309,7 +310,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	}
 
 	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
-		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		labelpool.Put(labelsBuilder)
 		return nil
 	})
 }
@@ -322,15 +323,15 @@ func (hb *unorderedHeadBlock) SampleIterator(
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	setQueryReferencedStructuredMetadata := false
-	structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-	labelsBuilder := log.NewBufferedLabelsBuilder(structuredMetadata)
+	labelsBuilder := labelpool.Get()
+
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
 
 			for _, extractor := range extractor {
 				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
@@ -387,7 +388,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
-		structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		labelpool.Put(labelsBuilder)
 		return nil
 	})
 }

@@ -34,10 +34,10 @@ func TestBuilder(t *testing.T) {
 	testStreams := []streams.Stream{
 		{
 			ID: 1,
-			Labels: labels.Labels{
-				{Name: "cluster", Value: "test"},
-				{Name: "app", Value: "foo"},
-			},
+			Labels: labels.New(
+				labels.Label{Name: "cluster", Value: "test"},
+				labels.Label{Name: "app", Value: "foo"},
+			),
 			Rows:             2,
 			MinTimestamp:     time.Unix(10, 0).UTC(),
 			MaxTimestamp:     time.Unix(20, 0).UTC(),
@@ -45,10 +45,10 @@ func TestBuilder(t *testing.T) {
 		},
 		{
 			ID: 2,
-			Labels: labels.Labels{
-				{Name: "cluster", Value: "test"},
-				{Name: "app", Value: "bar"},
-			},
+			Labels: labels.New(
+				labels.Label{Name: "cluster", Value: "test"},
+				labels.Label{Name: "app", Value: "bar"},
+			),
 			Rows:             3,
 			MinTimestamp:     time.Unix(15, 0).UTC(),
 			MaxTimestamp:     time.Unix(25, 0).UTC(),
@@ -133,11 +133,11 @@ func TestBuilder_Append(t *testing.T) {
 
 		_, err := builder.AppendStream(streams.Stream{
 			ID: 1,
-			Labels: labels.Labels{
-				{Name: "cluster", Value: "test"},
-				{Name: "app", Value: "foo"},
-				{Name: "i", Value: fmt.Sprintf("%d", i)},
-			},
+			Labels: labels.New(
+				labels.Label{Name: "cluster", Value: "test"},
+				labels.Label{Name: "app", Value: "foo"},
+				labels.Label{Name: "i", Value: fmt.Sprintf("%d", i)},
+			),
 			Rows:         2,
 			MinTimestamp: time.Unix(10, 0).UTC(),
 			MaxTimestamp: time.Unix(20, 0).UTC(),

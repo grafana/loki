@@ -690,7 +690,7 @@ type BucketTag struct {
 
 type BosContext struct {
 	PathStyleEnable bool
-	Ctx             context.Context
+	Ctx             context.Context // for each request
 }
 
 type PutObjectTagArgs struct {
