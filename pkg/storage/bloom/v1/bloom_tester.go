@@ -182,7 +182,7 @@ func (kvm keyValueMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom 
 func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
-	if len(series) == 0 {
+	if series.IsEmpty() {
 		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
 		return true
 	}
@@ -243,7 +243,7 @@ func (km keyMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter
 func (km keyMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
-	if len(series) == 0 {
+	if series.IsEmpty() {
 		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
 		return true
 	}

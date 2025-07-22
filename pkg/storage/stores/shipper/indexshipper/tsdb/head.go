@@ -264,7 +264,7 @@ func (s *stripeSeries) Append(
 	chks index.ChunkMetas,
 	createFn func() *memSeries,
 ) (created bool, refID uint64) {
-	fp := ls.Hash()
+	fp := labels.StableHash(ls)
 	hashes := s.hashes[fp&uint64(s.shards-1)]
 	hashes.Lock()
 	series := hashes.get(fp, ls)

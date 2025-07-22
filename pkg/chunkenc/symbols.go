@@ -14,18 +14,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
-var (
-	structuredMetadataPool = sync.Pool{
-		New: func() interface{} {
-			return make(labels.Labels, 0, 8)
-		},
-	}
-	errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")
-)
+var errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")
 
 // symbol holds reference to a label name and value pair
 type symbol struct {
@@ -100,16 +93,17 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) labels.Labels {
 	if len(syms) == 0 {
 		return labels.EmptyLabels()
 	}
 
 	if buf == nil {
-		structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
+		buf = labelpool.Get()
+		defer labelpool.Put(buf)
+	} else {
+		buf.Reset()
 	}
-	buf.Reset()
 
 	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
@@ -131,7 +125,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 			name = normalized
 		}
 
-		buf.Add(labels.Label{Name: name, Value: s.lookup(symbol.Value)})
+		buf.Add(name, s.lookup(symbol.Value))
 	}
 
 	return buf.Labels()

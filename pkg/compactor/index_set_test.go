@@ -149,13 +149,7 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 		},
 	}
 
-	lblFoo := labels.Labels{
-		{
-			Name:  "foo",
-			Value: "bar",
-		},
-	}
-
+	lblFoo := labels.FromStrings("foo", "bar")
 	err := indexSet.applyUpdates(lblFoo.String(), chunksToDelete, chunksToDeIndex, chunksToIndex)
 	require.NoError(t, err)
 
