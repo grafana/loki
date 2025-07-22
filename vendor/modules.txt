@@ -2033,7 +2033,7 @@ go.opentelemetry.io/collector/featuregate
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/internal/telemetry
 go.opentelemetry.io/collector/internal/telemetry/componentattribute
-# go.opentelemetry.io/collector/pdata v1.36.0
+# go.opentelemetry.io/collector/pdata v1.36.1
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
