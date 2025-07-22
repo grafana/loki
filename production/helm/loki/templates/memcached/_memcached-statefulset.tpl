@@ -31,7 +31,6 @@ spec:
   updateStrategy:
     {{- toYaml .statefulStrategy | nindent 4 }}
   serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}
-
   template:
     metadata:
       labels:
@@ -51,7 +50,6 @@ spec:
         {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-
     spec:
       serviceAccountName: {{ template "loki.serviceAccountName" $.ctx }}
       {{- if .priorityClassName }}
@@ -124,10 +122,6 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
-          {{- with $.ctx.Values.memcached.readinessProbe }}
-          readinessProbe: 
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
@@ -137,6 +131,16 @@ spec:
           {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
+          {{- end }}
+          {{- /* Use per-cache probe override if available, otherwise use global default */ -}}
+          {{- with (coalesce (index $.ctx.Values $.valuesSection).memcachedProbes.readinessProbe $.ctx.Values.memcached.readinessProbe) }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- /* Add livenessProbe support with same override logic */ -}}
+          {{- with (coalesce (index $.ctx.Values $.valuesSection).memcachedProbes.livenessProbe $.ctx.Values.memcached.livenessProbe) }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
@@ -158,6 +162,15 @@ spec:
             {{- toYaml $.ctx.Values.memcachedExporter.resources | nindent 12 }}
           securityContext:
             {{- toYaml $.ctx.Values.memcachedExporter.containerSecurityContext | nindent 12 }}
+          {{- /* Add exporter probes with override support */ -}}
+          {{- with (coalesce (index $.ctx.Values $.valuesSection).exporterProbes.readinessProbe $.ctx.Values.memcachedExporter.readinessProbe) }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (coalesce (index $.ctx.Values $.valuesSection).exporterProbes.livenessProbe $.ctx.Values.memcachedExporter.livenessProbe) }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .extraVolumeMounts }}
           volumeMounts:
             {{- toYaml .extraVolumeMounts | nindent 12 }}

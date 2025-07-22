@@ -3236,6 +3236,12 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- The SecurityContext for memcached containers
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    allowPrivilegeEscalation: false
   # -- Readiness probe for memcached pods (probe port defaults to container port)
   readinessProbe:
     tcpSocket:
@@ -3244,12 +3250,15 @@ memcached:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-  # -- The SecurityContext for memcached containers
-  containerSecurityContext:
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: [ALL]
-    allowPrivilegeEscalation: false
+  # -- Liveness probe for memcached pods
+  livenessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
 memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
@@ -3276,6 +3285,25 @@ memcachedExporter:
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
   extraArgs: {}
+  # -- Liveness probe for memcached exporter
+  livenessProbe:
+    httpGet:
+      path: /metrics
+      port: 9150
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe for memcached exporter
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: 9150
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
@@ -3377,6 +3405,19 @@ resultsCache:
     mountPath: /data
     # -- PVC additional labels
     labels: {}
+  # -- Allow overriding memcached probes for results cache
+  memcachedProbes:
+    # Override global memcached livenessProbe for results cache
+    livenessProbe: {}
+    # Override global memcached readinessProbe for results cache
+    readinessProbe: {}
+  # -- Allow overriding exporter probes for results cache
+  exporterProbes:
+    # Override global exporter livenessProbe for results cache
+    livenessProbe: {}
+    # Override global exporter readinessProbe for results cache
+    readinessProbe: {}
+
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
@@ -3482,6 +3523,19 @@ chunksCache:
     mountPath: /data
     # -- PVC additional labels
     labels: {}
+  # -- Allow overriding memcached probes for chunks cache
+  memcachedProbes:
+    # Override global memcached livenessProbe for chunks cache
+    livenessProbe: {}
+    # Override global memcached readinessProbe for chunks cache
+    readinessProbe: {}
+  # -- Allow overriding exporter probes for chunks cache
+  exporterProbes:
+    # Override global exporter livenessProbe for chunks cache
+    livenessProbe: {}
+    # Override global exporter readinessProbe for chunks cache
+    readinessProbe: {}
+
 ######################################################################################################################
 #
 # Subchart configurations
