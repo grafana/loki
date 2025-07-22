@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -45,7 +46,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		stream, entry := b.collectRow(rec, row)
 
 		// Ignore rows that don't have stream labels, log line, or timestamp
-		if stream.Len() == 0 || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
+		if stream.IsEmpty() || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
 			continue
 		}
 
@@ -106,11 +107,15 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			switch arr := col.(type) {
 			case *array.String:
 				metadata.Set(colName, arr.Value(i))
+				// include structured metadata in stream labels
+				lbs.Set(colName, arr.Value(i))
 			}
 			continue
 		}
 	}
 	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
+	// set to a non-nil value to match with existing engine.
+	entry.Parsed = logproto.FromLabelsToLabelAdapters(labels.Labels{})
 
 	return lbs.Labels(), entry
 }
@@ -120,6 +125,7 @@ func (b *streamsResultBuilder) SetStats(s stats.Result) {
 }
 
 func (b *streamsResultBuilder) Build() logqlmodel.Result {
+	sort.Sort(b.data)
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: b.stats,
@@ -175,7 +181,8 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
-			sample.T = int64(col.(*array.Timestamp).Value(i))
+			// [promql.Sample] expects milliseconds as timestamp unit
+			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
 		case types.ColumnNameGeneratedValue:
 			if col.IsNull(i) {
 				return promql.Sample{}, false
@@ -188,7 +195,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 			sample.F = float64(col.Value(i))
 		default:
 			// allow any string columns
-			if colDataType == datatype.String.String() {
+			if colDataType == datatype.Loki.String.String() {
 				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
 			}
 		}
@@ -199,6 +206,9 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 }
 
 func (b *vectorResultBuilder) Build() logqlmodel.Result {
+	sort.Slice(b.data, func(i, j int) bool {
+		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
+	})
 	return logqlmodel.Result{
 		Data:       b.data,
 		Statistics: b.stats,

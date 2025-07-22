@@ -175,10 +175,10 @@ func (b *Builder) build(
 	// Build symbols
 	symbolsMap := make(map[string]struct{})
 	for _, s := range streams {
-		for _, l := range s.labels {
+		s.labels.Range(func(l labels.Label) {
 			symbolsMap[l.Name] = struct{}{}
 			symbolsMap[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	// Sort symbols

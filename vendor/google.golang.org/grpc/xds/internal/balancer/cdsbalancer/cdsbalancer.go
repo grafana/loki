@@ -424,9 +424,7 @@ func (b *cdsBalancer) ExitIdle() {
 		// ExitIdle (but still checks for the interface's existence to
 		// avoid a panic if not).  If the child does not, no subconns
 		// will be connected.
-		if ei, ok := b.childLB.(balancer.ExitIdler); ok {
-			ei.ExitIdle()
-		}
+		b.childLB.ExitIdle()
 	})
 }
 

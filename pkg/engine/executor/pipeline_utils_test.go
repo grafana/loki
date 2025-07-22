@@ -6,11 +6,15 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 )
 
 // AssertPipelinesEqual iterates through two pipelines and ensures they contain
 // the same data, regardless of batch sizes. It compares row by row and column by column.
 func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
+	ctx := t.Context()
+
 	defer left.Close()
 	defer right.Close()
 
@@ -30,7 +34,7 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 				leftBatch = nil
 			}
 
-			leftErr = left.Read()
+			leftErr = left.Read(ctx)
 			if leftErr == nil {
 				leftBatch, leftErr = left.Value()
 				if leftErr == nil {
@@ -46,7 +50,7 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 				rightBatch = nil
 			}
 
-			rightErr = right.Read()
+			rightErr = right.Read(ctx)
 			if rightErr == nil {
 				rightBatch, rightErr = right.Value()
 				if rightErr == nil {
@@ -132,8 +136,8 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 func TestAssertPipelinesEqual(t *testing.T) {
 	// Define test schema
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "age", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "name", Type: datatype.Arrow.String},
+		{Name: "age", Type: datatype.Arrow.Integer},
 	}
 
 	// Create test data

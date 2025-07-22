@@ -6,16 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"slices"
-	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -23,16 +19,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
-	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
 type dataobjScan struct {
-	ctx  context.Context
 	opts dataobjScanOptions
 
 	initialized bool
-	readers     []*logs.RowReader
+	reader      *logs.RowReader
 	streams     map[int64]labels.Labels
+	records     []logs.Record
 
 	state state
 }
@@ -44,12 +39,14 @@ type dataobjScanOptions struct {
 
 	Object      *dataobj.Object             // Object to read from.
 	StreamIDs   []int64                     // Stream IDs to match from logs sections.
-	Sections    []int                       // Logs sections to fetch.
+	Section     int                         // Logs section to fetch.
 	Predicates  []logs.RowPredicate         // Predicate to apply to the logs.
 	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
 	Direction physical.SortOrder // Order of timestamps to return (ASC=Forward, DESC=Backward)
 	Limit     uint32             // A limit on the number of rows to return (0=unlimited).
+
+	batchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -58,17 +55,21 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of all log sections in a data object. Rows in the
 // returned record are ordered by timestamp in the direction specified by
 // opts.Direction.
-func newDataobjScanPipeline(ctx context.Context, opts dataobjScanOptions) *dataobjScan {
-	return &dataobjScan{ctx: ctx, opts: opts}
+func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
+	if opts.Direction == physical.ASC {
+		// It's ok to panic here, because the validation of log query direction is performed in the logical planner.
+		panic("sorting by timestamp ASC is not supported by DataObjScan")
+	}
+	return &dataobjScan{opts: opts}
 }
 
 // Read retrieves the next [arrow.Record] from the dataobj.
-func (s *dataobjScan) Read() error {
-	if err := s.init(); err != nil {
+func (s *dataobjScan) Read(ctx context.Context) error {
+	if err := s.init(ctx); err != nil {
 		return err
 	}
 
-	rec, err := s.read()
+	rec, err := s.read(ctx)
 	s.state = newState(rec, err)
 
 	if err != nil {
@@ -77,24 +78,26 @@ func (s *dataobjScan) Read() error {
 	return nil
 }
 
-func (s *dataobjScan) init() error {
+func (s *dataobjScan) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
 
-	if err := s.initStreams(); err != nil {
+	s.records = make([]logs.Record, 0, s.opts.batchSize)
+
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
 	}
 
-	s.readers = nil
+	s.reader = nil
 
 	for idx, section := range s.opts.Object.Sections().Filter(logs.CheckSection) {
 		// Filter out sections that are not part of this shard
-		if !slices.Contains(s.opts.Sections, idx) {
+		if s.opts.Section != idx {
 			continue
 		}
 
-		sec, err := logs.Open(s.ctx, section)
+		sec, err := logs.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening logs section: %w", err)
 		}
@@ -116,7 +119,12 @@ func (s *dataobjScan) init() error {
 		_ = lr.MatchStreams(slices.Values(s.opts.StreamIDs))
 		_ = lr.SetPredicates(s.opts.Predicates)
 
-		s.readers = append(s.readers, lr)
+		s.reader = lr
+		break
+	}
+
+	if s.reader == nil {
+		return fmt.Errorf("no logs section %d found", s.opts.Section)
 	}
 
 	s.initialized = true
@@ -125,11 +133,11 @@ func (s *dataobjScan) init() error {
 
 // initStreams retrieves all requested stream records from streams sections so
 // that emitted [arrow.Record]s can include stream labels in results.
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	var sr streams.RowReader
 	defer sr.Close()
 
-	streamsBuf := make([]streams.Stream, 512)
+	streamsBuf := make([]streams.Stream, s.opts.batchSize)
 
 	// Initialize entries in the map so we can do a presence test in the loop
 	// below.
@@ -139,7 +147,7 @@ func (s *dataobjScan) initStreams() error {
 	}
 
 	for _, section := range s.opts.Object.Sections().Filter(streams.CheckSection) {
-		sec, err := streams.Open(s.ctx, section)
+		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
 		}
@@ -151,7 +159,7 @@ func (s *dataobjScan) initStreams() error {
 		sr.Reset(sec)
 
 		for {
-			n, err := sr.Read(s.ctx, streamsBuf)
+			n, err := sr.Read(ctx, streamsBuf)
 			if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			} else if err != nil && !errors.Is(err, io.EOF) {
@@ -163,7 +171,7 @@ func (s *dataobjScan) initStreams() error {
 					continue
 				}
 
-				s.streams[stream.ID] = stream.Labels
+				s.streams[stream.ID] = stream.Labels.Copy()
 
 				// Zero out the stream entry from the slice so the next call to sr.Read
 				// doesn't overwrite any memory we just moved to s.streams.
@@ -185,58 +193,27 @@ func (s *dataobjScan) initStreams() error {
 // read reads the entire data object into memory and generates an arrow.Record
 // from the data. It returns an error upon encountering an error while reading
 // one of the sections.
-func (s *dataobjScan) read() (arrow.Record, error) {
-	// Since [physical.DataObjScan] requires that:
-	//
-	// * Records are ordered by timestamp, and
-	// * Records from the same dataobjScan do not overlap in time
-	//
-	// we *must* read the entire data object before creating a record, as the
-	// sections in the dataobj itself are not already sorted by timestamp (though
-	// we only need to keep up to Limit rows in memory).
-
+func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	var (
-		heapMut sync.Mutex
-		heap    = topk.Heap[logs.Record]{
-			Limit: int(s.opts.Limit),
-			Less:  s.getLessFunc(s.opts.Direction),
-		}
+		n   int   // number of rows yielded by the datobj reader
+		err error // error yielded by the dataobj reader
 	)
 
-	g, ctx := errgroup.WithContext(s.ctx)
-	g.SetLimit(max(runtime.GOMAXPROCS(0)/2, 1))
+	// Read from the dataobj until it yields at least one row, to avoid these function calls from the parent.
+	for n == 0 {
+		// Reset buffer
+		s.records = s.records[:s.opts.batchSize]
 
-	var gotData atomic.Bool
-
-	for _, reader := range s.readers {
-		g.Go(func() error {
-			for {
-				buf := make([]logs.Record, 1024) // do not re-use buffer
-				n, err := reader.Read(ctx, buf)
-				if n == 0 && errors.Is(err, io.EOF) {
-					return nil
-				} else if err != nil && !errors.Is(err, io.EOF) {
-					return err
-				}
-
-				gotData.Store(true)
-
-				heapMut.Lock()
-				for _, rec := range buf[:n] {
-					heap.Push(rec)
-				}
-				heapMut.Unlock()
-			}
-		})
+		n, err = s.reader.Read(ctx, s.records)
+		if n == 0 && errors.Is(err, io.EOF) {
+			return nil, EOF
+		} else if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
 	}
+	s.records = s.records[:n]
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	} else if !gotData.Load() {
-		return nil, EOF
-	}
-
-	projections, err := s.effectiveProjections(&heap)
+	projections, err := s.effectiveProjections(s.records)
 	if err != nil {
 		return nil, fmt.Errorf("getting effective projections: %w", err)
 	}
@@ -250,10 +227,7 @@ func (s *dataobjScan) read() (arrow.Record, error) {
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 	defer rb.Release()
 
-	records := heap.PopAll()
-	slices.Reverse(records)
-
-	for _, record := range records {
+	for _, record := range s.records {
 		for i := 0; i < schema.NumFields(); i++ {
 			field, builder := rb.Schema().Field(i), rb.Field(i)
 			s.appendToBuilder(builder, &field, &record)
@@ -315,7 +289,7 @@ func (s *dataobjScan) getLessFunc(direction physical.SortOrder) func(a, b logs.R
 // * Log message
 //
 // effectiveProjections does not mutate h.
-func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physical.ColumnExpression, error) {
+func (s *dataobjScan) effectiveProjections(records []logs.Record) ([]physical.ColumnExpression, error) {
 	if len(s.opts.Projections) > 0 {
 		return s.opts.Projections, nil
 	}
@@ -337,7 +311,7 @@ func (s *dataobjScan) effectiveProjections(h *topk.Heap[logs.Record]) ([]physica
 		}
 	}
 
-	for rec := range h.Range() {
+	for _, rec := range records {
 		stream, ok := s.streams[rec.StreamID]
 		if !ok {
 			// If we hit this, there's a problem with either initStreams (we missed a
@@ -469,15 +443,15 @@ func schemaFromColumns(columns []physical.ColumnExpression) (*arrow.Schema, erro
 			// so we don't always explode out to the full set of columns.
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     datatype.Arrow.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String),
 			})
 			addField(arrow.Field{
 				Name:     columnExpr.Ref.Column,
-				Type:     arrow.BinaryTypes.String,
+				Type:     datatype.Arrow.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String),
+				Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String),
 			})
 
 		case types.ColumnTypeParsed, types.ColumnTypeGenerated:
@@ -500,7 +474,7 @@ func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata
 		}
 	}
 
-	return arrow.BinaryTypes.String, datatype.ColumnMetadata(ref.Type, datatype.String)
+	return datatype.Arrow.String, datatype.ColumnMetadata(ref.Type, datatype.Loki.String)
 }
 
 // appendToBuilder appends a the provided field from record into the given
@@ -560,8 +534,8 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	for _, reader := range s.readers {
-		_ = reader.Close()
+	if s.reader != nil {
+		_ = s.reader.Close()
 	}
 }
 

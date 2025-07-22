@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -21,7 +22,7 @@ func Test_Build(t *testing.T) {
 
 		stream := stream{
 			labels: lbls1,
-			fp:     model.Fingerprint(lbls1.Hash()),
+			fp:     model.Fingerprint(labels.StableHash(lbls1)),
 			chunks: buildChunkMetas(1, 5),
 		}
 

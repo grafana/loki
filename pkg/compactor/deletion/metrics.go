@@ -59,6 +59,9 @@ type deleteRequestsManagerMetrics struct {
 	oldestPendingDeleteRequestAgeSeconds prometheus.Gauge
 	pendingDeleteRequestsCount           prometheus.Gauge
 	deletedLinesTotal                    *prometheus.CounterVec
+
+	manifestBuildAttemptsTotal *prometheus.CounterVec
+	chunksSelectedTotal        prometheus.Counter
 }
 
 func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsManagerMetrics {
@@ -99,6 +102,33 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 		Name:      "compactor_deleted_lines",
 		Help:      "Number of deleted lines per user",
 	}, []string{"user"})
+
+	m.manifestBuildAttemptsTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_manifest_build_attempts_total",
+		Help:      "Number of attempts made to build manifest with their outcome",
+	}, []string{"status"})
+	m.chunksSelectedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_manifest_chunks_selected_total",
+		Help:      "Number of chunks selected while building manifest",
+	})
+
+	return &m
+}
+
+type deletionJobRunnerMetrics struct {
+	chunksProcessedTotal prometheus.Counter
+}
+
+func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetrics {
+	m := deletionJobRunnerMetrics{}
+
+	m.chunksProcessedTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_deletion_job_runner_chunks_processed_total",
+		Help:      "Number of chunks processed",
+	})
 
 	return &m
 }

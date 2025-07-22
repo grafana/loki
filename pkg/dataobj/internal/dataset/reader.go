@@ -69,6 +69,13 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
+	// Init stats object and use the context, otherwise we create a new one every time we increment a stat.
+	var statistics *stats.Context
+	if stats.IsPresent(ctx) {
+		statistics = stats.FromContext(ctx)
+	} else {
+		statistics, ctx = stats.NewContext(ctx)
+	}
 
 	if !r.ready {
 		err := r.init(ctx)
@@ -127,9 +134,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	r.dl.SetReadRange(readRange)
 
 	var (
-		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
-		passCount  int // tracks how many rows passed the predicate
-		statistics = stats.FromContext(ctx)
+		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
+		passCount int // tracks how many rows passed the predicate
 	)
 
 	// If there are no predicates, read all columns in the dataset
@@ -311,7 +317,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) == 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) == 0
 
 	case InPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -330,14 +336,14 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) > 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) > 0
 
 	case LessThanPredicate:
 		columnIndex, ok := lookup[p.Column]
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) < 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) < 0
 
 	case FuncPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -785,15 +791,15 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 
 		switch p := p.(type) {
 		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
-			include = CompareValues(p.Value, minValue) >= 0 && CompareValues(p.Value, maxValue) <= 0
+			include = CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0
 		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
-			include = CompareValues(maxValue, p.Value) > 0
+			include = CompareValues(&maxValue, &p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
-			include = CompareValues(minValue, p.Value) < 0
+			include = CompareValues(&minValue, &p.Value) < 0
 		case InPredicate:
 			// Check if any value falls within the page's range
 			for v := range p.Values.Iter() {
-				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+				if CompareValues(&v, &minValue) >= 0 && CompareValues(&v, &maxValue) <= 0 {
 					include = true
 					break
 				}
