@@ -34,9 +34,9 @@ const (
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
 
-	OTLPSeverityNumber = "severity_number"
-	OTLPSeverityText   = "severity_text"
-
+	OTLPSeverityNumber      = "severity_number"
+	OTLPSeverityText        = "severity_text"
+	OTLPObservedTimestamp   = "observed_timestamp"
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
@@ -123,6 +123,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
 	}
+	conversionStrategy := otlpConfig.ConversionStrategy
 
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
@@ -148,7 +149,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				return true
 			}
 
-			attributeAsLabels := attributeToLabels(k, v, "")
+			attributeAsLabels := attributeToLabels(k, v, "", conversionStrategy)
 			if action == IndexLabel {
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
@@ -257,7 +258,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					return true
 				}
 
-				attributeAsLabels := attributeToLabels(k, v, "")
+				attributeAsLabels := attributeToLabels(k, v, "", conversionStrategy)
 				if action == StructuredMetadata {
 					scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, attributeAsLabels...)
 				}
@@ -418,6 +419,25 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 	return pr
 }
 
+func convertFieldName(fieldName string, conversionStrategy string) string {
+	if conversionStrategy == NoConversion {
+		// For NoConversion, convert underscores back to dots for specific fields
+		switch fieldName {
+		case OTLPObservedTimestamp:
+			return "observed.timestamp"
+		case OTLPSeverityNumber:
+			return "severity.number"
+		case OTLPSeverityText:
+			return "severity.text"
+		case "trace_id":
+			return "trace.id"
+		case "span_id":
+			return "span.id"
+		}
+	}
+	return fieldName
+}
+
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
 func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
@@ -431,7 +451,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 			return true
 		}
 
-		attributeAsLabels := attributeToLabels(k, v, "")
+		attributeAsLabels := attributeToLabels(k, v, "", otlpConfig.ConversionStrategy)
 		if action == StructuredMetadata {
 			structuredMetadata = append(structuredMetadata, attributeAsLabels...)
 		}
@@ -451,14 +471,14 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	// if log.Timestamp() is 0, we would have already stored log.ObservedTimestamp as log timestamp so no need to store again in structured metadata
 	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "observed_timestamp",
+			Name:  convertFieldName(OTLPObservedTimestamp, otlpConfig.ConversionStrategy),
 			Value: fmt.Sprintf("%d", log.ObservedTimestamp().AsTime().UnixNano()),
 		})
 	}
 
 	if severityNum := log.SeverityNumber(); severityNum != plog.SeverityNumberUnspecified {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  OTLPSeverityNumber,
+			Name:  convertFieldName(OTLPSeverityNumber, otlpConfig.ConversionStrategy),
 			Value: fmt.Sprintf("%d", severityNum),
 		})
 	}
@@ -473,7 +493,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 
 		// Always add severity_text as structured metadata
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  OTLPSeverityText,
+			Name:  convertFieldName(OTLPSeverityText, otlpConfig.ConversionStrategy),
 			Value: severityText,
 		})
 	}
@@ -493,13 +513,13 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 
 	if traceID := log.TraceID(); !traceID.IsEmpty() {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "trace_id",
+			Name:  convertFieldName("trace_id", otlpConfig.ConversionStrategy),
 			Value: hex.EncodeToString(traceID[:]),
 		})
 	}
 	if spanID := log.SpanID(); !spanID.IsEmpty() {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "span_id",
+			Name:  convertFieldName("span_id", otlpConfig.ConversionStrategy),
 			Value: hex.EncodeToString(spanID[:]),
 		})
 	}
@@ -511,29 +531,29 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	}
 }
 
-func attributesToLabels(attrs pcommon.Map, prefix string) push.LabelsAdapter {
+func attributesToLabels(attrs pcommon.Map, prefix, conversionStrategy string) push.LabelsAdapter {
 	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
 		return labelsAdapter
 	}
 
 	attrs.Range(func(k string, v pcommon.Value) bool {
-		labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, prefix)...)
+		labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, prefix, conversionStrategy)...)
 		return true
 	})
 
 	return labelsAdapter
 }
 
-func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdapter {
+func attributeToLabels(k string, v pcommon.Value, prefix, conversionStrategy string) push.LabelsAdapter {
 	var labelsAdapter push.LabelsAdapter
 
 	keyWithPrefix := k
 	if prefix != "" {
 		keyWithPrefix = prefix + "_" + k
 	}
-
-	labelNamer := otlptranslator.LabelNamer{}
+	isUTF8Allowed := conversionStrategy == NoConversion
+	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
 	keyWithPrefix = labelNamer.Build(keyWithPrefix)
 
 	typ := v.Type()
@@ -541,7 +561,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 		mv := v.Map()
 		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
 		mv.Range(func(k string, v pcommon.Value) bool {
-			labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, keyWithPrefix)...)
+			labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, keyWithPrefix, conversionStrategy)...)
 			return true
 		})
 	} else {

@@ -18,7 +18,7 @@ const (
 	StructuredMetadata Action = "structured_metadata"
 	// Drop drops Attributes for which the Attribute name does match the regex.
 	Drop              Action = "drop"
-	Translate                = "translate"
+	NoConversion             = "no_conversion"
 	DotsToUnderscores        = "dots_to_underscores"
 )
 
