@@ -524,6 +524,7 @@ func (b *LabelsBuilder) Range(f func(l labels.Label), categories ...LabelCategor
 	return
 }
 
+// TODO: ideally we remove this
 func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCategory) []labels.Label {
 	if buf == nil {
 		buf = make([]labels.Label, 0, b.base.Len()+1) // +1 for error label.
@@ -576,12 +577,12 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 		}
 		return
 	}
-	b.buf = b.UnsortedLabels(b.buf)
+
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	for _, l := range b.buf {
+	b.Range(func(l labels.Label) {
 		m[l.Name] = l.Value
-	}
+	})
 }
 
 func (b *LabelsBuilder) Map() (map[string]string, bool) {
@@ -591,13 +592,13 @@ func (b *LabelsBuilder) Map() (map[string]string, bool) {
 		}
 		return b.baseMap, false
 	}
-	b.buf = b.UnsortedLabels(b.buf)
+
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	for _, l := range b.buf {
+	b.Range(func(l labels.Label) {
 		res[l.Name] = l.Value
-	}
+	})
 	return res, true
 }
 
