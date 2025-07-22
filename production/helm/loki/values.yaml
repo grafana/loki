@@ -3553,9 +3553,8 @@ chunksCache:
     #  whenUnsatisfiable: ScheduleAnyway
     # -- Tolerations for chunks-cache-l2 pods
     tolerations: []
-    # -- Pod Disruption Budget
-    podDisruptionBudget:
-      maxUnavailable: 1
+    # -- Pod Disruption Budget maxUnavailable
+    maxUnavailable: 1
     # -- The name of the PriorityClass for chunks-cache-l2 pods
     priorityClassName: null
     # -- Labels for chunks-cache-l2 pods

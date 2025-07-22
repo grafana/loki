@@ -9,7 +9,8 @@ valuesSection and component are specified separately because helm prefers camelc
 */}}
 {{- define "loki.memcached.pdb" -}}
 {{ with $.memcacheConfig }}
-{{- if .enabled -}}
+{{- if and .enabled -}}
+{{- if gt (int .replicas) 1 }}
 apiVersion: {{ include "loki.pdb.apiVersion" $.ctx }}
 kind: PodDisruptionBudget
 metadata:
@@ -23,7 +24,10 @@ spec:
     matchLabels:
       {{- include "loki.selectorLabels" $.ctx | nindent 6 }}
       app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
-  maxUnavailable: 1
+  {{- with .maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

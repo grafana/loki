@@ -51,6 +51,7 @@ chunksCache:
       baz: qux
   l2:
     enabled: true
+    replicas: 2
     allocatedMemory: 128
     persistence:
       labels:

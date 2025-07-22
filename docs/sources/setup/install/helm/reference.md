@@ -2040,6 +2040,7 @@ true
   "initContainers": [],
   "l2ChunkCacheHandoff": "345600s",
   "maxItemMemory": 5,
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "parallelism": 5,
   "persistence": {
@@ -2050,9 +2051,6 @@ true
     "storageSize": "10G"
   },
   "podAnnotations": {},
-  "podDisruptionBudget": {
-    "maxUnavailable": 1
-  },
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "port": 11211,
@@ -2223,6 +2221,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.l2.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.l2.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for chunks-cach-l2 pods</td>
@@ -2297,17 +2304,6 @@ null
 			<td>Annotations for chunks-cache-l2 pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>chunksCache.l2.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
