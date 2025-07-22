@@ -111,7 +111,7 @@ func categoriesContain(categories []LabelCategory, category LabelCategory) bool 
 }
 
 type stringColumn struct {
-	data []byte
+	data    []byte
 	offsets []int
 
 	// indices is a selection vector.
@@ -213,11 +213,13 @@ func newColumnarLabels(capacity int) *columnarLabels {
 	}
 }
 
-// TODO: accept string... like labels.FromStrings
-func newColumnarLabelsFrom(labels []labels.Label) *columnarLabels {
-	c := newColumnarLabels(len(labels))
-	for _, l := range labels {
-		c.add(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
+func newColumnarLabelsFromStrings(ss ...string) *columnarLabels {
+	if len(ss)%2 != 0 {
+		panic("invalid number of strings")
+	}
+	c := newColumnarLabels(len(ss) / 2)
+	for i := 0; i < len(ss); i += 2 {
+		c.add(unsafeGetBytes(ss[i]), unsafeGetBytes(ss[i+1]))
 	}
 	return c
 }
@@ -616,18 +618,18 @@ func (b *LabelsBuilder) Range(f func(l labels.Label), categories ...LabelCategor
 	}
 
 	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
-			if b.err != "" {
-				f(labels.Label{
-					Name:  logqlmodel.ErrorLabel,
-					Value: b.err,
-				})
-			}
-			if b.errDetails != "" {
-				f(labels.Label{
-					Name:  logqlmodel.ErrorDetailsLabel,
-					Value: b.errDetails,
-				})
-			}
+		if b.err != "" {
+			f(labels.Label{
+				Name:  logqlmodel.ErrorLabel,
+				Value: b.err,
+			})
+		}
+		if b.errDetails != "" {
+			f(labels.Label{
+				Name:  logqlmodel.ErrorDetailsLabel,
+				Value: b.errDetails,
+			})
+		}
 	}
 
 	return

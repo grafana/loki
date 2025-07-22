@@ -331,15 +331,15 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-	b.add[StructuredMetadataLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "toreplace", Value: "buzz"}, {Name: "fzz", Value: "bzz"}})
-	b.add[ParsedLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "pzz", Value: "pvzz"}})
+	b.add[StructuredMetadataLabel] = newColumnarLabelsFromStrings("toreplace", "buzz", "fzz", "bzz")
+	b.add[ParsedLabel] = newColumnarLabelsFromStrings("pzz", "pvzz")
 	expected := []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
 	actual := b.UnsortedLabels(nil)
 	require.ElementsMatch(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "fzz", Value: "bzz"}})
-	b.add[ParsedLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}})
+	b.add[StructuredMetadataLabel] = newColumnarLabelsFromStrings("fzz", "bzz")
+	b.add[ParsedLabel] = newColumnarLabelsFromStrings("toreplace", "buzz", "pzz", "pvzz")
 	expected = []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
 	actual = b.UnsortedLabels(nil)
 	sortLabelSlice(expected)
@@ -347,8 +347,8 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 	assert.Equal(t, expected, actual)
 
 	b.Reset()
-	b.add[StructuredMetadataLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "fzz", Value: "bzz"}, {Name: "toreplacezz", Value: "test"}})
-	b.add[ParsedLabel] = newColumnarLabelsFrom([]labels.Label{{Name: "toreplacezz", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}})
+	b.add[StructuredMetadataLabel] = newColumnarLabelsFromStrings("fzz", "bzz", "toreplacezz", "test")
+	b.add[ParsedLabel] = newColumnarLabelsFromStrings("toreplacezz", "buzz", "pzz", "pvzz")
 	expected = []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "fuzz"}, {Name: "pzz", Value: "pvzz"}, {Name: "toreplacezz", Value: "buzz"}}
 	actual = b.UnsortedLabels(nil)
 	sortLabelSlice(expected)

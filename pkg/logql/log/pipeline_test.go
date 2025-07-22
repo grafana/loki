@@ -92,9 +92,7 @@ func TestPipeline(t *testing.T) {
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories]*columnarLabels{
-		ParsedLabel: newColumnarLabelsFrom([]labels.Label{
-			{Name: "baz", Value: "blip"},
-		}),
+		ParsedLabel: newColumnarLabelsFromStrings("baz", "blip"),
 	}
 
 	p.Reset()
@@ -170,9 +168,7 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories]*columnarLabels{
-		ParsedLabel: newColumnarLabelsFrom([]labels.Label{
-			{Name: "baz", Value: "blip"},
-		}),
+		ParsedLabel: newColumnarLabelsFromStrings("baz", "blip"),
 	}
 
 	p.Reset()
