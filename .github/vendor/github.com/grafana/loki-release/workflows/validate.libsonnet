@@ -48,7 +48,7 @@ local validationJob = _validationJob(false);
                      + step.withId('gather-tests')
                      + step.withRun(|||
                        echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "lambda-promtail" -e "helm" -v \
+                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
                          | cut  -d / -f 2,3 \
                          | uniq \
                          | sort \
@@ -90,22 +90,6 @@ local validationJob = _validationJob(false);
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),
-
-  testLambdaPromtail: validationJob
-                      + job.withSteps([
-                        common.fetchReleaseRepo,
-                        common.fixDubiousOwnership,
-                        common.fetchReleaseLib,
-                        step.new('install dependencies')
-                        + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-                        + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
-                        step.new('test lambda-promtail package')
-                        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-                        + step.withWorkingDirectory('release/tools/lambda-promtail')
-                        + step.withRun(|||
-                          gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
-                        |||),
-                      ]),
 
   testPushPackage: validationJob
                    + job.withSteps([
@@ -220,7 +204,6 @@ local validationJob = _validationJob(false);
                'golangciLint',
                'lintFiles',
                'integration',
-               'testLambdaPromtail',
                'testPackages',
                'testPushPackage',
              ])
@@ -243,7 +226,6 @@ local validationJob = _validationJob(false);
            'golangciLint',
            'lintFiles',
            'integration',
-           'testLambdaPromtail',
            'testPackages',
            'testPushPackage',
          ])
