@@ -183,6 +183,7 @@ func (s *columnarLabels) len() int {
 }
 
 func (s *columnarLabels) get(key []byte) ([]byte, bool) {
+	// TODO: to a string search on s.names.data
 	for i := 0; i < len(s.names.indices); i++ {
 		if bytes.Equal(s.names.get(i), key) {
 			return s.values.get(i), true
@@ -196,6 +197,7 @@ func (s *columnarLabels) getAt(i int) (name, value []byte) {
 }
 
 func (s *columnarLabels) del(name []byte) {
+	// TODO: to a string search on s.names.data
 	for i := 0; i < len(s.names.indices); i++ {
 		if bytes.Equal(s.names.get(i), name) {
 			s.names.del(i)
