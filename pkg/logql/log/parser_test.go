@@ -306,7 +306,7 @@ func TestLabelShortCircuit(t *testing.T) {
 			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
 			require.Equal(t, ParsedLabel, category)
-			require.Contains(t, name, "text1")
+			require.Contains(t, string(name), "text1")
 		})
 	}
 }
@@ -1390,12 +1390,12 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		require.True(t, ok)
 
 		res, cat, ok := metadataStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", res)
+		require.Equal(t, "lowkey", string(res))
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 
 		res, cat, ok = basicStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", res)
+		require.Equal(t, "lowkey", string(res))
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 	})
@@ -1419,12 +1419,12 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		require.True(t, ok)
 
 		res, cat, ok := metadataStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", res)
+		require.Equal(t, "lowkey", string(res))
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 
 		res, cat, ok = basicStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", res)
+		require.Equal(t, "lowkey", string(res))
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 	})
