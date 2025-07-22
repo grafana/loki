@@ -195,7 +195,11 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	for k := range b.add {
-		b.add[k].reset()
+		if b.add[k] != nil {
+			b.add[k].reset()
+		} else {
+			b.add[k] = newColumnarLabels(0)
+		}
 	}
 	b.err = ""
 	b.errDetails = ""

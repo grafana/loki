@@ -99,7 +99,7 @@ func TestPipeline(t *testing.T) {
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
 	for _, v := range p.baseBuilder.add {
-		require.Len(t, v, 0)
+		require.Equal(t, 0, v.len())
 	}
 }
 
@@ -175,7 +175,7 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
 	for _, v := range p.baseBuilder.add {
-		require.Len(t, v, 0)
+		require.Equal(t, 0, v.len())
 	}
 }
 
@@ -511,7 +511,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			for i, line := range tt.lines {
 				finalLine, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 				require.Equal(t, tt.wantLine[i], finalLine)
-				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
+				require.Equal(t, tt.wantLabels[i], finalLbs.Labels()) // TODO: fix this
 				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
 				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())

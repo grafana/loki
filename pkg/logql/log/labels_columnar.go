@@ -82,6 +82,12 @@ func (c *columnarLabels) override(name, value []byte) bool {
 }
 
 func (c *columnarLabels) reset() {
+	if c.names == nil {
+		c.names = newStringColumn(0)
+	}
+	if c.values == nil {
+		c.values = newStringColumn(0)
+	}
 	c.names.reset()
 	c.values.reset()
 }
