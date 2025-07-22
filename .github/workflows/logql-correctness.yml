@@ -108,7 +108,6 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
-            -tags slicelabels \
             -v -slow-tests \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
             ${{ inputs.failfast == true && '-failfast' || '' }} \

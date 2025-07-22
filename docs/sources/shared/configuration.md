@@ -5127,7 +5127,7 @@ The `ruler` block configures the Loki ruler.
 [datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
-[external_labels: <list of Labels>]
+external_labels:
 
 # The grpc_client block configures the gRPC client used to communicate between a
 # client and server component in Loki.

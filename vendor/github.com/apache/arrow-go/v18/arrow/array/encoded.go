@@ -312,7 +312,7 @@ func NewRunEndEncodedBuilder(mem memory.Allocator, runEnds, encoded arrow.DataTy
 		maxRunEnd:        maxEnd,
 		lastUnmarshalled: nil,
 	}
-	reb.builder.refCount.Add(1)
+	reb.refCount.Add(1)
 	return reb
 }
 
