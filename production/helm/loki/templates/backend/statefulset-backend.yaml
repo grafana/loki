@@ -149,6 +149,10 @@ spec:
             {{- end }}
             - name: FOLDER
               value: "{{ .Values.sidecar.rules.folder }}"
+            {{- if .Values.sidecar.rules.folderAnnotation }}
+            - name: FOLDER_ANNOTATION
+              value: "{{ .Values.sidecar.rules.folderAnnotation }}"
+            {{- end }}
             - name: RESOURCE
               value: {{ quote .Values.sidecar.rules.resource }}
             {{- if .Values.sidecar.enableUniqueFilenames }}
