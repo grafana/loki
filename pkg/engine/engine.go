@@ -171,6 +171,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		"duration_full", durFull,
 	)
 
+	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return builder.Build(stats, metadataCtx), nil
 }
 
