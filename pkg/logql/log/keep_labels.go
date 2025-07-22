@@ -2,6 +2,7 @@ package log
 
 import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type KeepLabels struct {
@@ -17,10 +18,9 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		return line, true
 	}
 
-	// TODO: Reuse buf?
-	for _, lb := range lbls.UnsortedLabels(nil) {
+	lbls.Range(func(lb labels.Label) {
 		if isSpecialLabel(lb.Name) {
-			continue
+			return
 		}
 
 		var keep bool
@@ -39,7 +39,7 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		if !keep {
 			lbls.Del(lb.Name)
 		}
-	}
+	})
 
 	return line, true
 }

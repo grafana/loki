@@ -414,7 +414,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		if f.Rename {
 			v, _, ok := lbs.GetWithCategory(f.Value)
 			if ok {
-				lbs.Set(ParsedLabel, f.Name, v)
+				lbs.Set(ParsedLabel, unsafeGetBytes(f.Name), v)
 				lbs.Del(f.Value)
 			}
 			continue
@@ -428,7 +428,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
-		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
+		lbs.Set(ParsedLabel, unsafeGetBytes(f.Name), lf.buf.Bytes())
 	}
 	return l, true
 }
