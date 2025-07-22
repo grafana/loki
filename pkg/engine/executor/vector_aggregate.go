@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -60,7 +61,7 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *VectorAggregationPipeline) Read() error {
+func (v *VectorAggregationPipeline) Read(ctx context.Context) error {
 	if v.state.err != nil {
 		return v.state.err
 	}
@@ -70,7 +71,7 @@ func (v *VectorAggregationPipeline) Read() error {
 		v.state.batch.Release()
 	}
 
-	record, err := v.read()
+	record, err := v.read(ctx)
 	v.state = newState(record, err)
 
 	if err != nil {
@@ -79,7 +80,7 @@ func (v *VectorAggregationPipeline) Read() error {
 	return nil
 }
 
-func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
+func (v *VectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)
@@ -90,7 +91,7 @@ func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 		inputsExhausted = true
 
 		for _, input := range v.inputs {
-			if err := input.Read(); err != nil {
+			if err := input.Read(ctx); err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
@@ -123,7 +124,7 @@ func (v *VectorAggregationPipeline) read() (arrow.Record, error) {
 					return nil, err
 				}
 
-				if vec.Type() != datatype.String {
+				if vec.Type() != datatype.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
 				}
 
@@ -237,15 +238,15 @@ func (a *vectorAggregator) buildRecord() (arrow.Record, error) {
 	fields = append(fields,
 		arrow.Field{
 			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     arrow.FixedWidthTypes.Timestamp_ns,
+			Type:     datatype.Arrow.Timestamp,
 			Nullable: false,
 			Metadata: datatype.ColumnMetadataBuiltinTimestamp,
 		},
 		arrow.Field{
 			Name:     types.ColumnNameGeneratedValue,
-			Type:     arrow.PrimitiveTypes.Int64,
+			Type:     datatype.Arrow.Integer,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer),
+			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer),
 		},
 	)
 
@@ -257,9 +258,9 @@ func (a *vectorAggregator) buildRecord() (arrow.Record, error) {
 
 		fields = append(fields, arrow.Field{
 			Name:     colExpr.Ref.Column,
-			Type:     arrow.BinaryTypes.String,
+			Type:     datatype.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(colExpr.Ref.Type, datatype.String),
+			Metadata: datatype.ColumnMetadata(colExpr.Ref.Type, datatype.Loki.String),
 		})
 	}
 

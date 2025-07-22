@@ -371,7 +371,7 @@ func (i *TSDBIndex) Volume(
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+	seriesLabelsBuilder := labels.NewScratchBuilder(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -414,17 +414,17 @@ func (i *TSDBIndex) Volume(
 				var labelVolumes map[string]uint64
 
 				if aggregateBySeries {
-					seriesLabels = seriesLabels[:0]
-					for _, l := range ls {
+					seriesLabelsBuilder.Reset()
+					ls.Range(func(l labels.Label) {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							seriesLabels = append(seriesLabels, l)
+							seriesLabelsBuilder.Add(l.Name, l.Value)
 						}
-					}
+					})
 				} else {
 					// when aggregating by labels, capture sizes for target labels if provided,
 					// otherwise for all intersecting labels
-					labelVolumes = make(map[string]uint64, len(ls))
-					for _, l := range ls {
+					labelVolumes = make(map[string]uint64, ls.Len())
+					ls.Range(func(l labels.Label) {
 						if len(targetLabels) > 0 {
 							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 								labelVolumes[l.Name] += stats.KB << 10
@@ -434,12 +434,15 @@ func (i *TSDBIndex) Volume(
 								labelVolumes[l.Name] += stats.KB << 10
 							}
 						}
-					}
+					})
 				}
+
+				seriesLabelsBuilder.Sort()
+				seriesLabels := seriesLabelsBuilder.Labels()
 
 				// If the labels are < 1k, this does not alloc
 				// https://github.com/prometheus/prometheus/pull/8025
-				hash := seriesLabels.Hash()
+				hash := labels.StableHash(seriesLabels)
 				if _, ok := seriesNames[hash]; !ok {
 					seriesNames[hash] = seriesLabels.String()
 				}

@@ -16,22 +16,22 @@ import (
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{
+			StreamID:  2,
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "foo"}),
+			Line:      []byte("foo bar"),
+		},
+		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  nil,
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "bar"}},
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "bar"}),
 			Line:      []byte("goodbye world"),
-		},
-		{
-			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "foo"}},
-			Line:      []byte("foo bar"),
 		},
 	}
 
@@ -49,26 +49,26 @@ func Test(t *testing.T) {
 	buf, err := buildObject(tracker)
 	require.NoError(t, err)
 
-	// The order of records should be sorted by stream ID then timestamp, and all
+	// The order of records should be sorted by timestamp DESC then stream ID, and all
 	// metadata should be sorted by key then value.
 	expect := []logs.Record{
 		{
-			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "foo"}, {Name: "cluster", Value: "test"}},
-			Line:      []byte("foo bar"),
+			StreamID:  2,
+			Timestamp: time.Unix(100, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{},
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "bar"}, {Name: "cluster", Value: "test"}},
-			Line:      []byte("goodbye world"),
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("foo bar"),
 		},
 	}
 

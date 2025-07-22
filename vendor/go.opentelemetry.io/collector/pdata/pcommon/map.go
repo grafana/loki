@@ -55,12 +55,14 @@ func (m Map) EnsureCapacity(capacity int) {
 	copy(*m.getOrig(), oldOrig)
 }
 
-// Get returns the Value associated with the key and true. Returned
+// Get returns the Value associated with the key and true. The returned
 // Value is not a copy, it is a reference to the value stored in this map.
 // It is allowed to modify the returned value using Value.Set* functions.
 // Such modification will be applied to the value stored in this map.
+// Accessing the returned value after modifying the underlying map
+// (removing or adding new values) is an undefined behavior.
 //
-// If the key does not exist returns a zero-initialized KeyValue and false.
+// If the key does not exist, returns a zero-initialized KeyValue and false.
 // Calling any functions on the returned invalid instance may cause a panic.
 func (m Map) Get(key string) (Value, bool) {
 	for i := range *m.getOrig() {

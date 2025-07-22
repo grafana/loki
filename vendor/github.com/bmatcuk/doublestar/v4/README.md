@@ -139,6 +139,15 @@ of options may be passed to these functions, and in any order, as the last
 argument(s).
 
 ```go
+WithCaseInsensitive()
+```
+
+WithCaseInsensitive is an option that can be passed to Glob, GlobWalk, or
+FilepathGlob. If passed, doublestar will treat all alphabetic characters as
+case insensitive (i.e. "a" in the pattern would match "a" or "A"). This is
+useful for platforms like Windows where paths are case insensitive by default.
+
+```go
 WithFailOnIOErrors()
 ```
 

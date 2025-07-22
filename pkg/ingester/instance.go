@@ -897,7 +897,7 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			// If the labels are < 1k, this does not alloc
 			// https://github.com/prometheus/prometheus/pull/8025
 			seriesLabels := seriesLabelsBuilder.Labels()
-			hash := seriesLabels.Hash()
+			hash := labels.StableHash(seriesLabels)
 			if _, ok := seriesNames[hash]; !ok {
 				seriesNames[hash] = seriesLabels.String()
 			}

@@ -1893,6 +1893,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for chunks-cache pods</td>
@@ -2019,6 +2028,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for chunks-cache pods</td>
@@ -2043,6 +2061,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -2056,6 +2075,15 @@ true
 			<td>Enable creating PVCs for the chunks-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2092,17 +2120,6 @@ null
 			<td>Annotations for chunks-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>chunksCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -3093,7 +3110,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.1"
+    "tag": "3.5.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3150,7 +3167,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.4.0"
+  "version": "3.5.2"
 }
 </pre>
 </td>
@@ -3270,7 +3287,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -4257,7 +4274,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.28-alpine"
+"1.29-alpine"
 </pre>
 </td>
 		</tr>
@@ -4400,6 +4417,15 @@ See values.yaml
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 "{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -6235,7 +6261,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -6285,26 +6311,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.memcached</td>
+			<td>loki.operational_config</td>
 			<td>object</td>
-			<td>Configure memcached as an external cache for chunk and results cache. Disabled by default must enable and specify a host for each cache you would like to use.</td>
+			<td>Optional operational configuration</td>
 			<td><pre lang="json">
-{
-  "chunk_cache": {
-    "batch_size": 256,
-    "enabled": false,
-    "host": "",
-    "parallelism": 10,
-    "service": "memcached-client"
-  },
-  "results_cache": {
-    "default_validity": "12h",
-    "enabled": false,
-    "host": "",
-    "service": "memcached-client",
-    "timeout": "500ms"
-  }
-}
+{}
 </pre>
 </td>
 		</tr>
@@ -6587,7 +6598,7 @@ null
 		<tr>
 			<td>loki.tenants</td>
 			<td>list</td>
-			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br> Example: <pre> tenants:<br>   - name: "test-user-1"<br>     password: "test-password-1"<br>   - name: "test-user-2"<br>     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` </pre></td>
 			<td><pre lang="json">
 []
 </pre>
@@ -6769,6 +6780,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.kind</td>
+			<td>string</td>
+			<td>The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.</td>
+			<td><pre lang="json">
+"DaemonSet"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.labelname</td>
 			<td>string</td>
 			<td>The name of the label to look for at loki when doing the checks.</td>
@@ -6904,6 +6924,15 @@ false
   },
   "readOnlyRootFilesystem": true
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.enabled</td>
+			<td>bool</td>
+			<td>Enable the built in memcached server provided by the chart</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -10202,6 +10231,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ template \"loki.fullname\" $ }}-results-cache.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for results-cache pods</td>
@@ -10319,6 +10357,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
@@ -10334,6 +10381,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -10347,6 +10395,15 @@ true
 			<td>Enable creating PVCs for the results-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10383,17 +10440,6 @@ null
 			<td>Annotations for results-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>resultsCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -11049,7 +11095,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.6"
+"1.30.7"
 </pre>
 </td>
 		</tr>

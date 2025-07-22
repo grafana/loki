@@ -3,12 +3,10 @@ package logsobj
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -230,17 +228,17 @@ func (b *Builder) Append(stream logproto.Stream) error {
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
-	labels, ok := b.labelCache.Get(labelString)
+	cached, ok := b.labelCache.Get(labelString)
 	if ok {
-		return labels, nil
+		return cached, nil
 	}
 
-	labels, err := syntax.ParseLabels(labelString)
+	parsed, err := syntax.ParseLabels(labelString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse labels: %w", err)
+		return labels.EmptyLabels(), fmt.Errorf("failed to parse labels: %w", err)
 	}
-	b.labelCache.Add(labelString, labels)
-	return labels, nil
+	b.labelCache.Add(labelString, parsed)
+	return parsed, nil
 }
 
 // labelsEstimate estimates the size of a set of labels in bytes.
@@ -250,10 +248,10 @@ func labelsEstimate(ls labels.Labels) int {
 		valuesSize int
 	)
 
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		keysSize += len(l.Name)
 		valuesSize += len(l.Value)
-	}
+	})
 
 	// Keys are stored as columns directly, while values get compressed. We'll
 	// underestimate a 2x compression ratio.
@@ -276,17 +274,14 @@ func streamSizeEstimate(stream logproto.Stream) int {
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := make(labels.Labels, 0, len(md))
+	l := labels.NewScratchBuilder(len(md))
+
 	for _, label := range md {
-		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
+		l.Add(label.Name, label.Value)
 	}
-	sort.Slice(l, func(i, j int) bool {
-		if l[i].Name == l[j].Name {
-			return cmp.Compare(l[i].Value, l[j].Value) < 0
-		}
-		return cmp.Compare(l[i].Name, l[j].Name) < 0
-	})
-	return l
+
+	l.Sort()
+	return l.Labels()
 }
 
 func (b *Builder) estimatedSize() int {

@@ -175,10 +175,10 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
-	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
 		b.minValue = value
 	}
-	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
 		b.maxValue = value
 	}
 }
@@ -291,7 +291,6 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
-
 	minValueBytes, err := b.minValue.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))

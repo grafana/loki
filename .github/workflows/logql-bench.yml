@@ -18,7 +18,7 @@ on:
         default: true
         type: 'boolean'
       bench_dataobj_v2:
-        description: 'Benchmark V2 chunk store'
+        description: 'Benchmark V2 data object store'
         required: false
         default: false # Disabled by default due to less complete implementation
         type: 'boolean'
@@ -106,6 +106,7 @@ jobs:
         run: mkdir -p ./pkg/logql/bench/results
 
       - name: Run benchmarks
+        shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \

@@ -1,4 +1,5 @@
-{{- if .Values.chunksCache.enabled }}
+{{- if and .Values.chunksCache.enabled (.Values.memcached.enabled) }}
+{{- if gt (int .Values.chunksCache.replicas) 1 }}
 apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:
@@ -12,5 +13,8 @@ spec:
     matchLabels:
       {{- include "loki.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: memcached-chunks-cache
-  maxUnavailable: 1
+  {{- with .Values.chunksCache.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end -}}
 {{- end -}}
+{{- end }}
