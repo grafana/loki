@@ -1375,7 +1375,7 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		var (
 			metadataStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "bar"), 0).
-					Set(StructuredMetadataLabel, "app", "loki")
+					Set(StructuredMetadataLabel, []byte("app"), []byte("loki"))
 
 			basicStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "baz"), 0)
@@ -1404,7 +1404,7 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		var (
 			metadataStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "bar"), 0).
-					Set(StructuredMetadataLabel, "app", "loki")
+					Set(StructuredMetadataLabel, []byte("app"), []byte("loki"))
 
 			basicStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "baz"), 0)

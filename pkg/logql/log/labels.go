@@ -213,6 +213,15 @@ func newColumnarLabels(capacity int) *columnarLabels {
 	}
 }
 
+// TODO: accept string... like labels.FromStrings
+func newColumnarLabelsFrom(labels []labels.Label) *columnarLabels {
+	c := newColumnarLabels(len(labels))
+	for _, l := range labels {
+		c.add(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
+	}
+	return c
+}
+
 // BaseLabelsBuilder is a label builder used by pipeline and stages.
 // Only one base builder is used and it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
