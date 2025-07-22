@@ -1965,6 +1965,18 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.exporterProbes</td>
+			<td>object</td>
+			<td>Allow overriding exporter probes for chunks cache</td>
+			<td><pre lang="json">
+{
+  "livenessProbe": {},
+  "readinessProbe": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.extraArgs</td>
 			<td>object</td>
 			<td>Additional CLI args for chunks-cache</td>
@@ -2033,6 +2045,18 @@ true
 			<td>Pod Disruption Budget maxUnavailable</td>
 			<td><pre lang="json">
 1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.memcachedProbes</td>
+			<td>object</td>
+			<td>Allow overriding memcached probes for chunks cache</td>
+			<td><pre lang="json">
+{
+  "livenessProbe": {},
+  "readinessProbe": {}
+}
 </pre>
 </td>
 		</tr>
@@ -6964,6 +6988,23 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -7062,6 +7103,42 @@ true
 			<td></td>
 			<td><pre lang="json">
 "v0.15.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": 9150
+  },
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": 9150
+  },
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -10294,6 +10371,18 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.exporterProbes</td>
+			<td>object</td>
+			<td>Allow overriding exporter probes for results cache</td>
+			<td><pre lang="json">
+{
+  "livenessProbe": {},
+  "readinessProbe": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.extraArgs</td>
 			<td>object</td>
 			<td>Additional CLI args for results-cache</td>
@@ -10362,6 +10451,18 @@ true
 			<td>Pod Disruption Budget maxUnavailable</td>
 			<td><pre lang="json">
 1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.memcachedProbes</td>
+			<td>object</td>
+			<td>Allow overriding memcached probes for results cache</td>
+			<td><pre lang="json">
+{
+  "livenessProbe": {},
+  "readinessProbe": {}
+}
 </pre>
 </td>
 		</tr>
