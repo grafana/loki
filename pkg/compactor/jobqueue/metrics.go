@@ -58,7 +58,7 @@ func newWorkerMetrics(r prometheus.Registerer, allWorkersConnectedToCompactor fu
 
 	m.jobsProcessed = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
-		Name:      "compactor_worker_job_processed_attempts",
+		Name:      "compactor_worker_jobs_processed_total",
 		Help:      "Number of jobs processed by worker with their processing status",
 	}, []string{"status"})
 	m.workerConnectedToCompactor = promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
