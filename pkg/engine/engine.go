@@ -19,7 +19,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -73,6 +75,9 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	start := time.Now()
 
+	statsCtx, ctx := stats.NewContext(ctx)
+	metadataCtx, ctx := metadata.NewContext(ctx)
+
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 
@@ -93,7 +98,6 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	)
 
 	t = time.Now() // start stopwatch for physical planning
-	statsCtx, ctx := stats.NewContext(ctx)
 	catalogueType := physical.CatalogueTypeDirect
 	if e.opts.CataloguePath != "" {
 		catalogueType = physical.CatalogueTypeIndex
@@ -150,20 +154,24 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return logqlmodel.Result{}, err
 	}
 
-	builder.SetStats(statsCtx.Result(time.Since(start), 0, builder.Len()))
+	durExecution := time.Since(t)
+	durFull := time.Since(start)
 
 	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
-	e.metrics.execution.Observe(time.Since(t).Seconds())
-	durExecution := time.Since(t)
+	e.metrics.execution.Observe(durFull.Seconds())
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
 	level.Debug(logger).Log(
 		"msg", "finished executing with new engine",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
+		"duration_full", durFull,
 	)
 
-	return builder.Build(), nil
+	return builder.Build(stats, metadataCtx), nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
