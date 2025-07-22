@@ -2,7 +2,6 @@ package builder
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"math"
 	"slices"
@@ -128,7 +127,6 @@ func newBatchedChunkLoader(
 ) *batchedLoader[chunk.Chunk, chunk.Chunk, v1.ChunkRefWithIter] {
 
 	mapper := func(c chunk.Chunk) (v1.ChunkRefWithIter, error) {
-		fmt.Println("chunk", c)
 		chk := c.Data.(*chunkenc.Facade).LokiChunk()
 		metrics.chunkSize.Observe(float64(chk.UncompressedSize()))
 		itr, err := chk.Iterator(
