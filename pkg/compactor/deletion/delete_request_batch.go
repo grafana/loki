@@ -173,3 +173,12 @@ func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
 
 	return requests
 }
+
+func (b *deleteRequestBatch) getDeletionIntervalForUser(userID string) model.Interval {
+	userRequests, ok := b.deleteRequestsToProcess[userID]
+	if !ok {
+		return model.Interval{}
+	}
+
+	return userRequests.requestsInterval
+}

@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -67,6 +69,7 @@ type deletionManifestBuilder struct {
 	currentTableName          string
 
 	allUserRequests    []*DeleteRequest
+	deletionInterval   model.Interval
 	creationTime       time.Time
 	segmentsCount      int
 	overallChunksCount int
@@ -98,10 +101,35 @@ func newDeletionManifestBuilder(deletionManifestStoreClient client.ObjectClient,
 	return builder, nil
 }
 
+func (d *deletionManifestBuilder) canSkipSeries(userID []byte, lbls labels.Labels) (bool, error) {
+	userIDStr := unsafeGetString(userID)
+
+	userRequests := d.deleteRequestBatch.getAllRequestsForUser(userIDStr)
+	if len(userRequests) == 0 {
+		return true, fmt.Errorf("no requests loaded for user: %s", userIDStr)
+	}
+
+	for _, deleteRequest := range d.deleteRequestBatch.getAllRequestsForUser(userIDStr) {
+		// if the delete request touches the series, do not skip it
+		if labels.Selector(deleteRequest.matchers).Matches(lbls) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 // AddSeries adds a series and its chunks to the current segment.
 // It flushes the current segment if the user ID or table name changes.
 // It also ensures that the current segment does not exceed the maximum number of chunks.
 func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName string, series retention.Series) error {
+	canSkip, err := d.canSkipSeries(series.UserID(), series.Labels())
+	if err != nil {
+		return err
+	}
+	if canSkip {
+		return nil
+	}
 	userIDStr := unsafeGetString(series.UserID())
 	currentLabels := series.Labels().String()
 
@@ -115,13 +143,17 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 		d.currentUserID = string(series.UserID())
 		d.currentTableName = tableName
 		d.allUserRequests = d.deleteRequestBatch.getAllRequestsForUser(userIDStr)
-		if len(d.allUserRequests) == 0 {
-			return fmt.Errorf("no requests loaded for user: %s", userIDStr)
-		}
+		d.deletionInterval = d.deleteRequestBatch.getDeletionIntervalForUser(userIDStr)
 	}
 
 	var chunksGroupIdentifier uint64
 	for _, chk := range series.Chunks() {
+		if !intervalsOverlap(d.deletionInterval, model.Interval{
+			Start: chk.From,
+			End:   chk.Through,
+		}) {
+			continue
+		}
 		if d.currentSegmentChunksCount >= maxChunksPerSegment {
 			if err := d.flushCurrentBatch(ctx); err != nil {
 				return err
