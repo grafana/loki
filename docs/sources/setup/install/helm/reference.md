@@ -11583,6 +11583,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.rules.folderAnnotation</td>
+			<td>string</td>
+			<td>The annotation overwriting the folder value. The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER. Useful for multi-tenancy setups.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.rules.label</td>
 			<td>string</td>
 			<td>Label that the configmaps/secrets with rules will be marked with.</td>
