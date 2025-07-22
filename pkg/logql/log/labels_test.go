@@ -16,7 +16,7 @@ import (
 
 func TestLabelsBuilder_Get(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(ParsedLabel, "bar", "buzz")
@@ -52,7 +52,7 @@ func TestLabelsBuilder_Get(t *testing.T) {
 
 func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	b.SetErr("err")
 	lbsWithErr := b.LabelsResult()
@@ -63,7 +63,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
 	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
-	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.StableHash(expectedLbs), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
 	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
@@ -74,7 +74,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 
 func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 
 	// This works for any category
@@ -88,7 +88,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
 	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
-	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.StableHash(expectedLbs), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Equal(t, labels.EmptyLabels(), lbsWithErr.StructuredMetadata())
 	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
@@ -107,7 +107,7 @@ func TestLabelsBuilder_IntoMap(t *testing.T) {
 	lbs := labels.FromStrings(strs...)
 
 	t.Run("it still copies the map after a Reset", func(t *testing.T) {
-		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 
 		m := map[string]string{}
 		b.IntoMap(m)
@@ -132,7 +132,7 @@ func TestLabelsBuilder_IntoMap(t *testing.T) {
 	})
 
 	t.Run("it can copy the map several times", func(t *testing.T) {
-		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 
 		m := map[string]string{}
 		b.IntoMap(m)
@@ -163,7 +163,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 		"ToReplace", "text",
 	}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, lbs, b.LabelsResult())
 	b.SetErr("err")
@@ -235,7 +235,7 @@ func TestLabelsBuilder_Set(t *testing.T) {
 		"toreplace", "fuzz",
 	}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 
 	// test duplicating stream label with parsed label
 	b.Set(StructuredMetadataLabel, "stzz", "stvzz")
@@ -330,7 +330,7 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 		"toreplace", "fuzz",
 	}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 	b.add[StructuredMetadataLabel] = []labels.Label{{Name: "toreplace", Value: "buzz"}, {Name: "fzz", Value: "bzz"}}
 	b.add[ParsedLabel] = []labels.Label{{Name: "pzz", Value: "pvzz"}}
 	expected := []labels.Label{{Name: "cluster", Value: "us-central1"}, {Name: "namespace", Value: "loki"}, {Name: "fzz", Value: "bzz"}, {Name: "toreplace", Value: "buzz"}, {Name: "pzz", Value: "pvzz"}}
@@ -367,7 +367,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 		"job", "us-central1/loki",
 		"cluster", "us-central1"}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Reset()
 	assertLabelResult(t, labels.FromStrings("namespace", "loki"), b.GroupedLabels())
 	b.SetErr("err")
@@ -384,7 +384,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	// cached.
 	assertLabelResult(t, expected, b.GroupedLabels())
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	b.Del("job")
@@ -394,12 +394,12 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 	require.False(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	assertLabelResult(t, labels.FromStrings("foo", "bar"), b.GroupedLabels())
 	require.True(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, lbs.Hash())
+	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Del("job")
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
@@ -410,7 +410,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.GroupedLabels())
 	require.False(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, lbs.Hash())
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	expected = labels.FromStrings("namespace", "loki",
 		"job", "us-central1/loki",
@@ -419,7 +419,7 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.GroupedLabels())
 	require.True(t, b.referencedStructuredMetadata)
 
-	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, labels.StableHash(lbs))
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
@@ -437,7 +437,7 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		res.Labels(),
 	)
 	require.Equal(t,
-		lbs.Hash(),
+		labels.StableHash(lbs),
 		res.Hash(),
 	)
 	require.Equal(t,
@@ -511,7 +511,7 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 			newLabels := newB.Labels()
 
 			lbs := labels.FromStrings("already", "in")
-			builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+			builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 
 			b.ResetTimer()
 			b.ReportAllocs()

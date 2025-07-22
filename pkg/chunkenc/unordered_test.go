@@ -769,12 +769,12 @@ func Test_HeadIteratorHash(t *testing.T) {
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {
-				require.Equal(t, lbs.Hash(), eit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), eit.StreamHash())
 			}
 
 			sit := b.SampleIterator(context.TODO(), 0, 2, countEx.ForStream(lbs))
 			for sit.Next() {
-				require.Equal(t, lbs.Hash(), sit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), sit.StreamHash())
 			}
 		})
 
@@ -791,7 +791,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 			)
 
 			for eit.Next() {
-				require.Equal(t, lbs.Hash(), eit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), eit.StreamHash())
 			}
 
 			sit := b.SampleIterator(
@@ -802,7 +802,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 				bytesEx.ForStream(lbs),
 			)
 			for sit.Next() {
-				require.Equal(t, lbs.Hash(), sit.StreamHash())
+				require.Equal(t, labels.StableHash(lbs), sit.StreamHash())
 			}
 		})
 	}
