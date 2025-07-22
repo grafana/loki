@@ -12,7 +12,7 @@ fi
 
 if [[ -z "${NEW_VERSION}" ]]
 then
-    read -rp "Enter new release version (eg 2.9.2): " NEW_VERSION
+    read -rp "Enter new release version (eg 2.9.2): " NEW_VESION
 fi
 
 

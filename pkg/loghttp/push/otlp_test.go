@@ -630,6 +630,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		name           string
 		buildLogRecord func() plog.LogRecord
 		expectedResp   push.Entry
+		otlpConfig     OTLPConfig
 	}{
 		{
 			name: "only body and timestamp set",
@@ -644,6 +645,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 				Line:               "log body",
 				StructuredMetadata: push.LabelsAdapter{},
 			},
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
 			name: "all the values set",
@@ -699,6 +701,74 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 						Value: "1223ad1223ad1223",
 					},
 				},
+			},
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
+		},
+		{
+			name: "all the values set with conversion off - dots are not converted to underscores",
+			buildLogRecord: func() plog.LogRecord {
+				log := plog.NewLogRecord()
+				log.Body().SetStr("log body")
+				log.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				log.SetObservedTimestamp(pcommon.Timestamp(now.UnixNano() + 1))
+				log.SetSeverityNumber(plog.SeverityNumberDebug)
+				log.SetSeverityText("debug")
+				log.SetDroppedAttributesCount(1)
+				log.SetFlags(plog.DefaultLogRecordFlags.WithIsSampled(true))
+				log.SetTraceID([16]byte{0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x56, 0x78})
+				log.SetSpanID([8]byte{0x12, 0x23, 0xAD, 0x12, 0x23, 0xAD, 0x12, 0x23})
+				log.Attributes().PutStr("foo", "bar")
+
+				return log
+			},
+			expectedResp: push.Entry{
+				Timestamp: now,
+				Line:      "log body",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "foo",
+						Value: "bar",
+					},
+					{
+						Name:  "observed.timestamp",
+						Value: fmt.Sprintf("%d", now.UnixNano()+1),
+					},
+					{
+						Name:  "severity.number",
+						Value: "5",
+					},
+					{
+						Name:  "severity.text",
+						Value: "debug",
+					},
+					{
+						Name:  "dropped_attributes_count",
+						Value: "1",
+					},
+					{
+						Name:  "flags",
+						Value: fmt.Sprintf("%d", plog.DefaultLogRecordFlags.WithIsSampled(true)),
+					},
+					{
+						Name:  "trace.id",
+						Value: "12345678123456781234567812345678",
+					},
+					{
+						Name:  "span.id",
+						Value: "1223ad1223ad1223",
+					},
+				},
+			},
+			otlpConfig: OTLPConfig{
+				ResourceAttributes: ResourceAttributesConfig{
+					AttributesConfig: []AttributesConfig{
+						{
+							Action:     IndexLabel,
+							Attributes: []string{"pod.name"},
+						},
+					},
+				},
+				ConversionStrategy: NoConversion,
 			},
 		},
 	} {
@@ -812,7 +882,7 @@ func TestAttributesToLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lbls, err := attributesToLabels(tc.buildAttrs(), "")
+			lbls, err := attributesToLabels(tc.buildAttrs(), "", DotsToUnderscores)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, lbls)
 		})
