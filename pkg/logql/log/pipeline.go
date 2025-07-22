@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -59,6 +60,7 @@ type noopPipeline struct {
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := n.baseBuilder.Hash(labels)
+	fmt.Println("hash", h)
 
 	n.mu.RLock()
 	if cached, ok := n.cache[h]; ok {
