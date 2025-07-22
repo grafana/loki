@@ -44,3 +44,76 @@ func TestStringColumn_Del(t *testing.T) {
 	}
 	require.Equal(t, "foobarqux", all)
 }
+
+func TestColumnarLabels_Get(t *testing.T) {
+	cl := newColumnarLabels(10)
+	cl.add([]byte("foo"), []byte("bar"))
+	cl.add([]byte("baz"), []byte("qux"))
+
+	require.Equal(t, 2, cl.len())
+	v, ok := cl.get([]byte("foo"))
+	require.True(t, ok)
+	require.Equal(t, []byte("bar"), v)
+
+	v, ok = cl.get([]byte("baz"))
+	require.True(t, ok)
+	require.Equal(t, []byte("qux"), v)
+}
+
+func TestColumnarLabels_GetAt(t *testing.T) {
+	cl := newColumnarLabels(10)
+	cl.add([]byte("foo"), []byte("bar"))
+	cl.add([]byte("baz"), []byte("qux"))
+
+	require.Equal(t, 2, cl.len())
+	n, v := cl.getAt(0)
+	require.Equal(t, []byte("foo"), n)
+	require.Equal(t, []byte("bar"), v)
+
+	n, v = cl.getAt(1)
+	require.Equal(t, []byte("baz"), n)
+	require.Equal(t, []byte("qux"), v)
+}
+
+func TestColumnarLabels_Del(t *testing.T) {
+	cl := newColumnarLabels(10)
+	cl.add([]byte("foo"), []byte("bar"))
+	cl.add([]byte("baz"), []byte("qux"))
+
+	require.Equal(t, 2, cl.len())
+	cl.del([]byte("foo"))
+	require.Equal(t, 1, cl.len())
+
+	_, ok := cl.get([]byte("foo"))
+	require.False(t, ok)
+
+	n, v := cl.getAt(0)
+	require.Equal(t, []byte("baz"), n)
+	require.Equal(t, []byte("qux"), v)
+}
+
+func TestColumnarLabels_Override(t *testing.T) {
+	cl := newColumnarLabels(10)
+	cl.add([]byte("foo"), []byte("bar"))
+	cl.add([]byte("baz"), []byte("qux"))
+
+	require.Equal(t, 2, cl.len())
+	ok := cl.override([]byte("foo"), []byte("new"))
+	require.True(t, ok)
+	require.Equal(t, 2, cl.len())
+
+	v, ok := cl.get([]byte("foo"))
+	require.True(t, ok)
+	require.Equal(t, []byte("new"), v)
+
+	v, ok = cl.get([]byte("baz"))
+	require.True(t, ok)
+	require.Equal(t, []byte("qux"), v)
+
+	ok = cl.override([]byte("nonexistent"), []byte("new"))
+	require.False(t, ok)
+	require.Equal(t, 2, cl.len())
+
+	_, ok = cl.get([]byte("nonexistent"))
+	require.False(t, ok)
+}

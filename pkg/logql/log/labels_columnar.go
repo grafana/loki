@@ -87,7 +87,7 @@ func (c *columnarLabels) reset() {
 }
 
 func (s *columnarLabels) len() int {
-	return len(s.names.data)
+	return s.names.len()
 }
 
 func (s *columnarLabels) get(key []byte) ([]byte, bool) {
