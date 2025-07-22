@@ -336,7 +336,7 @@ func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
 // Set the name/value pair as a label.
 // The value `v` may not be set if a category with higher preference already contains `n`.
 // Category preference goes as Parsed > Structured Metadata > Stream.
-func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
+func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder {
 	// Parsed takes precedence over Structured Metadata and Stream labels.
 	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
 	if category == ParsedLabel {
@@ -583,6 +583,7 @@ func (b *LabelsBuilder) Map() (map[string]string, bool) {
 
 // LabelsResult returns the LabelsResult from the builder.
 // No grouping is applied and the cache is used when possible.
+// TODO: benchmark for high cardinality labels
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {

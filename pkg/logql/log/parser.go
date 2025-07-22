@@ -36,6 +36,7 @@ var (
 	_ Stage = &LogfmtParser{}
 
 	trueBytes = []byte("true")
+	falseBytes = []byte("false")
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
@@ -242,37 +243,38 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func readValue(v []byte, dataType jsonparser.ValueType) string {
+func readValue(v []byte, dataType jsonparser.ValueType) []byte {
 	switch dataType {
 	case jsonparser.String:
 		return unescapeJSONString(v)
 	case jsonparser.Null:
-		return ""
+		return nil
 	case jsonparser.Number:
-		return string(v)
+		return v
 	case jsonparser.Boolean:
 		if bytes.Equal(v, trueBytes) {
-			return trueString
+			return trueBytes
 		}
-		return falseString
+		return falseBytes
 	default:
-		return ""
+		return nil
 	}
 }
 
-func unescapeJSONString(b []byte) string {
+func unescapeJSONString(b []byte) []byte {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 	bU, err := jsonparser.Unescape(b, stackbuf[:])
 	if err != nil {
-		return ""
+		return nil
 	}
-	res := string(bU)
 
+	res := unsafeGetString(bU)
 	if strings.ContainsRune(res, utf8.RuneError) {
-		res = strings.Map(removeInvalidUtf, res)
+		// TODO: verify that this works
+		return []byte(strings.Map(removeInvalidUtf, res))
 	}
 
-	return res
+	return bU
 }
 
 type RegexpParser struct {
@@ -338,7 +340,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			lbs.Set(ParsedLabel, key, string(value))
+			lbs.Set(ParsedLabel, key, value)
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -414,7 +416,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
-		lbs.Set(ParsedLabel, key, string(val))
+		lbs.Set(ParsedLabel, key, val)
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -476,7 +478,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			continue
 		}
 
-		lbs.Set(ParsedLabel, name, string(m))
+		lbs.Set(ParsedLabel, name, m)
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -535,7 +537,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
 		if !lbs.BaseHas(id) {
-			lbs.Set(ParsedLabel, id, "")
+			lbs.Set(ParsedLabel, id, nil)
 		}
 	}
 
@@ -597,7 +599,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				}
 			}
 
-			lbs.Set(ParsedLabel, key, string(val))
+			lbs.Set(ParsedLabel, key, val)
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
@@ -688,9 +690,9 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(ParsedLabel, key, "")
+			lbs.Set(ParsedLabel, key, nil)
 		case jsonparser.Object:
-			lbs.Set(ParsedLabel, key, string(data))
+			lbs.Set(ParsedLabel, key, data)
 		default:
 			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}
@@ -702,7 +704,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(ParsedLabel, id, "")
+				lbs.Set(ParsedLabel, id, nil)
 			}
 		}
 	}
@@ -772,7 +774,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, trueBytes)
 	}
 }
 
@@ -808,7 +810,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value)
 		default:
 			return nil
 		}
