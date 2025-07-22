@@ -511,7 +511,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			for i, line := range tt.lines {
 				finalLine, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 				require.Equal(t, tt.wantLine[i], finalLine)
-				require.Equal(t, tt.wantLabels[i], finalLbs.Labels()) // TODO: fix this
+				require.Equal(t, tt.wantLabels[i], finalLbs.Labels()) 
 				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
 				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())

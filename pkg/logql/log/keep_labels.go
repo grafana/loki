@@ -18,6 +18,7 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		return line, true
 	}
 
+	del := make([]string, 0, 10)
 	lbls.Range(func(lb labels.Label) {
 		if isSpecialLabel(lb.Name) {
 			return
@@ -37,9 +38,12 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		}
 
 		if !keep {
-			lbls.Del(lb.Name)
+			del = append(del, lb.Name)
 		}
 	})
+	for _, name := range del {
+		lbls.Del(name)
+	}
 
 	return line, true
 }
