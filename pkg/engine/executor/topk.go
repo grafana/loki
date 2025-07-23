@@ -3,10 +3,13 @@ package executor
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -86,6 +89,21 @@ func exprsToFields(exprs []physical.ColumnExpression) ([]arrow.Field, error) {
 	}
 
 	return fields, nil
+}
+
+func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
+	if ref.Type == types.ColumnTypeBuiltin {
+		switch ref.Column {
+		case types.ColumnNameBuiltinTimestamp:
+			return arrow.FixedWidthTypes.Timestamp_ns, datatype.ColumnMetadataBuiltinTimestamp
+		case types.ColumnNameBuiltinMessage:
+			return arrow.BinaryTypes.String, datatype.ColumnMetadataBuiltinMessage
+		default:
+			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
+		}
+	}
+
+	return datatype.Arrow.String, datatype.ColumnMetadata(ref.Type, datatype.Loki.String)
 }
 
 // Read computes the topk as the next record. Read blocks until all input
