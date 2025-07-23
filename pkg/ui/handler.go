@@ -43,9 +43,7 @@ func (s *Service) RegisterHandler() {
 	s.router.Path(clusterPath).Handler(s.clusterMembersHandler())
 	s.router.Path(clusterSelfPath).Handler(s.clusterSelfHandler())
 	s.router.Path(featuresPath).Handler(s.featuresHandler())
-	if s.cfg.Goldfish.Enable {
-		s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
-	}
+	s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
 
 	s.router.PathPrefix(proxyPath).Handler(s.clusterProxyHandler())
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
