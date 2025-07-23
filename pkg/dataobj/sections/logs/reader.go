@@ -413,6 +413,15 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 }
 
+// Close closes the Reader and releases any resources it holds. Closed Readers
+// can be reused by calling [Reader.Reset].
+func (r *Reader) Close() error {
+	if r.inner != nil {
+		return r.inner.Close()
+	}
+	return nil
+}
+
 func columnsSchema(cols []*Column) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(cols))
 	for _, col := range cols {
