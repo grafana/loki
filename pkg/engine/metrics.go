@@ -3,8 +3,6 @@ package engine
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
@@ -23,27 +21,22 @@ type metrics struct {
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
-	subsystem := "engine_v2"
 	return &metrics{
 		subqueries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "subqueries",
+			Name: "loki_engine_v2_subqueries",
+			Help: "Total number of subqueries executed with the new engine",
 		}, []string{status}),
 		logicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "logical_planning",
+			Name: "loki_engine_v2_logical_planning",
+			Help: "Duration of logical planning in seconds",
 		}),
 		physicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "physical_planning",
+			Name: "loki_engine_v2_physical_planning",
+			Help: "Duration of physical planning in seconds",
 		}),
 		execution: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: subsystem,
-			Name:      "execution",
+			Name: "loki_engine_v2_execution",
+			Help: "Duration of execution in seconds",
 		}),
 	}
 }
