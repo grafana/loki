@@ -1024,24 +1024,30 @@ kafka_config:
 dataobj:
   consumer:
     builderconfig:
-      # The size of the target page to use for the data object builder.
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The size of the target object to use for the data object builder.
-      # CLI flag: -dataobj-consumer.target-object-size
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj-consumer.target-builder-memory-limit
       [target_object_size: <int> | default = 1GiB]
 
-      # Configures a maximum size for sections, for sections that support it.
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
       [target_section_size: <int> | default = 128MiB]
 
-      # The size of the buffer to use for sorting logs.
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of stripes to merge into a section at once. Must be
-      # greater than 1.
+      # The maximum number of log section stripes to merge into a section at
+      # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
