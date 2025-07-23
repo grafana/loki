@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 
 	"github.com/grafana/loki/pkg/push"
@@ -20,9 +21,8 @@ import (
 
 type ResultBuilder interface {
 	CollectRecord(arrow.Record)
-	Build() logqlmodel.Result
+	Build(stats.Result, *metadata.Context) logqlmodel.Result
 	Len() int
-	SetStats(stats.Result)
 }
 
 var _ ResultBuilder = &streamsResultBuilder{}
@@ -37,7 +37,6 @@ func newStreamsResultBuilder() *streamsResultBuilder {
 type streamsResultBuilder struct {
 	streams map[string]int
 	data    logqlmodel.Streams
-	stats   stats.Result
 	count   int
 }
 
@@ -120,15 +119,13 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 	return lbs.Labels(), entry
 }
 
-func (b *streamsResultBuilder) SetStats(s stats.Result) {
-	b.stats = s
-}
-
-func (b *streamsResultBuilder) Build() logqlmodel.Result {
+func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	sort.Sort(b.data)
 	return logqlmodel.Result{
 		Data:       b.data,
-		Statistics: b.stats,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
 	}
 }
 
@@ -139,7 +136,6 @@ func (b *streamsResultBuilder) Len() int {
 type vectorResultBuilder struct {
 	data        promql.Vector
 	lblsBuilder *labels.Builder
-	stats       stats.Result
 }
 
 func newVectorResultBuilder() *vectorResultBuilder {
@@ -205,18 +201,16 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 	return sample, true
 }
 
-func (b *vectorResultBuilder) Build() logqlmodel.Result {
+func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	sort.Slice(b.data, func(i, j int) bool {
 		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
 	})
 	return logqlmodel.Result{
 		Data:       b.data,
-		Statistics: b.stats,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
 	}
-}
-
-func (b *vectorResultBuilder) SetStats(s stats.Result) {
-	b.stats = s
 }
 
 func (b *vectorResultBuilder) Len() int {
