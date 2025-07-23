@@ -48,7 +48,7 @@ func (b *deleteRequestBatch) userIDs() []string {
 
 // addDeleteRequest add a requests to the batch
 func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
-	dr.Metrics = b.metrics
+	dr.TotalLinesDeletedMetric = b.metrics.deletedLinesTotal
 	ur, ok := b.deleteRequestsToProcess[dr.UserID]
 	if !ok {
 		ur = &userDeleteRequests{
@@ -168,10 +168,17 @@ func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*DeleteReque
 func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
 	requests := make([]*DeleteRequest, 0, b.count)
 	for _, ur := range b.deleteRequestsToProcess {
-		for _, request := range ur.requests {
-			requests = append(requests, request)
-		}
+		requests = append(requests, ur.requests...)
 	}
 
 	return requests
+}
+
+func (b *deleteRequestBatch) getDeletionIntervalForUser(userID string) model.Interval {
+	userRequests, ok := b.deleteRequestsToProcess[userID]
+	if !ok {
+		return model.Interval{}
+	}
+
+	return userRequests.requestsInterval
 }

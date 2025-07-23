@@ -2028,6 +2028,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for chunks-cache pods</td>
@@ -2111,17 +2120,6 @@ null
 			<td>Annotations for chunks-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>chunksCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -4423,6 +4421,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.logFormat</td>
 			<td>string</td>
 			<td>NGINX log format</td>
@@ -6591,7 +6598,7 @@ null
 		<tr>
 			<td>loki.tenants</td>
 			<td>list</td>
-			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br> Example: <pre> tenants:<br>   - name: "test-user-1"<br>     password: "test-password-1"<br>   - name: "test-user-2"<br>     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` </pre></td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10350,6 +10357,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
@@ -10424,17 +10440,6 @@ null
 			<td>Annotations for results-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>resultsCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -11136,6 +11141,15 @@ true
 			<td>Folder into which the rules will be placed.</td>
 			<td><pre lang="json">
 "/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folderAnnotation</td>
+			<td>string</td>
+			<td>The annotation overwriting the folder value. The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER. Useful for multi-tenancy setups.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
