@@ -24,8 +24,8 @@ func TestReader(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(1),
-			"app.label.binary":        []byte("foo"),
-			"cluster.label.binary":    []byte("test"),
+			"app.label.utf8":          "foo",
+			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(10, 0).UTC(),
 			"max_timestamp.timestamp": time.Unix(15, 0).UTC(),
 			"rows.int64":              int64(2),
@@ -33,8 +33,8 @@ func TestReader(t *testing.T) {
 		},
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
 			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
@@ -42,8 +42,8 @@ func TestReader(t *testing.T) {
 		},
 		{
 			"stream_id.int64":         int64(3),
-			"app.label.binary":        []byte("baz"),
-			"cluster.label.binary":    []byte("test"),
+			"app.label.utf8":          "baz",
+			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(25, 0).UTC(),
 			"max_timestamp.timestamp": time.Unix(30, 0).UTC(),
 			"rows.int64":              int64(2),
@@ -77,8 +77,8 @@ func TestReader_Predicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
 			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
@@ -121,8 +121,8 @@ func TestReader_InPredicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
 			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
@@ -166,16 +166,16 @@ func TestReader_ColumnSubset(t *testing.T) {
 
 	expect := arrowtest.Rows{
 		{
-			"stream_id.int64":  int64(1),
-			"app.label.binary": []byte("foo"),
+			"stream_id.int64": int64(1),
+			"app.label.utf8":  "foo",
 		},
 		{
-			"stream_id.int64":  int64(2),
-			"app.label.binary": []byte("bar"),
+			"stream_id.int64": int64(2),
+			"app.label.utf8":  "bar",
 		},
 		{
-			"stream_id.int64":  int64(3),
-			"app.label.binary": []byte("baz"),
+			"stream_id.int64": int64(3),
+			"app.label.utf8":  "baz",
 		},
 	}
 

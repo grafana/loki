@@ -198,7 +198,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -210,7 +210,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
 			default:
 				// We'll only hit this if we added a new column type but forgot to
 				// support reading it.
@@ -434,8 +434,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:   arrow.Null,
 	ColumnTypeStreamID:  arrow.PrimitiveTypes.Int64,
 	ColumnTypeTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMetadata:  arrow.BinaryTypes.Binary,
-	ColumnTypeMessage:   arrow.BinaryTypes.Binary,
+	ColumnTypeMetadata:  arrow.BinaryTypes.String,
+	ColumnTypeMessage:   arrow.BinaryTypes.String,
 }
 
 func columnToField(col *Column) arrow.Field {

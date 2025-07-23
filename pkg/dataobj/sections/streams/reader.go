@@ -198,7 +198,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -210,7 +210,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeLabel: // Appends labels as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
 			case ColumnTypeRows: // Appends rows as int64
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypeUncompressedSize: // Appends uncompressed size as int64
@@ -439,7 +439,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeStreamID:         arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeLabel:            arrow.BinaryTypes.Binary,
+	ColumnTypeLabel:            arrow.BinaryTypes.String,
 	ColumnTypeRows:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 }
