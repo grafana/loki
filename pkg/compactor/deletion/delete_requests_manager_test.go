@@ -1018,7 +1018,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				deletionMode:    tc.deletionMode.String(),
 			}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
+			require.NoError(t, mgr.Init(nil, nil))
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
 
@@ -1105,7 +1105,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range tt {
 		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 		require.NoError(t, err)
-		require.NoError(t, mgr.Init(nil))
+		require.NoError(t, mgr.Init(nil, nil))
 		mgr.MarkPhaseStarted()
 		require.NotNil(t, mgr.currentBatch)
 
@@ -1292,7 +1292,7 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
+			require.NoError(t, mgr.Init(nil, nil))
 
 			wg := sync.WaitGroup{}
 			mgrCtx, mgrCtxCancel := context.WithCancel(context.Background())
@@ -1320,7 +1320,7 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
+			require.NoError(t, mgr.Init(nil, nil))
 			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
@@ -1345,7 +1345,7 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 
 	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 	require.NoError(t, err)
-	require.NoError(t, mgr.Init(nil))
+	require.NoError(t, mgr.Init(nil, nil))
 	mgr.MarkPhaseStarted()
 	require.NotNil(t, mgr.currentBatch)
 

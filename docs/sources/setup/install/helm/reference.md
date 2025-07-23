@@ -4421,6 +4421,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.logFormat</td>
 			<td>string</td>
 			<td>NGINX log format</td>
@@ -11132,6 +11141,15 @@ true
 			<td>Folder into which the rules will be placed.</td>
 			<td><pre lang="json">
 "/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folderAnnotation</td>
+			<td>string</td>
+			<td>The annotation overwriting the folder value. The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER. Useful for multi-tenancy setups.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

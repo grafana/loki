@@ -141,6 +141,8 @@ func (q *Queue) retryFailedJobs() {
 		case <-q.stop:
 			return
 		case <-ticker.C:
+			var jobsToRetry []string
+
 			q.processingJobsMtx.Lock()
 			now := time.Now()
 			for jobID, pj := range q.processingJobs {
@@ -153,31 +155,39 @@ func (q *Queue) retryFailedJobs() {
 				}
 				timeout := q.builders[pj.job.Type].jobTimeout
 				if pj.lastAttemptFailed || now.Sub(pj.dequeued) > timeout {
-					// Requeue the job
-					select {
-					case <-q.stop:
-						return
-					case q.queue <- pj.job:
-						reason := "timeout"
-						if pj.lastAttemptFailed {
-							reason = "failed"
-						}
-						q.metrics.jobRetries.WithLabelValues(reason).Inc()
-						level.Warn(util_log.Logger).Log(
-							"msg", "requeued job",
-							"job_id", jobID,
-							"job_type", pj.job.Type,
-							"timeout", timeout,
-							"reason", reason,
-						)
-						// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
-						q.processingJobs[jobID].dequeued = time.Now()
-						q.processingJobs[jobID].lastAttemptFailed = false
-						q.processingJobs[jobID].attemptsLeft--
-					}
+					jobsToRetry = append(jobsToRetry, jobID)
 				}
 			}
 			q.processingJobsMtx.Unlock()
+
+			for _, jobID := range jobsToRetry {
+				reason := "timeout"
+				q.processingJobsMtx.Lock()
+				pj := q.processingJobs[jobID]
+				if pj.lastAttemptFailed {
+					reason = "failed"
+				}
+
+				// reset the dequeued time so that the timeout is calculated from the time when the job is sent for processing.
+				q.processingJobs[jobID].dequeued = time.Now()
+				q.processingJobs[jobID].lastAttemptFailed = false
+				q.processingJobs[jobID].attemptsLeft--
+				q.processingJobsMtx.Unlock()
+
+				// Requeue the job
+				select {
+				case <-q.stop:
+					return
+				case q.queue <- pj.job:
+					q.metrics.jobRetries.WithLabelValues(reason).Inc()
+					level.Warn(util_log.Logger).Log(
+						"msg", "requeued job",
+						"job_id", jobID,
+						"job_type", pj.job.Type,
+						"reason", reason,
+					)
+				}
+			}
 		}
 	}
 }
@@ -212,6 +222,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 
 		now := time.Now()
 		if err := s.Send(job); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to send job", "job_id", job.Id, "err", err)
 			return err
 		}
 		q.metrics.jobsSent.Inc()
@@ -221,6 +232,7 @@ func (q *Queue) Loop(s grpc.JobQueue_LoopServer) error {
 		resp, err := s.Recv()
 		if err != nil {
 			q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())
+			level.Error(util_log.Logger).Log("msg", "error receiving job response", "job_id", job.Id, "err", err)
 			return err
 		}
 		q.metrics.jobsProcessingDuration.Observe(time.Since(now).Seconds())

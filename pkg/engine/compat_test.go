@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 
 	"github.com/prometheus/prometheus/promql"
 
@@ -150,7 +152,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 5, builder.Len())
 
-		result := builder.Build()
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
 		require.Equal(t, 5, result.Data.(logqlmodel.Streams).Len())
 
 		expected := logqlmodel.Streams{
@@ -221,7 +224,8 @@ func TestVectorResultBuilder(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 3, builder.Len())
 
-		result := builder.Build()
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
 		vector := result.Data.(promql.Vector)
 		require.Equal(t, 3, len(vector))
 

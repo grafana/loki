@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.15.0](https://github.com/googleapis/gax-go/compare/v2.14.2...v2.15.0) (2025-07-09)
+
+
+### Features
+
+* **apierror:** improve gRPC status code mapping for HTTP errors ([#431](https://github.com/googleapis/gax-go/issues/431)) ([c207f2a](https://github.com/googleapis/gax-go/commit/c207f2a19ab91d3baee458b57d4aa992519025c7))
+
 ## [2.14.2](https://github.com/googleapis/gax-go/compare/v2.14.1...v2.14.2) (2025-05-12)
 
 
