@@ -62,6 +62,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -69,6 +71,8 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
+  # Configures the startup probe for all of the Loki pods
+  startupProbe: {}
   image:
     # -- The Docker registry
     registry: docker.io
