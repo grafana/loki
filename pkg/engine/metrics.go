@@ -33,10 +33,18 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		physicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_engine_v2_physical_planning",
 			Help: "Duration of physical planning in seconds",
+			Buckets: append(
+				prometheus.DefBuckets,                    // 0.005s -> 10s
+				prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
+			),
 		}),
 		execution: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_engine_v2_execution",
 			Help: "Duration of execution in seconds",
+			Buckets: append(
+				prometheus.DefBuckets,                    // 0.005s -> 10s
+				prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
+			),
 		}),
 	}
 }
