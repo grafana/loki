@@ -40,16 +40,6 @@ type subConnWrapper struct {
 	// that.
 
 	listener func(balancer.SubConnState)
-	// healthListenerEnabled indicates whether the leaf LB policy is using a
-	// generic health listener. When enabled, ejection updates are sent via the
-	// health listener instead of the connectivity listener. Once Dualstack
-	// changes are complete, all SubConns will be created by pickfirst which
-	// uses the health listener.
-	// TODO: https://github.com/grpc/grpc-go/issues/7915 - Once Dualstack
-	// changes are complete, all SubConns will be created by pick_first and
-	// outlier detection will only use the health listener for ejection and
-	// this field can be removed.
-	healthListenerEnabled bool
 
 	scUpdateCh *buffer.Unbounded
 
@@ -67,9 +57,6 @@ type subConnWrapper struct {
 	// latestHealthState is tracked to update the child policy during
 	// unejection.
 	latestHealthState balancer.SubConnState
-	// latestRawConnectivityState is tracked to update the child policy during
-	// unejection.
-	latestRawConnectivityState balancer.SubConnState
 
 	// Access to the following fields are protected by a mutex. These fields
 	// should not be accessed from outside this file, instead use methods
@@ -114,12 +101,7 @@ func (scw *subConnWrapper) RegisterHealthListener(listener func(balancer.SubConn
 	// pick_first the universal leaf policy (see A61), both these mechanisms
 	// started using the new health listener to make health signal visible to
 	// the petiole policies without affecting the underlying connectivity
-	// management of the pick_first policy
-	if !scw.healthListenerEnabled {
-		logger.Errorf("Health listener unexpectedly registered on SubConn %v.", scw)
-		return
-	}
-
+	// management of the pick_first policy.
 	scw.mu.Lock()
 	defer scw.mu.Unlock()
 
@@ -157,12 +139,6 @@ func (scw *subConnWrapper) updateSubConnHealthState(scs balancer.SubConnState) {
 // updateSubConnConnectivityState stores the latest connectivity state for
 // unejection and updates the raw connectivity listener.
 func (scw *subConnWrapper) updateSubConnConnectivityState(scs balancer.SubConnState) {
-	scw.latestRawConnectivityState = scs
-	// If the raw connectivity listener is used for ejection, and the SubConn is
-	// ejected, don't send the update.
-	if scw.ejected && !scw.healthListenerEnabled {
-		return
-	}
 	if scw.listener != nil {
 		scw.listener(scs)
 	}
@@ -176,12 +152,6 @@ func (scw *subConnWrapper) clearHealthListener() {
 
 func (scw *subConnWrapper) handleUnejection() {
 	scw.ejected = false
-	if !scw.healthListenerEnabled {
-		// If scw.latestRawConnectivityState has never been written to will
-		// default to connectivity IDLE, which is fine.
-		scw.updateSubConnConnectivityState(scw.latestRawConnectivityState)
-		return
-	}
 	// If scw.latestHealthState has never been written to will use the health
 	// state CONNECTING set during object creation.
 	scw.updateSubConnHealthState(scw.latestHealthState)
@@ -191,12 +161,6 @@ func (scw *subConnWrapper) handleEjection() {
 	scw.ejected = true
 	stateToUpdate := balancer.SubConnState{
 		ConnectivityState: connectivity.TransientFailure,
-	}
-	if !scw.healthListenerEnabled {
-		if scw.listener != nil {
-			scw.listener(stateToUpdate)
-		}
-		return
 	}
 	scw.mu.Lock()
 	defer scw.mu.Unlock()

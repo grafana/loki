@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -209,7 +208,6 @@ func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 
 	// Record the stream in the stream section.
 	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
-	sort.Sort(stream.Labels)
 	streamID := b.streams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
 	_ = b.streams.Record(stream.Labels, stream.MaxTimestamp, 0)
 
@@ -235,10 +233,10 @@ func labelsEstimate(ls labels.Labels) int {
 		valuesSize int
 	)
 
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		keysSize += len(l.Name)
 		valuesSize += len(l.Value)
-	}
+	})
 
 	// Keys are stored as columns directly, while values get compressed. We'll
 	// underestimate a 2x compression ratio.

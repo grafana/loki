@@ -173,8 +173,19 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				tc := setupStoreType(t, storeType)
 				defer tc.store.Stop()
 
-				reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, `{foo="bar"}`, now.Add(-24*time.Hour), now, time.Hour)
+				deletionQuery := `{foo="bar"}`
+				reqID, err := tc.store.AddDeleteRequest(context.Background(), user1, deletionQuery, now.Add(-24*time.Hour), now, time.Hour)
 				require.NoError(t, err)
+
+				// GetAllDeleteRequestsForUser should list consolidated requests and not shards
+				consolidatedRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+				require.NoError(t, err)
+				require.Len(t, consolidatedRequests, 1)
+				require.Equal(t, consolidatedRequests[0].RequestID, reqID)
+				require.Equal(t, consolidatedRequests[0].StartTime, now.Add(-24*time.Hour))
+				require.Equal(t, consolidatedRequests[0].EndTime, now)
+				require.Equal(t, consolidatedRequests[0].Query, deletionQuery)
+				require.Equal(t, consolidatedRequests[0].Status, StatusReceived)
 
 				savedRequests, err := tc.store.GetUnprocessedShards(context.Background())
 				require.NoError(t, err)
@@ -191,6 +202,17 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				req, err := tc.store.GetDeleteRequest(context.Background(), user1, reqID)
 				require.NoError(t, err)
 				require.Equal(t, deleteRequestStatus(1, len(savedRequests)), req.Status)
+
+				// check that we get appropriate status in the consolidated request
+				consolidatedRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+				require.NoError(t, err)
+				require.Len(t, consolidatedRequests, 1)
+				require.Equal(t, consolidatedRequests[0].RequestID, reqID)
+				require.Equal(t, consolidatedRequests[0].StartTime, now.Add(-24*time.Hour))
+				require.Equal(t, consolidatedRequests[0].EndTime, now)
+				require.Equal(t, consolidatedRequests[0].Query, deletionQuery)
+				require.Equal(t, consolidatedRequests[0].Status, deleteRequestStatus(1, len(savedRequests)))
+
 			})
 
 			t.Run("deletes several delete requests", func(t *testing.T) {

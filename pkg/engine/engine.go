@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -20,20 +19,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-var (
-	ErrNotSupported = errors.New("feature not supported in new query engine")
-)
+var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
 func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
-
 	var ms metastore.Metastore
 	if bucket != nil {
-		ms = metastore.NewObjectMetastore(bucket, logger)
+		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
+		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -76,6 +75,9 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	start := time.Now()
 
+	statsCtx, ctx := stats.NewContext(ctx)
+	metadataCtx, ctx := metadata.NewContext(ctx)
+
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 
@@ -91,13 +93,16 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	level.Info(logger).Log(
 		"msg", "finished logical planning",
-		"plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"plan", logicalPlan.String(),
 		"duration", durLogicalPlanning.Seconds(),
 	)
 
 	t = time.Now() // start stopwatch for physical planning
-	statsCtx, ctx := stats.NewContext(ctx)
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalogueType := physical.CatalogueTypeDirect
+	if e.opts.CataloguePath != "" {
+		catalogueType = physical.CatalogueTypeIndex
+	}
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
@@ -116,7 +121,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
-		"plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+		"plan", physical.PrintAsTree(plan),
 		"duration", durLogicalPlanning.Seconds(),
 	)
 
@@ -149,20 +154,25 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return logqlmodel.Result{}, err
 	}
 
-	builder.SetStats(statsCtx.Result(time.Since(start), 0, builder.Len()))
+	durExecution := time.Since(t)
+	durFull := time.Since(start)
 
 	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
-	e.metrics.execution.Observe(time.Since(t).Seconds())
-	durExecution := time.Since(t)
+	e.metrics.execution.Observe(durFull.Seconds())
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
 	level.Debug(logger).Log(
 		"msg", "finished executing with new engine",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
+		"duration_full", durFull,
 	)
 
-	return builder.Build(), nil
+	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	return builder.Build(stats, metadataCtx), nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {

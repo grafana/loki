@@ -146,9 +146,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 				m.metastoreBuilder.Reset()
 				m.builder.Reset()
-				var (
-					ty = m.cfg.StorageFormat
-				)
+				ty := m.cfg.StorageFormat
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)

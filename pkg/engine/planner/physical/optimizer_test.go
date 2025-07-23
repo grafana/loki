@@ -36,6 +36,22 @@ func TestCanApplyPredicate(t *testing.T) {
 		},
 		{
 			predicate: &BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+			want: false,
+		},
+		{
+			predicate: &BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeMetadata),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+			want: true,
+		},
+		{
+			predicate: &BinaryExpr{
 				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
 				Right: NewLiteral("bar"),
 				Op:    types.BinaryOpEq,
@@ -70,9 +86,9 @@ func dummyPlan() *Plan {
 	}})
 	filter2 := plan.addNode(&Filter{id: "filter2", Predicates: []Expression{
 		&BinaryExpr{
-			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-			Right: NewLiteral(time2000),
-			Op:    types.BinaryOpLte,
+			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+			Right: NewLiteral("debug|info"),
+			Op:    types.BinaryOpMatchRe,
 		},
 	}})
 	filter3 := plan.addNode(&Filter{id: "filter3", Predicates: []Expression{}})
@@ -120,11 +136,6 @@ func TestOptimizer(t *testing.T) {
 				Right: NewLiteral(time1000),
 				Op:    types.BinaryOpGt,
 			},
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time2000),
-				Op:    types.BinaryOpLte,
-			},
 		}})
 		scan2 := optimized.addNode(&DataObjScan{id: "scan2", Predicates: []Expression{
 			&BinaryExpr{
@@ -132,15 +143,16 @@ func TestOptimizer(t *testing.T) {
 				Right: NewLiteral(time1000),
 				Op:    types.BinaryOpGt,
 			},
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time2000),
-				Op:    types.BinaryOpLte,
-			},
 		}})
 		merge := optimized.addNode(&SortMerge{id: "merge"})
 		filter1 := optimized.addNode(&Filter{id: "filter1", Predicates: []Expression{}})
-		filter2 := optimized.addNode(&Filter{id: "filter2", Predicates: []Expression{}})
+		filter2 := optimized.addNode(&Filter{id: "filter2", Predicates: []Expression{
+			&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}})
 		filter3 := optimized.addNode(&Filter{id: "filter3", Predicates: []Expression{}})
 
 		_ = optimized.addEdge(Edge{Parent: filter3, Child: filter2})
@@ -178,9 +190,9 @@ func TestOptimizer(t *testing.T) {
 		}})
 		filter2 := optimized.addNode(&Filter{id: "filter2", Predicates: []Expression{
 			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time2000),
-				Op:    types.BinaryOpLte,
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
 			},
 		}})
 

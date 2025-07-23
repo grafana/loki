@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/gorilla/mux"
@@ -271,13 +270,25 @@ func (s Streams) ToProto() []logproto.Stream {
 	}
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
-		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries)) // #nosec G103 -- we know the string is not mutated
 		result = append(result, logproto.Stream{
 			Labels:  s.Labels.String(),
-			Entries: entries,
+			Entries: protoEntries(s.Entries),
 		})
 	}
 	return result
+}
+
+func protoEntries(in []Entry) []logproto.Entry {
+	out := make([]logproto.Entry, 0, len(in))
+	for _, ent := range in {
+		out = append(out, logproto.Entry{
+			Timestamp:          ent.Timestamp,
+			Line:               ent.Line,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(ent.StructuredMetadata),
+			Parsed:             logproto.FromLabelsToLabelAdapters(ent.Parsed),
+		})
+	}
+	return out
 }
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.

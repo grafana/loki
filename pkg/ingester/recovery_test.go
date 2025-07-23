@@ -300,7 +300,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 					Parsed:             logproto.EmptyLabelAdapters(),
 				},
 			},
-			Hash: lbls.Hash(),
+			Hash: labels.StableHash(lbls),
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)

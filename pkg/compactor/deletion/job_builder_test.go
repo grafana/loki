@@ -67,7 +67,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		{
 			name: "one manifest in storage with less than maxChunksPerJob",
 			setupManifest: func(client client.ObjectClient) []DeleteRequest {
-				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 				requestsToAdd := []DeleteRequest{
 					{
 						RequestID: req1,
@@ -125,7 +125,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		{
 			name: "one manifest in storage with more than maxChunksPerJob",
 			setupManifest: func(client client.ObjectClient) []DeleteRequest {
-				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 				requestsToAdd := []DeleteRequest{
 					{
 						RequestID: req1,
@@ -199,7 +199,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		{
 			name: "one manifest in storage with multiple groups",
 			setupManifest: func(client client.ObjectClient) []DeleteRequest {
-				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 				requestsToAdd := []DeleteRequest{
 					{
 						UserID:    user1,
@@ -287,7 +287,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		{
 			name: "one manifest in storage with multiple segments due to multiple tables",
 			setupManifest: func(client client.ObjectClient) []DeleteRequest {
-				deleteRequestBatch := newDeleteRequestBatch(nil)
+				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 				requestsToAdd := []DeleteRequest{
 					{
 						RequestID: req1,
@@ -392,7 +392,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				return iterator.Err()
 			}, func(requests []DeleteRequest) {
 				requestsMarkedAsProcessed = requests
-			})
+			}, nil)
 			jobsChan := make(chan *grpc.Job)
 
 			var jobsBuilt []grpc.Job
@@ -470,7 +470,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
 				return nil
-			}, func(_ []DeleteRequest) {})
+			}, func(_ []DeleteRequest) {}, nil)
 
 			// Create a test manifest
 			manifest := &manifest{

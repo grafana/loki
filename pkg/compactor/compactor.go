@@ -295,7 +295,7 @@ func (c *Compactor) init(
 	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
 
 	if c.cfg.RetentionEnabled {
-		if err := c.deleteRequestsManager.Init(c.tablesManager); err != nil {
+		if err := c.deleteRequestsManager.Init(c.tablesManager, r); err != nil {
 			return err
 		}
 	}

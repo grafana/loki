@@ -107,3 +107,134 @@ func (p *metastoreMetrics) observeMetastoreProcessing(recordTimestamp time.Time)
 		p.metastoreProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
 	}
 }
+
+type objectMetastoreMetrics struct {
+	streamFilterTotalDuration           prometheus.Histogram
+	streamFilterPaths                   prometheus.Histogram
+	streamFilterSections                prometheus.Histogram
+	streamFilterStreamsReadDuration     prometheus.Histogram
+	streamFilterPointersReadDuration    prometheus.Histogram
+	estimateSectionsTotalDuration       prometheus.Histogram
+	estimateSectionsPointerReadDuration prometheus.Histogram
+	estimateSectionsPaths               prometheus.Histogram
+	estimateSectionsSections            prometheus.Histogram
+	resolvedSectionsTotalDuration       prometheus.Histogram
+	resolvedSectionsTotal               prometheus.Histogram
+	resolvedSectionsRatio               prometheus.Histogram
+}
+
+func newObjectMetastoreMetrics() *objectMetastoreMetrics {
+	metrics := &objectMetastoreMetrics{
+		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_total_duration_seconds",
+			Help:                            "Total time taken to lookup streams for a Metastore query in seconds",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		streamFilterPaths: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_paths_total",
+			Help:                            "Total number of paths to be searched for a Metastore query",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		streamFilterSections: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_sections_total",
+			Help:                            "Total number of sections resolved for a Metastore query when listing sections from stream matchers",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		streamFilterStreamsReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_streams_read_duration_seconds",
+			Help:                            "Total time taken to read one streams section during a Metastore query when listing sections from stream matchers in seconds",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		streamFilterPointersReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_pointers_read_duration_seconds",
+			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from stream matchers in seconds",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		estimateSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_estimate_sections_total_duration_seconds",
+			Help:                            "Total time taken to check section membership for a Metastore query when listing sections from AMQ filters in seconds",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		estimateSectionsPaths: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_estimate_sections_paths_total",
+			Help:                            "Total number of paths to be searched for a Metastore query when listing sections from AMQ filters",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		estimateSectionsPointerReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_estimate_sections_pointer_read_duration_seconds",
+			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from AMQ filters in seconds",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		estimateSectionsSections: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_estimate_sections_sections_total",
+			Help:                            "Total number of sections resolved for a Metastore query when listing sections from AMQ filters",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		resolvedSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_total_duration_seconds",
+			Help:                            "Total time taken to resolve sections for a Metastore query",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		resolvedSectionsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_total",
+			Help:                            "Total number of sections resolved for a Metastore query",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		resolvedSectionsRatio: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_ratio",
+			Help:                            "Ratio of sections resolved for a Metastore query between stream filters and then intersecting with section estimates",
+			Buckets:                         []float64{0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+	}
+
+	return metrics
+}
+
+func (p *objectMetastoreMetrics) register(reg prometheus.Registerer) {
+	reg.MustRegister(p.streamFilterTotalDuration)
+	reg.MustRegister(p.streamFilterPaths)
+	reg.MustRegister(p.streamFilterSections)
+	reg.MustRegister(p.streamFilterStreamsReadDuration)
+	reg.MustRegister(p.streamFilterPointersReadDuration)
+	reg.MustRegister(p.estimateSectionsTotalDuration)
+	reg.MustRegister(p.estimateSectionsPointerReadDuration)
+	reg.MustRegister(p.estimateSectionsSections)
+	reg.MustRegister(p.resolvedSectionsTotal)
+	reg.MustRegister(p.resolvedSectionsRatio)
+}

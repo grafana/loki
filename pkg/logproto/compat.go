@@ -5,6 +5,7 @@ import (
 	stdjson "encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 // ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.
@@ -44,21 +46,66 @@ func ToWriteRequest(lbls []labels.Labels, samples []LegacySample, metadata []*Me
 	return req
 }
 
-// FromLabelAdaptersToLabels casts []LabelAdapter to labels.Labels.
-// It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
-// This allows us to use labels.Labels directly in protos.
+// labelsZeroValue is the zero value of [labels.Labels]. If Loki is built with
+// Prometheus' slicelabels, the zero value of labels is a nil slice. This
+// contradicts to [labels.EmptyLabels], where it returns a non-nil slice with a
+// length and capacity of zero.
+var labelsZeroValue labels.Labels
+
+// FromLabelAdaptersToLabels converts a slice of [LabelAdapter] to
+// [labels.Labels].
 //
-// Note: while resulting labels.Labels is supposedly sorted, this function
-// doesn't enforce that. If input is not sorted, output will be wrong.
+// The resulting labels are always sorted.
 func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
-	return *(*labels.Labels)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
+	// For consistency with encoding between label reprensentations, we return
+	// the zero value if ls is the zero value (nil).
+	if ls == nil {
+		return labelsZeroValue
+	}
+
+	// NOTE(rfratto): before we used Prometheus stringlabels, this function was
+	// almost cost-free (little to no CPU, no allocations). Using pooled builders
+	// helps avoid unnecessary allocations, but it may be slow to use the pool in
+	// a loop.
+	//
+	// We may want to pass the builder as an argument to this function if we
+	// notice slowness, but it would require quite a few code changes to update
+	// all the callers.
+	builder := labelpool.Get()
+	defer labelpool.Put(builder)
+
+	for _, l := range ls {
+		builder.Add(l.Name, l.Value)
+	}
+
+	builder.Sort()
+
+	// Due to [labels.Labels] storing all labels as a single string, this call
+	// always allocates.
+	return builder.Labels()
 }
 
-// FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
-// It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
-// This allows us to use labels.Labels directly in protos.
+// FromLabelsToLabelAdapters casts labels.Labels to a slice of [LabelAdapter].
+// The resulting labels are always sorted.
 func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
-	return *(*[]LabelAdapter)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
+	return CopyToLabelAdapters(nil, ls)
+}
+
+// CopyToLabelAdapters copies the set of [labels.Labels] to the slice of
+// [LabelAdapter]. This function is allocation-free if the dst slice has
+// sufficient capacity.
+func CopyToLabelAdapters(dst []LabelAdapter, src labels.Labels) []LabelAdapter {
+	clear(dst) // Protect from any unsafe usages of strings in dst.
+	dst = dst[:0]
+
+	// Growing the slice before appending will help prevent the slice from
+	// growing too large while appending in the Range loop below.
+	dst = slices.Grow(dst, src.Len())
+	src.Range(func(l labels.Label) {
+		dst = append(dst, LabelAdapter{Name: l.Name, Value: l.Value})
+	})
+
+	return dst
 }
 
 func EmptyLabelAdapters() []LabelAdapter {

@@ -158,8 +158,14 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
+	predicates := make([]Expression, len(lp.Predicates))
+	for i, predicate := range lp.Predicates {
+		predicates[i] = p.convertPredicate(predicate)
+	}
+
 	from, through := ctx.GetResolveTimeRange()
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), from, through)
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}

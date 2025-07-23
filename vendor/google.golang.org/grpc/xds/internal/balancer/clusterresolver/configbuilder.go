@@ -257,7 +257,7 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 		if locality.Weight != 0 {
 			lw = locality.Weight
 		}
-		localityStr := locality.ID.ToString()
+		localityStr := internal.LocalityString(locality.ID)
 		for _, endpoint := range locality.Endpoints {
 			// Filter out all "unhealthy" endpoints (unknown and healthy are
 			// both considered to be healthy:
