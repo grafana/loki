@@ -234,96 +234,14 @@ Storage config
 {{- define "loki.lokiStorageConfig" -}}
 {{- $bucketName := .bucketName }}
 {{- if eq .ctx.Values.loki.storage.type "s3" -}}
-{{- with .ctx.Values.loki.storage.s3 }}
 s3:
-  {{- toYaml (mergeOverwrite
-    dict
-    (dict
-      "bucketnames" $bucketName
-      "s3forcepathstyle" .s3ForcePathStyle
-    )
-    (omit . "bucketnames" "s3ForcePathStyle" "s3" "endpoint" "region" "secretAccessKey" "accessKeyId" "signatureVersion" "disable_dualstack" "http_config" "backoff_config" "sse")
-  ) | nindent 2 }}
-  {{- with .s3 }}
-  s3: {{ . }}
-  {{- end }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end}}
-  {{- with .secretAccessKey }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .accessKeyId }}
-  access_key_id: {{ . }}
-  {{- end }}
-  {{- with .signatureVersion }}
-  signature_version: {{ . }}
-  {{- end }}
-  {{- with .disable_dualstack }}
-  disable_dualstack: {{ . }}
-  {{- end }}
-  {{- with .http_config }}
-  http_config:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .backoff_config }}
-  backoff_config:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .sse }}
-  sse:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-{{- end }}
+{{- include "loki.lokiStorageConfig.s3" (dict "ctx" .ctx.Values.loki.storage.s3 "bucketName" $bucketName) | nindent 2 }}
 {{- else if eq .ctx.Values.loki.storage.type "gcs" -}}
-{{- with .ctx.Values.loki.storage.gcs }}
 gcs:
-  {{- toYaml (mergeOverwrite
-    dict
-    (dict
-      "bucket_name" $bucketName
-      "chunk_buffer_size" .chunkBufferSize
-      "request_timeout" .requestTimeout
-      "enable_http2" .enableHttp2
-    )
-    (omit . "bucket_name" "chunkBufferSize" "requestTimeout" "enableHttp2")
-  ) | nindent 2 }}
-{{- end -}}
+{{- include "loki.lokiStorageConfig.gcs" (dict "ctx" .ctx.Values.loki.storage.gcs "bucketName" $bucketName) | nindent 2 }}
 {{- else if eq .ctx.Values.loki.storage.type "azure" -}}
-{{- with .ctx.Values.loki.storage.azure }}
 azure:
-  {{- toYaml (mergeOverwrite
-    dict
-    (dict
-      "container_name" $bucketName
-      "account_name" .accountName
-      "use_managed_identity" .useManagedIdentity
-      "use_federated_token" .useFederatedToken
-    )
-    (omit . "accountName" "useManagedIdentity" "useFederatedToken" "accountKey" "connectionString" "userAssignedId" "requestTimeout" "endpointSuffix" "chunkDelimiter")
-  ) | nindent 2 }}
-  {{- with .accountKey }}
-  account_key: {{ . }}
-  {{- end }}
-  {{- with .connectionString }}
-  connection_string: {{ . }}
-  {{- end }}
-  {{- with .userAssignedId }}
-  user_assigned_id: {{ . }}
-  {{- end }}
-  {{- with .requestTimeout }}
-  request_timeout: {{ . }}
-  {{- end }}
-  {{- with .endpointSuffix }}
-  endpoint_suffix: {{ . }}
-  {{- end }}
-  {{- with .chunkDelimiter }}
-  chunk_delimiter: {{ . }}
-  {{- end }}
-{{- end -}}
+{{- include "loki.lokiStorageConfig.azure" (dict "ctx" .ctx.Values.loki.storage.azure "bucketName" $bucketName) | nindent 2 }}
 {{- else if eq .ctx.ctx.Values.loki.storage.type "alibabacloud" -}}
 {{- with .ctx.ctx.Values.loki.storage.alibabacloud }}
 alibabacloud:
@@ -357,6 +275,101 @@ cos:
 {{- end -}}
 {{- end -}}
 
+{{/*
+Storage config S3
+*/}}
+{{- define "loki.lokiStorageConfig.s3" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite
+(dict
+  "bucketnames" $bucketName
+  "s3forcepathstyle" .s3ForcePathStyle
+)
+(omit . "bucketnames" "s3ForcePathStyle" "s3" "endpoint" "region" "secretAccessKey" "accessKeyId" "signatureVersion" "disable_dualstack" "http_config" "backoff_config" "sse")
+| toYaml | nindent 0 }}
+{{- with .endpoint }}
+endpoint: {{ . }}
+{{- end }}
+{{- with .region }}
+region: {{ . }}
+{{- end}}
+{{- with .secretAccessKey }}
+secret_access_key: {{ . }}
+{{- end }}
+{{- with .accessKeyId }}
+access_key_id: {{ . }}
+{{- end }}
+{{- with .signatureVersion }}
+signature_version: {{ . }}
+{{- end }}
+{{- with .disable_dualstack }}
+disable_dualstack: {{ . }}
+{{- end }}
+{{- with .http_config }}
+http_config:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- with .backoff_config }}
+backoff_config:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- with .sse }}
+sse:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Storage config GCS
+*/}}
+{{- define "loki.lokiStorageConfig.gcs" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite (dict
+  "bucket_name" $bucketName
+  "chunk_buffer_size" .chunkBufferSize
+  "request_timeout" .requestTimeout
+  "enable_http2" .enableHttp2
+) (omit . "bucket_name" "chunkBufferSize" "requestTimeout" "enableHttp2") | toYaml | nindent 0 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Storage config Azure
+*/}}
+{{- define "loki.lokiStorageConfig.azure" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite
+(dict
+  "container_name" $bucketName
+  "account_name" .accountName
+  "use_managed_identity" .useManagedIdentity
+  "use_federated_token" .useFederatedToken
+)
+(omit . "accountName" "useManagedIdentity" "useFederatedToken" "accountKey" "connectionString" "userAssignedId" "requestTimeout" "endpointSuffix" "chunkDelimiter") | toYaml | nindent 0 }}
+{{- with .accountKey }}
+account_key: {{ . }}
+{{- end }}
+{{- with .connectionString }}
+connection_string: {{ . }}
+{{- end }}
+{{- with .userAssignedId }}
+user_assigned_id: {{ . }}
+{{- end }}
+{{- with .requestTimeout }}
+request_timeout: {{ . }}
+{{- end }}
+{{- with .endpointSuffix }}
+endpoint_suffix: {{ . }}
+{{- end }}
+{{- with .chunkDelimiter }}
+chunk_delimiter: {{ . }}
+{{- end }}
+{{- end -}}
+{{- end -}}
 
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
