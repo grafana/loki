@@ -49,6 +49,7 @@ func (l labelsResult) String() string {
 	return l.s
 }
 
+// TODO: this is slow.
 func (l labelsResult) Labels() labels.Labels {
 	size := l.stream.Len() + l.structuredMetadata.Len() + l.parsed.Len()
 	b := labels.NewScratchBuilder(size)
@@ -134,9 +135,11 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
-	buf           []labels.Label
+	buf           []labels.Label // TODO: try to avoid this
 	currentResult LabelsResult
 	groupedResult LabelsResult
+
+	scratchBuilder labels.ScratchBuilder
 
 	*BaseLabelsBuilder
 }
@@ -433,27 +436,23 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	}
 	return buf
 }
-func (b *LabelsBuilder) Range(f func(l labels.Label), categories ...LabelCategory) {
+func (b *LabelsBuilder) Range(f func(name, value []byte), categories ...LabelCategory) {
 	if categories == nil {
 		categories = allCategories
 	}
 
 	if !b.hasDel() && !b.hasAdd() && categoriesContain(categories, StreamLabel) {
 
-		b.base.Range(f)
+		b.base.Range(func(l labels.Label) {
+			f(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
+		})
 
 		if categoriesContain(categories, ParsedLabel) {
 			if b.err != "" {
-				f(labels.Label{
-					Name:  logqlmodel.ErrorLabel,
-					Value: b.err,
-				})
+				f(unsafeGetBytes(logqlmodel.ErrorLabel), unsafeGetBytes(b.err))
 			}
 			if b.errDetails != "" {
-				f(labels.Label{
-					Name:  logqlmodel.ErrorDetailsLabel,
-					Value: b.errDetails,
-				})
+				f(unsafeGetBytes(logqlmodel.ErrorDetailsLabel), unsafeGetBytes(b.errDetails))
 			}
 		}
 
@@ -481,9 +480,9 @@ func (b *LabelsBuilder) Range(f func(l labels.Label), categories ...LabelCategor
 
 			// Take value from stream label if present
 			if value, found := b.add[StreamLabel].get(unsafeGetBytes(l.Name)); found {
-				f(labels.Label{Name: l.Name, Value: unsafeGetString(value)}) // TODO: make clear that string must be copied
+				f(unsafeGetBytes(l.Name), value)
 			} else {
-				f(l)
+				f(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
 			}
 		})
 	}
@@ -495,29 +494,23 @@ func (b *LabelsBuilder) Range(f func(l labels.Label), categories ...LabelCategor
 				continue
 			}
 
-			f(labels.Label{Name: unsafeGetString(name), Value: unsafeGetString(value)})
+			f(name, value)
 		}
 	}
 
 	if categoriesContain(categories, ParsedLabel) {
 		for i := 0; i < b.add[ParsedLabel].len(); i++ {
 			name, value := b.add[ParsedLabel].getAt(i)
-			f(labels.Label{Name: unsafeGetString(name), Value: unsafeGetString(value)})
+			f(name, value)
 		}
 	}
 
 	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
 		if b.err != "" {
-			f(labels.Label{
-				Name:  logqlmodel.ErrorLabel,
-				Value: b.err,
-			})
+			f(unsafeGetBytes(logqlmodel.ErrorLabel), unsafeGetBytes(b.err))
 		}
 		if b.errDetails != "" {
-			f(labels.Label{
-				Name:  logqlmodel.ErrorDetailsLabel,
-				Value: b.errDetails,
-			})
+			f(unsafeGetBytes(logqlmodel.ErrorDetailsLabel), unsafeGetBytes(b.errDetails))
 		}
 	}
 
@@ -532,8 +525,8 @@ func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCa
 		buf = buf[:0]
 	}
 
-	b.Range(func(l labels.Label) {
-		buf = append(buf, l)
+	b.Range(func(name, value []byte) {
+		buf = append(buf, labels.Label{Name: string(name), Value: string(value)})
 	}, categories...)
 
 	return buf
@@ -580,8 +573,8 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	b.Range(func(l labels.Label) {
-		m[l.Name] = l.Value
+	b.Range(func(name, value []byte) {
+		m[string(name)] = string(value)
 	})
 }
 
@@ -596,8 +589,8 @@ func (b *LabelsBuilder) Map() (map[string]string, bool) {
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	b.Range(func(l labels.Label) {
-		res[l.Name] = l.Value
+	b.Range(func(name, value []byte) {
+		res[string(name)] = string(value)
 	})
 	return res, true
 }
@@ -612,8 +605,12 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	}
 
 	// Get all labels at once and sort them
-	b.buf = b.UnsortedLabels(b.buf)
-	lbls := labels.New(b.buf...)
+	b.scratchBuilder.Reset()
+	b.Range(func(name, value []byte) {
+		b.scratchBuilder.UnsafeAddBytes(name, value)
+	})
+
+	lbls := b.scratchBuilder.Labels()
 	hash := b.hasher.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
@@ -621,26 +618,26 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	}
 
 	// Now segregate the sorted labels into their categories
-	var stream, meta, parsed []labels.Label // TODO: use ScratchBuilder instead
+	var stream, meta, parsed labels.ScratchBuilder
 
-	for _, l := range b.buf {
+	b.Range(func(name, value []byte) {
 		// Skip error labels for stream and meta categories
-		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
-			parsed = append(parsed, l)
-			continue
+		if unsafeGetString(name) == logqlmodel.ErrorLabel || unsafeGetString(name) == logqlmodel.ErrorDetailsLabel {
+			parsed.UnsafeAddBytes(name, value)
+			return
 		}
 
 		// Check which category this label belongs to
-		if labelsContain(b.add[ParsedLabel], unsafeGetBytes(l.Name)) {
-			parsed = append(parsed, l)
-		} else if labelsContain(b.add[StructuredMetadataLabel], unsafeGetBytes(l.Name)) {
-			meta = append(meta, l)
+		if labelsContain(b.add[ParsedLabel], name) {
+			parsed.UnsafeAddBytes(name, value)
+		} else if labelsContain(b.add[StructuredMetadataLabel], name) {
+			meta.UnsafeAddBytes(name, value)
 		} else {
-			stream = append(stream, l)
+			stream.UnsafeAddBytes(name, value)
 		}
-	}
+	})
 
-	result := NewLabelsResult(lbls.String(), hash, labels.New(stream...), labels.New(meta...), labels.New(parsed...))
+	result := NewLabelsResult(lbls.String(), hash, stream.Labels(), meta.Labels(), parsed.Labels())
 	b.resultCache[hash] = result
 
 	return result

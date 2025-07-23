@@ -698,8 +698,10 @@ func jsonBenchmark(b *testing.B, parser Stage, lines, cardinality int) {
 				"ts":"2020-12-27T09:15:54.333026285Z",
 				"error":"action could not be completed",
 				"context":{"file": "metrics.go"},
+				"line": "line %d", 
 				"cardinality": %d
 			}`,
+			i, // disables caching
 			i%cardinality,
 		))
 	}
@@ -714,8 +716,9 @@ func jsonBenchmark(b *testing.B, parser Stage, lines, cardinality int) {
 	)
 	b.ReportAllocs()
 	b.ResetTimer()
-	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
+		// ForStream creates the LabelsBuilder. Since it caches the results it must be created for each iteration.
+		sp := p.ForStream(lbs)
 		for _, line := range streams {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
