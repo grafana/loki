@@ -2588,9 +2588,10 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of workers to run for concurrent processing of jobs.
+  # Number of workers to run for concurrent processing of jobs. Setting it to 0
+  # will run a worker per available CPU core.
   # CLI flag: -compactor.worker.num-workers
-  [num_workers: <int> | default = 4]
+  [num_workers: <int> | default = 0]
 
 jobs_config:
   deletion:
@@ -2600,7 +2601,7 @@ jobs_config:
 
     # Maximum number of chunks to process concurrently in each worker.
     # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
-    [chunk_processing_concurrency: <int> | default = 5]
+    [chunk_processing_concurrency: <int> | default = 3]
 
     # Maximum time to wait for a job before considering it failed and retrying.
     # CLI flag: -compactor.jobs.deletion.timeout

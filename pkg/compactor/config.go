@@ -116,7 +116,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	return nil
+	return cfg.WorkerConfig.Validate()
 }
 
 type JobsConfig struct {
@@ -140,7 +140,7 @@ type DeletionJobsConfig struct {
 
 func (c *DeletionJobsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.DeletionManifestStorePrefix, prefix+"deletion-manifest-store-prefix", "__deletion_manifest__/", "Object storage path prefix for storing deletion manifests.")
-	f.IntVar(&c.ChunkProcessingConcurrency, prefix+"chunk-processing-concurrency", 5, "Maximum number of chunks to process concurrently in each worker.")
+	f.IntVar(&c.ChunkProcessingConcurrency, prefix+"chunk-processing-concurrency", 3, "Maximum number of chunks to process concurrently in each worker.")
 	f.DurationVar(&c.Timeout, prefix+"timeout", 15*time.Minute, "Maximum time to wait for a job before considering it failed and retrying.")
 	f.IntVar(&c.MaxRetries, prefix+"max-retries", 3, "Maximum number of times to retry a failed or timed out job.")
 }
