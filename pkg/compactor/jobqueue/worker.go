@@ -54,7 +54,9 @@ func (c *WorkerConfig) Validate() error {
 	if c.NumWorkers < 0 {
 		return errors.New("num_workers must be >= 0")
 	}
-	c.NumWorkers = runtime.GOMAXPROCS(0)
+	if c.NumWorkers == 0 {
+		c.NumWorkers = runtime.GOMAXPROCS(0)
+	}
 
 	return nil
 }
