@@ -26,7 +26,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
-- [BUGFIX] Fix serviceName in zone-aware ingester statefulsets
+- [BUGFIX] Fix serviceName in zone-aware ingester statefulsets [#18558](https://github.com/grafana/loki/pull/18558)
+
 ## 6.32.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.5.2
