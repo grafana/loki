@@ -53,8 +53,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 
 	// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
-		sectionLogger := log.With(logger, "section", i)
-		if err := c.processStreamsSection(ctx, sectionLogger, section, objectPath); err != nil {
+		if err := c.processStreamsSection(ctx, section); err != nil {
 			return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 		}
 	}
@@ -79,7 +78,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, _ log.Logger, section *dataobj.Section, objectPath string) error {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) error {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)

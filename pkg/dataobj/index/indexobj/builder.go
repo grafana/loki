@@ -431,7 +431,7 @@ func (b *Builder) Reset() {
 	b.pointers.Reset()
 	b.indexPointers.Reset()
 
-	// b.metrics.sizeEstimate.Set(0)
+	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }
