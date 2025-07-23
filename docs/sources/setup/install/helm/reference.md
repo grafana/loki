@@ -5641,6 +5641,7 @@ null
     "tag": null
   },
   "initContainers": [],
+  "labels": {},
   "lifecycle": {},
   "livenessProbe": {},
   "maxUnavailable": 1,
