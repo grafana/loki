@@ -107,7 +107,8 @@ define run_in_container
 				COMMON_DIR=$$(git rev-parse --git-common-dir 2>/dev/null || echo "$$GIT_DIR"); \
 				echo "-v $$GIT_DIR:$$GIT_DIR$(MOUNT_FLAGS) -v $$COMMON_DIR:$$COMMON_DIR$(MOUNT_FLAGS)"; \
 			else \
-				echo "-v $$GIT_DIR:$$GIT_DIR$(MOUNT_FLAGS)"; \
+				ABS_GIT_DIR=$$(cd $$GIT_DIR && pwd); \
+				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
 			fi; \
 		fi))
 	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
