@@ -36,6 +36,7 @@ const (
 )
 
 type ObjectMetastore struct {
+	cfg         StorageConfig
 	bucket      objstore.Bucket
 	parallelism int
 	logger      log.Logger
@@ -83,25 +84,43 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	}
 }
 
-func metastorePath(tenantID string, window time.Time) string {
-	return fmt.Sprintf("tenant-%s/metastore/%s.store", tenantID, window.Format(time.RFC3339))
+func storagePrefixFor(cfg StorageConfig, tenantID string) string {
+	if cfg.IndexStoragePrefix == "" {
+		return ""
+	}
+	if slices.Contains(cfg.EnabledTenantIDs, tenantID) {
+		return cfg.IndexStoragePrefix
+	}
+	return ""
 }
 
-func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
+func metastorePath(tenantID string, window time.Time, prefix string) string {
+	path := fmt.Sprintf("tenant-%s/metastore/%s.store", tenantID, window.Format(time.RFC3339))
+	if prefix != "" {
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		path = fmt.Sprintf("%s%s", prefix, path)
+	}
+	return path
+}
+
+func iterStorePaths(tenantID string, start, end time.Time, prefix string) iter.Seq[string] {
 	minMetastoreWindow := start.Truncate(metastoreWindowSize).UTC()
 	maxMetastoreWindow := end.Truncate(metastoreWindowSize).UTC()
 
 	return func(yield func(t string) bool) {
 		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
-			if !yield(metastorePath(tenantID, metastoreWindow)) {
+			if !yield(metastorePath(tenantID, metastoreWindow, prefix)) {
 				return
 			}
 		}
 	}
 }
 
-func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
+func NewObjectMetastore(cfg StorageConfig, bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
 	store := &ObjectMetastore{
+		cfg:         cfg,
 		bucket:      bucket,
 		parallelism: 64,
 		logger:      logger,
@@ -134,8 +153,11 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
+	var (
+		storePaths []string
+		prefix     = storagePrefixFor(m.cfg, tenantID)
+	)
+	for path := range iterStorePaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 
@@ -160,8 +182,11 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	level.Debug(logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
+	var (
+		storePaths []string
+		prefix     = storagePrefixFor(m.cfg, tenantID)
+	)
+	for path := range iterStorePaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 	level.Debug(logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
@@ -209,8 +234,11 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
+	var (
+		storePaths []string
+		prefix     = storagePrefixFor(m.cfg, tenantID)
+	)
+	for path := range iterStorePaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 
@@ -285,8 +313,11 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
+	var (
+		storePaths []string
+		prefix     = storagePrefixFor(m.cfg, tenantID)
+	)
+	for path := range iterStorePaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 

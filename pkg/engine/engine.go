@@ -34,11 +34,11 @@ var tracer = otel.Tracer("pkg/engine")
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, cfg metastore.StorageConfig, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
 		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
-		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
+		ms = metastore.NewObjectMetastore(cfg, metastoreBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
