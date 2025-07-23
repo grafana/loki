@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.3](https://github.com/grafana/loki/compare/v3.5.2...v3.5.3) (2025-07-16)
+
+
+### Bug Fixes
+
+* **deps:** Move to Go 1.24.5 ([#18412](https://github.com/grafana/loki/issues/18412)) ([2aa4680](https://github.com/grafana/loki/commit/2aa468065721587d0db829ff6b3cce9b73c10699))
+* Handle WAL corruption properly on startup (backport release-3.5.x) ([#18408](https://github.com/grafana/loki/issues/18408)) ([5b8ee9a](https://github.com/grafana/loki/commit/5b8ee9a582d168cbde2cb5a0bad48283069351d6))
+
 ## [3.5.2](https://github.com/grafana/loki/compare/v3.5.1...v3.5.2) (2025-07-10)
 
 
