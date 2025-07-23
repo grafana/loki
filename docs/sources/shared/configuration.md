@@ -1024,24 +1024,30 @@ kafka_config:
 dataobj:
   consumer:
     builderconfig:
-      # The size of the target page to use for the data object builder.
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The size of the target object to use for the data object builder.
-      # CLI flag: -dataobj-consumer.target-object-size
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj-consumer.target-builder-memory-limit
       [target_object_size: <int> | default = 1GiB]
 
-      # Configures a maximum size for sections, for sections that support it.
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
       [target_section_size: <int> | default = 128MiB]
 
-      # The size of the buffer to use for sorting logs.
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of stripes to merge into a section at once. Must be
-      # greater than 1.
+      # The maximum number of log section stripes to merge into a section at
+      # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
@@ -2580,17 +2586,20 @@ compactor_ring:
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
 
-# Supported modes - [disabled]: Keeps the horizontal scaling mode disabled.
-# Locally runs all the functions of the compactor.[main]: Runs all functions of
-# the compactor. Distributes work to workers where possible.[worker]: Runs the
-# compactor in worker mode, only working on jobs built by the main compactor.
+# Experimental: Configuration to turn on and run horizontally scalable
+# compactor. Supported modes - [disabled]: Keeps the horizontal scaling mode
+# disabled. Locally runs all the functions of the compactor.[main]: Runs all
+# functions of the compactor. Distributes work to workers where
+# possible.[worker]: Runs the compactor in worker mode, only working on jobs
+# built by the main compactor.
 # CLI flag: -compactor.horizontal-scaling-mode
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of workers to run for concurrent processing of jobs.
+  # Number of workers to run for concurrent processing of jobs. Setting it to 0
+  # will run a worker per available CPU core.
   # CLI flag: -compactor.worker.num-workers
-  [num_workers: <int> | default = 4]
+  [num_workers: <int> | default = 0]
 
 jobs_config:
   deletion:
@@ -2600,7 +2609,7 @@ jobs_config:
 
     # Maximum number of chunks to process concurrently in each worker.
     # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
-    [chunk_processing_concurrency: <int> | default = 5]
+    [chunk_processing_concurrency: <int> | default = 3]
 
     # Maximum time to wait for a job before considering it failed and retrying.
     # CLI flag: -compactor.jobs.deletion.timeout
