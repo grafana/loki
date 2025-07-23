@@ -2581,13 +2581,11 @@ compactor_ring:
 [skip_latest_n_tables: <int> | default = 0]
 
 # Experimental: Configuration to turn on and run horizontally scalable
-# compactor. Supported modes -
-# 	[disabled]: Keeps the horizontal scaling mode disabled. Locally runs all the
-# functions of the compactor.
-# 	[main]: Runs all functions of the compactor. Distributes work to workers
-# where possible.
-# 	[worker]: Runs the compactor in worker mode, only working on jobs built by
-# the main compactor.
+# compactor. Supported modes - [disabled]: Keeps the horizontal scaling mode
+# disabled. Locally runs all the functions of the compactor.[main]: Runs all
+# functions of the compactor. Distributes work to workers where
+# possible.[worker]: Runs the compactor in worker mode, only working on jobs
+# built by the main compactor.
 # CLI flag: -compactor.horizontal-scaling-mode
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
