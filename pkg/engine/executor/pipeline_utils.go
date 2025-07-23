@@ -1,6 +1,10 @@
 package executor
 
-import "github.com/apache/arrow-go/v18/arrow"
+import (
+	"context"
+
+	"github.com/apache/arrow-go/v18/arrow"
+)
 
 // BufferedPipeline is a pipeline implementation that reads from a fixed set of Arrow records.
 // It implements the Pipeline interface and serves as a simple source for testing and data injection.
@@ -28,7 +32,7 @@ func NewBufferedPipeline(records ...arrow.Record) *BufferedPipeline {
 
 // Read implements Pipeline.
 // It advances to the next record and returns EOF when all records have been read.
-func (p *BufferedPipeline) Read() error {
+func (p *BufferedPipeline) Read(_ context.Context) error {
 	// Release previous record if it exists
 	if p.state.batch != nil {
 		p.state.batch.Release()

@@ -32,6 +32,12 @@ const (
 	// MetricNameLabel is the label name indicating the metric name of a
 	// timeseries.
 	MetricNameLabel = "__name__"
+	// MetricTypeLabel is the label name indicating the metric type of
+	// timeseries as per the PROM-39 proposal.
+	MetricTypeLabel = "__type__"
+	// MetricUnitLabel is the label name indicating the metric unit of
+	// timeseries as per the PROM-39 proposal.
+	MetricUnitLabel = "__unit__"
 
 	// SchemeLabel is the name of the label that holds the scheme on which to
 	// scrape a target.

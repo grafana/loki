@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
@@ -157,24 +158,41 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
+	predicates := make([]Expression, len(lp.Predicates))
+	for i, predicate := range lp.Predicates {
+		predicates[i] = p.convertPredicate(predicate)
+	}
+
 	from, through := ctx.GetResolveTimeRange()
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), from, through)
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
+
+		node := &SortMerge{
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:  ctx.direction, // apply direction from previously visited Sort node
+		}
+		p.plan.addNode(node)
+
 		for _, section := range sections[i] {
-			node := &DataObjScan{
+			scan := &DataObjScan{
 				Location:  objects[i],
 				StreamIDs: streams[i],
 				Section:   section,
 				Direction: ctx.direction, // apply direction from previously visited Sort node
 			}
-			p.plan.addNode(node)
-			nodes = append(nodes, node)
+			p.plan.addNode(scan)
+			if err := p.plan.addEdge(Edge{Parent: node, Child: scan}); err != nil {
+				return nil, err
+			}
 		}
+
+		nodes = append(nodes, node)
 	}
 	return nodes, nil
 }

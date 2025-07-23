@@ -11,99 +11,125 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/dskit/backoff"
-	"github.com/thanos-io/objstore"
-
 	"github.com/grafana/dskit/user"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
-func BenchmarkWriteMetastores(t *testing.B) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	tenantID := "test-tenant"
-
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
-
-	// Set limits for the test
-	m.backoff = backoff.New(context.TODO(), backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
-		MaxRetries: 3,
-	})
-
-	// Add test data spanning multiple metastore windows
-	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
-
-	flushStats := make([]logsobj.FlushStats, 1000)
-	for i := 0; i < 1000; i++ {
-		flushStats[i] = logsobj.FlushStats{
-			MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
-			MaxTimestamp: now,
-		}
+func BenchmarkWriteMetastores(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		format StorageFormatType
+	}{
+		{name: "v1", format: StorageFormatTypeV1},
+		{name: "v2", format: StorageFormatTypeV2},
 	}
 
-	t.ResetTimer()
-	t.ReportAllocs()
-	for i := 0; i < t.N; i++ {
-		// Test writing metastores
-		stats := flushStats[i%len(flushStats)]
-		err := m.Update(ctx, "path", stats.MinTimestamp, stats.MaxTimestamp)
-		require.NoError(t, err)
-	}
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(t *testing.B) {
+			ctx := context.Background()
+			bucket := objstore.NewInMemBucket()
+			tenantID := "test-tenant"
 
-	require.Len(t, bucket.Objects(), 1)
+			m := NewUpdater(UpdaterConfig{
+				StorageFormat: bm.format,
+			}, bucket, tenantID, log.NewNopLogger())
+
+			// Set limits for the test
+			m.backoff = backoff.New(context.TODO(), backoff.Config{
+				MinBackoff: 10 * time.Millisecond,
+				MaxBackoff: 100 * time.Millisecond,
+				MaxRetries: 3,
+			})
+
+			// Add test data spanning multiple metastore windows
+			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
+
+			flushStats := make([]logsobj.FlushStats, 1000)
+			for i := 0; i < 1000; i++ {
+				flushStats[i] = logsobj.FlushStats{
+					MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
+					MaxTimestamp: now,
+				}
+			}
+
+			t.ResetTimer()
+			t.ReportAllocs()
+			for i := 0; i < t.N; i++ {
+				// Test writing metastores
+				stats := flushStats[i%len(flushStats)]
+				err := m.Update(ctx, "path", stats.MinTimestamp, stats.MaxTimestamp)
+				require.NoError(t, err)
+			}
+
+			require.Len(t, bucket.Objects(), 1)
+		})
+	}
 }
 
 func TestWriteMetastores(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	tenantID := "test-tenant"
-
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
-
-	// Set limits for the test
-	m.backoff = backoff.New(context.TODO(), backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
-		MaxRetries: 3,
-	})
-
-	// Add test data spanning multiple metastore windows
-	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
-
-	flushStats := logsobj.FlushStats{
-		MinTimestamp: now.Add(-1 * time.Hour),
-		MaxTimestamp: now,
+	tests := []struct {
+		name   string
+		format StorageFormatType
+	}{
+		{name: "write to v1", format: StorageFormatTypeV1},
+		{name: "write to v2", format: StorageFormatTypeV2},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			bucket := objstore.NewInMemBucket()
+			tenantID := "test-tenant"
 
-	require.Len(t, bucket.Objects(), 0)
+			m := NewUpdater(UpdaterConfig{
+				StorageFormat: tt.format,
+			}, bucket, tenantID, log.NewNopLogger())
 
-	// Test writing metastores
-	err := m.Update(ctx, "test-dataobj-path", flushStats.MinTimestamp, flushStats.MaxTimestamp)
-	require.NoError(t, err)
+			// Set limits for the test
+			m.backoff = backoff.New(context.TODO(), backoff.Config{
+				MinBackoff: 10 * time.Millisecond,
+				MaxBackoff: 100 * time.Millisecond,
+				MaxRetries: 3,
+			})
 
-	require.Len(t, bucket.Objects(), 1)
-	var originalSize int
-	for _, obj := range bucket.Objects() {
-		originalSize = len(obj)
-	}
+			// Add test data spanning multiple metastore windows
+			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	flushResult2 := logsobj.FlushStats{
-		MinTimestamp: now.Add(-15 * time.Minute),
-		MaxTimestamp: now,
-	}
+			flushStats := logsobj.FlushStats{
+				MinTimestamp: now.Add(-1 * time.Hour),
+				MaxTimestamp: now,
+			}
 
-	err = m.Update(ctx, "different-dataobj-path", flushResult2.MinTimestamp, flushResult2.MaxTimestamp)
-	require.NoError(t, err)
+			require.Len(t, bucket.Objects(), 0)
 
-	require.Len(t, bucket.Objects(), 1)
-	for _, obj := range bucket.Objects() {
-		require.Greater(t, len(obj), originalSize)
+			// Test writing metastores
+			err := m.Update(ctx, "test-dataobj-path", flushStats.MinTimestamp, flushStats.MaxTimestamp)
+			require.NoError(t, err)
+
+			require.Len(t, bucket.Objects(), 1)
+			var originalSize int
+			for _, obj := range bucket.Objects() {
+				originalSize = len(obj)
+			}
+
+			flushResult2 := logsobj.FlushStats{
+				MinTimestamp: now.Add(-15 * time.Minute),
+				MaxTimestamp: now,
+			}
+
+			err = m.Update(ctx, "different-dataobj-path", flushResult2.MinTimestamp, flushResult2.MaxTimestamp)
+			require.NoError(t, err)
+
+			require.Len(t, bucket.Objects(), 1)
+			for _, obj := range bucket.Objects() {
+				require.Greater(t, len(obj), originalSize)
+			}
+		})
 	}
 }
 
-func TestIter(t *testing.T) {
+func TestIterStorePaths(t *testing.T) {
 	tenantID := "TEST"
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
@@ -185,126 +211,140 @@ func TestIter(t *testing.T) {
 	}
 }
 
-func TestDataObjectsPaths(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
-	tenantID := "test-tenant"
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	m := NewUpdater(bucket, tenantID, log.NewNopLogger())
-
-	// Set limits for the test
-	m.backoff = backoff.New(context.TODO(), backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
-		MaxRetries: 3,
-	})
-
-	// Create test data spanning multiple metastore windows
-	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
-
-	// Add files in different time windows spanning multiple 12h periods
-	testCases := []struct {
-		path      string
-		startTime time.Time
-		endTime   time.Time
+func TestDataObjectsPathsV1(t *testing.T) {
+	tests := []struct {
+		name   string
+		format StorageFormatType
 	}{
-		{
-			path:      "path1",
-			startTime: now.Add(-1 * time.Hour),
-			endTime:   now,
-		},
-		{
-			path:      "path2",
-			startTime: now.Add(-30 * time.Minute),
-			endTime:   now,
-		},
-		{
-			path:      "path3",
-			startTime: now.Add(-13 * time.Hour), // Previous 12h window
-			endTime:   now.Add(-12 * time.Hour),
-		},
-		{
-			path:      "path4",
-			startTime: now.Add(-14 * time.Hour), // Previous 12h window
-			endTime:   now.Add(-13 * time.Hour),
-		},
-		{
-			path:      "path5",
-			startTime: now.Add(-25 * time.Hour), // Two windows back
-			endTime:   now.Add(-24 * time.Hour),
-		},
-		{
-			path:      "path6",
-			startTime: now.Add(-36 * time.Hour), // Three windows back
-			endTime:   now.Add(-35 * time.Hour),
-		},
+		{name: "read from v1", format: StorageFormatTypeV1},
+		{name: "read from v2", format: StorageFormatTypeV2},
 	}
 
-	for _, tc := range testCases {
-		err := m.Update(ctx, tc.path, tc.startTime, tc.endTime)
-		require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			tenantID := "test-tenant"
+			ctx := user.InjectOrgID(context.Background(), tenantID)
+
+			m := NewUpdater(UpdaterConfig{
+				StorageFormat: tt.format,
+			}, bucket, tenantID, log.NewNopLogger())
+
+			// Set limits for the test
+			m.backoff = backoff.New(context.TODO(), backoff.Config{
+				MinBackoff: 10 * time.Millisecond,
+				MaxBackoff: 100 * time.Millisecond,
+				MaxRetries: 3,
+			})
+
+			// Create test data spanning multiple metastore windows
+			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
+
+			// Add files in different time windows spanning multiple 12h periods
+			testCases := []struct {
+				path      string
+				startTime time.Time
+				endTime   time.Time
+			}{
+				{
+					path:      "path1",
+					startTime: now.Add(-1 * time.Hour),
+					endTime:   now,
+				},
+				{
+					path:      "path2",
+					startTime: now.Add(-30 * time.Minute),
+					endTime:   now,
+				},
+				{
+					path:      "path3",
+					startTime: now.Add(-13 * time.Hour), // Previous 12h window
+					endTime:   now.Add(-12 * time.Hour),
+				},
+				{
+					path:      "path4",
+					startTime: now.Add(-14 * time.Hour), // Previous 12h window
+					endTime:   now.Add(-13 * time.Hour),
+				},
+				{
+					path:      "path5",
+					startTime: now.Add(-25 * time.Hour), // Two windows back
+					endTime:   now.Add(-24 * time.Hour),
+				},
+				{
+					path:      "path6",
+					startTime: now.Add(-36 * time.Hour), // Three windows back
+					endTime:   now.Add(-35 * time.Hour),
+				},
+			}
+
+			for _, tc := range testCases {
+				err := m.Update(ctx, tc.path, tc.startTime, tc.endTime)
+				require.NoError(t, err)
+			}
+
+			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+
+			t.Run("finds objects within current window", func(t *testing.T) {
+				paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
+				require.NoError(t, err)
+				require.Len(t, paths, 2)
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+			})
+
+			t.Run("finds objects across two 12h windows", func(t *testing.T) {
+				paths, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
+				require.NoError(t, err)
+				require.Len(t, paths, 4)
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+			})
+
+			t.Run("finds objects across three 12h windows", func(t *testing.T) {
+				paths, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
+				require.NoError(t, err)
+				require.Len(t, paths, 5)
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
+			})
+
+			t.Run("finds all objects across all windows", func(t *testing.T) {
+				paths, err := ms.DataObjects(ctx, now.Add(-36*time.Hour), now)
+				require.NoError(t, err)
+				require.Len(t, paths, 6)
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
+				require.Contains(t, paths, "path6")
+			})
+
+			t.Run("returns empty list when no objects in range", func(t *testing.T) {
+				metas, err := ms.DataObjects(ctx, now.Add(1*time.Hour), now.Add(2*time.Hour))
+				require.NoError(t, err)
+				require.Empty(t, metas)
+			})
+
+			t.Run("finds half of objects with partial window overlap", func(t *testing.T) {
+				// Query starting from middle of first window to current time
+				paths, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
+				require.NoError(t, err)
+				require.Len(t, paths, 5) // Should exclude path6 which is before -30h
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
+			})
+		})
 	}
-
-	ms := NewObjectMetastore(bucket, log.NewNopLogger())
-
-	t.Run("finds objects within current window", func(t *testing.T) {
-		paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
-		require.NoError(t, err)
-		require.Len(t, paths, 2)
-		require.Contains(t, paths, "path1")
-		require.Contains(t, paths, "path2")
-	})
-
-	t.Run("finds objects across two 12h windows", func(t *testing.T) {
-		paths, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
-		require.NoError(t, err)
-		require.Len(t, paths, 4)
-		require.Contains(t, paths, "path1")
-		require.Contains(t, paths, "path2")
-		require.Contains(t, paths, "path3")
-		require.Contains(t, paths, "path4")
-	})
-
-	t.Run("finds objects across three 12h windows", func(t *testing.T) {
-		paths, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
-		require.NoError(t, err)
-		require.Len(t, paths, 5)
-		require.Contains(t, paths, "path1")
-		require.Contains(t, paths, "path2")
-		require.Contains(t, paths, "path3")
-		require.Contains(t, paths, "path4")
-		require.Contains(t, paths, "path5")
-	})
-
-	t.Run("finds all objects across all windows", func(t *testing.T) {
-		paths, err := ms.DataObjects(ctx, now.Add(-36*time.Hour), now)
-		require.NoError(t, err)
-		require.Len(t, paths, 6)
-		require.Contains(t, paths, "path1")
-		require.Contains(t, paths, "path2")
-		require.Contains(t, paths, "path3")
-		require.Contains(t, paths, "path4")
-		require.Contains(t, paths, "path5")
-		require.Contains(t, paths, "path6")
-	})
-
-	t.Run("returns empty list when no objects in range", func(t *testing.T) {
-		metas, err := ms.DataObjects(ctx, now.Add(1*time.Hour), now.Add(2*time.Hour))
-		require.NoError(t, err)
-		require.Empty(t, metas)
-	})
-
-	t.Run("finds half of objects with partial window overlap", func(t *testing.T) {
-		// Query starting from middle of first window to current time
-		paths, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
-		require.NoError(t, err)
-		require.Len(t, paths, 5) // Should exclude path6 which is before -30h
-		require.Contains(t, paths, "path1")
-		require.Contains(t, paths, "path2")
-		require.Contains(t, paths, "path3")
-		require.Contains(t, paths, "path4")
-		require.Contains(t, paths, "path5")
-	})
 }
 
 func TestObjectOverlapsRange(t *testing.T) {
@@ -405,11 +445,11 @@ func TestObjectOverlapsRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create labels with timestamps in nanoseconds
-			lbs := labels.Labels{
-				{Name: labelNameStart, Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
-				{Name: labelNameEnd, Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
-				{Name: labelNamePath, Value: testPath},
-			}
+			lbs := labels.New(
+				labels.Label{Name: labelNameStart, Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
+				labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
+				labels.Label{Name: labelNamePath, Value: testPath},
+			)
 
 			gotMatch, gotPath := objectOverlapsRange(lbs, tt.queryStart, tt.queryEnd)
 			require.Equal(t, tt.wantMatch, gotMatch, "overlap match failed for %s", tt.desc)

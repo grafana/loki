@@ -94,18 +94,21 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
-			Selector: selector,
-			Shard:    shard,
+			Selector:   selector,
+			Predicates: predicates,
+			Shard:      shard,
 		},
 	)
 
-	// Metric queries currently do not expect the logs to be sorted by timestamp.
-	if !isMetricQuery {
-		// SORT -> SortMerge
-		direction := params.Direction()
-		ascending := direction == logproto.FORWARD
-		builder = builder.Sort(*timestampColumnRef(), ascending, false)
+	direction := params.Direction()
+	if !isMetricQuery && direction == logproto.FORWARD {
+		return nil, fmt.Errorf("forward search log queries are not supported: %w", errUnimplemented)
 	}
+
+	// SORT -> SortMerge
+	// We always sort DESC. ASC timestamp sorting is not supported for logs queries,
+	// and metric queries do not care about the direction.
+	builder = builder.Sort(*timestampColumnRef(), false, false)
 
 	// SELECT -> Filter
 	start := params.Start()

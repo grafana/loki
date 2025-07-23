@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -31,12 +32,13 @@ var slowTests = flag.Bool("slow-tests", false, "run slow tests")
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj         = "dataobj"
-	StoreDataObjV2Engine = "dataobj-engine"
-	StoreChunk           = "chunk"
+	StoreDataObj                    = "dataobj"
+	StoreDataObjV2Engine            = "dataobj-engine"
+	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
+	StoreChunk                      = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -63,6 +65,12 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (logql.Engine, *Ge
 			tb.Fatal(err)
 		}
 
+		return store.engine, config
+	case StoreDataObjV2EngineWithIndexes:
+		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
+		if err != nil {
+			tb.Fatal(err)
+		}
 		return store.engine, config
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
@@ -164,18 +172,6 @@ func TestStorageEquality(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				expected, err := baseStore.Engine.Query(params).Exec(ctx)
-				require.NoError(t, err)
-
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					baseStore.Name,
-					expected.Statistics.Summary.TotalLinesProcessed,
-					expected.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
-					uint64(expected.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
 				// Find matching test case in other stores and then compare results.
 				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
 					return tc == baseCase
@@ -186,21 +182,31 @@ func TestStorageEquality(t *testing.T) {
 				}
 
 				actual, err := store.Engine.Query(params).Exec(ctx)
-				if err != nil && errors.Is(err, errStoreUnimplemented) {
-					t.Logf("Store %s does not implement test case %s", store.Name, baseCase.Name())
-					return
-				} else if assert.NoError(t, err) {
-					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-						store.Name,
-						actual.Statistics.Summary.TotalLinesProcessed,
-						actual.Statistics.Summary.TotalEntriesReturned,
-						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
-						uint64(actual.Statistics.Summary.ExecTime),
-						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
-					)
-
-					assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
+				if err != nil && errors.Is(err, engine.ErrNotSupported) {
+					t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
 				}
+				require.NoError(t, err)
+				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+					store.Name,
+					actual.Statistics.Summary.TotalLinesProcessed,
+					actual.Statistics.Summary.TotalEntriesReturned,
+					humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+					uint64(actual.Statistics.Summary.ExecTime),
+					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+				)
+
+				expected, err := baseStore.Engine.Query(params).Exec(ctx)
+				require.NoError(t, err)
+				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+					baseStore.Name,
+					expected.Statistics.Summary.TotalLinesProcessed,
+					expected.Statistics.Summary.TotalEntriesReturned,
+					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+					uint64(expected.Statistics.Summary.ExecTime),
+					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+				)
+
+				assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 			})
 		}
 	}
@@ -241,7 +247,6 @@ func TestLogQLQueries(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
-
 			// Uncomment this to run only log queries
 			// if c.Kind() != "log" {
 			// 	continue
@@ -297,13 +302,13 @@ func BenchmarkLogQL(b *testing.B) {
 	// Run benchmarks for both storage types
 	for _, storeType := range allStores {
 		engine, config := setupBenchmarkWithStore(b, storeType)
-		ctx := user.InjectOrgID(context.Background(), testTenant)
 
 		// Generate test cases using the loaded config
 		cases := config.GenerateTestCases()
 
 		for _, c := range cases {
 			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
+				ctx := user.InjectOrgID(context.Background(), testTenant)
 				params, err := logql.NewLiteralParams(
 					c.Query,
 					c.Start,
@@ -323,6 +328,8 @@ func BenchmarkLogQL(b *testing.B) {
 				b.ResetTimer()
 
 				for i := 0; i < b.N; i++ {
+					ctx, cancel := context.WithTimeout(ctx, time.Minute)
+					defer cancel()
 					r, err := q.Exec(ctx)
 					require.NoError(b, err)
 					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")

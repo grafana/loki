@@ -7,6 +7,11 @@ loki:
     bucketNames:
       chunks: chunks
       ruler: ruler
+  tenants:
+    - name: "test-user-1"
+      password: "test-password-1"
+    - name: "test-user-2"
+      passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva"
 ingester:
   replicas: 0
   zoneAwareReplication:
@@ -38,3 +43,17 @@ queryScheduler:
   replicas: 1
 lokiCanary:
   kind: Deployment
+resultsCache:
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
+chunksCache:
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
+gateway:
+  enabled: true
+  basicAuth:
+    enabled: true

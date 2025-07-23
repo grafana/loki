@@ -798,6 +798,17 @@ http {
   {{- tpl . $ | nindent 2 }}
   {{- end }}
 
+  # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
+  map $http_x_query_tags $query_tags {
+    ""        "noop=";            # When header is empty, set noop=
+    default   $http_x_query_tags; # Otherwise, preserve the original value
+  }
+
+  # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+  proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
     listen             8080 ssl;
@@ -817,6 +828,9 @@ http {
     {{- end }}
 
     location = / {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       return 200 'OK';
       auth_basic off;
     }
@@ -888,100 +902,175 @@ http {
 
     {{- if .Values.loki.ui.gateway.enabled }}
     location ^~ /ui {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     {{- end }}
 
     # Distributor
     location = /api/prom/push {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /loki/api/v1/push {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /distributor/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /otlp/v1/logs {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
 
     # Ingester
     location = /flush {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location ^~ /ingester/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location = /ingester {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
 
     # Ring
     location = /ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # MemberListKV
     location = /memberlist {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # Ruler
     location = /ruler/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /api/prom/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /api/prom/rules/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /loki/api/v1/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /loki/api/v1/rules/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/alerts {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
 
     # Compactor
     location = /compactor/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/delete {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/cache/generation_numbers {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
 
     # IndexGateway
     location = /indexgateway/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $indexGatewayUrl }}$request_uri;
     }
 
     # QueryScheduler
     location = /scheduler/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $schedulerUrl }}$request_uri;
     }
 
     # Config
     location = /config {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
     # Admin API
     location ^~ /admin/api/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
     location = /admin/api {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
     {{- end }}
@@ -989,32 +1078,39 @@ http {
 
     # QueryFrontend, Querier
     location = /api/prom/tail {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /api/prom {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
-    # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
-    set $query_tags $http_x_query_tags;
-    if ($query_tags !~* '') {
-      set $query_tags "noop=";
-    }
     location ^~ /loki/api/v1/ {
-      # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
-      proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
 
