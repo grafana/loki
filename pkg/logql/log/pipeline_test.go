@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -684,14 +685,24 @@ func mustFilter(f Filterer, err error) Filterer {
 	return f
 }
 
-func jsonBenchmark(b *testing.B, parser Stage) {
-	b.ReportAllocs()
+func jsonBenchmark(b *testing.B, parser Stage, lines, cardinality int) {
 
 	p := NewPipeline([]Stage{
 		mustFilter(NewFilter("metrics.go", LineMatchEqual)).ToStage(),
 		parser,
 	})
-	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go"}}`)
+	streams := make([][]byte, lines)
+	for i := 0; i < lines; i++ {
+		streams[i] = []byte(fmt.Sprintf(
+			`{
+				"ts":"2020-12-27T09:15:54.333026285Z",
+				"error":"action could not be completed",
+				"context":{"file": "metrics.go"},
+				"cardinality": %d
+			}`,
+			i%cardinality,
+		))
+	}
 	lbs := labels.FromStrings("cluster", "ops-tool1",
 		"name", "querier",
 		"pod", "querier-5896759c79-q7q9h",
@@ -701,17 +712,20 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 		"job", "loki-dev/querier",
 		"pod_template_hash", "5896759c79",
 	)
+	b.ReportAllocs()
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
+		for _, line := range streams {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
-		if !resMatches {
-			b.Fatalf("resulting line not ok: %s\n", line)
-		}
+			if !resMatches {
+				b.Fatalf("resulting line not ok: %s\n", line)
+			}
 
-		if resLbs.Labels().Get("context_file") != "metrics.go" {
-			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+			if resLbs.Labels().Get("context_file") != "metrics.go" {
+				b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+			}
 		}
 	}
 }
@@ -740,7 +754,11 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkJSONParser(b *testing.B) {
-	jsonBenchmark(b, NewJSONParser(false))
+	jsonBenchmark(b, NewJSONParser(false), 1, 1)
+}
+
+func BenchmarkJSONParserHighCardinality(b *testing.B) {
+	jsonBenchmark(b, NewJSONParser(true), 100_000, 10_000)
 }
 
 func BenchmarkJSONParserInvalidLine(b *testing.B) {
@@ -755,7 +773,7 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 		b.Fatal("cannot create new JSON expression parser")
 	}
 
-	jsonBenchmark(b, parser)
+	jsonBenchmark(b, parser, 1, 1)
 }
 
 func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
