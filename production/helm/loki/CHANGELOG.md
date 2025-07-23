@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`
 
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+- [ENHANCEMENT] Expose Loki UI in pure ingress. [18400](https://github.com/grafana/loki/pull/18400)
 
 ## 6.32.0
 
