@@ -376,7 +376,8 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder 
 		// Note that because this is used for bypassing extracted fields, and
 		// because parsed labels always take precedence over structured metadata
 		// and stream labels, we must only call RecordExtracted for parsed labels.
-		b.parserKeyHints.RecordExtracted(string(n))
+		//b.parserKeyHints.RecordExtracted(string(n))
+		b.parserKeyHints.RecordExtracted(unsafeGetString(n))
 	}
 	return b
 }
@@ -618,26 +619,43 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	}
 
 	// Now segregate the sorted labels into their categories
-	var stream, meta, parsed labels.ScratchBuilder
+	var stream, meta, parsed labels.Labels
 
+	// Parsed
+	b.scratchBuilder.Reset()
 	b.Range(func(name, value []byte) {
 		// Skip error labels for stream and meta categories
 		if unsafeGetString(name) == logqlmodel.ErrorLabel || unsafeGetString(name) == logqlmodel.ErrorDetailsLabel {
-			parsed.UnsafeAddBytes(name, value)
+			b.scratchBuilder.UnsafeAddBytes(name, value)
 			return
 		}
 
 		// Check which category this label belongs to
 		if labelsContain(b.add[ParsedLabel], name) {
-			parsed.UnsafeAddBytes(name, value)
-		} else if labelsContain(b.add[StructuredMetadataLabel], name) {
-			meta.UnsafeAddBytes(name, value)
-		} else {
-			stream.UnsafeAddBytes(name, value)
+			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})
+	parsed = b.scratchBuilder.Labels()
 
-	result := NewLabelsResult(lbls.String(), hash, stream.Labels(), meta.Labels(), parsed.Labels())
+	// Structured Metadata
+	b.scratchBuilder.Reset()
+	b.Range(func(name, value []byte) {
+		if labelsContain(b.add[StructuredMetadataLabel], name) {
+			b.scratchBuilder.UnsafeAddBytes(name, value)
+		}
+	})
+	meta = b.scratchBuilder.Labels()
+
+	// Stream
+	b.scratchBuilder.Reset()
+	b.Range(func(name, value []byte) {
+		if labelsContain(b.add[StreamLabel], name) {
+			b.scratchBuilder.UnsafeAddBytes(name, value)
+		}
+	})
+	stream = b.scratchBuilder.Labels()
+
+	result := NewLabelsResult(lbls.String(), hash, stream, meta, parsed)
 	b.resultCache[hash] = result
 
 	return result

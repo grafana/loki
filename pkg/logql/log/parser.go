@@ -60,6 +60,7 @@ type JSONParser struct {
 	keys                  internedStringSet
 	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
+	valueBuffer           []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -69,6 +70,7 @@ func NewJSONParser(captureJSONPath bool) *JSONParser {
 		keys:                  internedStringSet{},
 		captureJSONPath:       captureJSONPath,
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
+		valueBuffer:           make([]byte, 0, 64),
 	}
 }
 
@@ -151,7 +153,10 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !ok || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
 			return nil
 		}
-		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), readValue(value, dataType))
+
+		j.valueBuffer = readValue(value, dataType, j.valueBuffer)
+		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), j.valueBuffer)
+
 		if j.captureJSONPath {
 			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
 		}
@@ -196,7 +201,8 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return nil
 	}
 
-	j.lbs.Set(ParsedLabel, unsafeGetBytes(keyString), readValue(value, dataType))
+	j.valueBuffer = readValue(value, dataType, j.valueBuffer)
+	j.lbs.Set(ParsedLabel, unsafeGetBytes(keyString), j.valueBuffer)
 
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
@@ -243,10 +249,10 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func readValue(v []byte, dataType jsonparser.ValueType) []byte {
+func readValue(v []byte, dataType jsonparser.ValueType, buf []byte) []byte {
 	switch dataType {
 	case jsonparser.String:
-		return unescapeJSONString(v)
+		return unescapeJSONString(v, buf)
 	case jsonparser.Null:
 		return nil
 	case jsonparser.Number:
@@ -261,9 +267,9 @@ func readValue(v []byte, dataType jsonparser.ValueType) []byte {
 	}
 }
 
-func unescapeJSONString(b []byte) []byte {
-	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
-	bU, err := jsonparser.Unescape(b, stackbuf[:])
+func unescapeJSONString(b, buf []byte) []byte {
+	//var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+	bU, err := jsonparser.Unescape(b, buf[:])
 	if err != nil {
 		return nil
 	}
@@ -621,6 +627,7 @@ type JSONExpressionParser struct {
 	ids   []string
 	paths [][]string
 	keys  internedStringSet
+	valueBuffer []byte
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -644,6 +651,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 		ids:   ids,
 		paths: paths,
 		keys:  internedStringSet{},
+		valueBuffer: make([]byte, 0, 64),
 	}, nil
 }
 
@@ -694,7 +702,8 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		case jsonparser.Object:
 			lbs.Set(ParsedLabel, unsafeGetBytes(key), data)
 		default:
-			lbs.Set(ParsedLabel, unsafeGetBytes(key), unescapeJSONString(data))
+			j.valueBuffer = unescapeJSONString(data, j.valueBuffer)
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), j.valueBuffer)
 		}
 
 		matches++
@@ -725,7 +734,7 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
-
+	valueBuffer []byte
 	keys internedStringSet
 }
 
@@ -737,6 +746,7 @@ func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
 		lbsBuffer: make([]string, 0, 16),
 		keys:      internedStringSet{},
+		valueBuffer: make([]byte, 0, 64),
 	}
 }
 
@@ -810,8 +820,8 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			// TODO: use byte slice
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), string(unescapeJSONString(value)))
+			u.valueBuffer = unescapeJSONString(value, u.valueBuffer)
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), string(u.valueBuffer))
 		default:
 			return nil
 		}
