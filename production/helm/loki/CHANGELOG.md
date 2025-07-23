@@ -12,8 +12,9 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
 - [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`
-- [BUGFIX] Use variable instead of root context in _helpers.tpl. [#13781](https://github.com/grafana/loki/pull/13781)
+- [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
 
 ## 6.32.0

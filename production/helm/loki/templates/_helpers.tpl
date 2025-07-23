@@ -204,10 +204,9 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
-{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
 object_store:
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketNames.chunks) | nindent 2 }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
 {{- else }}
 {{- if .Values.minio.enabled -}}
 s3:
@@ -229,7 +228,7 @@ s3:
   {{- with .region }}
   region: {{ . }}
   {{- end}}
-  bucketnames: {{ $bucketNames.chunks }}
+  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
   {{- with .secretAccessKey }}
   secret_access_key: {{ . }}
   {{- end }}
@@ -261,7 +260,7 @@ s3:
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:
-  bucket_name: {{ $bucketNames.chunks }}
+  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
   enable_http2: {{ .enableHttp2 }}
@@ -276,7 +275,7 @@ azure:
   {{- with .connectionString }}
   connection_string: {{ . }}
   {{- end }}
-  container_name: {{ $bucketNames.chunks }}
+  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
@@ -295,7 +294,7 @@ azure:
 {{- else if eq .Values.loki.storage.type "alibabacloud" -}}
 {{- with .Values.loki.storage.alibabacloud }}
 alibabacloud:
-  bucket: {{ $bucketNames.chunks }}
+  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
   endpoint: {{ .endpoint }}
   access_key_id: {{ .accessKeyId }}
   secret_access_key: {{ .secretAccessKey }}
@@ -319,7 +318,6 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 {{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
@@ -337,7 +335,7 @@ s3:
   {{- with .region }}
   region: {{ . }}
   {{- end}}
-  bucketnames: {{ $bucketNames.ruler }}
+  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
   {{- with .secretAccessKey }}
   secret_access_key: {{ . }}
   {{- end }}
@@ -354,7 +352,7 @@ s3:
 {{- with .Values.loki.storage.gcs }}
 type: "gcs"
 gcs:
-  bucket_name: {{ $bucketNames.ruler }}
+  bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   chunk_buffer_size: {{ .chunkBufferSize }}
   request_timeout: {{ .requestTimeout }}
   enable_http2: {{ .enableHttp2 }}
@@ -370,7 +368,7 @@ azure:
   {{- with .connectionString }}
   connection_string: {{ . }}
   {{- end }}
-  container_name: {{ $bucketNames.ruler }}
+  container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
@@ -441,7 +439,6 @@ ruler:
 
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
-{{- $bucketNames := .Values.loki.storage.bucketNames -}}
 storage:
   {{- if .Values.loki.storage.use_thanos_objstore }}
   backend: {{ .Values.loki.storage.object_store.type }}
@@ -454,13 +451,13 @@ storage:
   {{- with .Values.loki.storage.s3 }}
   backend: "s3"
   s3:
-    bucket_name: {{ $bucketNames.admin }}
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
   {{- end -}}
   {{- else if eq .Values.loki.storage.type "gcs" -}}
   {{- with .Values.loki.storage.gcs }}
   backend: "gcs"
   gcs:
-    bucket_name: {{ $bucketNames.admin }}
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
   {{- end -}}
   {{- else if eq .Values.loki.storage.type "azure" -}}
   {{- with .Values.loki.storage.azure }}
@@ -473,7 +470,7 @@ storage:
     {{- with .connectionString }}
     connection_string: {{ . }}
     {{- end }}
-    container_name: {{ $bucketNames.admin }}
+    container_name: {{ $.Values.loki.storage.bucketNames.admin }}
     {{- with .endpointSuffix }}
     endpoint_suffix: {{ . }}
     {{- end }}
