@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -74,10 +76,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CompactorRing.RegisterFlagsWithPrefix("compactor.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.CompactorRing.NumTokens, "compactor.ring.num-tokens", ringNumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", ringNumTokens))
 	f.IntVar(&cfg.CompactorRing.ReplicationFactor, "compactor.ring.replication-factor", ringReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ringReplicationFactor))
-	f.StringVar(&cfg.HorizontalScalingMode, "compactor.horizontal-scaling-mode", HorizontalScalingModeDisabled, fmt.Sprintf("Supported modes - "+
-		"[%s]: Keeps the horizontal scaling mode disabled. Locally runs all the functions of the compactor."+
-		"[%s]: Runs all functions of the compactor. Distributes work to workers where possible."+
-		"[%s]: Runs the compactor in worker mode, only working on jobs built by the main compactor.",
+	f.StringVar(&cfg.HorizontalScalingMode, "compactor.horizontal-scaling-mode", HorizontalScalingModeDisabled, fmt.Sprintf(
+		`Experimental: Configuration to turn on and run horizontally scalable compactor. Supported modes -
+	[%s]: Keeps the horizontal scaling mode disabled. Locally runs all the functions of the compactor.
+	[%s]: Runs all functions of the compactor. Distributes work to workers where possible.
+	[%s]: Runs the compactor in worker mode, only working on jobs built by the main compactor.`,
 		HorizontalScalingModeDisabled, HorizontalScalingModeMain, HorizontalScalingModeWorker))
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
@@ -85,6 +88,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate verifies the config does not contain inappropriate values
 func (cfg *Config) Validate() error {
+	if cfg.HorizontalScalingMode != HorizontalScalingModeDisabled {
+		log.WarnExperimentalUse("Horizontally Scalable Compactor", util_log.Logger)
+	}
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
