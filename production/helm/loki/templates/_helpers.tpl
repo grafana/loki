@@ -223,7 +223,7 @@ s3:
   bucketnames: ruler
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
 type: {{ .Values.loki.storage.object_store.type | quote }}
-{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
 {{- else }}
 type: "local"
 {{- end }}
