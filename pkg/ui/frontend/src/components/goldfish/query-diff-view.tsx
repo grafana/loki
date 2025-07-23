@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { SampledQuery } from "@/types/goldfish";
+import { SampledQuery, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -191,15 +191,9 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
     },
   ];
 
+  const outcomeStatus = query.comparisonStatus;
   const responseMatch = query.cellAResponseHash === query.cellBResponseHash;
   const statusMatch = query.cellAStatusCode === query.cellBStatusCode;
-  const bothSuccessful = 
-    query.cellAStatusCode !== null && 
-    query.cellBStatusCode !== null &&
-    query.cellAStatusCode >= 200 && 
-    query.cellAStatusCode < 300 &&
-    query.cellBStatusCode >= 200 && 
-    query.cellBStatusCode < 300;
 
   return (
     <Card>
@@ -228,20 +222,24 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                   <Badge variant="secondary" className="text-xs">{query.queryType}</Badge>
                 </div>
                 <div className="flex items-center gap-2">
-                  {responseMatch && bothSuccessful ? (
+                  {outcomeStatus === OUTCOME_MATCH ? (
                     <div className="flex items-center gap-1 text-green-600 text-sm">
                       <CheckCircle2 className="h-4 w-4" />
                       <span>Match</span>
                     </div>
-                  ) : !bothSuccessful ? (
-                    <div className="flex items-center gap-1 text-orange-600 text-sm">
-                      <AlertCircle className="h-4 w-4" />
+                  ) : outcomeStatus === OUTCOME_ERROR ? (
+                    <div className="flex items-center gap-1 text-amber-600 text-sm">
+                      <AlertTriangle className="h-4 w-4" />
                       <span>Error</span>
                     </div>
-                  ) : (
+                  ) : outcomeStatus === OUTCOME_MISMATCH ? (
                     <div className="flex items-center gap-1 text-red-600 text-sm">
                       <XCircle className="h-4 w-4" />
                       <span>Mismatch</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-gray-600 text-sm">
+                      <span>Status: {outcomeStatus}</span>
                     </div>
                   )}
                 </div>
@@ -286,9 +284,9 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                   {query.cellAResponseHash ? `${query.cellAResponseHash.substring(0, 8)}...` : "N/A"}
                 </div>
                 <div className="col-span-1 text-center">
-                  {responseMatch && bothSuccessful ? (
+                  {responseMatch && outcomeStatus !== OUTCOME_ERROR ? (
                     <CheckCircle2 className="h-4 w-4 text-green-600 mx-auto" />
-                  ) : !bothSuccessful ? (
+                  ) : outcomeStatus === OUTCOME_ERROR ? (
                     <AlertCircle className="h-4 w-4 text-orange-600 mx-auto" />
                   ) : (
                     <XCircle className="h-4 w-4 text-red-600 mx-auto" />
