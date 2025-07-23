@@ -88,6 +88,7 @@ func (opts *ReaderOptions) Validate() error {
 			case AndPredicate: // Nothing to do.
 			case OrPredicate: // Nothing to do.
 			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
@@ -304,6 +305,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		return dataset.NotPredicate{
 			Inner: mapPredicate(p.Inner, columnLookup),
 		}
+
+	case TruePredicate:
+		return dataset.TruePredicate{}
 
 	case FalsePredicate:
 		return dataset.FalsePredicate{}
