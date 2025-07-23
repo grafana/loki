@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@609fea6a85484540dc4e319b0c6b59a16e41298c"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@39f70c4db167e7e61065455fdbc48b50fd7c12a2"
     "with":
       "build_image": "grafana/loki-build-image:0.34.6"
       "golang_ci_lint_version": "v1.64.5"
-      "release_lib_ref": "609fea6a85484540dc4e319b0c6b59a16e41298c"
+      "release_lib_ref": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.24.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "609fea6a85484540dc4e319b0c6b59a16e41298c"
+      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -135,7 +135,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.24.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "609fea6a85484540dc4e319b0c6b59a16e41298c"
+      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -258,7 +258,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.24.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "609fea6a85484540dc4e319b0c6b59a16e41298c"
+      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -381,7 +381,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.24.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "609fea6a85484540dc4e319b0c6b59a16e41298c"
+      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
