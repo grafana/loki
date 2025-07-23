@@ -101,7 +101,7 @@ func NewDeleteRequestsManager(
 	return dm, nil
 }
 
-func (d *DeleteRequestsManager) Init(tablesManager TablesManager) error {
+func (d *DeleteRequestsManager) Init(tablesManager TablesManager, registerer prometheus.Registerer) error {
 	d.tablesManager = tablesManager
 
 	if d.HSModeEnabled {
@@ -109,7 +109,7 @@ func (d *DeleteRequestsManager) Init(tablesManager TablesManager) error {
 			for _, req := range requests {
 				d.markRequestAsProcessed(req)
 			}
-		})
+		}, registerer)
 	}
 
 	var err error
@@ -229,6 +229,10 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 			iterator, err := table.GetUserIndex(userID)
 			if err != nil {
 				return err
+			}
+
+			if iterator == nil {
+				continue
 			}
 
 			if err := iterator.ForEachSeries(ctx, func(series retention.Series) (err error) {

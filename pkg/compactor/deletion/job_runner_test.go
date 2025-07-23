@@ -272,7 +272,7 @@ func TestJobRunner_Run(t *testing.T) {
 
 			// Ensure Metrics is set for each DeleteRequest
 			for i := range tc.deleteRequests {
-				tc.deleteRequests[i].Metrics = newDeleteRequestsManagerMetrics(nil)
+				tc.deleteRequests[i].TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deletedLinesTotal
 			}
 
 			// Create job runner
@@ -421,7 +421,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 
 	// Ensure Metrics is set for each DeleteRequest
 	for i := range deleteRequests {
-		deleteRequests[i].Metrics = newDeleteRequestsManagerMetrics(nil)
+		deleteRequests[i].TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deleteRequestsProcessedTotal
 	}
 
 	// Create job runner with chunk processing concurrency of 2

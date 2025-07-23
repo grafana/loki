@@ -116,10 +116,8 @@ func evaluateTimeRangePredicate(p dataset.Predicate, s IndexPointer) bool {
 
 func evaluateStartPredicate(p dataset.Predicate, s IndexPointer) bool {
 	switch p := p.(type) {
-	case dataset.NotPredicate:
-		return !evaluateStartPredicate(p.Inner, s)
-	case dataset.LessThanPredicate:
-		return s.StartTs.UnixNano() < p.Value.Int64()
+	case dataset.GreaterThanPredicate:
+		return s.StartTs.UnixNano() >= p.Value.Int64()
 
 	default:
 		panic(fmt.Sprintf("unexpected row predicate type %T", p))
@@ -128,11 +126,8 @@ func evaluateStartPredicate(p dataset.Predicate, s IndexPointer) bool {
 
 func evaluateEndPredicate(p dataset.Predicate, s IndexPointer) bool {
 	switch p := p.(type) {
-	case dataset.NotPredicate:
-		return !evaluateEndPredicate(p.Inner, s)
-	case dataset.GreaterThanPredicate:
-		return s.EndTs.UnixNano() > p.Value.Int64()
-
+	case dataset.LessThanPredicate:
+		return s.EndTs.UnixNano() <= p.Value.Int64()
 	default:
 		panic(fmt.Sprintf("unexpected row predicate type %T", p))
 	}

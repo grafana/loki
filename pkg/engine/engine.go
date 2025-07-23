@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -89,7 +88,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	level.Info(logger).Log(
 		"msg", "finished logical planning",
-		"plan", base64.StdEncoding.EncodeToString([]byte(logicalPlan.String())),
+		"plan", logicalPlan.String(),
 		"duration", durLogicalPlanning.Seconds(),
 	)
 
@@ -118,7 +117,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	level.Info(logger).Log(
 		"msg", "finished physical planning",
-		"plan", base64.StdEncoding.EncodeToString([]byte(physical.PrintAsTree(plan))),
+		"plan", physical.PrintAsTree(plan),
 		"duration", durLogicalPlanning.Seconds(),
 	)
 

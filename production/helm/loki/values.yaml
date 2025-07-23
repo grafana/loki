@@ -345,7 +345,15 @@ loki:
   memberlistConfig: {}
   # -- Extra memberlist configuration
   extraMemberlistConfig: {}
-  # -- Tenants list to be created on nginx htpasswd file, with name and password keys
+  # -- Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br>
+  # Example:
+  # <pre>
+  # tenants:<br>
+  #   - name: "test-user-1"<br>
+  #     password: "test-password-1"<br>
+  #   - name: "test-user-2"<br>
+  #     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2`
+  # </pre>
   tenants: []
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
   server:
@@ -1153,16 +1161,21 @@ gateway:
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
     # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
-    htpasswd: >-
-      {{ if .Values.loki.tenants }}
-
-
-        {{- range $t := .Values.loki.tenants }}
-      {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
+    htpasswd: |
+      {{- with $tenants := .Values.loki.tenants }}
+        {{- range $t := $tenants }}
+          {{- $username := required "All tenants must have a 'name' set" $t.name }}
+          {{- if $passwordHash := $t.passwordHash }}
+            {{- printf "%s:%s\n" $username $passwordHash }}
+          {{- else if $password := $t.password }}
+            {{- printf "%s\n" (htpasswd $username $password) }}
+          {{- else }}
+            {{- fail "All tenants must have a 'password' or 'passwordHash' set" }}
+          {{- end }}
         {{- end }}
-      {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
+      {{- else }}
+        {{- printf "%s\n" (htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password)) }}
+      {{- end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
   # Configures the readiness probe for the gateway
@@ -1187,6 +1200,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.
+    locationSnippet: ""
     # -- Allows customizing the `client_max_body_size` directive
     clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.
@@ -3607,6 +3622,10 @@ sidecar:
     labelValue: ""
     # -- Folder into which the rules will be placed.
     folder: /rules
+    # -- The annotation overwriting the folder value.
+    # The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER.
+    # Useful for multi-tenancy setups.
+    folderAnnotation: null
     # -- Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces.
     # Otherwise the namespace in which the sidecar is running will be used.
     # It's also possible to specify 'ALL' to search in all namespaces.
