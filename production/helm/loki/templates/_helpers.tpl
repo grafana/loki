@@ -205,11 +205,9 @@ s3:
   insecure: true
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
 {{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
-{{- else -}}
-{{- with .Values.loki.storage.filesystem }}
+{{- else if .Values.loki.storage.filesystem }}
 filesystem:
-  {{- toYaml . | nindent 2 }}
-{{- end -}}
+  {{- toYaml .Values.loki.storage.filesystem | nindent 2 }}
 {{- end -}}
 {{- end -}}
 
