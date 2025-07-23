@@ -45,9 +45,9 @@ func (s *Section) init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode metadata: %w", err)
 	}
-	cols := metadata.GetColumns()
+	columnDescs := metadata.GetColumns()
 
-	for _, col := range cols {
+	for _, col := range columnDescs {
 		colType, ok := convertColumnType(col.Type)
 		if !ok {
 			// Skip over unrecognized columns.
