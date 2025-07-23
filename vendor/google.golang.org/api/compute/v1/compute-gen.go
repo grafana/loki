@@ -2925,6 +2925,8 @@ func (s AllocationReservationSharingPolicy) MarshalJSON() ([]byte, error) {
 
 // AllocationResourceStatus: [Output Only] Contains output only fields.
 type AllocationResourceStatus struct {
+	// HealthInfo: [Output only] Health information for the reservation.
+	HealthInfo *AllocationResourceStatusHealthInfo `json:"healthInfo,omitempty"`
 	// ReservationBlockCount: The number of reservation blocks associated with this
 	// reservation.
 	ReservationBlockCount int64 `json:"reservationBlockCount,omitempty"`
@@ -2932,21 +2934,53 @@ type AllocationResourceStatus struct {
 	ReservationMaintenance *GroupMaintenanceInfo `json:"reservationMaintenance,omitempty"`
 	// SpecificSkuAllocation: Allocation Properties of this reservation.
 	SpecificSkuAllocation *AllocationResourceStatusSpecificSKUAllocation `json:"specificSkuAllocation,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "ReservationBlockCount") to
+	// ForceSendFields is a list of field names (e.g. "HealthInfo") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "ReservationBlockCount") to
-	// include in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. See
+	// NullFields is a list of field names (e.g. "HealthInfo") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
 func (s AllocationResourceStatus) MarshalJSON() ([]byte, error) {
 	type NoMethod AllocationResourceStatus
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AllocationResourceStatusHealthInfo: Health information for the reservation.
+type AllocationResourceStatusHealthInfo struct {
+	// DegradedBlockCount: The number of reservation blocks that are degraded.
+	DegradedBlockCount int64 `json:"degradedBlockCount,omitempty"`
+	// HealthStatus: The health status of the reservation.
+	//
+	// Possible values:
+	//   "DEGRADED" - The reservation is degraded.
+	//   "HEALTHY" - The reservation is healthy.
+	//   "HEALTH_STATUS_UNSPECIFIED" - The health status of the reservation is
+	// unspecified.
+	HealthStatus string `json:"healthStatus,omitempty"`
+	// HealthyBlockCount: The number of reservation blocks that are healthy.
+	HealthyBlockCount int64 `json:"healthyBlockCount,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DegradedBlockCount") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DegradedBlockCount") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AllocationResourceStatusHealthInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod AllocationResourceStatusHealthInfo
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -39293,6 +39327,15 @@ type Reservation struct {
 	ResourceStatus *AllocationResourceStatus `json:"resourceStatus,omitempty"`
 	// SatisfiesPzs: [Output Only] Reserved for future use.
 	SatisfiesPzs bool `json:"satisfiesPzs,omitempty"`
+	// SchedulingType: The type of maintenance for the reservation.
+	//
+	// Possible values:
+	//   "GROUPED" - Maintenance on all reserved instances in the reservation is
+	// synchronized.
+	//   "GROUP_MAINTENANCE_TYPE_UNSPECIFIED" - Unknown maintenance type.
+	//   "INDEPENDENT" - Maintenance is not synchronized for this reservation.
+	// Instead, each instance has its own maintenance window.
+	SchedulingType string `json:"schedulingType,omitempty"`
 	// SelfLink: [Output Only] Server-defined fully-qualified URL for this
 	// resource.
 	SelfLink string `json:"selfLink,omitempty"`
@@ -39552,6 +39595,8 @@ type ReservationBlock struct {
 	Count int64 `json:"count,omitempty"`
 	// CreationTimestamp: [Output Only] Creation timestamp in RFC3339 text format.
 	CreationTimestamp string `json:"creationTimestamp,omitempty"`
+	// HealthInfo: [Output Only] Health information for the reservation block.
+	HealthInfo *ReservationBlockHealthInfo `json:"healthInfo,omitempty"`
 	// Id: [Output Only] The unique identifier for the resource. This identifier is
 	// defined by the server.
 	Id uint64 `json:"id,omitempty,string"`
@@ -39609,6 +39654,38 @@ type ReservationBlock struct {
 
 func (s ReservationBlock) MarshalJSON() ([]byte, error) {
 	type NoMethod ReservationBlock
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationBlockHealthInfo: Health information for the reservation block.
+type ReservationBlockHealthInfo struct {
+	// DegradedSubBlockCount: The number of subBlocks that are degraded.
+	DegradedSubBlockCount int64 `json:"degradedSubBlockCount,omitempty"`
+	// HealthStatus: The health status of the reservation block.
+	//
+	// Possible values:
+	//   "DEGRADED" - The reservation block is degraded.
+	//   "HEALTHY" - The reservation block is healthy.
+	//   "HEALTH_STATUS_UNSPECIFIED" - The health status of the reservation block
+	// is unspecified.
+	HealthStatus string `json:"healthStatus,omitempty"`
+	// HealthySubBlockCount: The number of subBlocks that are healthy.
+	HealthySubBlockCount int64 `json:"healthySubBlockCount,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DegradedSubBlockCount") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DegradedSubBlockCount") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationBlockHealthInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationBlockHealthInfo
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -40033,6 +40110,8 @@ type ReservationSubBlock struct {
 	Count int64 `json:"count,omitempty"`
 	// CreationTimestamp: [Output Only] Creation timestamp in RFC3339 text format.
 	CreationTimestamp string `json:"creationTimestamp,omitempty"`
+	// HealthInfo: [Output Only] Health information for the reservation subBlock.
+	HealthInfo *ReservationSubBlockHealthInfo `json:"healthInfo,omitempty"`
 	// Id: [Output Only] The unique identifier for the resource. This identifier is
 	// defined by the server.
 	Id uint64 `json:"id,omitempty,string"`
@@ -40083,6 +40162,45 @@ type ReservationSubBlock struct {
 
 func (s ReservationSubBlock) MarshalJSON() ([]byte, error) {
 	type NoMethod ReservationSubBlock
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ReservationSubBlockHealthInfo: Health information for the reservation
+// subBlock.
+type ReservationSubBlockHealthInfo struct {
+	// DegradedHostCount: The number of degraded hosts in the reservation subBlock.
+	DegradedHostCount int64 `json:"degradedHostCount,omitempty"`
+	// DegradedInfraCount: The number of degraded infrastructure (e.g NV link
+	// domain) in the reservation subblock.
+	DegradedInfraCount int64 `json:"degradedInfraCount,omitempty"`
+	// HealthStatus: The health status of the reservation subBlock.
+	//
+	// Possible values:
+	//   "DEGRADED" - The reservation subBlock is degraded.
+	//   "HEALTHY" - The reservation subBlock is healthy.
+	//   "HEALTH_STATUS_UNSPECIFIED" - The health status of the reservation
+	// subBlock is unspecified.
+	HealthStatus string `json:"healthStatus,omitempty"`
+	// HealthyHostCount: The number of healthy hosts in the reservation subBlock.
+	HealthyHostCount int64 `json:"healthyHostCount,omitempty"`
+	// HealthyInfraCount: The number of healthy infrastructure (e.g NV link domain)
+	// in the reservation subblock.
+	HealthyInfraCount int64 `json:"healthyInfraCount,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DegradedHostCount") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DegradedHostCount") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ReservationSubBlockHealthInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod ReservationSubBlockHealthInfo
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -55754,6 +55872,26 @@ type UpcomingMaintenance struct {
 	// LatestWindowStartTime: The latest time for the planned maintenance window to
 	// start. This timestamp value is in RFC3339 text format.
 	LatestWindowStartTime string `json:"latestWindowStartTime,omitempty"`
+	// MaintenanceOnShutdown: Indicates whether the UpcomingMaintenance will be
+	// triggered on VM shutdown.
+	MaintenanceOnShutdown bool `json:"maintenanceOnShutdown,omitempty"`
+	// MaintenanceReasons: The reasons for the maintenance. Only valid for vms.
+	//
+	// Possible values:
+	//   "FAILURE_DISK" - Maintenance due to disk errors.
+	//   "FAILURE_GPU" - Maintenance due to GPU errors.
+	//   "FAILURE_GPU_TEMPERATURE" - Maintenance due to high GPU temperature.
+	//   "FAILURE_GPU_XID" - Maintenance due to GPU xid failure.
+	//   "FAILURE_INFRA" - Maintenance due to infrastructure errors.
+	//   "FAILURE_INTERFACE" - Maintenance due to interface errors.
+	//   "FAILURE_MEMORY" - Maintenance due to memory errors.
+	//   "FAILURE_NETWORK" - Maintenance due to network errors.
+	//   "FAILURE_NVLINK" - Maintenance due to NVLink failure.
+	//   "INFRASTRUCTURE_RELOCATION" - Maintenance due to infrastructure
+	// relocation.
+	//   "MAINTENANCE_REASON_UNKNOWN" - Unknown maintenance reason. Do not use this
+	// value.
+	MaintenanceReasons []string `json:"maintenanceReasons,omitempty"`
 	// Possible values:
 	//   "ONGOING" - There is ongoing maintenance on this VM.
 	//   "PENDING" - There is pending maintenance.

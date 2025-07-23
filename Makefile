@@ -399,7 +399,6 @@ endif
 
 test: all ## run the unit tests
 	go test $(GO_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
-	cd tools/lambda-promtail/ && go test $(GO_FLAGS) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
 
 
 test-integration:

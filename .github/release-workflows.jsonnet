@@ -2,7 +2,7 @@ local lokiRelease = import 'workflows/main.jsonnet',
       job = lokiRelease.job,
       step = lokiRelease.step,
       build = lokiRelease.build;
-local releaseLibRef = '609fea6a85484540dc4e319b0c6b59a16e41298c';
+local releaseLibRef = (import 'jsonnetfile.json').dependencies[0].version;
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
 local goVersion = std.extVar('GO_VERSION');
@@ -39,111 +39,6 @@ local weeklyImageJobs = {
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail', platform=platforms.all),
 };
-
-local lambdaPromtailJob =
-  job.new()
-  + job.withNeeds(['check'])
-  + job.withPermissions({
-    contents: 'read',
-    'id-token': 'write',
-  })
-  + job.withEnv({
-    BUILD_TIMEOUT: imageBuildTimeoutMin,
-    GO_VERSION: goVersion,
-    IMAGE_PREFIX: 'public.ecr.aws/grafana',
-    RELEASE_LIB_REF: releaseLibRef,
-    RELEASE_REPO: 'grafana/loki',
-    REPO: 'loki',
-  })
-  + job.withOutputs({
-    image_digest_linux_amd64: '${{ steps.digest.outputs.digest_linux_amd64 }}',
-    image_digest_linux_arm64: '${{ steps.digest.outputs.digest_linux_arm64 }}',
-    image_name: '${{ steps.weekly-version.outputs.image_name }}',
-    image_tag: '${{ steps.weekly-version.outputs.image_version }}',
-  })
-  + job.withStrategy({
-    'fail-fast': true,
-    matrix: {
-      include: [
-        { arch: 'linux/amd64', runs_on: ['github-hosted-ubuntu-x64-small'] },
-        { arch: 'linux/arm64', runs_on: ['github-hosted-ubuntu-arm64-small'] },
-      ],
-    },
-  })
-  + { 'runs-on': '${{ matrix.runs_on }}' }
-  + job.withSteps([
-    step.new('pull release library code', 'actions/checkout@v4')
-    + step.with({
-      path: 'lib',
-      'persist-credentials': false,
-      ref: '${{ env.RELEASE_LIB_REF }}',
-      repository: 'grafana/loki-release',
-    }),
-    step.new('pull code to release', 'actions/checkout@v4')
-    + step.with({
-      path: 'release',
-      'persist-credentials': false,
-      repository: '${{ env.RELEASE_REPO }}',
-    }),
-    step.new('setup node', 'actions/setup-node@v4')
-    + step.with({
-      'node-version': '20',
-    }),
-    step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-    step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')  // get-vault-secrets-v1.1.0
-    + { id: 'get-secrets' }
-    + step.with({
-      repo_secrets: |||
-        ECR_ACCESS_KEY=aws-credentials:access_key_id
-        ECR_SECRET_KEY=aws-credentials:secret_access_key
-      |||,
-    }),
-    step.new('Configure AWS credentials', 'aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502')  // v4
-    + step.with({
-      'aws-access-key-id': '${{ env.ECR_ACCESS_KEY }}',
-      'aws-secret-access-key': '${{ env.ECR_SECRET_KEY }}',
-      'aws-region': 'us-east-1',
-    }),
-    step.new('Login to Amazon ECR Public', 'aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076')  // v2
-    + step.with({
-      'registry-type': 'public',
-    }),
-    step.new('Get weekly version')
-    + { id: 'weekly-version' }
-    + { 'working-directory': 'release' }
-    + step.withRun(|||
-      version=$(./tools/image-tag)
-      echo "image_version=$version" >> $GITHUB_OUTPUT
-      echo "image_name=${{ env.IMAGE_PREFIX }}/lambda-promtail" >> $GITHUB_OUTPUT
-      echo "image_full_name=${{ env.IMAGE_PREFIX }}/lambda-promtail:$version" >> $GITHUB_OUTPUT
-    |||),
-    step.new('Prepare tag name')
-    + { id: 'prepare-tag' }
-    + step.withEnv({
-      MATRIX_ARCH: '${{ matrix.arch }}',
-      OUTPUTS_IMAGE_NAME: '${{ steps.weekly-version.outputs.image_name }}',
-      OUTPUTS_IMAGE_VERSION: '${{ steps.weekly-version.outputs.image_version }}',
-    })
-    + step.withRun(|||
-      arch=$(echo $MATRIX_ARCH | cut -d'/' -f2)
-      echo "IMAGE_TAG=${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_VERSION}-${arch}" >> $GITHUB_OUTPUT
-    |||),
-    step.new('Build and push', 'docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1')  // v6
-    + { id: 'build-push' }
-    + { 'timeout-minutes': '${{ fromJSON(env.BUILD_TIMEOUT) }}' }
-    + step.with({
-      'build-args': |||
-        IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
-        GO_VERSION=${{ env.GO_VERSION }}
-      |||,
-      context: 'release',
-      file: 'release/tools/lambda-promtail/Dockerfile',
-      outputs: 'type=image,push=true',
-      platform: '${{ matrix.arch }}',
-      provenance: false,
-      tags: '${{ steps.prepare-tag.outputs.IMAGE_TAG }}',
-    }),
-  ]);
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
@@ -263,8 +158,6 @@ local lambdaPromtailJob =
           GO_VERSION: goVersion,
         })
       for name in std.objectFields(weeklyImageJobs)
-    } + {
-      'lambda-promtail-image': lambdaPromtailJob,
     } + {
       ['%s-manifest' % name]:
         job.new() +
