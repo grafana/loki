@@ -7529,7 +7529,7 @@ true
   "failureThreshold": 3,
   "httpGet": {
     "path": "/metrics",
-    "port": http-metrics
+    "port": "http-metrics"
   },
   "initialDelaySeconds": 30,
   "periodSeconds": 10,
@@ -7547,7 +7547,7 @@ true
   "failureThreshold": 3,
   "httpGet": {
     "path": "/metrics",
-    "port": http-metrics
+    "port": "http-metrics"
   },
   "initialDelaySeconds": 5,
   "periodSeconds": 5,
