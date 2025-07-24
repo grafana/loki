@@ -112,7 +112,6 @@ spec:
           {{- end }}
           {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with .Values.loki.startupProbe }}
