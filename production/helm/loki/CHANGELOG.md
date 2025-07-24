@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 ## 6.33.0
 
+- [BUGFIX] Fix tail_proxy_url to use headless querier service for proper log tailing functionality. [#18482](https://github.com/grafana/loki/issues/18482)
 - [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
 - [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
 - [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)

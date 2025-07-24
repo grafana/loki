@@ -560,7 +560,7 @@ loki:
     mode: simple
   frontend:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
-    tail_proxy_url: '{{ include "loki.querierAddress" . }}'
+    tail_proxy_url: '{{ include "loki.querierHeadlessAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
