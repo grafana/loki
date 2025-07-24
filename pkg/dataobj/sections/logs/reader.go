@@ -251,7 +251,7 @@ func (r *Reader) init() error {
 	innerOptions := dataset.ReaderOptions{
 		Dataset:         dset,
 		Columns:         dset.Columns(),
-		Predicates:      preds,
+		Predicates:      orderPredicates(preds),
 		TargetCacheSize: r.opts.PageCacheSize,
 	}
 	if r.inner == nil {
