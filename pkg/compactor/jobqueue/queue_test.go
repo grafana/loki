@@ -282,9 +282,9 @@ func TestQueue_JobTimeout(t *testing.T) {
 	// Verify job is removed from processing jobs
 	q.processingJobsMtx.RLock()
 	pj, exists := q.processingJobs[job.Id]
-	q.processingJobsMtx.RUnlock()
 	require.True(t, exists)
 	require.Equal(t, 1, pj.attemptsLeft)
+	q.processingJobsMtx.RUnlock()
 }
 
 func TestQueue_Close(t *testing.T) {

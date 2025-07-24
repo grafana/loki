@@ -2,21 +2,22 @@
 memcached StatefulSet
 Params:
   ctx = . context
+  memcacheConfig = cache config
   valuesSection = name of the section in values.yaml
   component = name of the component
-valuesSection and component are specified separately because helm prefers camelcase for naming convetion and k8s components are named with snake case.
+valuesSection and component are specified separately because helm prefers camelcase for naming convention and k8s components are named with snake case.
 */}}
 {{- define "loki.memcached.statefulSet" -}}
-{{ with (index $.ctx.Values $.valuesSection) }}
+{{ with $.memcacheConfig }}
 {{- if and .enabled ($.ctx.Values.memcached.enabled) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.resourceName" (dict "ctx" $.ctx "component" $.component) }}
+  name: {{ include "loki.resourceName" (dict "ctx" $.ctx "component" $.component "suffix" .suffix) }}
   labels:
     {{- include "loki.labels" $.ctx | nindent 4 }}
-    app.kubernetes.io/component: "memcached-{{ $.component }}"
-    name: "memcached-{{ $.component }}"
+    app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+    name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   annotations:
     {{- toYaml .annotations | nindent 4 }}
   namespace: {{ $.ctx.Release.Namespace | quote }}
@@ -26,17 +27,17 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.selectorLabels" $.ctx | nindent 6 }}
-      app.kubernetes.io/component: "memcached-{{ $.component }}"
-      name: "memcached-{{ $.component }}"
+      app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+      name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   updateStrategy:
     {{- toYaml .statefulStrategy | nindent 4 }}
-  serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}
+  serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}
   template:
     metadata:
       labels:
         {{- include "loki.selectorLabels" $.ctx | nindent 8 }}
-        app.kubernetes.io/component: "memcached-{{ $.component }}"
-        name: "memcached-{{ $.component }}"
+        app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+        name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
         {{- with $.ctx.Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
