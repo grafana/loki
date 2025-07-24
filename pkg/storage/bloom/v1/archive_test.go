@@ -90,6 +90,7 @@ func TestArchiveCompression(t *testing.T) {
 		{compression.LZ4_4M},
 		{compression.Flate},
 		{compression.Zstd},
+		{compression.S2},
 	} {
 		t.Run(tc.enc.String(), func(t *testing.T) {
 			// for writing files to two dirs for comparison and ensuring they're equal
