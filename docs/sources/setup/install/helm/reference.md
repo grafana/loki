@@ -2487,18 +2487,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>chunksCache.memcachedProbes</td>
-			<td>object</td>
-			<td>Allow overriding memcached probes for chunks cache</td>
-			<td><pre lang="json">
-{
-  "livenessProbe": {},
-  "readinessProbe": {}
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>chunksCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for chunks-cache pods</td>
