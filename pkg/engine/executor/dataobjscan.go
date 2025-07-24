@@ -114,7 +114,7 @@ func (s *dataobjScan) init(ctx context.Context) error {
 			colType, sortOrder, err := sec.PrimarySortOrder()
 			if err != nil {
 				level.Warn(s.logger).Log("msg", "missing sort order information", "section", idx)
-			} else if colType != logs.ColumnTypeTimestamp || sortOrder != logs.SORT_DIRECTION_DESCENDING {
+			} else if colType != logs.ColumnTypeTimestamp || sortOrder != logs.SortDirectionDescending {
 				level.Warn(s.logger).Log("msg", "section is not sorted by timestamp in DESC order",
 					"dataobj", idx, "primaryColumnType", colType, "sortOrder", sortOrder)
 			}

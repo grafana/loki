@@ -79,18 +79,18 @@ func (s *Section) Columns() []*Column { return s.columns }
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 	if s.sortInfo == nil || len(s.sortInfo.ColumnSorts) == 0 {
-		return ColumnTypeInvalid, SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("missing sort order information")
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("missing sort order information")
 	}
 
 	si := s.sortInfo.ColumnSorts[0] // primary sort order
 	idx := int(si.ColumnIndex)
 	if idx < 0 || idx >= len(s.columns) {
-		return ColumnTypeInvalid, SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("invalid column reference in sort info")
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("invalid column reference in sort info")
 	}
 
 	dir, ok := convertSortDirection(si.Direction)
 	if !ok {
-		return ColumnTypeInvalid, SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("invalid sort direction %d in sort info", si.Direction)
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("invalid sort direction %d in sort info", si.Direction)
 	}
 
 	return s.columns[idx].Type, dir, nil
@@ -146,22 +146,22 @@ func convertColumnType(protoType logsmd.ColumnType) (ColumnType, bool) {
 type SortDirection int
 
 const (
-	SORT_DIRECTION_UNSPECIFIED SortDirection = 0 // Sort direction is unspecified.
-	SORT_DIRECTION_ASCENDING   SortDirection = 1 // SORT_DIRECTION_ASCENDING represents ascending sort order (smallest values first).
-	SORT_DIRECTION_DESCENDING  SortDirection = 2 // SORT_DIRECTION_DESCENDING represents descending sort order (largest values first).
+	SortDirectionUnspecified SortDirection = 0 // Sort direction is unspecified.
+	SortDirectionAscending   SortDirection = 1 // SortDirectionAscending represents ascending sort order (smallest values first).
+	SortDirectionDescending  SortDirection = 2 // SortDirectionDescending represents descending sort order (largest values first).
 )
 
 func convertSortDirection(protoDirection datasetmd.SortDirection) (SortDirection, bool) {
 	switch protoDirection {
 	case datasetmd.SORT_DIRECTION_UNSPECIFIED:
-		return SORT_DIRECTION_UNSPECIFIED, true
+		return SortDirectionUnspecified, true
 	case datasetmd.SORT_DIRECTION_ASCENDING:
-		return SORT_DIRECTION_ASCENDING, true
+		return SortDirectionAscending, true
 	case datasetmd.SORT_DIRECTION_DESCENDING:
-		return SORT_DIRECTION_DESCENDING, true
+		return SortDirectionDescending, true
 	}
 
-	return SORT_DIRECTION_UNSPECIFIED, false
+	return SortDirectionUnspecified, false
 }
 
 func IsMetadataColumn(colType string) bool {
