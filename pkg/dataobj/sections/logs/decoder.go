@@ -23,8 +23,8 @@ type decoder struct {
 	sr dataobj.SectionReader
 }
 
-// Columns describes the set of columns in the section.
-func (rd *decoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
+// Metadata returns the metadata for the logs section.
+func (rd *decoder) Metadata(ctx context.Context) (*logsmd.Metadata, error) {
 	rc, err := rd.sr.Metadata(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
@@ -34,11 +34,7 @@ func (rd *decoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
 	br := bufpool.GetReader(rc)
 	defer bufpool.PutReader(br)
 
-	md, err := decodeLogsMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Columns, nil
+	return decodeLogsMetadata(br)
 }
 
 // Pages retrieves the set of pages for the provided columns. The order of page
