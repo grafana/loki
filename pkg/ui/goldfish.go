@@ -3,6 +3,18 @@ package ui
 import (
 	"database/sql"
 	"time"
+
+	"github.com/go-kit/log/level"
+)
+
+// Constants for outcome filtering
+const (
+	outcomeAll      = "all"
+	outcomeMatch    = "match"
+	outcomeMismatch = "mismatch"
+	outcomeError    = "error"
+
+	whereComparisonStatus = "WHERE comparison_status = ?"
 )
 
 // SampledQuery represents a sampled query from the database
@@ -45,16 +57,19 @@ type SampledQuery struct {
 
 	SampledAt time.Time `json:"sampledAt" db:"sampled_at"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
+
+	// Comparison outcome (always computed by backend)
+	ComparisonStatus string `json:"comparisonStatus" db:"comparison_status"`
 }
 
 // ComparisonOutcome represents a comparison result from the database
 type ComparisonOutcome struct {
-	CorrelationID      string    `json:"correlationId" db:"correlation_id"`
-	ComparisonStatus   string    `json:"comparisonStatus" db:"comparison_status"`
-	DifferenceDetails  any       `json:"differenceDetails" db:"difference_details"`
-	PerformanceMetrics any       `json:"performanceMetrics" db:"performance_metrics"`
-	ComparedAt         time.Time `json:"comparedAt" db:"compared_at"`
-	CreatedAt          time.Time `json:"createdAt" db:"created_at"`
+	CorrelationID      string      `json:"correlationId" db:"correlation_id"`
+	ComparisonStatus   string      `json:"comparisonStatus" db:"comparison_status"`
+	DifferenceDetails  interface{} `json:"differenceDetails" db:"difference_details"`
+	PerformanceMetrics interface{} `json:"performanceMetrics" db:"performance_metrics"`
+	ComparedAt         time.Time   `json:"comparedAt" db:"compared_at"`
+	CreatedAt          time.Time   `json:"createdAt" db:"created_at"`
 }
 
 // GoldfishAPIResponse represents the paginated API response
@@ -65,8 +80,8 @@ type GoldfishAPIResponse struct {
 	PageSize int            `json:"pageSize"`
 }
 
-// GetSampledQueries retrieves sampled queries from the database with pagination
-func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishAPIResponse, error) {
+// GetSampledQueries retrieves sampled queries from the database with pagination and outcome filtering
+func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*GoldfishAPIResponse, error) {
 	if !s.cfg.Goldfish.Enable {
 		return nil, ErrGoldfishDisabled
 	}
@@ -75,33 +90,105 @@ func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishAPIResponse, e
 		return nil, ErrGoldfishNotConfigured
 	}
 
+	// Validate and sanitize input parameters
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 1000 {
+		pageSize = 20 // Default page size
+	}
+
+	// Validate outcome parameter against allowed values
+	switch outcome {
+	case outcomeAll, outcomeMatch, outcomeMismatch, outcomeError:
+		// Valid values - proceed
+	default:
+		outcome = outcomeAll // Default to all if invalid
+	}
+
 	offset := (page - 1) * pageSize
 
-	// Get total count
+	// Build the computed status subquery
+	baseQuery := `
+		SELECT
+			sq.correlation_id, sq.tenant_id, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
+			sq.cell_a_exec_time_ms, sq.cell_b_exec_time_ms, sq.cell_a_queue_time_ms, sq.cell_b_queue_time_ms,
+			sq.cell_a_bytes_processed, sq.cell_b_bytes_processed, sq.cell_a_lines_processed, sq.cell_b_lines_processed,
+			sq.cell_a_bytes_per_second, sq.cell_b_bytes_per_second, sq.cell_a_lines_per_second, sq.cell_b_lines_per_second,
+			sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
+			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
+			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
+			sq.sampled_at, sq.created_at,
+			CASE
+				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
+				WHEN (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299) THEN 'error'
+				WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
+				ELSE 'mismatch'
+			END as comparison_status
+		FROM sampled_queries sq
+		LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
+	`
+
+	// Build WHERE clause and args based on outcome filter
+	var whereClause string
+	var countArgs []any
+	var queryArgs []any
+
+	switch outcome {
+	case outcomeMatch:
+		whereClause = whereComparisonStatus
+		countArgs = []any{outcomeMatch}
+		queryArgs = []any{outcomeMatch}
+	case outcomeMismatch:
+		whereClause = whereComparisonStatus
+		countArgs = []any{outcomeMismatch}
+		queryArgs = []any{outcomeMismatch}
+	case outcomeError:
+		whereClause = whereComparisonStatus
+		countArgs = []any{outcomeError}
+		queryArgs = []any{outcomeError}
+	default:
+		// "all" or any other value - no filter
+		whereClause = ""
+		countArgs = []any{}
+		queryArgs = []any{}
+	}
+
+	// Get total count with filtering using subquery
 	var total int
-	err := s.goldfishDB.QueryRow("SELECT COUNT(*) FROM sampled_queries").Scan(&total)
+	countQuery := `
+		SELECT COUNT(*)
+		FROM (` + baseQuery + `) as computed_results
+		` + whereClause
+
+	// Debug logging
+	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing count query", "query", countQuery, "args", countArgs)
+
+	err := s.goldfishDB.QueryRow(countQuery, countArgs...).Scan(&total)
 	if err != nil {
+		level.Error(s.logger).Log("ui-component", "goldfish", "msg", "count query failed", "err", err)
 		return nil, err
 	}
 
-	// Get paginated results
+	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "count query result", "total", total)
+
+	// Get paginated results with filtering using subquery
 	query := `
-		SELECT 
-			correlation_id, tenant_id, query, query_type, start_time, end_time, step_duration,
-			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
-			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
-			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
-			cell_a_entries_returned, cell_b_entries_returned, cell_a_splits, cell_b_splits,
-			cell_a_shards, cell_b_shards, cell_a_response_hash, cell_b_response_hash,
-			cell_a_response_size, cell_b_response_size, cell_a_status_code, cell_b_status_code,
-			sampled_at, created_at
-		FROM sampled_queries 
+		SELECT * FROM (` + baseQuery + `) as computed_results
+		` + whereClause + `
 		ORDER BY sampled_at DESC 
 		LIMIT ? OFFSET ?
 	`
 
-	rows, err := s.goldfishDB.Query(query, pageSize, offset)
+	// Add pagination parameters to queryArgs
+	queryArgs = append(queryArgs, pageSize, offset)
+
+	// Debug logging
+	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing main query", "query", query, "args", queryArgs)
+
+	rows, err := s.goldfishDB.Query(query, queryArgs...)
 	if err != nil {
+		level.Error(s.logger).Log("ui-component", "goldfish", "msg", "main query failed", "err", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -118,6 +205,7 @@ func (s *Service) GetSampledQueries(page, pageSize int) (*GoldfishAPIResponse, e
 			&q.CellAShards, &q.CellBShards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
 			&q.SampledAt, &q.CreatedAt,
+			&q.ComparisonStatus,
 		)
 		if err != nil {
 			return nil, err

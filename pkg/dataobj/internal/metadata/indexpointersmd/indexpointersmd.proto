@@ -12,6 +12,9 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/in
 message Metadata {
   // Columns within the indexpointers section.
   repeated ColumnDesc columns = 1;
+
+  // Section sort information.
+  dataobj.metadata.dataset.v1.SectionSortInfo sort_info = 2;
 }
 
 // ColumnDesc describes an individual column within the indexpointers table.
