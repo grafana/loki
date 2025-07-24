@@ -10857,18 +10857,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>resultsCache.memcachedProbes</td>
-			<td>object</td>
-			<td>Allow overriding memcached probes for results cache</td>
-			<td><pre lang="json">
-{
-  "livenessProbe": {},
-  "readinessProbe": {}
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
