@@ -153,3 +153,32 @@ enum EncodingType {
   // integers using a combination of run-length encoding and bitpacking.
   ENCODING_TYPE_BITMAP = 3;
 }
+
+// SectionSortInfo represents the sort order information for the records
+// in a section.
+//
+// Records can be sorted by one or more columns. The order of the
+// ColumnSort entries determines the sort precedence. They are sorted by
+// the first column, then by the second column to break ties, and so on.
+message SectionSortInfo {
+  message ColumnSort {
+    // Index of the column in the columns list.
+    uint32 column_index = 1;
+    // Sort direction of the column.
+    SortDirection direction = 2;
+  }
+
+  repeated ColumnSort column_sorts = 1;
+}
+
+// SortDirection represents sort direction of a column.
+enum SortDirection {
+  // Sort direction is unspecified.
+  SORT_DIRECTION_UNSPECIFIED = 0;
+
+  // SORT_DIRECTION_ASCENDING represents ascending sort order (smallest values first).
+  SORT_DIRECTION_ASCENDING = 1;
+
+  // SORT_DIRECTION_DESCENDING represents descending sort order (largest values first).
+  SORT_DIRECTION_DESCENDING = 2;
+}

@@ -60,10 +60,11 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
 	dec := newDecoder(section.reader)
-	cols, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return stats, fmt.Errorf("reading columns")
+		return stats, fmt.Errorf("reading metadata: %w", err)
 	}
+	cols := metadata.GetColumns()
 
 	pageSets, err := result.Collect(dec.Pages(ctx, cols))
 	if err != nil {

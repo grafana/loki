@@ -249,10 +249,11 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 // Observe observes section statistics for a given section.
 func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 	dec := newDecoder(section.reader)
-	columns, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
 		return err
 	}
+	columns := metadata.GetColumns()
 	m.datasetColumnCount.Observe(float64(len(columns)))
 
 	columnPages, err := result.Collect(dec.Pages(ctx, columns))
