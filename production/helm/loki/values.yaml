@@ -3640,19 +3640,6 @@ chunksCache:
       # -- Volume mount path
       mountPath: /data
       labels: {}
-    # -- Allow overriding memcached probes for l2 chunks cache
-    memcachedProbes:
-      # Override global memcached livenessProbe for l2 chunks cache
-      livenessProbe: {}
-      # Override global memcached readinessProbe for l2 chunks cache
-      readinessProbe: {}
-    # -- Allow overriding exporter probes for chunks l2 cache
-    exporterProbes:
-      # Override global exporter livenessProbe for l2 chunks cache
-      livenessProbe: {}
-      # Override global exporter readinessProbe for l2 chunks cache
-      readinessProbe: {}
-
 ######################################################################################################################
 #
 # Subchart configurations
