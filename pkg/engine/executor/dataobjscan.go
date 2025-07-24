@@ -102,21 +102,19 @@ func (s *dataobjScan) init(ctx context.Context) error {
 			return fmt.Errorf("opening logs section: %w", err)
 		}
 
+		// TODO:(ashwanth): [dataobjscan] only supports reading logs sections
+		// that are sorted primarily by timestamp in DESC order.
+		//
+		// Other sort orders should be supported by wrapping the scan with TopK
+		// either during planning or execution.
 		{
-			si := sec.SortInfo().GetColumnSorts()
-			if len(si) == 0 {
-				return fmt.Errorf("missing sort order info")
+			colType, sortOrder, err := sec.PrimarySortOrder()
+			if err != nil {
+				return err
 			}
 
-			// [dataobjscan] expects the records to be sorted by timestamp.
-			// Ensure that the section is sorted by Timestamp column first.
-			idx := si[0].ColumnIndex
-			if int(idx) >= len(sec.Columns()) {
-				return fmt.Errorf("invalid column reference in sort info")
-			}
-
-			if sec.Columns()[idx].Type != logs.ColumnTypeTimestamp {
-				return fmt.Errorf("records are not sorted by timestamp")
+			if colType != logs.ColumnTypeTimestamp || sortOrder != logs.SORT_DIRECTION_DESCENDING {
+				return fmt.Errorf("records are not sorted by timestamp in DESC order")
 			}
 		}
 
