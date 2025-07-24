@@ -36,13 +36,15 @@ Params:
   ctx = . context
   component = component name (optional)
   rolloutZoneName = rollout zone name (optional)
+  suffix = component suffix (optional)
 */}}
 {{- define "loki.resourceName" -}}
 {{- $resourceName := include "loki.fullname" .ctx -}}
 {{- if .component -}}{{- $resourceName = printf "%s-%s" $resourceName .component -}}{{- end -}}
 {{- if and (not .component) .rolloutZoneName -}}{{- printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail -}}{{- end -}}
 {{- if .rolloutZoneName -}}{{- $resourceName = printf "%s-%s" $resourceName .rolloutZoneName -}}{{- end -}}
-{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install or shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness." $resourceName | fail -}}{{- end -}}
+{{- if .suffix -}}{{- $resourceName = printf "%s-%s" $resourceName .suffix -}}{{- end -}}
+{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install, shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness or suffix if used for component." $resourceName | fail -}}{{- end -}}
 {{- $resourceName -}}
 {{- end -}}
 
@@ -505,6 +507,14 @@ Memcached Exporter Docker image
 {{- define "loki.memcachedExporterImage" -}}
 {{- $dict := dict "service" .Values.memcachedExporter.image "global" .Values.global.image -}}
 {{- include "loki.image" $dict -}}
+{{- end }}
+
+{{/*
+Memcached Exporter Docker image
+*/}}
+{{- define "loki.memcached.suffix" -}}
+{{- $suffix := default "" . -}}
+{{ if ne $suffix "" }}-{{ $suffix }}{{ end }}
 {{- end }}
 
 {{/* Allow KubeVersion to be overridden. */}}

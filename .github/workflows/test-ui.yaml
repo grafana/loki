@@ -5,6 +5,31 @@ on:
       - "pkg/ui/frontend/**"
 permissions: {}
 jobs:
+  test:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pkg/ui/frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node.JS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: pkg/ui/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm run test:ci
+      - name: Run type check
+        run: npm run typecheck
+
   build:
     name: Build UI
     runs-on: ubuntu-latest
