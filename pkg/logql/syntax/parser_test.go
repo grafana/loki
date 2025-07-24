@@ -2424,10 +2424,10 @@ var ParseTestCases = []struct {
 						5*time.Minute,
 						newUnwrapExpr("foo", ""),
 						nil),
-					OpRangeTypeAvg, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, nil,
+					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
 				),
-				OpTypeAvg,
-				&Grouping{Groups: []string{"foo"}},
+				OpTypeSum,
+				&Grouping{Groups: []string{"foo", "bar"}},
 				nil,
 			),
 		),
@@ -3759,4 +3759,49 @@ func TestParseSampleExpr_String(t *testing.T) {
 		// escaping is hard: the result is {cluster="beep", namespace="boop"} | msg=~`\w.*` which is equivalent to the original
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
 	})
+}
+
+func TestParseLabelsWithDots(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected labels.Labels
+		hasError bool
+	}{
+		{
+			name:     "labels with dots",
+			input:    `{user.id="123", order.ids="456", trace.id="789", span.id="abc"}`,
+			expected: labels.FromStrings("user.id", "123", "order.ids", "456", "trace.id", "789", "span.id", "abc"),
+			hasError: false,
+		},
+		{
+			name:     "standard labels without dots",
+			input:    `{foo="bar", baz="qux"}`,
+			expected: labels.FromStrings("foo", "bar", "baz", "qux"),
+			hasError: false,
+		},
+		{
+			name:     "mixed labels with and without dots",
+			input:    `{service.name="api", version="v1", user.id="123"}`,
+			expected: labels.FromStrings("service.name", "api", "version", "v1", "user.id", "123"),
+			hasError: false,
+		},
+		{
+			name:     "malformed labels",
+			input:    `{ab"`,
+			hasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseLabelsWithDots(tt.input)
+			if tt.hasError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
 }
