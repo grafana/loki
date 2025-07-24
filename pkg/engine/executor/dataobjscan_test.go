@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -67,7 +68,7 @@ func Test_dataobjScan(t *testing.T) {
 			Direction:   physical.DESC,
 			Limit:       0, // No limit
 			batchSize:   512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -102,7 +103,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			Direction: physical.DESC,
 			Limit:     0, // No limit
 			batchSize: 512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
@@ -134,7 +135,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			Direction: physical.DESC,
 			Limit:     0, // No limit
 			batchSize: 512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -198,7 +199,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			Direction:   physical.DESC,
 			Limit:       0, // No limit
 			batchSize:   512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -235,7 +236,7 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 			Direction: physical.DESC,
 			Limit:     0, // No limit
 			batchSize: 512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
@@ -264,7 +265,7 @@ pod-1,override`
 			Direction: physical.DESC,
 			Limit:     0, // No limit
 			batchSize: 512,
-		})
+		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
 			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},

@@ -11,6 +11,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -22,7 +24,8 @@ import (
 )
 
 type dataobjScan struct {
-	opts dataobjScanOptions
+	opts   dataobjScanOptions
+	logger log.Logger
 
 	initialized bool
 	reader      *logs.RowReader
@@ -55,12 +58,12 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of all log sections in a data object. Rows in the
 // returned record are ordered by timestamp in the direction specified by
 // opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	if opts.Direction == physical.ASC {
 		// It's ok to panic here, because the validation of log query direction is performed in the logical planner.
 		panic("sorting by timestamp ASC is not supported by DataObjScan")
 	}
-	return &dataobjScan{opts: opts}
+	return &dataobjScan{opts: opts, logger: logger}
 }
 
 // Read retrieves the next [arrow.Record] from the dataobj.
@@ -110,11 +113,10 @@ func (s *dataobjScan) init(ctx context.Context) error {
 		{
 			colType, sortOrder, err := sec.PrimarySortOrder()
 			if err != nil {
-				return err
-			}
-
-			if colType != logs.ColumnTypeTimestamp || sortOrder != logs.SORT_DIRECTION_DESCENDING {
-				return fmt.Errorf("records are not sorted by timestamp in DESC order")
+				level.Warn(s.logger).Log("msg", "missing sort order information", "section", idx)
+			} else if colType != logs.ColumnTypeTimestamp || sortOrder != logs.SORT_DIRECTION_DESCENDING {
+				level.Warn(s.logger).Log("msg", "section is not sorted by timestamp in DESC order",
+					"dataobj", idx, "primaryColumnType", colType, "sortOrder", sortOrder)
 			}
 		}
 
