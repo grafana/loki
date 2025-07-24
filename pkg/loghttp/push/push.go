@@ -372,6 +372,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
+			if logPushRequestStreams {
+				level.Error(logger).Log("msg", "couldn't parse labels", "labels", s.Labels, "error", err)
+			}
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
