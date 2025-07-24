@@ -3424,19 +3424,6 @@ resultsCache:
     mountPath: /data
     # -- PVC additional labels
     labels: {}
-  # -- Allow overriding memcached probes for results cache
-  memcachedProbes:
-    # Override global memcached livenessProbe for results cache
-    livenessProbe: {}
-    # Override global memcached readinessProbe for results cache
-    readinessProbe: {}
-  # -- Allow overriding exporter probes for results cache
-  exporterProbes:
-    # Override global exporter livenessProbe for results cache
-    livenessProbe: {}
-    # Override global exporter readinessProbe for results cache
-    readinessProbe: {}
-
 chunksCache:
   # -- Append to the name of the resources to make names different for l1 and l2
   suffix: ""
