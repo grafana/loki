@@ -290,3 +290,137 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// for more information
 	return labels.NewBuilder(ls).Labels(), nil
 }
+
+// ParseLabelsWithDots parses labels from a string, supporting dots in label names.
+// This is a custom parser that extends Prometheus label parsing to support dots.
+func ParseLabelsWithDots(lbs string) (labels.Labels, error) {
+	// First try the standard parser
+	ls, err := promql_parser.ParseMetric(lbs)
+	if err == nil {
+		return labels.NewBuilder(ls).Labels(), nil
+	}
+
+	// Check if the error is due to dots in label names
+	// If it's a parse error about unexpected character '.', try custom parsing
+	if strings.Contains(err.Error(), "unexpected character inside braces: '.'") {
+		return parseLabelsWithDots(lbs)
+	}
+
+	// For other errors, return the original error to maintain compatibility
+	return labels.EmptyLabels(), err
+}
+
+// parseLabelsWithDots is a custom parser that handles dots in label names
+func parseLabelsWithDots(lbs string) (labels.Labels, error) {
+	// Remove outer braces
+	lbs = strings.TrimSpace(lbs)
+	if !strings.HasPrefix(lbs, "{") || !strings.HasSuffix(lbs, "}") {
+		return labels.EmptyLabels(), fmt.Errorf("labels must be wrapped in braces")
+	}
+	lbs = lbs[1 : len(lbs)-1]
+
+	// Split by comma, handling quoted values
+	var result []labels.Label
+	pairs := splitLabelsWithDots(lbs)
+
+	for _, pair := range pairs {
+		key, value, err := parseLabelPair(pair)
+		if err != nil {
+			return labels.EmptyLabels(), err
+		}
+		result = append(result, labels.Label{Name: key, Value: value})
+	}
+
+	// Convert slice to labels using FromStrings
+	args := make([]string, 0, len(result)*2)
+	for _, label := range result {
+		args = append(args, label.Name, label.Value)
+	}
+	return labels.FromStrings(args...), nil
+}
+
+// splitLabelsWithDots splits a label string by comma, respecting quoted values
+func splitLabelsWithDots(lbs string) []string {
+	var pairs []string
+	var current strings.Builder
+	inQuotes := false
+	escapeNext := false
+
+	for i := 0; i < len(lbs); i++ {
+		char := lbs[i]
+
+		if escapeNext {
+			current.WriteByte(char)
+			escapeNext = false
+			continue
+		}
+
+		if char == '\\' {
+			escapeNext = true
+			current.WriteByte(char)
+			continue
+		}
+
+		if char == '"' {
+			inQuotes = !inQuotes
+			current.WriteByte(char)
+			continue
+		}
+
+		if char == ',' && !inQuotes {
+			if current.Len() > 0 {
+				pairs = append(pairs, strings.TrimSpace(current.String()))
+				current.Reset()
+			}
+			continue
+		}
+
+		current.WriteByte(char)
+	}
+
+	if current.Len() > 0 {
+		pairs = append(pairs, strings.TrimSpace(current.String()))
+	}
+
+	return pairs
+}
+
+// parseLabelPair parses a single key=value pair, supporting dots in keys
+func parseLabelPair(pair string) (string, string, error) {
+	// Find the first unquoted equals sign
+	inQuotes := false
+	escapeNext := false
+
+	for i := 0; i < len(pair); i++ {
+		char := pair[i]
+
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+
+		if char == '\\' {
+			escapeNext = true
+			continue
+		}
+
+		if char == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+
+		if char == '=' && !inQuotes {
+			key := strings.TrimSpace(pair[:i])
+			value := strings.TrimSpace(pair[i+1:])
+
+			// Remove quotes from value if present
+			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+				value = value[1 : len(value)-1]
+			}
+
+			return key, value, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("invalid label pair: %s", pair)
+}

@@ -1302,7 +1302,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
-	ls, err := syntax.ParseLabels(key)
+	ls, err := syntax.ParseLabelsWithDots(key)
 	if err != nil {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
 		// TODO: check for global policy.
