@@ -205,6 +205,10 @@ matcher:
     | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
     | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
     | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
+    | STRING EQ STRING                 { $$ = mustNewMatcher(labels.MatchEqual, $1, $3) }
+    | STRING NEQ STRING                { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
+    | STRING RE STRING                 { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
+    | STRING NRE STRING                { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
     ;
 
 pipelineExpr:
