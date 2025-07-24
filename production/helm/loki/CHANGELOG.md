@@ -12,6 +12,9 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+- [FEATURE] Add readiness and liveness probes for the all memcached components. [#18525](https://github.com/grafana/loki/pull/18525)
+
 ## 6.33.0
 
 - [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
@@ -25,8 +28,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
 - [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
-
-- [FEATURE] Add readiness and liveness probes for the all memcached components.
 
 ## 6.32.0
 
