@@ -80,6 +80,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
 - [BUGFIX] Loki endpoint for Canary assumed gateway was always enabled. Can now be overwritten through values.
 
+- [FEATURE] Added `unhealthyPodEvictionPolicy` to Write, Read & Backend PDBs
+
 ## 6.28.0
 
 - [CHANGE] Add extraContainers parameter for the backend pod
