@@ -1,7 +1,7 @@
 ---
 apiVersion: helm-chart-toolbox.grafana.com/v1
 kind: TestPlan
-name: legacy-monitoring
+name: ingress
 subject:
   releaseName: loki
   namespace: loki
