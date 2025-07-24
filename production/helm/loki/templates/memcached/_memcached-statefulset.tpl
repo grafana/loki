@@ -161,12 +161,11 @@ spec:
             {{- toYaml $.ctx.Values.memcachedExporter.resources | nindent 12 }}
           securityContext:
             {{- toYaml $.ctx.Values.memcachedExporter.containerSecurityContext | nindent 12 }}
-          {{- /* Add exporter probes with override support */ -}}
-          {{- with (coalesce (index $.ctx.Values $.valuesSection).exporterProbes.readinessProbe $.ctx.Values.memcachedExporter.readinessProbe) }}
+          {{- with $.ctx.Values.memcachedExporter.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with (coalesce (index $.ctx.Values $.valuesSection).exporterProbes.livenessProbe $.ctx.Values.memcachedExporter.livenessProbe) }}
+          {{- with $.ctx.Values.memcachedExporter.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
