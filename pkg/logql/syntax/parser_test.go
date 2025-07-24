@@ -3409,6 +3409,27 @@ func TestParseMatchers(t *testing.T) {
 			nil,
 			true,
 		},
+		{
+			`{"service.name"="product"}`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "service.name", "product"),
+			},
+			false,
+		},
+		{
+			`{"k8s.deployment.name"="nginx"}`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "k8s.deployment.name", "nginx"),
+			},
+			false,
+		},
+		{
+			`{"user.profile.id"="123"}`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "user.profile.id", "123"),
+			},
+			false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
