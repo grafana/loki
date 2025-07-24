@@ -133,13 +133,11 @@ spec:
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
           {{- end }}
-          {{- /* Use per-cache probe override if available, otherwise use global default */ -}}
-          {{- with (coalesce (index $.ctx.Values $.valuesSection).memcachedProbes.readinessProbe $.ctx.Values.memcached.readinessProbe) }}
+          {{- with $.ctx.Values.memcached.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- /* Add livenessProbe support with same override logic */ -}}
-          {{- with (coalesce (index $.ctx.Values $.valuesSection).memcachedProbes.livenessProbe $.ctx.Values.memcached.livenessProbe) }}
+          {{- with $.ctx.Values.memcached.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
