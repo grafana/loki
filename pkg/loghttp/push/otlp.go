@@ -268,19 +268,19 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 			if scopeName := scope.Name(); scopeName != "" {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_name",
+					Name:  convertFieldName("scope_name", otlpConfig.ConversionStrategy),
 					Value: scopeName,
 				})
 			}
 			if scopeVersion := scope.Version(); scopeVersion != "" {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_version",
+					Name:  convertFieldName("scope_version", otlpConfig.ConversionStrategy),
 					Value: scopeVersion,
 				})
 			}
 			if scopeDroppedAttributesCount := scope.DroppedAttributesCount(); scopeDroppedAttributesCount != 0 {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_dropped_attributes_count",
+					Name:  convertFieldName("scope_dropped_attributes_count", otlpConfig.ConversionStrategy),
 					Value: fmt.Sprintf("%d", scopeDroppedAttributesCount),
 				})
 			}
@@ -433,6 +433,12 @@ func convertFieldName(fieldName string, conversionStrategy string) string {
 			return "trace.id"
 		case "span_id":
 			return "span.id"
+		case "scope_name":
+			return "scope.name"
+		case "scope_version":
+			return "scope.version"
+		case "scope_dropped_attributes_count":
+			return "scope.dropped_attributes_count"
 		}
 	}
 	return fieldName
