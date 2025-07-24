@@ -13,9 +13,19 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-- [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
-- [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+
+## 6.33.0
+
+- [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
+- [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
+- [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
+- [ENHANCEMENT] Add FOLDER_ANNOTATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
+- [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
+- [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)
+- [BUGFIX] Add release namespace metadata to HorizontalPodAutoscaling that lack it. [#18453](https://github.com/grafana/loki/pull/18453)
+- [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
 
 ## 6.32.0
 
@@ -27,10 +37,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
 - [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
-- [BUGFIX] add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
+- [BUGFIX] Add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
-- [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
-- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 
 ## 6.31.0
 
