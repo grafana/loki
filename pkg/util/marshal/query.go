@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -413,7 +414,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 	s.WriteObjectField("stream")
 	s.WriteObjectStart()
 
-	lbls, err := parser.ParseMetric(stream.Labels)
+	lbls, err := syntax.ParseLabelsWithDots(stream.Labels)
 	if err != nil {
 		return err
 	}
