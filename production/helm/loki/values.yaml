@@ -3317,7 +3317,7 @@ memcachedExporter:
   readinessProbe:
     httpGet:
       path: /metrics
-      port: 9150
+      port: http-metrics
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
