@@ -3530,19 +3530,6 @@ chunksCache:
     # -- Volume mount path
     mountPath: /data
     labels: {}
-  # -- Allow overriding memcached probes for chunks cache
-  memcachedProbes:
-    # Override global memcached livenessProbe for chunks cache
-    livenessProbe: {}
-    # Override global memcached readinessProbe for chunks cache
-    readinessProbe: {}
-  # -- Allow overriding exporter probes for chunks cache
-  exporterProbes:
-    # Override global exporter livenessProbe for chunks cache
-    livenessProbe: {}
-    # Override global exporter readinessProbe for chunks cache
-    readinessProbe: {}
-
   # -- l2 memcache configuration
   l2:
     # -- Append to the name of the resources to make names different for l1 and l2
