@@ -3,7 +3,8 @@ import { AppLayout } from "./layout/layout";
 import { ThemeProvider } from "./features/theme/components/theme-provider";
 import { QueryProvider } from "./providers/query-provider";
 import { ClusterProvider } from "./contexts/cluster-provider";
-import { FeatureFlagsProvider, useFeatureFlags } from "./contexts/feature-flags";
+import { FeatureFlagsProvider } from "./contexts/feature-flags";
+import { useFeatureFlags } from "./contexts/use-feature-flags";
 import { routes } from "./config/routes";
 
 function AppRoutes() {

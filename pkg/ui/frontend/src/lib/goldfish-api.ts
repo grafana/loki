@@ -1,4 +1,5 @@
 import { GoldfishAPIResponse, OutcomeFilter, OUTCOME_ALL } from "@/types/goldfish";
+import { absolutePath } from "../util";
 
 export async function fetchSampledQueries(
   page: number = 1,
@@ -14,7 +15,7 @@ export async function fetchSampledQueries(
     params.append("outcome", outcome);
   }
   
-  const response = await fetch(`/ui/api/v1/goldfish/queries?${params}`);
+  const response = await fetch(`${absolutePath('/api/v1/goldfish/queries')}?${params}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch sampled queries: ${response.statusText}`);
   }

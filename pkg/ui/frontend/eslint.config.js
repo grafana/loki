@@ -29,10 +29,43 @@ export default [
         global: 'readonly',
         module: 'readonly',
         require: 'readonly',
+        // Browser globals
         window: 'readonly',
         document: 'readonly',
         navigator: 'readonly',
-        location: 'readonly'
+        location: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        fetch: 'readonly',
+        URLSearchParams: 'readonly',
+        FormData: 'readonly',
+        Headers: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        // Timer functions
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        // DOM types that are commonly used
+        HTMLElement: 'readonly',
+        HTMLDivElement: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLButtonElement: 'readonly',
+        HTMLAnchorElement: 'readonly',
+        HTMLSpanElement: 'readonly',
+        HTMLParagraphElement: 'readonly',
+        HTMLHeadingElement: 'readonly',
+        HTMLTextAreaElement: 'readonly',
+        HTMLOListElement: 'readonly',
+        HTMLLIElement: 'readonly',
+        Element: 'readonly',
+        Event: 'readonly',
+        EventTarget: 'readonly',
+        // TypeScript/React
+        React: 'readonly',
+        NodeJS: 'readonly',
+        JSX: 'readonly'
       }
     },
     plugins: {
@@ -51,6 +84,28 @@ export default [
     files: ['src/components/ui/**/*'],
     rules: {
       'react-refresh/only-export-components': 'off'
+    }
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        // Jest globals
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        jest: 'readonly',
+        // Additional Jest globals that might be used
+        fit: 'readonly',
+        xit: 'readonly',
+        fdescribe: 'readonly',
+        xdescribe: 'readonly'
+      }
     }
   }
 ];

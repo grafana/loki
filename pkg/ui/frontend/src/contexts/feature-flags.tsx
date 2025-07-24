@@ -1,5 +1,7 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { absolutePath } from "../util";
+import { shouldUseMockFeatures, getDevEnvironmentOverrides } from "../lib/environment";
 
 interface FeatureFlags {
   goldfish: boolean;
@@ -15,38 +17,25 @@ const defaultFeatures: FeatureFlags = {
   goldfish: false,
 };
 
-const FeatureFlagsContext = createContext<FeatureFlagsContextType>({
+export const FeatureFlagsContext = createContext<FeatureFlagsContextType>({
   features: defaultFeatures,
   isLoading: true,
   error: null,
 });
 
-export function useFeatureFlags() {
-  return useContext(FeatureFlagsContext);
-}
 
 // For development mode, check if we have an override
 function getDevOverrides(): Partial<FeatureFlags> {
-  if (import.meta.env.DEV) {
-    const overrides: Partial<FeatureFlags> = {};
-    
-    // Check for VITE_ENABLE_GOLDFISH environment variable
-    if (import.meta.env.VITE_ENABLE_GOLDFISH === 'true') {
-      overrides.goldfish = true;
-    }
-    
-    return overrides;
-  }
-  return {};
+  return getDevEnvironmentOverrides();
 }
 
 async function fetchFeatures(): Promise<FeatureFlags> {
   // In development mode with no backend, use defaults with overrides
-  if (import.meta.env.DEV && import.meta.env.VITE_MOCK_FEATURES === 'true') {
+  if (shouldUseMockFeatures()) {
     return { ...defaultFeatures, ...getDevOverrides() };
   }
   
-  const response = await fetch('/ui/api/v1/features');
+  const response = await fetch(absolutePath('/api/v1/features'));
   if (!response.ok) {
     throw new Error(`Failed to fetch features: ${response.statusText}`);
   }
