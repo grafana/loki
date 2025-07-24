@@ -10785,18 +10785,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>resultsCache.exporterProbes</td>
-			<td>object</td>
-			<td>Allow overriding exporter probes for results cache</td>
-			<td><pre lang="json">
-{
-  "livenessProbe": {},
-  "readinessProbe": {}
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>resultsCache.extraArgs</td>
 			<td>object</td>
 			<td>Additional CLI args for results-cache</td>
