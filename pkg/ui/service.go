@@ -228,7 +228,9 @@ func (s *Service) initGoldfishDB() error {
 
 	password := os.Getenv("GOLDFISH_DB_PASSWORD")
 	if password == "" {
-		return fmt.Errorf("CloudSQL password must be provided via GOLDFISH_DB_PASSWORD environment variable")
+		level.Warn(s.logger).Log("msg", "GOLDFISH_DB_PASSWORD environment variable not set, goldfish features will be disabled")
+		s.cfg.Goldfish.Enable = false
+		return nil
 	}
 
 	// Build DSN for CloudSQL proxy connection
@@ -243,7 +245,9 @@ func (s *Service) initGoldfishDB() error {
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		level.Warn(s.logger).Log("msg", "failed to open goldfish database connection, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
 	}
 
 	// Configure connection pool
@@ -254,13 +258,17 @@ func (s *Service) initGoldfishDB() error {
 	// Verify connection
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return fmt.Errorf("failed to ping database: %w", err)
+		level.Warn(s.logger).Log("msg", "failed to ping goldfish database, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
 	}
 
-	// Verify tables exist (panic if they don't)
+	// Verify tables exist
 	if err := s.verifyGoldfishTables(db); err != nil {
 		db.Close()
-		panic(fmt.Sprintf("goldfish tables not found: %v", err))
+		level.Warn(s.logger).Log("msg", "goldfish database tables not found, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
 	}
 
 	s.goldfishDB = db
