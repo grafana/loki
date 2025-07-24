@@ -1965,18 +1965,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>chunksCache.exporterProbes</td>
-			<td>object</td>
-			<td>Allow overriding exporter probes for chunks cache</td>
-			<td><pre lang="json">
-{
-  "livenessProbe": {},
-  "readinessProbe": {}
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>chunksCache.extraArgs</td>
 			<td>object</td>
 			<td>Additional CLI args for chunks-cache</td>
