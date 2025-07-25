@@ -37,7 +37,7 @@ func (c Chunk) spaceFor(ts model.Time, chunkDuration time.Duration) bool {
 		return true
 	}
 
-	return ts.Sub(c.Samples[0].Timestamp) < time.Duration(chunkDuration.Nanoseconds())
+	return ts.Sub(c.Samples[0].Timestamp) < chunkDuration
 }
 
 // ForRange returns samples with only the values
