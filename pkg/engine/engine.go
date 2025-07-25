@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -223,12 +224,18 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
+	tenants, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return logqlmodel.Result{}, err
+	}
+
 	level.Debug(logger).Log(
 		"msg", "finished executing with new engine",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
+		"dataobj_strategy", e.metastore.ResolveStrategy(tenants),
 	)
 
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")

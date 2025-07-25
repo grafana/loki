@@ -286,12 +286,12 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreUpdater := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
+	metastoreUpdater := NewUpdater(Config{}, bucket, tenantID, log.NewNopLogger())
 
 	err = metastoreUpdater.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 
 	tests := []struct {
 		name       string
