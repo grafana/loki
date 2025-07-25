@@ -30,7 +30,7 @@ type SamplingConfig struct {
 
 // StorageConfig defines storage backend configuration
 type StorageConfig struct {
-	Type string `yaml:"type"` // "cloudsql" or empty string for no storage
+	Type string `yaml:"type"` // "cloudsql", "rds", or empty string for no storage
 
 	// CloudSQL specific (via proxy)
 	CloudSQLHost     string `yaml:"cloudsql_host"`
@@ -38,6 +38,12 @@ type StorageConfig struct {
 	CloudSQLDatabase string `yaml:"cloudsql_database"`
 	CloudSQLUser     string `yaml:"cloudsql_user"`
 	// CloudSQLPassword provided via GOLDFISH_DB_PASSWORD environment variable
+
+	// RDS specific
+	RDSEndpoint string `yaml:"rds_endpoint"` // e.g., "mydb.123456789012.us-east-1.rds.amazonaws.com:3306"
+	RDSDatabase string `yaml:"rds_database"`
+	RDSUser     string `yaml:"rds_user"`
+	// RDSPassword provided via GOLDFISH_DB_PASSWORD environment variable
 
 	// Common settings
 	MaxConnections int `yaml:"max_connections"`
@@ -53,11 +59,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&tenantRulesFlag{&cfg.SamplingConfig.TenantRules}, "goldfish.sampling.tenant-rules", "Tenant-specific sampling rules (format: tenant1:0.1,tenant2:0.5)")
 
 	// Storage flags
-	f.StringVar(&cfg.StorageConfig.Type, "goldfish.storage.type", "", "Storage backend type (cloudsql or empty for no storage)")
+	f.StringVar(&cfg.StorageConfig.Type, "goldfish.storage.type", "", "Storage backend type (cloudsql, rds, or empty for no storage)")
+
+	// CloudSQL flags
 	f.StringVar(&cfg.StorageConfig.CloudSQLHost, "goldfish.storage.cloudsql.host", "cloudsql-proxy", "CloudSQL proxy host")
 	f.IntVar(&cfg.StorageConfig.CloudSQLPort, "goldfish.storage.cloudsql.port", 3306, "CloudSQL proxy port")
 	f.StringVar(&cfg.StorageConfig.CloudSQLDatabase, "goldfish.storage.cloudsql.database", "", "CloudSQL database name")
 	f.StringVar(&cfg.StorageConfig.CloudSQLUser, "goldfish.storage.cloudsql.user", "", "CloudSQL database user")
+
+	// RDS flags
+	f.StringVar(&cfg.StorageConfig.RDSEndpoint, "goldfish.storage.rds.endpoint", "", "RDS endpoint (host:port)")
+	f.StringVar(&cfg.StorageConfig.RDSDatabase, "goldfish.storage.rds.database", "", "RDS database name")
+	f.StringVar(&cfg.StorageConfig.RDSUser, "goldfish.storage.rds.user", "", "RDS database user")
 	f.IntVar(&cfg.StorageConfig.MaxConnections, "goldfish.storage.max-connections", 10, "Maximum database connections")
 	f.IntVar(&cfg.StorageConfig.MaxIdleTime, "goldfish.storage.max-idle-time", 300, "Maximum idle time in seconds")
 
@@ -94,6 +107,10 @@ func (cfg *Config) Validate() error {
 	case "cloudsql":
 		if cfg.StorageConfig.CloudSQLDatabase == "" || cfg.StorageConfig.CloudSQLUser == "" {
 			return errors.New("CloudSQL database and user must be specified")
+		}
+	case "rds":
+		if cfg.StorageConfig.RDSEndpoint == "" || cfg.StorageConfig.RDSDatabase == "" || cfg.StorageConfig.RDSUser == "" {
+			return errors.New("RDS endpoint, database, and user must be specified")
 		}
 	default:
 		return fmt.Errorf("unsupported storage type: %s", cfg.StorageConfig.Type)

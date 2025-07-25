@@ -15,7 +15,7 @@ Goldfish is a feature within QueryTee that enables sampling and comparison of qu
   - Bytes/lines processed comparison
   - Query complexity metrics (splits, shards)
   - Performance variance detection and reporting
-- **Persistent Storage**: MySQL storage via Google Cloud SQL Proxy for storing query samples and comparison results
+- **Persistent Storage**: MySQL storage via Google Cloud SQL Proxy or Amazon RDS for storing query samples and comparison results
 
 ## Configuration
 
@@ -30,16 +30,24 @@ Goldfish is configured through command-line flags:
 -goldfish.sampling.tenant-rules="tenant1:0.5,tenant2:1.0"       # Tenant-specific rates
 
 # Storage configuration (optional - defaults to no-op if not specified)
-# CloudSQL (MySQL) configuration:
+
+# Option 1: CloudSQL (MySQL) configuration
 -goldfish.storage.type=cloudsql
 -goldfish.storage.cloudsql.host=cloudsql-proxy                  # CloudSQL proxy host
 -goldfish.storage.cloudsql.port=3306                           # MySQL port (default: 3306)
 -goldfish.storage.cloudsql.database=goldfish
 -goldfish.storage.cloudsql.user=goldfish-user
-# Password must be provided via GOLDFISH_DB_PASSWORD environment variable
+
+# Option 2: RDS (MySQL) configuration
+-goldfish.storage.type=rds
+-goldfish.storage.rds.endpoint=mydb.123456789012.us-east-1.rds.amazonaws.com:3306
+-goldfish.storage.rds.database=goldfish
+-goldfish.storage.rds.user=goldfish-user
+
+# Password must be provided via GOLDFISH_DB_PASSWORD environment variable (for both CloudSQL and RDS)
 export GOLDFISH_DB_PASSWORD=your-password
 
-# Connection pool settings
+# Connection pool settings (apply to both CloudSQL and RDS)
 -goldfish.storage.max-connections=10                            # Maximum database connections
 -goldfish.storage.max-idle-time=300                            # Connection idle timeout (seconds)
 
@@ -147,7 +155,7 @@ GROUP BY sq.tenant_id;
 
 ## Storage Configuration
 
-Goldfish currently supports MySQL storage via Google Cloud SQL Proxy. The storage is optional - if not configured, Goldfish will perform sampling and comparison but won't persist results.
+Goldfish supports MySQL storage via Google Cloud SQL Proxy or Amazon RDS. The storage is optional - if not configured, Goldfish will perform sampling and comparison but won't persist results.
 
 ### Setting up CloudSQL:
 
@@ -156,7 +164,15 @@ Goldfish currently supports MySQL storage via Google Cloud SQL Proxy. The storag
 3. Configure the connection parameters via flags
 4. Set the database password using the `GOLDFISH_DB_PASSWORD` environment variable
 
-The schema will be automatically created on first run.
+### Setting up RDS:
+
+1. Create an RDS MySQL instance
+2. Ensure your Loki cells can reach the RDS endpoint
+3. Create a MySQL database for Goldfish
+4. Configure the connection parameters via flags
+5. Set the database password using the `GOLDFISH_DB_PASSWORD` environment variable
+
+The schema will be automatically created on first run for both CloudSQL and RDS.
 
 ## Testing
 

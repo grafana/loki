@@ -18,9 +18,11 @@ func newMockCloudSQLStorage(t *testing.T) (*CloudSQLStorage, sqlmock.Sqlmock) {
 	require.NoError(t, err)
 
 	return &CloudSQLStorage{
-		db: db,
-		config: StorageConfig{
-			CloudSQLDatabase: "testdb",
+		MySQLStorage: &MySQLStorage{
+			db: db,
+			config: StorageConfig{
+				CloudSQLDatabase: "testdb",
+			},
 		},
 	}, mock
 }
@@ -286,7 +288,7 @@ func TestStoreComparisonResult_DatabaseError(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestInitSchema(t *testing.T) {
+func TestInitMySQLSchema(t *testing.T) {
 	tests := []struct {
 		name      string
 		setupMock func(mock sqlmock.Sqlmock)
@@ -352,7 +354,7 @@ func TestInitSchema(t *testing.T) {
 
 			tt.setupMock(mock)
 
-			err = initSchema(db)
+			err = initMySQLSchema(db)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
@@ -700,8 +702,8 @@ func TestSchemaCreationSQLInjectionProtection(t *testing.T) {
 	mock.ExpectExec("CREATE INDEX idx_comparison_status").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
-	// initSchema takes only the db connection, no user input
-	err = initSchema(db)
+	// initMySQLSchema takes only the db connection, no user input
+	err = initMySQLSchema(db)
 	assert.NoError(t, err)
 
 	err = mock.ExpectationsWereMet()

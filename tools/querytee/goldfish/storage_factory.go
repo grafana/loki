@@ -16,6 +16,9 @@ func NewStorage(config StorageConfig, logger log.Logger) (Storage, error) {
 	case "cloudsql":
 		password := os.Getenv("GOLDFISH_DB_PASSWORD")
 		return NewCloudSQLStorage(config, password)
+	case "rds":
+		password := os.Getenv("GOLDFISH_DB_PASSWORD")
+		return NewRDSStorage(config, password)
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", config.Type)
 	}
