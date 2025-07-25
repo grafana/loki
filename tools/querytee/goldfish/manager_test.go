@@ -115,21 +115,23 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
 	cellAResp := &ResponseData{
-		Body:       []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
-		StatusCode: 200,
-		Duration:   100 * time.Millisecond,
-		Stats:      QueryStats{ExecTimeMs: 100, QueueTimeMs: 50, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:       "hash123",
-		Size:       150,
+		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+		StatusCode:    200,
+		Duration:      100 * time.Millisecond,
+		Stats:         QueryStats{ExecTimeMs: 100, QueueTimeMs: 50, BytesProcessed: 1000, LinesProcessed: 100},
+		Hash:          "hash123",
+		Size:          150,
+		UsedNewEngine: false,
 	}
 
 	cellBResp := &ResponseData{
-		Body:       []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
-		StatusCode: 200,
-		Duration:   120 * time.Millisecond,
-		Stats:      QueryStats{ExecTimeMs: 120, QueueTimeMs: 60, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:       "hash123", // Same hash indicates same data
-		Size:       155,
+		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+		StatusCode:    200,
+		Duration:      120 * time.Millisecond,
+		Stats:         QueryStats{ExecTimeMs: 120, QueueTimeMs: 60, BytesProcessed: 1000, LinesProcessed: 100},
+		Hash:          "hash123", // Same hash indicates same data
+		Size:          155,
+		UsedNewEngine: true,
 	}
 
 	ctx := context.Background()
@@ -150,6 +152,8 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	assert.Equal(t, int64(120), sample.CellBStats.ExecTimeMs)
 	assert.Equal(t, "hash123", sample.CellAResponseHash)
 	assert.Equal(t, "hash123", sample.CellBResponseHash)
+	assert.Equal(t, false, sample.CellAUsedNewEngine)
+	assert.Equal(t, true, sample.CellBUsedNewEngine)
 
 	// Verify comparison result was stored
 	assert.Len(t, storage.results, 1)

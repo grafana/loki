@@ -113,22 +113,24 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	}
 
 	sample := &QuerySample{
-		CorrelationID:     correlationID,
-		TenantID:          extractTenant(req),
-		Query:             req.URL.Query().Get("query"),
-		QueryType:         getQueryType(req.URL.Path),
-		StartTime:         startTime,
-		EndTime:           endTime,
-		Step:              parseDuration(req.URL.Query().Get("step")),
-		CellAStats:        cellAResp.Stats,
-		CellBStats:        cellBResp.Stats,
-		CellAResponseHash: cellAResp.Hash,
-		CellBResponseHash: cellBResp.Hash,
-		CellAResponseSize: cellAResp.Size,
-		CellBResponseSize: cellBResp.Size,
-		CellAStatusCode:   cellAResp.StatusCode,
-		CellBStatusCode:   cellBResp.StatusCode,
-		SampledAt:         time.Now(),
+		CorrelationID:      correlationID,
+		TenantID:           extractTenant(req),
+		Query:              req.URL.Query().Get("query"),
+		QueryType:          getQueryType(req.URL.Path),
+		StartTime:          startTime,
+		EndTime:            endTime,
+		Step:               parseDuration(req.URL.Query().Get("step")),
+		CellAStats:         cellAResp.Stats,
+		CellBStats:         cellBResp.Stats,
+		CellAResponseHash:  cellAResp.Hash,
+		CellBResponseHash:  cellBResp.Hash,
+		CellAResponseSize:  cellAResp.Size,
+		CellBResponseSize:  cellBResp.Size,
+		CellAStatusCode:    cellAResp.StatusCode,
+		CellBStatusCode:    cellBResp.StatusCode,
+		CellAUsedNewEngine: cellAResp.UsedNewEngine,
+		CellBUsedNewEngine: cellBResp.UsedNewEngine,
+		SampledAt:          time.Now(),
 	}
 
 	m.metrics.sampledQueries.Inc()
@@ -242,12 +244,13 @@ func (m *Manager) Close() error {
 // ResponseData contains response data from a backend cell including performance statistics.
 // Used to pass response information from QueryTee to Goldfish for comparison.
 type ResponseData struct {
-	Body       []byte
-	StatusCode int
-	Duration   time.Duration
-	Stats      QueryStats
-	Hash       string
-	Size       int64
+	Body          []byte
+	StatusCode    int
+	Duration      time.Duration
+	Stats         QueryStats
+	Hash          string
+	Size          int64
+	UsedNewEngine bool
 }
 
 // CaptureResponse captures response data for comparison
@@ -264,10 +267,11 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 	var stats QueryStats
 	var hash string
 	var size int64
+	var usedNewEngine bool
 
 	if resp.StatusCode == 200 {
 		extractor := NewStatsExtractor()
-		stats, hash, size, err = extractor.ExtractResponseData(body, duration.Milliseconds())
+		stats, hash, size, usedNewEngine, err = extractor.ExtractResponseData(body, duration.Milliseconds())
 		if err != nil {
 			// Log error but don't fail the capture
 			level.Warn(log.NewNopLogger()).Log("msg", "failed to extract response statistics", "err", err)
@@ -275,12 +279,13 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 	}
 
 	return &ResponseData{
-		Body:       body,
-		StatusCode: resp.StatusCode,
-		Duration:   duration,
-		Stats:      stats,
-		Hash:       hash,
-		Size:       size,
+		Body:          body,
+		StatusCode:    resp.StatusCode,
+		Duration:      duration,
+		Stats:         stats,
+		Hash:          hash,
+		Size:          size,
+		UsedNewEngine: usedNewEngine,
 	}, nil
 }
 

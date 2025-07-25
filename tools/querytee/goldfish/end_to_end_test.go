@@ -102,28 +102,30 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	// Extract stats for both responses
 	extractor := NewStatsExtractor()
 
-	statsA, hashA, sizeA, err := extractor.ExtractResponseData(responseBodyA, 50)
+	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
 	require.NoError(t, err)
 
-	statsB, hashB, sizeB, err := extractor.ExtractResponseData(responseBodyB, 55)
+	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 55)
 	require.NoError(t, err)
 
 	cellAResp := &ResponseData{
-		Body:       responseBodyA,
-		StatusCode: 200,
-		Duration:   50 * time.Millisecond,
-		Stats:      statsA,
-		Hash:       hashA,
-		Size:       sizeA,
+		Body:          responseBodyA,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsA,
+		Hash:          hashA,
+		Size:          sizeA,
+		UsedNewEngine: usedNewEngineA,
 	}
 
 	cellBResp := &ResponseData{
-		Body:       responseBodyB,
-		StatusCode: 200,
-		Duration:   55 * time.Millisecond,
-		Stats:      statsB,
-		Hash:       hashB,
-		Size:       sizeB,
+		Body:          responseBodyB,
+		StatusCode:    200,
+		Duration:      55 * time.Millisecond,
+		Stats:         statsB,
+		Hash:          hashB,
+		Size:          sizeB,
+		UsedNewEngine: usedNewEngineB,
 	}
 
 	// Process the query pair
@@ -152,6 +154,9 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	assert.Equal(t, hashB, sample.CellBResponseHash)
 	// Since the response content is identical, hashes should match
 	assert.Equal(t, sample.CellAResponseHash, sample.CellBResponseHash)
+	// Verify engine tracking
+	assert.Equal(t, usedNewEngineA, sample.CellAUsedNewEngine)
+	assert.Equal(t, usedNewEngineB, sample.CellBUsedNewEngine)
 
 	// Check the comparison result
 	result := storage.results[0]
@@ -230,28 +235,30 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	// Extract stats for both responses
 	extractor := NewStatsExtractor()
 
-	statsA, hashA, sizeA, err := extractor.ExtractResponseData(responseBodyA, 50)
+	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
 	require.NoError(t, err)
 
-	statsB, hashB, sizeB, err := extractor.ExtractResponseData(responseBodyB, 50)
+	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
 	require.NoError(t, err)
 
 	cellAResp := &ResponseData{
-		Body:       responseBodyA,
-		StatusCode: 200,
-		Duration:   50 * time.Millisecond,
-		Stats:      statsA,
-		Hash:       hashA,
-		Size:       sizeA,
+		Body:          responseBodyA,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsA,
+		Hash:          hashA,
+		Size:          sizeA,
+		UsedNewEngine: usedNewEngineA,
 	}
 
 	cellBResp := &ResponseData{
-		Body:       responseBodyB,
-		StatusCode: 200,
-		Duration:   50 * time.Millisecond,
-		Stats:      statsB,
-		Hash:       hashB,
-		Size:       sizeB,
+		Body:          responseBodyB,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsB,
+		Hash:          hashB,
+		Size:          sizeB,
+		UsedNewEngine: usedNewEngineB,
 	}
 
 	ctx := context.Background()
@@ -268,4 +275,115 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	// Different hashes should result in mismatch
 	assert.Equal(t, ComparisonStatusMismatch, result.ComparisonStatus)
 	assert.Contains(t, result.DifferenceDetails, "content_hash")
+}
+
+func TestGoldfishNewEngineDetection(t *testing.T) {
+	config := Config{
+		Enabled: true,
+		SamplingConfig: SamplingConfig{
+			DefaultRate: 1.0,
+		},
+	}
+
+	storage := &mockStorage{}
+	manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	defer manager.Close()
+
+	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant1")
+
+	// Cell A response with new engine warning
+	responseBodyA := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [{
+				"stream": {"job": "test"},
+				"values": [["1700000000000000000", "log line 1"]]
+			}],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		},
+		"warnings": [
+			"Query was executed using the new experimental query engine and dataobj storage."
+		]
+	}`)
+
+	// Cell B response without new engine warning
+	responseBodyB := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "streams",
+			"result": [{
+				"stream": {"job": "test"},
+				"values": [["1700000000000000000", "log line 1"]]
+			}],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		}
+	}`)
+
+	// Extract stats for both responses
+	extractor := NewStatsExtractor()
+
+	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
+	require.NoError(t, err)
+
+	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
+	require.NoError(t, err)
+
+	cellAResp := &ResponseData{
+		Body:          responseBodyA,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsA,
+		Hash:          hashA,
+		Size:          sizeA,
+		UsedNewEngine: usedNewEngineA,
+	}
+
+	cellBResp := &ResponseData{
+		Body:          responseBodyB,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsB,
+		Hash:          hashB,
+		Size:          sizeB,
+		UsedNewEngine: usedNewEngineB,
+	}
+
+	ctx := context.Background()
+	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+
+	time.Sleep(100 * time.Millisecond)
+
+	assert.Len(t, storage.samples, 1)
+	sample := storage.samples[0]
+
+	// Verify that new engine detection works correctly
+	assert.True(t, sample.CellAUsedNewEngine, "Cell A should have used new engine")
+	assert.False(t, sample.CellBUsedNewEngine, "Cell B should not have used new engine")
 }

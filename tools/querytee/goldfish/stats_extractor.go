@@ -22,12 +22,12 @@ func NewStatsExtractor() *StatsExtractor {
 }
 
 // ExtractResponseData extracts performance statistics and metadata from a Loki response.
-// Returns QueryStats, content hash (FNV32), response size, and any parsing errors.
+// Returns QueryStats, content hash (FNV32), response size, whether new engine was used, and any parsing errors.
 // The content hash excludes performance statistics to ensure identical content produces identical hashes.
-func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (QueryStats, string, int64, error) {
+func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (QueryStats, string, int64, bool, error) {
 	var queryResp loghttp.QueryResponse
 	if err := json.Unmarshal(responseBody, &queryResp); err != nil {
-		return QueryStats{}, "", 0, fmt.Errorf("failed to parse query response: %w", err)
+		return QueryStats{}, "", 0, false, fmt.Errorf("failed to parse query response: %w", err)
 	}
 
 	// Extract statistics from the response
@@ -39,7 +39,10 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 	// Calculate response size
 	responseSize := int64(len(responseBody))
 
-	return queryStats, responseHash, responseSize, nil
+	// Check if new engine was used by looking for the specific warning
+	usedNewEngine := e.checkForNewEngineWarning(queryResp.Warnings)
+
+	return queryStats, responseHash, responseSize, usedNewEngine, nil
 }
 
 // extractQueryStats converts stats.Result to our QueryStats format
@@ -190,4 +193,16 @@ func (e *StatsExtractor) CompareStats(cellA, cellB QueryStats) map[string]any {
 	}
 
 	return differences
+}
+
+// checkForNewEngineWarning checks if the warnings contain the new engine warning
+func (e *StatsExtractor) checkForNewEngineWarning(warnings []string) bool {
+	const newEngineWarning = "Query was executed using the new experimental query engine and dataobj storage."
+
+	for _, warning := range warnings {
+		if warning == newEngineWarning {
+			return true
+		}
+	}
+	return false
 }

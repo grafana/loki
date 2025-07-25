@@ -65,8 +65,9 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
+			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := s.db.ExecContext(ctx, query,
@@ -101,6 +102,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBResponseSize,
 		sample.CellAStatusCode,
 		sample.CellBStatusCode,
+		sample.CellAUsedNewEngine,
+		sample.CellBUsedNewEngine,
 		sample.SampledAt,
 	)
 
@@ -187,6 +190,10 @@ func initMySQLSchema(db *sql.DB) error {
 			cell_b_response_size BIGINT,
 			cell_a_status_code INTEGER,
 			cell_b_status_code INTEGER,
+
+			-- Query engine version tracking
+			cell_a_used_new_engine BOOLEAN DEFAULT FALSE,
+			cell_b_used_new_engine BOOLEAN DEFAULT FALSE,
 
 			sampled_at TIMESTAMP NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

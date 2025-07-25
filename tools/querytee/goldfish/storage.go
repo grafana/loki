@@ -39,6 +39,10 @@ type QuerySample struct {
 	CellAStatusCode   int
 	CellBStatusCode   int
 
+	// Query engine version tracking
+	CellAUsedNewEngine bool
+	CellBUsedNewEngine bool
+
 	SampledAt time.Time
 }
 

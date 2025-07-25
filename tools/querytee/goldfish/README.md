@@ -15,6 +15,7 @@ Goldfish is a feature within QueryTee that enables sampling and comparison of qu
   - Bytes/lines processed comparison
   - Query complexity metrics (splits, shards)
   - Performance variance detection and reporting
+- **Query Engine Version Tracking**: Tracks which queries used the new experimental query engine vs the old engine
 - **Persistent Storage**: MySQL storage via Google Cloud SQL Proxy or Amazon RDS for storing query samples and comparison results
 
 ## Configuration
@@ -83,7 +84,9 @@ export GOLDFISH_DB_PASSWORD=your-password
 Goldfish uses two main tables:
 
 ### sampled_queries
+
 Stores query metadata and performance statistics (no sensitive data):
+
 - correlation_id (PRIMARY KEY)
 - tenant_id, query, query_type
 - start_time, end_time, step_duration
@@ -95,10 +98,15 @@ Stores query metadata and performance statistics (no sensitive data):
 - Response metadata without content:
   - response_hash (for integrity verification)
   - response_size, status_code
+- Query engine version tracking:
+  - cell_a_used_new_engine (BOOLEAN)
+  - cell_b_used_new_engine (BOOLEAN)
 - sampled_at
 
 ### comparison_outcomes
+
 Stores the results of comparing responses:
+
 - correlation_id (PRIMARY KEY, FOREIGN KEY)
 - comparison_status (match, mismatch, error, partial)
 - difference_details (JSONB)
@@ -121,6 +129,11 @@ Goldfish uses a simplified, privacy-focused comparison approach:
 3. **Status Code Comparison**:
    - Different status codes = **MISMATCH**
    - Both non-200 status codes = **MATCH** (both failed consistently)
+
+4. **Query Engine Version Detection**:
+   - Goldfish detects when queries use the new experimental query engine by parsing warnings in the response
+   - When Loki includes the warning "Query was executed using the new experimental query engine and dataobj storage.", Goldfish tracks this in the database
+   - This helps identify which queries are using the new vs old engine during migration
 
 **Important**: Performance differences do NOT affect match status. If content hashes match, queries are considered equivalent regardless of execution time differences.
 
@@ -151,20 +164,33 @@ SELECT
 FROM comparison_outcomes co
 JOIN sampled_queries sq ON co.correlation_id = sq.correlation_id
 GROUP BY sq.tenant_id;
+
+-- Query engine version analysis
+SELECT
+  sq.tenant_id,
+  SUM(CASE WHEN sq.cell_a_used_new_engine THEN 1 ELSE 0 END) as cell_a_new_engine_count,
+  SUM(CASE WHEN sq.cell_b_used_new_engine THEN 1 ELSE 0 END) as cell_b_new_engine_count,
+  COUNT(*) as total_queries
+FROM sampled_queries sq
+GROUP BY sq.tenant_id;
+
+-- Find queries where cells used different engines
+SELECT * FROM sampled_queries
+WHERE cell_a_used_new_engine != cell_b_used_new_engine;
 ```
 
 ## Storage Configuration
 
 Goldfish supports MySQL storage via Google Cloud SQL Proxy or Amazon RDS. The storage is optional - if not configured, Goldfish will perform sampling and comparison but won't persist results.
 
-### Setting up CloudSQL:
+### Setting up CloudSQL
 
 1. Ensure your CloudSQL proxy is running and accessible
 2. Create a MySQL database for Goldfish
 3. Configure the connection parameters via flags
 4. Set the database password using the `GOLDFISH_DB_PASSWORD` environment variable
 
-### Setting up RDS:
+### Setting up RDS
 
 1. Create an RDS MySQL instance
 2. Ensure your Loki cells can reach the RDS endpoint
@@ -177,6 +203,7 @@ The schema will be automatically created on first run for both CloudSQL and RDS.
 ## Testing
 
 The Goldfish implementation includes comprehensive tests that verify:
+
 - Hash-based comparison logic
 - Performance statistics analysis
 - Status code handling

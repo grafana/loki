@@ -78,11 +78,13 @@ func TestStoreQuerySample(t *testing.T) {
 		},
 		CellAResponseHash: "hash123",
 		CellBResponseHash: "hash123",
-		CellAResponseSize: 2048,
-		CellBResponseSize: 2048,
-		CellAStatusCode:   200,
-		CellBStatusCode:   200,
-		SampledAt:         time.Now(),
+		CellAResponseSize:  2048,
+		CellBResponseSize:  2048,
+		CellAStatusCode:    200,
+		CellBStatusCode:    200,
+		CellAUsedNewEngine: false,
+		CellBUsedNewEngine: true,
+		SampledAt:          time.Now(),
 	}
 
 	mock.ExpectExec("INSERT INTO sampled_queries").
@@ -118,6 +120,8 @@ func TestStoreQuerySample(t *testing.T) {
 			sample.CellBResponseSize,
 			sample.CellAStatusCode,
 			sample.CellBStatusCode,
+			sample.CellAUsedNewEngine,
+			sample.CellBUsedNewEngine,
 			sample.SampledAt,
 		).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -563,6 +567,8 @@ func TestSQLInjectionProtection(t *testing.T) {
 					sample.CellBResponseSize,
 					sample.CellAStatusCode,
 					sample.CellBStatusCode,
+					sample.CellAUsedNewEngine,
+					sample.CellBUsedNewEngine,
 					sample.SampledAt,
 				).
 				WillReturnResult(sqlmock.NewResult(1, 1))
