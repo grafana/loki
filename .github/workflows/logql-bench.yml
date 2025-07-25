@@ -22,19 +22,11 @@ on:
         required: false
         default: false # Disabled by default due to less complete implementation
         type: 'boolean'
-      range_type:
-        description: 'Select the range_type to benchmark. Defaults to Range queries.'
+      instant_queries:
+        description: 'Run benchmarks for Instant queries'
         required: false
-        default: range
-        type: choice
-        options:
-          - range
-          - instant
-      range_interval:
-        description: 'Select the range_interval for range aggregation queries. Defaults to 1h.'
-        required: false
-        default: 1h
-        type: string
+        default: false
+        type: 'boolean'
 permissions: {}
 jobs:
   generate-testdata:
@@ -123,8 +115,7 @@ jobs:
         run: |
           go test \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
-            -range-type=${{ inputs.range_type }} \
-            -range-interval=${{ inputs.range_interval }} \
+            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
             -count=10 -timeout=5h -benchmem \
             -cpuprofile=results/cpu.pprof \
             -memprofile=results/mem.pprof \
