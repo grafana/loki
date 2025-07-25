@@ -34,7 +34,7 @@ func TestAdd(t *testing.T) {
 }
 
 var (
-	defaultTimeResolution = model.Time(int64(time.Second*10) / 1e6)
+	defaultTimeResolution = model.Time(time.Second.Milliseconds() * 10)
 )
 
 func TestIterator(t *testing.T) {
