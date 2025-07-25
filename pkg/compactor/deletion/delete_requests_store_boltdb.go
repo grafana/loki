@@ -211,7 +211,14 @@ func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Con
 		return nil, err
 	}
 
-	deleteRequests := mergeDeletes(deleteGroups)
+	filteredDeleteGroups := []DeleteRequest{}
+	for _, dr := range deleteGroups {
+		if dr.UserID == userID {
+			filteredDeleteGroups = append(filteredDeleteGroups, dr)
+		}
+	}
+
+	deleteRequests := mergeDeletes(filteredDeleteGroups)
 	return deleteRequests, nil
 }
 
