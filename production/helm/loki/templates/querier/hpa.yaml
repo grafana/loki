@@ -1,7 +1,4 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and .Values.querier.kedaAutoscaling.enabled .Values.querier.autoscaling.enabled}}
-{{- fail "Cannot enable both HPA and Keda based autoscaling at the same time."}}
-{{- end }}
 {{- if and $isDistributed .Values.querier.autoscaling.enabled }}
 {{- $apiVersion := include "loki.hpa.apiVersion" . -}}
 apiVersion: {{ $apiVersion }}
