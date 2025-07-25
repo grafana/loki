@@ -62,6 +62,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
