@@ -12,7 +12,7 @@ import (
 
 func TestLogClusterIterator_WithConfigurableSampleInterval(t *testing.T) {
 	t.Run("should use configurable sample interval in chunks", func(t *testing.T) {
-		customChunkDuration := 30 * time.Minute
+		customChunkMaxAge := 30 * time.Minute
 		customSampleInterval := 5 * time.Second
 
 		cluster := &LogCluster{
@@ -23,8 +23,8 @@ func TestLogClusterIterator_WithConfigurableSampleInterval(t *testing.T) {
 		ts1 := model.Time(5000)  // 5 seconds
 		ts2 := model.Time(10000) // 10 seconds
 
-		result1 := cluster.append(ts1, customChunkDuration, customSampleInterval)
-		result2 := cluster.append(ts2, customChunkDuration, customSampleInterval)
+		result1 := cluster.append(ts1, customChunkMaxAge, customSampleInterval)
+		result2 := cluster.append(ts2, customChunkMaxAge, customSampleInterval)
 
 		require.Nil(t, result1, "first append should return nil")
 		require.NotNil(t, result2, "second append should return previous sample")

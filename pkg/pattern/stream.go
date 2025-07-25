@@ -70,7 +70,7 @@ func newStream(
 	// Get per-tenant persistence granularity (requires casting drainLimits to Limits interface)
 	persistenceGranularity := limits.PersistenceGranularity(instanceID)
 	if persistenceGranularity == 0 {
-		persistenceGranularity = drainCfg.ChunkDuration
+		persistenceGranularity = drainCfg.MaxChunkAge
 	}
 
 	return &stream{

@@ -2,8 +2,6 @@
 
 ## Build & Test Commands
 
-Go commands need to be run with the `-tags slicelabels` flag to build correctly.
-
 ```bash
 make all                      # build all binaries
 make loki                     # build loki only

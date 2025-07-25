@@ -22,8 +22,8 @@ type Chunk struct {
 	Samples []logproto.PatternSample
 }
 
-func newChunk(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) Chunk {
-	maxSize := int(chunkDuration/sampleInterval) + 1
+func newChunk(ts model.Time, maxChunkAge time.Duration, sampleInterval time.Duration) Chunk {
+	maxSize := int(maxChunkAge.Nanoseconds()/sampleInterval.Nanoseconds()) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
@@ -32,12 +32,12 @@ func newChunk(ts model.Time, chunkDuration time.Duration, sampleInterval time.Du
 	return v
 }
 
-func (c Chunk) spaceFor(ts model.Time, chunkDuration time.Duration) bool {
+func (c Chunk) spaceFor(ts model.Time, maxChunkAge time.Duration) bool {
 	if len(c.Samples) == 0 {
 		return true
 	}
 
-	return ts.Sub(c.Samples[0].Timestamp) < chunkDuration
+	return ts.Sub(c.Samples[0].Timestamp) < time.Duration(maxChunkAge.Nanoseconds())
 }
 
 // ForRange returns samples with only the values
@@ -101,11 +101,11 @@ func (c Chunk) ForRange(start, end, step, sampleInterval model.Time) []logproto.
 // Add records the sample by incrementing the value of the current sample
 // or creating a new sample if past the time resolution of the current one.
 // Returns the previous sample if a new sample was created, nil otherwise.
-func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
+func (c *Chunks) Add(ts model.Time, maxChunkAge time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
 	t := TruncateTimestamp(ts, model.Time(sampleInterval.Milliseconds()))
 
 	if len(*c) == 0 {
-		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
+		*c = append(*c, newChunk(t, maxChunkAge, sampleInterval))
 		return nil
 	}
 	last := &(*c)[len(*c)-1]
@@ -113,8 +113,8 @@ func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval 
 		last.Samples[len(last.Samples)-1].Value++
 		return nil
 	}
-	if !last.spaceFor(t, chunkDuration) {
-		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
+	if !last.spaceFor(t, maxChunkAge) {
+		*c = append(*c, newChunk(t, maxChunkAge, sampleInterval))
 		return &last.Samples[len(last.Samples)-1]
 	}
 	if ts.Before(last.Samples[len(last.Samples)-1].Timestamp) {

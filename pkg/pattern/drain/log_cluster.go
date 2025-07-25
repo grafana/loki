@@ -27,9 +27,9 @@ func (c *LogCluster) String() string {
 	return strings.Join(c.Tokens, " ")
 }
 
-func (c *LogCluster) append(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
+func (c *LogCluster) append(ts model.Time, maxChunkAge time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
 	c.Size++
-	return c.Chunks.Add(ts, chunkDuration, sampleInterval)
+	return c.Chunks.Add(ts, maxChunkAge, sampleInterval)
 }
 
 func (c *LogCluster) merge(samples []*logproto.PatternSample) {

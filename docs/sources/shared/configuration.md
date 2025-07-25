@@ -893,8 +893,8 @@ pattern_ingester:
   [retain_for: <duration> | default = 3h]
 
   # The maximum time span for a single pattern chunk.
-  # CLI flag: -pattern-ingester.chunk-duration
-  [chunk_duration: <duration> | default = 1h]
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
 
   # The time resolution for pattern samples within chunks.
   # CLI flag: -pattern-ingester.sample-interval
@@ -4489,7 +4489,6 @@ otlp_config:
 
 # Minimum pattern rate (samples per second) required for a pattern to be
 # persisted. Patterns with lower rates will be filtered out during persistence.
-# Default: 1.0
 # CLI flag: -limits.pattern-rate-threshold
 [pattern_rate_threshold: <float> | default = 1]
 

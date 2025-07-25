@@ -46,7 +46,7 @@ type Config struct {
 	ConnectionTimeout     time.Duration         `yaml:"connection_timeout"`
 	MaxAllowedLineLength  int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
 	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
-	ChunkDuration         time.Duration         `yaml:"chunk_duration,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
+	MaxChunkAge           time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
 	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
 
 	// For testing.
@@ -110,8 +110,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		"How long to retain patterns in the pattern ingester after they are pushed.",
 	)
 	fs.DurationVar(
-		&cfg.ChunkDuration,
-		"pattern-ingester.chunk-duration",
+		&cfg.MaxChunkAge,
+		"pattern-ingester.max-chunk-age",
 		1*time.Hour,
 		"The maximum time span for a single pattern chunk.",
 	)
@@ -170,13 +170,13 @@ func (cfg *Config) Validate() error {
 	}
 
 	// Validate retain-for >= chunk-duration
-	if cfg.RetainFor < cfg.ChunkDuration {
-		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.ChunkDuration)
+	if cfg.RetainFor < cfg.MaxChunkAge {
+		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.MaxChunkAge)
 	}
 
 	// Validate chunk-duration >= sample-interval
-	if cfg.ChunkDuration < cfg.PatternSampleInterval {
-		return fmt.Errorf("chunk-duration (%v) must be greater than or equal to sample-interval (%v)", cfg.ChunkDuration, cfg.PatternSampleInterval)
+	if cfg.MaxChunkAge < cfg.PatternSampleInterval {
+		return fmt.Errorf("chunk-duration (%v) must be greater than or equal to sample-interval (%v)", cfg.MaxChunkAge, cfg.PatternSampleInterval)
 	}
 
 	return cfg.LifecyclerConfig.Validate()
@@ -230,7 +230,7 @@ func New(
 	drainCfg := drain.DefaultConfig()
 	drainCfg.MaxClusters = cfg.MaxClusters
 	drainCfg.MaxEvictionRatio = cfg.MaxEvictionRatio
-	drainCfg.ChunkDuration = cfg.ChunkDuration
+	drainCfg.MaxChunkAge = cfg.MaxChunkAge
 	drainCfg.SampleInterval = cfg.PatternSampleInterval
 
 	i := &Ingester{
@@ -260,10 +260,10 @@ func New(
 
 func (i *Ingester) getEffectivePersistenceGranularity(userID string) time.Duration {
 	tenantGranularity := i.limits.PersistenceGranularity(userID)
-	if tenantGranularity > 0 && tenantGranularity <= i.cfg.ChunkDuration {
+	if tenantGranularity > 0 && tenantGranularity <= i.cfg.MaxChunkAge {
 		return tenantGranularity
 	}
-	return i.cfg.ChunkDuration
+	return i.cfg.MaxChunkAge
 }
 
 // ServeHTTP implements the pattern ring status page.

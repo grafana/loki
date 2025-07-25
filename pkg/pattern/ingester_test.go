@@ -588,19 +588,19 @@ func TestConfigChunkDuration(t *testing.T) {
 		cfg := Config{}
 		flagext.DefaultValues(&cfg)
 
-		require.Equal(t, time.Hour, cfg.ChunkDuration, "ChunkDuration should default to 1 hour")
+		require.Equal(t, time.Hour, cfg.MaxChunkAge, "ChunkDuration should default to 1 hour")
 	})
 
-	t.Run("should register chunk-duration flag", func(t *testing.T) {
+	t.Run("should register max-chunk-age flag", func(t *testing.T) {
 		cfg := Config{}
 		fs := flag.NewFlagSet("test", flag.ContinueOnError)
 
 		cfg.RegisterFlags(fs)
 
 		// Verify the flag was registered
-		chunkDurationFlag := fs.Lookup("pattern-ingester.chunk-duration")
-		require.NotNil(t, chunkDurationFlag, "pattern-ingester.chunk-duration flag should be registered")
-		require.Equal(t, "1h0m0s", chunkDurationFlag.DefValue, "flag should have default value of 1h0m0s")
+		maxChunkAgeFlag := fs.Lookup("pattern-ingester.max-chunk-age")
+		require.NotNil(t, maxChunkAgeFlag, "pattern-ingester.max-chunk-age flag should be registered")
+		require.Equal(t, "1h0m0s", maxChunkAgeFlag.DefValue, "flag should have default value of 1h0m0s")
 	})
 }
 
@@ -631,7 +631,7 @@ func TestConfigurationPropagation(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 
 		// Set custom values
-		cfg.ChunkDuration = 30 * time.Minute
+		cfg.MaxChunkAge = 30 * time.Minute
 		cfg.PatternSampleInterval = 5 * time.Second
 
 		// Create ingester
@@ -646,7 +646,7 @@ func TestConfigurationPropagation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify that the drain config has the correct values
-		require.Equal(t, 30*time.Minute, ingester.drainCfg.ChunkDuration, "ChunkDuration should be propagated to drain config")
+		require.Equal(t, 30*time.Minute, ingester.drainCfg.MaxChunkAge, "ChunkDuration should be propagated to drain config")
 		require.Equal(t, 5*time.Second, ingester.drainCfg.SampleInterval, "PatternSampleInterval should be propagated to drain config")
 	})
 }
@@ -683,7 +683,7 @@ func TestPerTenantPersistenceGranularity(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 
 		// Set custom chunk duration
-		cfg.ChunkDuration = 45 * time.Minute
+		cfg.MaxChunkAge = 45 * time.Minute
 
 		// Create limits without per-tenant override
 		limits := &fakeLimits{
@@ -712,7 +712,7 @@ func TestPerTenantPersistenceGranularity(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 
 		// Set custom chunk duration
-		cfg.ChunkDuration = 45 * time.Minute
+		cfg.MaxChunkAge = 45 * time.Minute
 
 		// Create limits without per-tenant override
 		limits := &fakeLimits{
@@ -747,7 +747,7 @@ func TestConfigurationValidation(t *testing.T) {
 
 		// Set invalid values: retain-for < chunk-duration
 		cfg.RetainFor = 1 * time.Hour
-		cfg.ChunkDuration = 2 * time.Hour
+		cfg.MaxChunkAge = 2 * time.Hour
 
 		err := cfg.Validate()
 		require.Error(t, err, "should fail validation when retain-for < chunk-duration")
@@ -763,7 +763,7 @@ func TestConfigurationValidation(t *testing.T) {
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
 
 		// Set invalid values: chunk-duration < sample-interval
-		cfg.ChunkDuration = 5 * time.Second
+		cfg.MaxChunkAge = 5 * time.Second
 		cfg.PatternSampleInterval = 10 * time.Second
 
 		err := cfg.Validate()
@@ -781,7 +781,7 @@ func TestConfigurationValidation(t *testing.T) {
 
 		// Set valid values
 		cfg.RetainFor = 3 * time.Hour
-		cfg.ChunkDuration = 1 * time.Hour
+		cfg.MaxChunkAge = 1 * time.Hour
 		cfg.PatternSampleInterval = 10 * time.Second
 
 		err := cfg.Validate()

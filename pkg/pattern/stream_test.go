@@ -355,7 +355,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 		mockWriter.AssertExpectations(t)
 	})
 
-	t.Run("granularity larger than chunk duration should write one pattern", func(t *testing.T) {
+	t.Run("granularity larger than max chunk age should write one pattern", func(t *testing.T) {
 		mockWriter := &mockEntryWriter{}
 		stream, err := newStream(
 			model.Fingerprint(lbs.Hash()),
@@ -379,7 +379,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 
 		// Push multiple old entries across the hour
 		entries := []push.Entry{}
-		for i := 0; i < 6; i++ {
+		for i := range 6 {
 			entries = append(entries, push.Entry{
 				Timestamp: baseTime.Add(time.Duration(i*10) * time.Minute),
 				Line:      "ts=1 msg=hello",
@@ -451,7 +451,7 @@ func TestStreamPerTenantConfigurationThreading(t *testing.T) {
 
 		// Create instance with global default of 1 hour in drainCfg
 		drainCfg := drain.DefaultConfig()
-		drainCfg.ChunkDuration = 1 * time.Hour
+		drainCfg.MaxChunkAge = 1 * time.Hour
 
 		inst, err := newInstanceWithLimits(
 			"test",

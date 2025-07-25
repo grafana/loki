@@ -700,7 +700,7 @@ func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 func TestDrainDefaultConfig(t *testing.T) {
 	t.Run("should set default ChunkDuration to 1 hour", func(t *testing.T) {
 		cfg := DefaultConfig()
-		require.Equal(t, time.Hour, cfg.ChunkDuration, "ChunkDuration should default to 1 hour")
+		require.Equal(t, time.Hour, cfg.MaxChunkAge, "ChunkDuration should default to 1 hour")
 	})
 
 	t.Run("should set default SampleInterval to 10 seconds", func(t *testing.T) {
