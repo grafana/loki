@@ -145,6 +145,16 @@ func matchersToString(matchers []*labels.Matcher) string {
 	return s.String()
 }
 
+func (m *ObjectMetastore) ResolveStrategy(tenants []string) ResolveStrategyType {
+	slices.Sort(tenants)
+	slices.Sort(m.cfg.EnabledTenantIDs)
+
+	if m.cfg.IndexStoragePrefix != "" && slices.Equal(m.cfg.EnabledTenantIDs, tenants) {
+		return ResolveStrategyTypeIndex
+	}
+	return ResolveStrategyTypeDirect
+}
+
 func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
