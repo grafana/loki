@@ -32,8 +32,10 @@ func BenchmarkWriteMetastores(b *testing.B) {
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: bm.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: bm.format,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -82,8 +84,10 @@ func TestWriteMetastores(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: tt.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: tt.format,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -201,7 +205,7 @@ func TestIterStorePaths(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			iter := iterStorePaths(tenantID, tc.start, tc.end)
+			iter := iterStorePaths(tenantID, tc.start, tc.end, "")
 			actual := []string{}
 			for store := range iter {
 				actual = append(actual, store)
@@ -226,8 +230,10 @@ func TestDataObjectsPathsV1(t *testing.T) {
 			tenantID := "test-tenant"
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: tt.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: tt.format,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -283,7 +289,7 @@ func TestDataObjectsPathsV1(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+			ms := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), nil)
 
 			t.Run("finds objects within current window", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)

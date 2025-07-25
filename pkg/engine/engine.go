@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -28,11 +29,10 @@ import (
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, cfg metastore.StorageConfig, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
-		metastoreBucket := objstore.NewPrefixedBucket(bucket, opts.CataloguePath)
-		ms = metastore.NewObjectMetastore(metastoreBucket, logger, reg)
+		ms = metastore.NewObjectMetastore(cfg, bucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -98,11 +98,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	)
 
 	t = time.Now() // start stopwatch for physical planning
-	catalogueType := physical.CatalogueTypeDirect
-	if e.opts.CataloguePath != "" {
-		catalogueType = physical.CatalogueTypeIndex
-	}
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	if err != nil {
@@ -163,12 +159,18 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
+	tenants, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return logqlmodel.Result{}, err
+	}
+
 	level.Debug(logger).Log(
 		"msg", "finished executing with new engine",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
+		"dataobj_strategy", e.metastore.ResolveStrategy(tenants),
 	)
 
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
