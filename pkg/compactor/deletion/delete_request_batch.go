@@ -48,7 +48,7 @@ func (b *deleteRequestBatch) userIDs() []string {
 
 // addDeleteRequest add a requests to the batch
 func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
-	dr.Metrics = b.metrics
+	dr.TotalLinesDeletedMetric = b.metrics.deletedLinesTotal
 	ur, ok := b.deleteRequestsToProcess[dr.UserID]
 	if !ok {
 		ur = &userDeleteRequests{
@@ -172,4 +172,13 @@ func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
 	}
 
 	return requests
+}
+
+func (b *deleteRequestBatch) getDeletionIntervalForUser(userID string) model.Interval {
+	userRequests, ok := b.deleteRequestsToProcess[userID]
+	if !ok {
+		return model.Interval{}
+	}
+
+	return userRequests.requestsInterval
 }

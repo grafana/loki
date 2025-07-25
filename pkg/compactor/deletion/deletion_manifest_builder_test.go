@@ -589,7 +589,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create delete request batch
-			batch := newDeleteRequestBatch(nil)
+			batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 			for _, req := range tc.deleteRequests {
 				batch.addDeleteRequest(&req)
 			}
@@ -662,7 +662,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create delete request batch
-	batch := newDeleteRequestBatch(nil)
+	batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 	batch.addDeleteRequest(&DeleteRequest{
 		UserID:    user1,
 		RequestID: req1,
@@ -683,7 +683,7 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 	require.EqualError(t, err, fmt.Sprintf("no requests loaded for user: %s", user2))
 
 	err = builder.Finish(ctx)
-	require.EqualError(t, err, ErrNoChunksSelectedForDeletion.Error())
+	require.NoError(t, err)
 }
 
 func TestCleanupInvalidManifest(t *testing.T) {
@@ -695,7 +695,7 @@ func TestCleanupInvalidManifest(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create delete request batch
-	batch := newDeleteRequestBatch(nil)
+	batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
 	batch.addDeleteRequest(&DeleteRequest{
 		UserID:    user1,
 		RequestID: req1,

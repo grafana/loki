@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -33,8 +34,8 @@ type DeleteRequest struct {
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 	timeInterval    *timeInterval          `json:"-"`
 
-	Metrics      *deleteRequestsManagerMetrics `json:"-"`
-	DeletedLines int32                         `json:"-"`
+	TotalLinesDeletedMetric *prometheus.CounterVec `json:"-"`
+	DeletedLines            int32                  `json:"-"`
 }
 
 func (d *DeleteRequest) SetQuery(logQL string) error {
@@ -89,7 +90,7 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 
 		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
-			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
+			d.TotalLinesDeletedMetric.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
 			return true
 		}
