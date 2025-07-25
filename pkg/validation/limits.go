@@ -486,7 +486,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		&l.PatternRateThreshold,
 		"limits.pattern-rate-threshold",
 		1.0,
-		"Minimum pattern rate (samples per second) required for a pattern to be persisted. Patterns with lower rates will be filtered out during persistence. Default: 1.0",
+		"Minimum pattern rate (samples per second) required for a pattern to be persisted. Patterns with lower rates will be filtered out during persistence.",
 	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
