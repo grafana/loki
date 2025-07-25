@@ -480,12 +480,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
 	)
-	f.DurationVar(
-		(*time.Duration)(&l.PatternPersistenceGranularity),
-		"limits.pattern-persistence-granularity",
-		0,
-		"The time granularity for persisting patterns. Controls how many data points are written when patterns are flushed. Set to 0 to use the default from the pattern ingester configuration.",
-	)
+    _ = l.PatternPersistenceGranularity.Set("0s") # not even needed
+	f.Var(&l.PatternPersistenceGranularity, "limits.pattern-persistence-granularity", "The time granularity for persisting patterns. Controls how many data points are written when patterns are flushed. Set to 0 to use the default from the pattern ingester configuration.")
 	f.Float64Var(
 		&l.PatternRateThreshold,
 		"limits.pattern-rate-threshold",
