@@ -10,6 +10,7 @@ type Config struct {
 	LogStreamCreation           bool     `yaml:"log_stream_creation"`
 	LogPushRequest              bool     `yaml:"log_push_request"`
 	LogHashOfLabels             bool     `yaml:"log_hash_of_labels"`
+	LogRawLabelsString          bool     `yaml:"log_raw_labels_string"`
 	LogPushRequestStreams       bool     `yaml:"log_push_request_streams"`
 	FilterPushRequestStreamsIPs []string `yaml:"filter_push_request_streams_ips"`
 	LogServiceNameDiscovery     bool     `yaml:"log_service_name_discovery"`
@@ -25,6 +26,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LogStreamCreation, "operation-config.log-stream-creation", false, "Log every new stream created by a push request (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogPushRequest, "operation-config.log-push-request", false, "Log every push request (very verbose, recommend to enable via runtime config only).")
 	f.BoolVar(&cfg.LogHashOfLabels, "operation-config.log-hash-of-labels", false, "Log a commutative hash of the labels for all streams in a push request. In some cases this can potentially be used as an identifier of the agent sending the stream. Calculating hashes is epensive so only enable as needed.")
+	f.BoolVar(&cfg.LogRawLabelsString, "operation-config.log-raw-labels-string", false, "Log the raw labels string for all streams in a push request. This is very verbose and should only be enabled via runtime config.")
 	f.BoolVar(&cfg.LogPushRequestStreams, "operation-config.log-push-request-streams", false, "Log every stream in a push request (very verbose, recommend to enable via runtime config only).")
 	f.Var((*flagext.StringSlice)(&cfg.FilterPushRequestStreamsIPs), "operation-config.filter-push-request-streams-ips", "Only show streams that match a provided IP address, LogPushRequestStreams must be enabled. Can be used multiple times to filter by multiple IPs.")
 	f.BoolVar(&cfg.LogServiceNameDiscovery, "operation-config.log-service-name-discovery", false, "Log service name discovery (very verbose, recommend to enable via runtime config only).")
@@ -65,8 +67,7 @@ func DefaultTenantConfigs() *TenantConfigs {
 	}
 }
 
-type defaultsOnlyConfigProvider struct {
-}
+type defaultsOnlyConfigProvider struct{}
 
 // TenantConfig implementation for defaultsOnlyConfigProvider, ignores the tenant input and only returns a default config
 func (t *defaultsOnlyConfigProvider) TenantConfig(_ string) *Config {
@@ -128,4 +129,8 @@ func (o *TenantConfigs) LogDuplicateStreamInfo(userID string) bool {
 
 func (o *TenantConfigs) LimitedLogPushErrors(userID string) bool {
 	return o.getOverridesForUser(userID).LimitedLogPushErrors
+}
+
+func (o *TenantConfigs) LogRawLabelsString(userID string) bool {
+	return o.getOverridesForUser(userID).LogRawLabelsString
 }
