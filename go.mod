@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/baidubce/bce-sdk-go v0.9.235
+	github.com/baidubce/bce-sdk-go v0.9.236
 	github.com/bmatcuk/doublestar/v4 v4.9.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -115,7 +115,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/DataDog/sketches-go v1.4.7
 	github.com/DmitriyVTitov/size v1.5.0
-	github.com/IBM/go-sdk-core/v5 v5.20.1
+	github.com/IBM/go-sdk-core/v5 v5.21.0
 	github.com/IBM/ibm-cos-sdk-go v1.12.2
 	github.com/apache/arrow-go/v18 v18.4.0
 	github.com/axiomhq/hyperloglog v0.2.5
