@@ -249,7 +249,7 @@ func (r *Reader) init() error {
 		Dataset:         dset,
 		Columns:         dset.Columns(),
 		Predicates:      preds,
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		TargetCacheSize: 4_000_000, // Permit up to 16MB of cache pages.
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
