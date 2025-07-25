@@ -254,6 +254,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		storePaths = append(storePaths, path)
 	}
 
+	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
+
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
 	if err != nil {
