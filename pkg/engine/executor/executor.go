@@ -20,6 +20,8 @@ import (
 type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
+
+	DataobjScanPageCacheSize int64
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -28,6 +30,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		batchSize: cfg.BatchSize,
 		bucket:    cfg.Bucket,
 		logger:    logger,
+
+		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
 	}
 	if plan == nil {
 		return errorPipeline(errors.New("plan is nil"))
@@ -46,6 +50,8 @@ type Context struct {
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
+
+	dataobjScanPageCacheSize int64
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -149,7 +155,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Allocator: memory.DefaultAllocator,
 
 		BatchSize: c.batchSize,
-		CacheSize: 16_000_000, // TODO(rfratto): make configurable at engine level
+		CacheSize: int(c.dataobjScanPageCacheSize),
 	})
 
 	sortType, sortDirection, err := logsSection.PrimarySortOrder()

@@ -4866,6 +4866,13 @@ engine:
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Maximum total size of future pages for DataObjScan to download
+  # before they are needed, for roundtrip reduction to object storage. Setting
+  # to zero disables downloading future pages. Only used in the next generation
+  # query engine.
+  # CLI flag: -querier.engine.dataobjscan-page-cache-size
+  [dataobjscan_page_cache_size: <int> | default = 0B]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
