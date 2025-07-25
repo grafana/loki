@@ -92,4 +92,10 @@ const (
 	BCE_VERSION_ID                      = "x-bce-version-id"
 	BCE_OBJECT_EXPIRES                  = "x-bce-object-expires"
 	BCE_EXPIRATION_DATE                 = "x-bce-expiration-date"
+	BCE_SERVER_SIDE_ENCRYPTION          = "x-bce-server-side-encryption"
+	BCE_SERVER_SIDE_ENCRYPTION_KEY      = "x-bce-server-side-encryption-customer-key"
+	BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5  = "x-bce-server-side-encryption-customer-key-md5"
+	BCE_SERVER_SIDE_ENCRYPTION_KEY_ID   = "x-bce-server-side-encryption-bos-kms-key-id"
+	BCE_OBJECT_RETENTION_DATE           = "x-bce-object-rentention-date"
+	BCE_TAGGING_COUNT                   = "x-bce-tagging-count"
 )
