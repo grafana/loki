@@ -12,13 +12,13 @@ on:
         required: false
         default: true
         type: 'boolean'
-      bench_dataobj_v1:
-        description: 'Benchmark V1 data object store'
+      bench_dataobj_old_engine:
+        description: 'Benchmark data object store with old engine'
         required: false
         default: true
         type: 'boolean'
-      bench_dataobj_v2:
-        description: 'Benchmark V2 data object store'
+      bench_dataobj_new_engine:
+        description: 'Benchmark data object store with new engine'
         required: false
         default: false # Disabled by default due to less complete implementation
         type: 'boolean'
@@ -72,8 +72,8 @@ jobs:
 
           # Use explicit equality checks to avoid template injection.
           ${{ inputs.bench_chunks_v1 == true }} && STORES+=("chunk")
-          ${{ inputs.bench_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.bench_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.bench_dataobj_old_engine == true }} && STORES+=("dataobj")
+          ${{ inputs.bench_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
