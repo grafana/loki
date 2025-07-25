@@ -220,11 +220,7 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 		return nil
 	}
 
-	var (
-		tokens = d.tokens
-		state  = d.state
-	)
-	return d.train(tokens, state, ts)
+	return d.train(d.tokens, d.state, ts)
 }
 
 func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
