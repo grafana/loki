@@ -9252,7 +9252,7 @@ null
       }
     },
     "cooldownPeriod": 300,
-    "enabled": true,
+    "enabled": false,
     "maxReplicas": 10,
     "minReplicas": 1,
     "triggers": [
@@ -9536,7 +9536,7 @@ null
     }
   },
   "cooldownPeriod": 300,
-  "enabled": true,
+  "enabled": false,
   "maxReplicas": 10,
   "minReplicas": 1,
   "triggers": [
