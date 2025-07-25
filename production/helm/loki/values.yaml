@@ -2296,7 +2296,7 @@ querier:
   # The remote URL is used even if metamonitoring is disabled.
   # For more details about KEDA autoscaling, refer to https://grafana.com/docs/loki/latest/operations/autoscaling_queriers
   kedaAutoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 1
     maxReplicas: 10
     cooldownPeriod: 300
