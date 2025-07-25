@@ -165,8 +165,6 @@ func TestStorageEquality(t *testing.T) {
 				}()
 
 				t.Logf("Query information:\n%s", baseCase.Description())
-				// t.Skip(t.Name())
-
 				params, err := logql.NewLiteralParams(
 					baseCase.Query,
 					baseCase.Start,
