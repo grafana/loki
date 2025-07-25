@@ -164,7 +164,7 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 		}
 
 		// Apply allowlist filtering if configured
-		allowlist := t.Cfg.LimitsConfig.TenantLimitsAllowPublish
+		allowlist := t.Cfg.TenantLimitsAllowPublish
 		filteredLimits, err := filterLimitFields(limit, allowlist)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

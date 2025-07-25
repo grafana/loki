@@ -110,9 +110,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 			loki := &Loki{
 				TenantLimits: mockTenantLimits,
 				Cfg: Config{
-					LimitsConfig: validation.Limits{
-						TenantLimitsAllowPublish: tt.allowlist,
-					},
+					TenantLimitsAllowPublish: tt.allowlist,
 				},
 			}
 
