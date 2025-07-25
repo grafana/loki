@@ -26,13 +26,12 @@ type partitionProcessor struct {
 	client    *kgo.Client
 	topic     string
 	partition int32
-	tenantID  []byte
 	// Processing pipeline
 	records          chan *kgo.Record
-	builder          *logsobj.Builder
+	builder          *logsobj.MultiTenantBuilder
 	decoder          *kafka.Decoder
-	uploader         *uploader.Uploader
-	metastoreUpdater *metastore.Updater
+	uploader         *uploader.MultiTenantUploader
+	metastoreUpdater *metastore.MultiTenantUpdater
 
 	// Builder initialization
 	builderOnce sync.Once
@@ -65,8 +64,6 @@ func newPartitionProcessor(
 	uploaderCfg uploader.Config,
 	metastoreCfg metastore.Config,
 	bucket objstore.Bucket,
-	tenantID string,
-	virtualShard int32,
 	topic string,
 	partition int32,
 	logger log.Logger,
@@ -81,9 +78,7 @@ func newPartitionProcessor(
 		panic(err)
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"shard":     strconv.Itoa(int(virtualShard)),
 		"partition": strconv.Itoa(int(partition)),
-		"tenant":    tenantID,
 		"topic":     topic,
 	}, reg)
 
@@ -92,19 +87,19 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	uploader := uploader.New(uploaderCfg, bucket, tenantID, logger)
+	uploader := uploader.NewMultiTenant(uploaderCfg, bucket, logger)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(metastoreCfg.Updater, bucket, tenantID, logger)
+	metastoreUpdater := metastore.NewMultiTenantUpdater(metastoreCfg.Updater, bucket, logger)
 	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
 
 	return &partitionProcessor{
 		client:               client,
-		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		logger:               log.With(logger, "topic", topic, "partition", partition),
 		topic:                topic,
 		partition:            partition,
 		records:              make(chan *kgo.Record, 1000),
@@ -114,7 +109,6 @@ func newPartitionProcessor(
 		reg:                  reg,
 		builderCfg:           builderCfg,
 		bucket:               bucket,
-		tenantID:             []byte(tenantID),
 		metrics:              metrics,
 		uploader:             uploader,
 		metastoreUpdater:     metastoreUpdater,
@@ -180,7 +174,7 @@ func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
 		// Dataobj builder
-		builder, err := logsobj.NewBuilder(p.builderCfg)
+		builder, err := logsobj.NewMultiTenantBuilder(p.builderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -207,7 +201,7 @@ func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
 		return err
 	}
 
-	if err := p.metastoreUpdater.Update(p.ctx, objectPath, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
+	if err := p.metastoreUpdater.Update(p.ctx, stats.TenantIDs, objectPath, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}
@@ -228,7 +222,6 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	}
 
 	event := &metastore.ObjectWrittenEvent{
-		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
 		WriteTime:  time.Now().Format(time.RFC3339),
 	}
@@ -266,10 +259,10 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	// todo: handle multi-tenant
-	if !bytes.Equal(record.Key, p.tenantID) {
-		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
-		return
-	}
+	// if !bytes.Equal(record.Key, p.tenantID) {
+	// 	level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
+	// 	return
+	// }
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
@@ -277,7 +270,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	p.metrics.incAppendsTotal()
-	if err := p.builder.Append(stream); err != nil {
+	if err := p.builder.Append(string(record.Key), stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
 			p.metrics.incAppendFailures()
@@ -302,7 +295,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 
 		p.metrics.incAppendsTotal()
-		if err := p.builder.Append(stream); err != nil {
+		if err := p.builder.Append(string(record.Key), stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
 		}

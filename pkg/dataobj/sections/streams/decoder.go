@@ -24,6 +24,24 @@ type decoder struct {
 	sr dataobj.SectionReader
 }
 
+// TenantID describes the tenant that owns the section.
+func (rd *decoder) TenantID(ctx context.Context) (string, error) {
+	rc, err := rd.sr.Metadata(ctx)
+	if err != nil {
+		return "", fmt.Errorf("reading streams section metadata: %w", err)
+	}
+	defer rc.Close()
+
+	br := bufpool.GetReader(rc)
+	defer bufpool.PutReader(br)
+
+	md, err := decodeStreamsMetadata(br)
+	if err != nil {
+		return "", err
+	}
+	return md.TenantID, nil
+}
+
 // Columns describes the set of columns in the section.
 func (rd *decoder) Columns(ctx context.Context) ([]*streamsmd.ColumnDesc, error) {
 	rc, err := rd.sr.Metadata(ctx)

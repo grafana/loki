@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -13,7 +14,8 @@ type (
 		UncompressedSize uint64
 		CompressedSize   uint64
 
-		Columns []ColumnStats
+		Columns  []ColumnStats
+		TenantID string
 	}
 
 	// ColumnStats provides statistics about a column in a section.
@@ -54,6 +56,12 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
 	dec := newDecoder(section.reader)
+	tenantID, err := dec.TenantID(ctx)
+	if err != nil {
+		return stats, errors.New("reading tenantID")
+	}
+	stats.TenantID = tenantID
+
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")

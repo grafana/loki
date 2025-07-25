@@ -48,6 +48,7 @@ func printStreamInfo(sec *streams.Section) {
 		log.Printf("failed to read columns for streams section: %v", err)
 		return
 	}
+	fmt.Printf("TENANT_ID: %s\n", stats.TenantID)
 	for _, col := range stats.Columns {
 		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type[12:], col.Name, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}
@@ -63,6 +64,7 @@ func printLogsInfo(sec *logs.Section) {
 		log.Printf("failed to read columns for streams section: %v", err)
 		return
 	}
+	fmt.Printf("TENANT_ID: %s\n", stats.TenantID)
 	for _, col := range stats.Columns {
 		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type[12:], col.Name, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}

@@ -35,6 +35,7 @@ var (
 type encoder struct {
 	data *bytes.Buffer
 
+	tenantID  string
 	columns   []*logsmd.ColumnDesc // closed columns.
 	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
 }
@@ -86,7 +87,7 @@ func (enc *encoder) Metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &logsmd.Metadata{Columns: columns}
+	return &logsmd.Metadata{TenantID: enc.tenantID, Columns: columns}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush

@@ -2,6 +2,7 @@ package streams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +21,8 @@ type (
 		MaxTimestamp          time.Time
 		TimestampDistribution []uint64 // Stream count per hour.
 
-		Columns []ColumnStats
+		Columns  []ColumnStats
+		TenantID string
 	}
 
 	// ColumnStats provides statistics about a column in a section.
@@ -60,6 +62,13 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
 	dec := newDecoder(section.reader)
+
+	tenantID, err := dec.TenantID(ctx)
+	if err != nil {
+		return stats, errors.New("reading tenantID")
+	}
+	stats.TenantID = tenantID
+
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")

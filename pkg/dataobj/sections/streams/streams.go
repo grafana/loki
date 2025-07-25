@@ -20,8 +20,9 @@ func CheckSection(section *dataobj.Section) bool { return section.Type == sectio
 
 // Section represents an opened streams section.
 type Section struct {
-	reader  dataobj.SectionReader
-	columns []*Column
+	reader   dataobj.SectionReader
+	columns  []*Column
+	tenantID string
 }
 
 // Open opens a Section from an underlying [dataobj.Section]. Open returns an
@@ -41,6 +42,14 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 
 func (s *Section) init(ctx context.Context) error {
 	dec := newDecoder(s.reader)
+
+	// TODO(grobinson): Optimize this so we make one call instead of two.
+	tenantID, err := dec.TenantID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to decode columns: %w", err)
+	}
+	s.tenantID = tenantID
+
 	cols, err := dec.Columns(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to decode columns: %w", err)
@@ -64,6 +73,9 @@ func (s *Section) init(ctx context.Context) error {
 
 	return nil
 }
+
+// TenantID returns the tenant that owns the section.
+func (s *Section) TenantID() string { return s.tenantID }
 
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.

@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -137,6 +138,8 @@ func (s *dataobjScan) initStreams(ctx context.Context) error {
 	var sr streams.RowReader
 	defer sr.Close()
 
+	tenantID, _ := tenant.TenantID(ctx)
+
 	streamsBuf := make([]streams.Stream, s.opts.batchSize)
 
 	// Initialize entries in the map so we can do a presence test in the loop
@@ -150,6 +153,10 @@ func (s *dataobjScan) initStreams(ctx context.Context) error {
 		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening streams section: %w", err)
+		}
+
+		if sec.TenantID() != "" && sec.TenantID() != tenantID {
+			continue
 		}
 
 		// TODO(rfratto): dataobj.StreamsPredicate is missing support for filtering

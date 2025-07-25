@@ -10,6 +10,7 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/st
 
 // Metadata describes the metadata for the streams section.
 message Metadata {
+  string tenantID = 2;
   // Columns within the stream.
   repeated ColumnDesc columns = 1;
 }

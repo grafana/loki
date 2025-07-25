@@ -99,6 +99,23 @@ func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
 	}
 }
 
+func multiTenantMetastorePath(window time.Time) string {
+	return fmt.Sprintf("multi-tenant/metastore/%s.store", window.Format(time.RFC3339))
+}
+
+func multiTenantIterStorePaths(start, end time.Time) iter.Seq[string] {
+	minMetastoreWindow := start.Truncate(metastoreWindowSize).UTC()
+	maxMetastoreWindow := end.Truncate(metastoreWindowSize).UTC()
+
+	return func(yield func(t string) bool) {
+		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
+			if !yield(multiTenantMetastorePath(metastoreWindow)) {
+				return
+			}
+		}
+	}
+}
+
 func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
 	store := &ObjectMetastore{
 		bucket:      bucket,
@@ -139,14 +156,14 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	}
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, tenantID, storePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := streamPredicateFromMatchers(start, end, matchers...)
-	return m.listStreamsFromObjects(ctx, paths, predicate)
+	return m.listStreamsFromObjects(ctx, tenantID, paths, predicate)
 }
 
 func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
@@ -164,7 +181,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, tenantID, storePaths, start, end)
 	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(paths, ","), "err", err)
 	if err != nil {
 		return nil, nil, nil, err
@@ -172,7 +189,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := streamPredicateFromMatchers(start, end, matchers...)
-	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
+	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, tenantID, paths, predicate)
 	level.Debug(m.logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
@@ -212,7 +229,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, tenantID, storePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +240,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		Start: start,
 		End:   end,
 	}
-	streamSectionPointers, err := m.getSectionsForStreams(ctx, paths, streamMatchers, pointerPredicate)
+	streamSectionPointers, err := m.getSectionsForStreams(ctx, tenantID, paths, streamMatchers, pointerPredicate)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +303,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	}
 
 	// List objects from all stores concurrently
-	return m.listObjectsFromStores(ctx, storePaths, start, end)
+	return m.listObjectsFromStores(ctx, tenantID, storePaths, start, end)
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
@@ -424,14 +441,14 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 }
 
 // listObjectsFromStores concurrently lists objects from multiple metastore files
-func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths []string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, tenant string, storePaths []string, start, end time.Time) ([]string, error) {
 	objects := make([][]string, len(storePaths))
 	g, ctx := errgroup.WithContext(ctx)
 
 	for i, path := range storePaths {
 		g.Go(func() error {
 			var err error
-			objects[i], err = m.listObjects(ctx, path, start, end)
+			objects[i], err = m.listObjects(ctx, tenant, path, start, end)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
 			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
@@ -448,7 +465,7 @@ func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths 
 	return dedupeAndSort(objects), nil
 }
 
-func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
+func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, tenant string, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
 	mu := sync.Mutex{}
 	foundStreams := make(map[uint64][]*labels.Labels, 1024)
 
@@ -462,9 +479,9 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
 
-			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
+			return forEachStream(ctx, tenant, object, predicate, func(stream streams.Stream) {
 				addLabels(&mu, foundStreams, &stream.Labels)
-			})
+			}, false)
 		})
 	}
 
@@ -480,7 +497,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
+func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, tenant string, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
 	streamIDs := make([][]int64, len(paths))
 	sections := make([]int, len(paths))
 
@@ -497,9 +514,9 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 			sections[idx] = object.Sections().Count(logs.CheckSection)
 			streamIDs[idx] = make([]int64, 0, 8)
 
-			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
+			return forEachStream(ctx, tenant, object, predicate, func(stream streams.Stream) {
 				streamIDs[idx] = append(streamIDs[idx], stream.ID)
-			})
+			}, false)
 		})
 	}
 
@@ -512,7 +529,7 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
+func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, tenant string, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
 	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
 	defer timer.ObserveDuration()
 
@@ -533,9 +550,9 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 			}
 
 			streamReadTimer := prometheus.NewTimer(m.metrics.streamFilterStreamsReadDuration)
-			err = forEachStream(ctx, idxObject, streamPredicate, func(stream streams.Stream) {
+			err = forEachStream(ctx, tenant, idxObject, streamPredicate, func(stream streams.Stream) {
 				matchingStreamIDs = append(matchingStreamIDs, stream.ID)
-			})
+			}, false)
 			if err != nil {
 				return fmt.Errorf("reading streams from index: %w", err)
 			}
@@ -652,7 +669,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 	streams[key] = append(streams[key], newLabels)
 }
 
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjects(ctx context.Context, tenant string, path string, start, end time.Time) ([]string, error) {
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
@@ -669,12 +686,12 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	var objectPaths []string
 
 	// First we iterate over index objects based on the old format.
-	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {
+	err = forEachStream(ctx, tenant, object, nil, func(stream streams.Stream) {
 		ok, objPath := objectOverlapsRange(stream.Labels, start, end)
 		if ok {
 			objectPaths = append(objectPaths, objPath)
 		}
-	})
+	}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -731,7 +748,7 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 	return nil
 }
 
-func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
+func forEachStream(ctx context.Context, tenant string, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream), checkTenant bool) error {
 	var reader streams.RowReader
 	defer reader.Close()
 
@@ -745,6 +762,9 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
+		}
+		if checkTenant && sec.TenantID() != tenant {
+			continue
 		}
 
 		reader.Reset(sec)

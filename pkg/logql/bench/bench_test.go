@@ -34,13 +34,14 @@ const testTenant = "test-tenant"
 const (
 	StoreDataObj                    = "dataobj"
 	StoreDataObjV2Engine            = "dataobj-engine"
+	StoreMultiTenantDataObjV2Engine = "multi-tenant-dataobj-engine"
 	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
 	StoreChunk                      = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreMultiTenantDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
 
-//go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
+//go:generate go run ./cmd/generate/main.go -size 214748364 -dir ./data -tenant test-tenant
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
@@ -64,7 +65,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (logql.Engine, *Ge
 		if err != nil {
 			tb.Fatal(err)
 		}
-
 		return store.engine, config
 	case StoreDataObjV2EngineWithIndexes:
 		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
@@ -81,6 +81,14 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) (logql.Engine, *Ge
 		if err != nil {
 			tb.Fatal(err)
 		}
+	case StoreMultiTenantDataObjV2Engine:
+		var tenantIDs []string
+		tenantIDs = append(tenantIDs, testTenant)
+		store, err := NewMultiTenantDataObjStore(DefaultDataDir, tenantIDs)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		return store.engine, config
 	case StoreChunk:
 		store, err := NewChunkStore(DefaultDataDir, testTenant)
 		if err != nil {

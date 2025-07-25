@@ -160,8 +160,8 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		labelCache: labelCache,
 
 		builder: dataobj.NewBuilder(),
-		streams: streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
-		logs: logs.NewBuilder(metrics.logs, logs.BuilderOptions{
+		streams: streams.NewBuilder("", metrics.streams, int(cfg.TargetPageSize)),
+		logs: logs.NewBuilder("", metrics.logs, logs.BuilderOptions{
 			PageSizeHint:     int(cfg.TargetPageSize),
 			BufferSize:       int(cfg.BufferSize),
 			StripeMergeLimit: cfg.SectionStripeMergeLimit,
@@ -296,6 +296,7 @@ func (b *Builder) estimatedSize() int {
 type FlushStats struct {
 	MinTimestamp time.Time
 	MaxTimestamp time.Time
+	TenantIDs    []string
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result

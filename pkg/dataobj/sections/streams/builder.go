@@ -57,6 +57,7 @@ var streamPool = sync.Pool{
 
 // Builder builds a streams section.
 type Builder struct {
+	tenantID string
 	metrics  *Metrics
 	pageSize int
 	lastID   atomic.Int64
@@ -76,11 +77,12 @@ type Builder struct {
 
 // NewBuilder creates a new sterams section builder. The pageSize argument
 // specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(tenantID string, metrics *Metrics, pageSize int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
+		tenantID: tenantID,
 		metrics:  metrics,
 		pageSize: pageSize,
 		lookup:   make(map[uint64][]*Stream, 1024),
@@ -220,6 +222,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	defer timer.ObserveDuration()
 
 	var streamsEnc encoder
+	streamsEnc.tenantID = b.tenantID
 	defer streamsEnc.Reset()
 	if err := b.encodeTo(&streamsEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)

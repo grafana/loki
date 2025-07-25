@@ -33,7 +33,8 @@ var (
 //
 // The zero value of encoder is ready for use.
 type encoder struct {
-	data *bytes.Buffer
+	data     *bytes.Buffer
+	tenantID string
 
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
@@ -86,7 +87,7 @@ func (enc *encoder) Metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &streamsmd.Metadata{Columns: columns}
+	return &streamsmd.Metadata{TenantID: enc.tenantID, Columns: columns}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush
