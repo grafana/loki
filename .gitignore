@@ -36,7 +36,6 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
-tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/ui/frontend/node_modules/*
 pkg/ui/frontend/.vite/*

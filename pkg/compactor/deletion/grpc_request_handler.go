@@ -39,13 +39,11 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, req *grpc.Ge
 		return nil, errors.New(deletionNotAvailableMsg)
 	}
 
-	deleteGroups, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering)
+	deleteRequests, err := g.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, req.ForQuerytimeFiltering)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err
 	}
-
-	deleteRequests := mergeDeletes(deleteGroups)
 
 	sort.Slice(deleteRequests, func(i, j int) bool {
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt

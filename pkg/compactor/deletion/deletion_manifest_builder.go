@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -67,6 +69,7 @@ type deletionManifestBuilder struct {
 	currentTableName          string
 
 	allUserRequests    []*DeleteRequest
+	deletionInterval   model.Interval
 	creationTime       time.Time
 	segmentsCount      int
 	overallChunksCount int
@@ -98,10 +101,35 @@ func newDeletionManifestBuilder(deletionManifestStoreClient client.ObjectClient,
 	return builder, nil
 }
 
+func (d *deletionManifestBuilder) canSkipSeries(userID []byte, lbls labels.Labels) (bool, error) {
+	userIDStr := unsafeGetString(userID)
+
+	userRequests := d.deleteRequestBatch.getAllRequestsForUser(userIDStr)
+	if len(userRequests) == 0 {
+		return true, fmt.Errorf("no requests loaded for user: %s", userIDStr)
+	}
+
+	for _, deleteRequest := range d.deleteRequestBatch.getAllRequestsForUser(userIDStr) {
+		// if the delete request touches the series, do not skip it
+		if labels.Selector(deleteRequest.matchers).Matches(lbls) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 // AddSeries adds a series and its chunks to the current segment.
 // It flushes the current segment if the user ID or table name changes.
 // It also ensures that the current segment does not exceed the maximum number of chunks.
 func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName string, series retention.Series) error {
+	canSkip, err := d.canSkipSeries(series.UserID(), series.Labels())
+	if err != nil {
+		return err
+	}
+	if canSkip {
+		return nil
+	}
 	userIDStr := unsafeGetString(series.UserID())
 	currentLabels := series.Labels().String()
 
@@ -115,13 +143,17 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 		d.currentUserID = string(series.UserID())
 		d.currentTableName = tableName
 		d.allUserRequests = d.deleteRequestBatch.getAllRequestsForUser(userIDStr)
-		if len(d.allUserRequests) == 0 {
-			return fmt.Errorf("no requests loaded for user: %s", userIDStr)
-		}
+		d.deletionInterval = d.deleteRequestBatch.getDeletionIntervalForUser(userIDStr)
 	}
 
 	var chunksGroupIdentifier uint64
 	for _, chk := range series.Chunks() {
+		if !intervalsOverlap(d.deletionInterval, model.Interval{
+			Start: chk.From,
+			End:   chk.Through,
+		}) {
+			continue
+		}
 		if d.currentSegmentChunksCount >= maxChunksPerSegment {
 			if err := d.flushCurrentBatch(ctx); err != nil {
 				return err
@@ -185,10 +217,6 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	if d.overallChunksCount == 0 {
-		return ErrNoChunksSelectedForDeletion
-	}
-
 	level.Debug(d.logger).Log("msg", "uploading manifest file after finishing building deletion manifest",
 		"total_segments", d.segmentsCount,
 		"total_chunks", d.overallChunksCount,
@@ -216,6 +244,9 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
+	if d.currentSegmentChunksCount == 0 {
+		return nil
+	}
 	level.Debug(d.logger).Log("msg", "flushing segment",
 		"segment_num", d.segmentsCount-1,
 		"chunks_count", d.currentSegmentChunksCount,
@@ -314,7 +345,7 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 
 		// manifest without manifest.json is considered invalid
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := deletionManifestStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(ctx, deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return err
 		}
@@ -345,4 +376,18 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 	}
 
 	return firstErr
+}
+
+// objectExists checks if an object exists in storage with the given key.
+// We can't use ObjectClient.ObjectExists method due to a bug in the GCS object client implementation of Thanos.
+// (Sandeep): I will fix the bug upstream and remove this once we have the fix merged.
+func objectExists(ctx context.Context, objectClient client.ObjectClient, objectPath string) (bool, error) {
+	_, err := objectClient.GetAttributes(ctx, objectPath)
+	if err == nil {
+		return true, nil
+	} else if objectClient.IsObjectNotFoundErr(err) {
+		return false, nil
+	}
+
+	return false, err
 }

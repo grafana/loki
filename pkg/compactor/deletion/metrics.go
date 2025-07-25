@@ -119,6 +119,7 @@ func newDeleteRequestsManagerMetrics(r prometheus.Registerer) *deleteRequestsMan
 
 type deletionJobRunnerMetrics struct {
 	chunksProcessedTotal prometheus.Counter
+	deletedLinesTotal    *prometheus.CounterVec
 }
 
 func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetrics {
@@ -129,6 +130,45 @@ func newDeletionJobRunnerMetrics(r prometheus.Registerer) *deletionJobRunnerMetr
 		Name:      "compactor_deletion_job_runner_chunks_processed_total",
 		Help:      "Number of chunks processed",
 	})
+	m.deletedLinesTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_deletion_job_runner_deleted_lines_total",
+		Help:      "Number of deleted lines per user",
+	}, []string{"user"})
+
+	return &m
+}
+
+type jobBuilderMetrics struct {
+	numSegmentsLeftToProcess     prometheus.Gauge
+	numManifestsLeftToProcess    prometheus.Gauge
+	processManifestFailuresTotal *prometheus.CounterVec
+	storageUpdatesAppliedTotal   *prometheus.CounterVec
+}
+
+func newJobBuilderMetrics(r prometheus.Registerer) *jobBuilderMetrics {
+	m := jobBuilderMetrics{}
+
+	m.numSegmentsLeftToProcess = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_job_builder_num_segments_left_to_process",
+		Help:      "Number of segments left to process to finish processing the current segment",
+	})
+	m.numManifestsLeftToProcess = promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_job_builder_num_manifests_left_to_process",
+		Help:      "Number of manifests left to process",
+	})
+	m.processManifestFailuresTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_process_manifest_failures_total",
+		Help:      "Number of times compactor failed to process manifest at various stages",
+	}, []string{"stage"})
+	m.storageUpdatesAppliedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_deletion_storage_updates_applied_total",
+		Help:      "Number of storage updates made by type after processing of delete manifests",
+	}, []string{"type"})
 
 	return &m
 }

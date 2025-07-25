@@ -1,4 +1,4 @@
-FROM logstash:9.0.3
+FROM logstash:9.0.4
 
 USER logstash
 ENV PATH /usr/share/logstash/vendor/jruby/bin:/usr/share/logstash/vendor/bundle/jruby/3.1.0/bin:/usr/share/logstash/jdk/bin:$PATH

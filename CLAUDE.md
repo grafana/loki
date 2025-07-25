@@ -10,12 +10,14 @@ make loki                     # build loki only
 make logcli                   # build logcli only
 make test                     # run all unit tests
 make test-integration         # run integration tests
-go test -tags slicelabels ./...                 # run all tests with Go directly
-go test -tags slicelabels -v ./pkg/logql/...    # run tests in specific package
-go test -tags slicelabels -run TestName ./pkg/path  # run a specific test
-make lint                     # run all linters
+go test ./...                 # run all tests with Go directly
+go test -v ./pkg/logql/...    # run tests in specific package
+go test -run TestName ./pkg/path  # run a specific test
+BUILD_IN_CONTAINER=true NONINTERACTIVE=true make lint  # run all linters (use in CI-like environment)
 make format                   # format code (gofmt and goimports)
 ```
+
+**Note:** Use `BUILD_IN_CONTAINER=true NONINTERACTIVE=true make lint` to run linting in a container environment that matches CI exactly. The `NONINTERACTIVE=true` flag prevents Docker from trying to allocate a TTY, which is necessary in non-interactive environments like claude-code. The Makefile automatically detects and handles git worktrees by using `git rev-parse --git-dir` and `git rev-parse --git-common-dir` to mount the appropriate git directories, ensuring git commands work correctly in the container regardless of worktree structure.
 
 ## Code Style Guidelines
 - Follow standard Go formatting (gofmt/goimports)

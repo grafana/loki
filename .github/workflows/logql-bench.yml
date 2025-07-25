@@ -12,15 +12,20 @@ on:
         required: false
         default: true
         type: 'boolean'
-      bench_dataobj_v1:
-        description: 'Benchmark V1 data object store'
+      bench_dataobj_old_engine:
+        description: 'Benchmark data object store with old engine'
         required: false
         default: true
         type: 'boolean'
-      bench_dataobj_v2:
-        description: 'Benchmark V2 data object store'
+      bench_dataobj_new_engine:
+        description: 'Benchmark data object store with new engine'
         required: false
         default: false # Disabled by default due to less complete implementation
+        type: 'boolean'
+      instant_queries:
+        description: 'Run benchmarks for Instant queries'
+        required: false
+        default: false
         type: 'boolean'
 permissions: {}
 jobs:
@@ -67,8 +72,8 @@ jobs:
 
           # Use explicit equality checks to avoid template injection.
           ${{ inputs.bench_chunks_v1 == true }} && STORES+=("chunk")
-          ${{ inputs.bench_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.bench_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.bench_dataobj_old_engine == true }} && STORES+=("dataobj")
+          ${{ inputs.bench_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
@@ -109,8 +114,8 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
-            -tags slicelabels \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
             -count=10 -timeout=5h -benchmem \
             -cpuprofile=results/cpu.pprof \
             -memprofile=results/mem.pprof \
