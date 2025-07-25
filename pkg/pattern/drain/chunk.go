@@ -23,7 +23,7 @@ type Chunk struct {
 }
 
 func newChunk(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) Chunk {
-	maxSize := int(chunkDuration.Nanoseconds()/sampleInterval.Nanoseconds()) + 1
+	maxSize := int(chunkDuration/sampleInterval) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
