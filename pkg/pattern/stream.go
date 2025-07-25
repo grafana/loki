@@ -132,7 +132,7 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 			if cluster.String() == "" {
 				continue
 			}
-			iters = append(iters, cluster.Iterator(lvl, from, through, step, model.Time(s.sampleInterval.Nanoseconds()/1e6)))
+			iters = append(iters, cluster.Iterator(lvl, from, through, step, model.Time(s.sampleInterval.Milliseconds())))
 		}
 	}
 
