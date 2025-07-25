@@ -146,10 +146,12 @@ func matchersToString(matchers []*labels.Matcher) string {
 }
 
 func (m *ObjectMetastore) ResolveStrategy(tenants []string) ResolveStrategyType {
-	slices.Sort(tenants)
-	slices.Sort(m.cfg.EnabledTenantIDs)
-
-	if m.cfg.IndexStoragePrefix != "" && slices.Equal(m.cfg.EnabledTenantIDs, tenants) {
+	if m.cfg.IndexStoragePrefix != "" {
+		for _, tenant := range tenants {
+			if !slices.Contains(m.cfg.EnabledTenantIDs, tenant) {
+				return ResolveStrategyTypeDirect
+			}
+		}
 		return ResolveStrategyTypeIndex
 	}
 	return ResolveStrategyTypeDirect
