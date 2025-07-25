@@ -102,7 +102,7 @@ func (c Chunk) ForRange(start, end, step, sampleInterval model.Time) []logproto.
 // or creating a new sample if past the time resolution of the current one.
 // Returns the previous sample if a new sample was created, nil otherwise.
 func (c *Chunks) Add(ts model.Time, chunkDuration time.Duration, sampleInterval time.Duration) *logproto.PatternSample {
-	t := TruncateTimestamp(ts, model.Time(sampleInterval.Nanoseconds()/1e6))
+	t := TruncateTimestamp(ts, model.Time(sampleInterval.Milliseconds()))
 
 	if len(*c) == 0 {
 		*c = append(*c, newChunk(t, chunkDuration, sampleInterval))
