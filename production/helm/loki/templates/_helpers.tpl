@@ -522,6 +522,7 @@ storage:
 Calculate the config from structured and unstructured text input
 */}}
 {{- define "loki.calculatedConfig" -}}
+{{- required ".Values.loki.storage.bucketNames is required, search for FIXME on the `values.yaml` file" .Values.loki.storage.bucketNames -}}
 {{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
 {{- end }}
 
