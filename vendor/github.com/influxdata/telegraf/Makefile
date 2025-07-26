@@ -180,7 +180,7 @@ vet:
 .PHONY: lint-install
 lint-install:
 	@echo "Installing golangci-lint"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.2
 
 	@echo "Installing markdownlint"
 	npm install -g markdownlint-cli
@@ -257,8 +257,8 @@ plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 
 .PHONY: ci
 ci:
-	docker build -t quay.io/influxdb/telegraf-ci:1.24.1 - < scripts/ci.docker
-	docker push quay.io/influxdb/telegraf-ci:1.24.1
+	docker build -t quay.io/influxdb/telegraf-ci:1.24.4 - < scripts/ci.docker
+	docker push quay.io/influxdb/telegraf-ci:1.24.4
 
 .PHONY: install
 install: $(buildbin)
