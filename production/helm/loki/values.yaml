@@ -1974,17 +1974,19 @@ ingester:
     inMemory: false
     # -- List of the ingester PVCs
     # @notationType -- list
-    claims:
-      - name: data
-        size: 10Gi
-        #   -- Storage class to be used.
-        #   If defined, storageClassName: <storageClass>.
-        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
-        #   If empty or set to null, no storageClassName spec is
-        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
-        # - name: wal
-        #   size: 150Gi
+    claims: []
+      # - name: data
+      #   size: 10Gi
+      # - name: wal
+      #   size: 150Gi
+
+      #   -- Storage class to be used.
+      #   If defined, storageClassName: <storageClass>.
+      #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+      #   If empty or set to null, no storageClassName spec is
+      #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+      # storageClass: null
+
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2015,6 +2017,21 @@ ingester:
       annotations: {}
       # -- Specific annotations to add to zone A pods
       podAnnotations: {}
+      # -- Specific persistent volume claims propreties for zone A
+      persistence:
+        # -- List of the ingester PVCs
+        # @notationType -- list
+        claims:
+          - name: data
+            size: 10Gi
+            #   -- Storage class to be used.
+            #   If defined, storageClassName: <storageClass>.
+            #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+            #   If empty or set to null, no storageClassName spec is
+            #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+            storageClass: null
+            # - name: wal
+            #   size: 150Gi
     zoneB:
       # -- optionally define a node selector for this zone
       nodeSelector: null
@@ -2024,6 +2041,22 @@ ingester:
       annotations: {}
       # -- Specific annotations to add to zone B pods
       podAnnotations: {}
+      # -- Specific persistent volume claims propreties for zone A
+      persistence:
+        # -- List of the ingester PVCs
+        # @notationType -- list
+        claims:
+          - name: data
+            size: 10Gi
+            #   -- Storage class to be used.
+            #   If defined, storageClassName: <storageClass>.
+            #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+            #   If empty or set to null, no storageClassName spec is
+            #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+            storageClass: null
+            # - name: wal
+            #   size: 150Gi      
+
     zoneC:
       # -- optionally define a node selector for this zone
       nodeSelector: null
@@ -2033,6 +2066,21 @@ ingester:
       annotations: {}
       # -- Specific annotations to add to zone C pods
       podAnnotations: {}
+      # -- Specific persistent volume claims propreties for zone A
+      persistence:
+        # -- List of the ingester PVCs
+        # @notationType -- list
+        claims:
+          - name: data
+            size: 10Gi
+            #   -- Storage class to be used.
+            #   If defined, storageClassName: <storageClass>.
+            #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+            #   If empty or set to null, no storageClassName spec is
+            #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+            storageClass: null
+            # - name: wal
+            #   size: 150Gi      
     # -- The migration block allows migrating non zone aware ingesters to zone aware ingesters.
     migration:
       enabled: false
