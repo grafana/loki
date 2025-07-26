@@ -6327,7 +6327,8 @@ null
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
-      "/otlp/v1/logs"
+      "/otlp/v1/logs",
+      "/ui"
     ],
     "queryFrontend": [
       "/api/prom/query",
@@ -6393,7 +6394,8 @@ null
 [
   "/api/prom/push",
   "/loki/api/v1/push",
-  "/otlp/v1/logs"
+  "/otlp/v1/logs",
+  "/ui"
 ]
 </pre>
 </td>
