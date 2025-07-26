@@ -95,6 +95,13 @@ func main() {
 
 	flag.Parse()
 
+	// Override streamvalue based on push flag
+	if *push {
+		*sValue = "push"
+	} else {
+		*sValue = "stdout"
+	}
+
 	if *printVersion {
 		fmt.Println(version.Print("loki-canary"))
 		os.Exit(0)
