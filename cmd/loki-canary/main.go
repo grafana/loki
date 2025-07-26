@@ -103,7 +103,7 @@ func main() {
 		}
 	})
 
-	// Override streamvalue based on push flag only if streamvalue wasn't set
+	// Override streamvalue based on push flag if streamvalue wasn't set
 	if !streamValueSet {
 		if *push {
 			*sValue = "push"
