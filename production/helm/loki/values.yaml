@@ -1900,6 +1900,7 @@ ingester:
     tag: null
   # -- Command to execute instead of defined in Docker image
   command: null
+  labels: {}
   priorityClassName: null
   # -- Labels for ingester pods
   podLabels: {}

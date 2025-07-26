@@ -11,6 +11,9 @@ metadata:
     app.kubernetes.io/part-of: memberlist
     name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
     rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
+    {{- with .Values.ingester.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
