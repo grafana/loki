@@ -172,12 +172,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
-
-		node := &SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Order:  ctx.direction, // apply direction from previously visited Sort node
-		}
-		p.plan.addNode(node)
+		scans := make([]Node, 0, len(sections[i]))
 
 		for _, section := range sections[i] {
 			scan := &DataObjScan{
@@ -187,12 +182,27 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 				Direction: ctx.direction, // apply direction from previously visited Sort node
 			}
 			p.plan.addNode(scan)
-			if err := p.plan.addEdge(Edge{Parent: node, Child: scan}); err != nil {
-				return nil, err
-			}
+
+			scans = append(scans, scan)
 		}
 
-		nodes = append(nodes, node)
+		if ctx.direction != UNSORTED && len(scans) > 0 {
+			sortMerge := &SortMerge{
+				Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+				Order:  ctx.direction, // apply direction from previously visited Sort node
+			}
+			p.plan.addNode(sortMerge)
+
+			for _, scan := range scans {
+				if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+					return nil, err
+				}
+			}
+
+			nodes = append(nodes, sortMerge)
+		} else {
+			nodes = append(nodes, scans...)
+		}
 	}
 	return nodes, nil
 }
