@@ -123,8 +123,8 @@ github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5
 # github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4 v4.3.0
 ## explicit; go 1.18
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4
-# github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
-## explicit; go 1.18
+# github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.1
+## explicit; go 1.23.0
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/appendblob
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob
@@ -278,7 +278,7 @@ github.com/IBM/sarama
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
-# github.com/Masterminds/semver/v3 v3.3.1
+# github.com/Masterminds/semver/v3 v3.4.0
 ## explicit; go 1.21
 github.com/Masterminds/semver/v3
 # github.com/Masterminds/sprig/v3 v3.3.0
@@ -844,8 +844,8 @@ github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum
 github.com/fsouza/fake-gcs-server/internal/notification
-# github.com/fxamacker/cbor/v2 v2.7.0
-## explicit; go 1.17
+# github.com/fxamacker/cbor/v2 v2.8.0
+## explicit; go 1.20
 github.com/fxamacker/cbor/v2
 # github.com/gabriel-vasile/mimetype v1.4.8
 ## explicit; go 1.20
@@ -1099,8 +1099,8 @@ github.com/gorilla/handlers
 # github.com/gorilla/mux v1.8.1
 ## explicit; go 1.20
 github.com/gorilla/mux
-# github.com/gorilla/websocket v1.5.3
-## explicit; go 1.12
+# github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+## explicit; go 1.20
 github.com/gorilla/websocket
 # github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34
 ## explicit; go 1.23.0
@@ -1266,7 +1266,7 @@ github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 ## explicit; go 1.13
 github.com/influxdata/tdigest
-# github.com/influxdata/telegraf v1.34.1
+# github.com/influxdata/telegraf v1.35.2
 ## explicit; go 1.24.0
 github.com/influxdata/telegraf
 github.com/influxdata/telegraf/plugins/inputs
@@ -1548,7 +1548,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumul
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/opencontainers/image-spec v1.1.0
+# github.com/opencontainers/image-spec v1.1.1
 ## explicit; go 1.18
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
@@ -1617,7 +1617,7 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pkg/xattr v0.4.10
+# github.com/pkg/xattr v0.4.11
 ## explicit; go 1.14
 github.com/pkg/xattr
 # github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
@@ -1764,7 +1764,7 @@ github.com/puzpuzpuz/xsync/v3
 # github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 ## explicit
 github.com/rcrowley/go-metrics
-# github.com/redis/go-redis/v9 v9.10.0
+# github.com/redis/go-redis/v9 v9.11.0
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/auth
@@ -1834,9 +1834,10 @@ github.com/sony/gobreaker/v2
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
 github.com/spf13/afero/mem
-# github.com/spf13/cast v1.7.1
-## explicit; go 1.19
+# github.com/spf13/cast v1.9.2
+## explicit; go 1.21.0
 github.com/spf13/cast
+github.com/spf13/cast/internal
 # github.com/spf13/pflag v1.0.6
 ## explicit; go 1.12
 github.com/spf13/pflag
@@ -1998,7 +1999,7 @@ go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials
 go.etcd.io/etcd/client/v3/internal/endpoint
 go.etcd.io/etcd/client/v3/internal/resolver
-# go.mongodb.org/mongo-driver v1.17.2
+# go.mongodb.org/mongo-driver v1.17.4
 ## explicit; go 1.18
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
@@ -2285,7 +2286,7 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
+# golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
 ## explicit; go 1.23.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
@@ -2673,8 +2674,8 @@ gotest.tools/assert/cmp
 gotest.tools/internal/difflib
 gotest.tools/internal/format
 gotest.tools/internal/source
-# k8s.io/api v0.32.3
-## explicit; go 1.23.0
+# k8s.io/api v0.33.2
+## explicit; go 1.24.0
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1alpha1
 k8s.io/api/admissionregistration/v1beta1
@@ -2724,6 +2725,7 @@ k8s.io/api/rbac/v1alpha1
 k8s.io/api/rbac/v1beta1
 k8s.io/api/resource/v1alpha3
 k8s.io/api/resource/v1beta1
+k8s.io/api/resource/v1beta2
 k8s.io/api/scheduling/v1
 k8s.io/api/scheduling/v1alpha1
 k8s.io/api/scheduling/v1beta1
@@ -2786,8 +2788,8 @@ k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v0.32.3
-## explicit; go 1.23.0
+# k8s.io/client-go v0.33.2
+## explicit; go 1.24.0
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
@@ -2832,6 +2834,7 @@ k8s.io/client-go/applyconfigurations/rbac/v1alpha1
 k8s.io/client-go/applyconfigurations/rbac/v1beta1
 k8s.io/client-go/applyconfigurations/resource/v1alpha3
 k8s.io/client-go/applyconfigurations/resource/v1beta1
+k8s.io/client-go/applyconfigurations/resource/v1beta2
 k8s.io/client-go/applyconfigurations/scheduling/v1
 k8s.io/client-go/applyconfigurations/scheduling/v1alpha1
 k8s.io/client-go/applyconfigurations/scheduling/v1beta1
@@ -2891,6 +2894,7 @@ k8s.io/client-go/kubernetes/typed/rbac/v1alpha1
 k8s.io/client-go/kubernetes/typed/rbac/v1beta1
 k8s.io/client-go/kubernetes/typed/resource/v1alpha3
 k8s.io/client-go/kubernetes/typed/resource/v1beta1
+k8s.io/client-go/kubernetes/typed/resource/v1beta2
 k8s.io/client-go/kubernetes/typed/scheduling/v1
 k8s.io/client-go/kubernetes/typed/scheduling/v1alpha1
 k8s.io/client-go/kubernetes/typed/scheduling/v1beta1
@@ -2949,11 +2953,10 @@ k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/spec3
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/utils v0.0.0-20241210054802-24370beab758
+# k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 ## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock
-k8s.io/utils/clock/testing
 k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/keymutex
 k8s.io/utils/net

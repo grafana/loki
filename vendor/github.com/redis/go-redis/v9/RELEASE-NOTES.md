@@ -1,5 +1,43 @@
 # Release Notes
 
+# 9.11.0 (2025-06-24)
+
+## 🚀 Highlights
+
+Fixes TxPipeline to work correctly in cluster scenarios, allowing execution of commands
+only in the same slot.
+
+# Changes
+
+## 🚀 New Features
+
+- Set cluster slot for `scan` commands, rather than random ([#2623](https://github.com/redis/go-redis/pull/2623))
+- Add CredentialsProvider field to UniversalOptions ([#2927](https://github.com/redis/go-redis/pull/2927))
+- feat(redisotel): add WithCallerEnabled option ([#3415](https://github.com/redis/go-redis/pull/3415))
+
+## 🐛 Bug Fixes
+
+- fix(txpipeline): keyless commands should take the slot of the keyed ([#3411](https://github.com/redis/go-redis/pull/3411))
+- fix(loading): cache the loaded flag for slave nodes ([#3410](https://github.com/redis/go-redis/pull/3410))
+- fix(txpipeline): should return error on multi/exec on multiple slots ([#3408](https://github.com/redis/go-redis/pull/3408))
+- fix: check if the shard exists to avoid returning nil ([#3396](https://github.com/redis/go-redis/pull/3396))
+
+## 🧰 Maintenance
+
+- feat: optimize connection pool waitTurn ([#3412](https://github.com/redis/go-redis/pull/3412))
+- chore(ci): update CI redis builds ([#3407](https://github.com/redis/go-redis/pull/3407))
+- chore: remove a redundant method from `Ring`, `Client` and `ClusterClient` ([#3401](https://github.com/redis/go-redis/pull/3401))
+- test: refactor TestBasicCredentials using table-driven tests ([#3406](https://github.com/redis/go-redis/pull/3406))
+- perf: reduce unnecessary memory allocation operations ([#3399](https://github.com/redis/go-redis/pull/3399))
+- fix: insert entry during iterating over a map ([#3398](https://github.com/redis/go-redis/pull/3398))
+- DOC-5229 probabilistic data type examples ([#3413](https://github.com/redis/go-redis/pull/3413))
+- chore(deps): bump rojopolis/spellcheck-github-actions from 0.49.0 to 0.51.0 ([#3414](https://github.com/redis/go-redis/pull/3414))
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@andy-stark-redis](https://github.com/andy-stark-redis), [@boekkooi-impossiblecloud](https://github.com/boekkooi-impossiblecloud), [@cxljs](https://github.com/cxljs), [@dcherubini](https://github.com/dcherubini), [@dependabot[bot]](https://github.com/apps/dependabot), [@iamamirsalehi](https://github.com/iamamirsalehi), [@ndyakov](https://github.com/ndyakov), [@pete-woods](https://github.com/pete-woods), [@twz915](https://github.com/twz915) and [dependabot[bot]](https://github.com/apps/dependabot)
+
 # 9.10.0 (2025-06-06)
 
 ## 🚀 Highlights
