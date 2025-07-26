@@ -327,10 +327,12 @@ func detectLevelFromLogLine(log string) string {
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
 		return constants.LogLevelWarn
 	}
-	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
+	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") ||
+		strings.Contains(log, "critical") || strings.Contains(log, "CRITICAL") {
 		return constants.LogLevelCritical
 	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
+	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") ||
+		strings.Contains(log, "debug") || strings.Contains(log, "DEBUG") {
 		return constants.LogLevelDebug
 	}
 	return constants.LogLevelUnknown
