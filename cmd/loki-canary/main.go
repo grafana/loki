@@ -95,11 +95,21 @@ func main() {
 
 	flag.Parse()
 
-	// Override streamvalue based on push flag
-	if *push {
-		*sValue = "push"
-	} else {
-		*sValue = "stdout"
+	// Check if streamvalue was explicitly passed by user
+	streamValueSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "streamvalue" {
+			streamValueSet = true
+		}
+	})
+
+	// Override streamvalue based on push flag only if streamvalue wasn't set
+	if !streamValueSet {
+		if *push {
+			*sValue = "push"
+		} else {
+			*sValue = "stdout"
+		}
 	}
 
 	if *printVersion {
