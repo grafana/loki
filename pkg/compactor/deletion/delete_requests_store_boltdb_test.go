@@ -343,3 +343,48 @@ func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequ
 		require.True(t, requestsAreEqual(expected[i], deleteRequest))
 	}
 }
+
+func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeBoltDB)
+	defer tc.store.Stop()
+
+	// add a delete request for user1
+	resp, err := tc.store.AddDeleteRequest(
+		context.Background(),
+		user1,
+		`{foo="bar"}`,
+		now.Add(-24*time.Hour),
+		now,
+		0,
+	)
+	require.NoError(t, err)
+
+	// add another delete request for a user with a similar prefix
+	resp2, err := tc.store.AddDeleteRequest(
+		context.Background(),
+		user123,
+		`{foo="bar"}`,
+		now.Add(-24*time.Hour),
+		now,
+		0,
+	)
+	require.NoError(t, err)
+
+	// fetch delete requests for "user1"
+	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false)
+	require.NoError(t, err)
+
+	// ensure only the request for "user1" is returned
+	require.Len(t, deleteRequests, 1)
+	require.Equal(t, "user1", deleteRequests[0].UserID)
+	require.Equal(t, resp, deleteRequests[0].RequestID)
+
+	// fetch delete requests for "user123"
+	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false)
+	require.NoError(t, err)
+
+	// ensure only the request for "user123" is returned
+	require.Len(t, deleteRequests, 1)
+	require.Equal(t, "user123", deleteRequests[0].UserID)
+	require.Equal(t, resp2, deleteRequests[0].RequestID)
+}
