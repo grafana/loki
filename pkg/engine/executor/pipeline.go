@@ -222,10 +222,13 @@ func (p *prefetchWrapper) Value() (arrow.Record, error) {
 
 // Close implements [Pipeline].
 func (p *prefetchWrapper) Close() {
-	// Cancel internal context so the goroutine can exit
-	p.cancel(errors.New("pipeline is closed"))
-	// Clear already pre-fetched, but unused items from channel
-	for range p.ch { // nolint:revive
+	// NOTE(rfratto): We don't need to drain p.ch because all writes to p.ch are
+	// guaranteed to abort if the context is canceled.
+	//
+	// Attempting to drain p.ch here anyway can cause a deadlock if the
+	// [prefetchWrapper.Close] is called before [prefetchWrapper.init].
+	if p.cancel != nil {
+		p.cancel(errors.New("pipeline is closed"))
 	}
 	p.Pipeline.Close()
 }
