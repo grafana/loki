@@ -25,6 +25,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
 - [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
 
 ## 6.32.0
 

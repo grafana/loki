@@ -61,6 +61,7 @@ This is the generated reference for the Loki Helm Chart values.
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +81,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -199,6 +201,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for admin-api Pods</td>
@@ -262,6 +273,15 @@ This is the generated reference for the Loki Helm Chart values.
   "annotations": {},
   "labels": {}
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
