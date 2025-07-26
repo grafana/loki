@@ -70,7 +70,7 @@ spec:
       {{- end }}
       {{- include "loki.writePriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.write.terminationGracePeriodSeconds }}
       {{- if .Values.write.initContainers }}
       initContainers:
