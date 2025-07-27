@@ -162,10 +162,6 @@ spec:
                     operator: In
                     values:
                       - {{ include "loki.prefixIngesterName" . }}ingester
-                  - key: name
-                    operator: NotIn
-                    values:
-                      - {{ include "loki.prefixIngesterName" . }}ingester-zone-c
               topologyKey: kubernetes.io/hostname
         {{- with .Values.ingester.zoneAwareReplication.zoneC.extraAffinity }}
         {{- toYaml . | nindent 8 }}
