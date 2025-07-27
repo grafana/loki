@@ -358,6 +358,9 @@ This is the generated reference for the Loki Helm Chart values.
     "volumeClaimsEnabled": true
   },
   "podAnnotations": {},
+  "podDisruptionBudget": {
+    "enabled": false
+  },
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
@@ -627,6 +630,15 @@ true
 			<td>Annotations for backend pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podDisruptionBudget.enabled</td>
+			<td>bool</td>
+			<td>Enable or disable the PodDisruptionBudget resource.</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -10275,6 +10287,9 @@ false
     "storageClass": null
   },
   "podAnnotations": {},
+  "podDisruptionBudget": {
+    "enabled": false
+  },
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
@@ -10561,9 +10576,29 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>read.podLabels</td>
+			<td>read.podDisruptionBudget</td>
 			<td>object</td>
 			<td>Additional labels for each `read` pod</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podDisruptionBudget.enabled</td>
+			<td>bool</td>
+			<td>Enable or disable the PodDisruptionBudget resource.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podLabels</td>
+			<td>string</td>
+			<td>Unhealthy pod eviction policy for the PDB. unhealthyPodEvictionPolicy: AlwaysAllow</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -12737,9 +12772,29 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>write.podLabels</td>
+			<td>write.podDisruptionBudget</td>
 			<td>object</td>
 			<td>Additional labels for each `write` pod</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget.enabled</td>
+			<td>bool</td>
+			<td>Enable or disable the PodDisruptionBudget resource.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podLabels</td>
+			<td>string</td>
+			<td>Unhealthy pod eviction policy for the PDB. unhealthyPodEvictionPolicy: AlwaysAllow</td>
 			<td><pre lang="json">
 {}
 </pre>
