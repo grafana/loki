@@ -131,8 +131,9 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	t = time.Now() // start stopwatch for execution
 	cfg := executor.Config{
-		BatchSize: int64(e.opts.BatchSize),
-		Bucket:    e.bucket,
+		BatchSize:                int64(e.opts.BatchSize),
+		Bucket:                   e.bucket,
+		DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
 	}
 	pipeline := executor.Run(ctx, cfg, plan, logger)
 	defer pipeline.Close()
