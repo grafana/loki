@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -209,7 +208,6 @@ func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 
 	// Record the stream in the stream section.
 	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
-	sort.Sort(stream.Labels)
 	streamID := b.streams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
 	_ = b.streams.Record(stream.Labels, stream.MaxTimestamp, 0)
 
@@ -235,19 +233,14 @@ func labelsEstimate(ls labels.Labels) int {
 		valuesSize int
 	)
 
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		keysSize += len(l.Name)
 		valuesSize += len(l.Value)
-	}
+	})
 
 	// Keys are stored as columns directly, while values get compressed. We'll
 	// underestimate a 2x compression ratio.
 	return keysSize + valuesSize/2
-}
-
-// RecordStreamRef records a reference to a stream from another object, as the stream IDs will be different between objects.
-func (b *Builder) RecordStreamRef(path string, streamIDInObject int64, streamID int64) {
-	b.pointers.RecordStreamRef(path, streamIDInObject, streamID)
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
@@ -256,7 +249,7 @@ func (b *Builder) RecordStreamRef(path string, streamIDInObject int64, streamID 
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, ts time.Time, uncompressedSize int64) error {
+func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -273,7 +266,7 @@ func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject in
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	b.pointers.ObserveStream(path, section, streamIDInObject, ts, uncompressedSize)
+	b.pointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
@@ -438,7 +431,7 @@ func (b *Builder) Reset() {
 	b.pointers.Reset()
 	b.indexPointers.Reset()
 
-	//b.metrics.sizeEstimate.Set(0)
+	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }

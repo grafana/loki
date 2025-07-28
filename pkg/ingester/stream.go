@@ -110,7 +110,7 @@ func newStream(
 	limits RateLimiterStrategy,
 	tenant string,
 	fp model.Fingerprint,
-	labels labels.Labels,
+	ls labels.Labels,
 	unorderedWrites bool,
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
@@ -118,14 +118,14 @@ func newStream(
 	configs *runtime.TenantConfigs,
 	retentionHours string,
 ) *stream {
-	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
+	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
-		labels:               labels,
-		labelsString:         labels.String(),
-		labelHash:            labels.Hash(),
+		labels:               ls,
+		labelsString:         ls.String(),
+		labelHash:            labels.StableHash(ls),
 		labelHashNoShard:     hashNoShard,
 		tailers:              map[uint32]*tailer{},
 		metrics:              metrics,

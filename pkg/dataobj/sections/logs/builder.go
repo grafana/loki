@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -107,9 +108,9 @@ func recordSize(record Record) int {
 
 	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
-	for _, metadata := range record.Metadata {
+	record.Metadata.Range(func(metadata labels.Label) {
 		size += len(metadata.Value)
-	}
+	})
 	size += len(record.Line)
 
 	return size
@@ -206,6 +207,22 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
+
+	// The first two columns of each row are *always* stream ID and timestamp.
+	//
+	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
+	logsEnc.SetSortInfo(&datasetmd.SectionSortInfo{
+		ColumnSorts: []*datasetmd.SectionSortInfo_ColumnSort{
+			{
+				ColumnIndex: 1, // timestamp
+				Direction:   datasetmd.SORT_DIRECTION_DESCENDING,
+			},
+			{
+				ColumnIndex: 0, // stream ID
+				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+			},
+		},
+	})
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {

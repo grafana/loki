@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.2...auth/v0.16.3) (2025-07-17)
+
+
+### Bug Fixes
+
+* **auth:** Fix race condition in cachedTokenProvider.tokenAsync ([#12586](https://github.com/googleapis/google-cloud-go/issues/12586)) ([73867cc](https://github.com/googleapis/google-cloud-go/commit/73867ccc1e9808d65361bcfc0776bd95fe34dbb3))
+
 ## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
 
 

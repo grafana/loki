@@ -29,7 +29,7 @@ func TestReader(t *testing.T) {
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
 		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
-		{StreamID: 1, Timestamp: unixTime(10), Metadata: nil, Line: []byte("hello, world!")},
+		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
 	})
 
 	var (
@@ -56,7 +56,7 @@ func TestReader(t *testing.T) {
 						return false
 					}
 
-					bb := value.(*scalar.Binary).Value.Bytes()
+					bb := value.(*scalar.String).Value.Bytes()
 					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
 				},
 			},
@@ -71,8 +71,8 @@ func TestReader(t *testing.T) {
 	})
 
 	expect := arrowtest.Rows{
-		{"stream_id.int64": int64(2), "trace_id.metadata.binary": []byte("123456"), "message.binary": []byte("foo bar")},
-		{"stream_id.int64": int64(1), "trace_id.metadata.binary": []byte("abcdef"), "message.binary": []byte("goodbye, world!")},
+		{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
+		{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
 	}
 
 	actualTable, err := readTable(context.Background(), r)

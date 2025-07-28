@@ -60,17 +60,18 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
 	dec := newDecoder(section.reader)
-	cols, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return stats, fmt.Errorf("reading columns")
+		return stats, fmt.Errorf("reading metadata: %w", err)
 	}
+	columnsDescs := metadata.GetColumns()
 
-	pageSets, err := result.Collect(dec.Pages(ctx, cols))
+	pageSets, err := result.Collect(dec.Pages(ctx, columnsDescs))
 	if err != nil {
 		return stats, fmt.Errorf("reading pages: %w", err)
 	}
 
-	for i, col := range cols {
+	for i, col := range columnsDescs {
 		stats.CompressedSize += col.Info.CompressedSize
 		stats.UncompressedSize += col.Info.UncompressedSize
 
@@ -119,26 +120,6 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 
 		stats.Columns = append(stats.Columns, columnStats)
 	}
-
-	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
-		// Short sircuit if there's no timestamps.
-		return stats, nil
-	}
-
-	width := int(stats.MaxTimestamp.Add(1 * time.Hour).Truncate(time.Hour).Sub(stats.MinTimestamp.Truncate(time.Hour)).Hours())
-	counts := make([]uint64, width)
-	for indexPointerVal := range IterSection(ctx, section) {
-		indexPointer, err := indexPointerVal.Value()
-		if err != nil {
-			return stats, err
-		}
-		for i := indexPointer.StartTs; !i.After(indexPointer.EndTs); i = i.Add(time.Hour) {
-			hoursBeforeMax := int(stats.MaxTimestamp.Sub(i).Hours())
-			counts[hoursBeforeMax]++
-		}
-	}
-
-	stats.TimestampDistribution = counts
 
 	return stats, nil
 }

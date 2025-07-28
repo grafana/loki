@@ -942,12 +942,12 @@ func (e *BinOpStepEvaluator) Error() error {
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
-		return sample.Metric.Hash()
+		return labels.StableHash(sample.Metric)
 	} else if opts.VectorMatching.On {
-		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+		return labels.StableHash(labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels())
 	}
 
-	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+	return labels.StableHash(labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels())
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -997,7 +997,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				}
 				matchedSigs[sig] = nil
 			} else {
-				insertSig := metric.Hash()
+				insertSig := labels.StableHash(metric)
 				if !exists {
 					insertedSigs = map[uint64]struct{}{}
 					matchedSigs[sig] = insertedSigs

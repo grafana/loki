@@ -47,7 +47,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
@@ -79,13 +79,13 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 				return nil
 			}
 
-			var stream SectionPointer
+			var pointer SectionPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(streamsColumns, row, &stream, sym); err != nil {
+				if err := decodeRow(metadata.GetColumns(), row, &pointer, sym); err != nil {
 					return err
 				}
 
-				if !yield(stream) {
+				if !yield(pointer) {
 					return nil
 				}
 			}
@@ -100,6 +100,8 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
 func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *SectionPointer, sym *symbolizer.Symbolizer) error {
+	pointer.Reset()
+
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
 			continue

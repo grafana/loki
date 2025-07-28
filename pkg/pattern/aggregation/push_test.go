@@ -253,7 +253,7 @@ func Test_Push(t *testing.T) {
 
 // Test helpers
 
-func assertResponse(t *testing.T, resp response, testAuth bool, labels labels.Labels, ts time.Time, payload string) {
+func assertResponse(t *testing.T, resp response, testAuth bool, ls labels.Labels, ts time.Time, payload string) {
 	t.Helper()
 
 	// assert metadata
@@ -273,8 +273,8 @@ func assertResponse(t *testing.T, resp response, testAuth bool, labels labels.La
 
 	// assert stream labels
 	require.Len(t, resp.pushReq.Streams, 1)
-	assert.Equal(t, labels.String(), resp.pushReq.Streams[0].Labels)
-	assert.Equal(t, labels.Hash(), resp.pushReq.Streams[0].Hash)
+	assert.Equal(t, ls.String(), resp.pushReq.Streams[0].Labels)
+	assert.Equal(t, labels.StableHash(ls), resp.pushReq.Streams[0].Hash)
 
 	// assert log entry
 	require.Len(t, resp.pushReq.Streams, 1)

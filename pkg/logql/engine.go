@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -166,13 +167,29 @@ type EngineOpts struct {
 
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
+
+	// CataloguePath is the path to the catalogue in the object store.
+	CataloguePath string `yaml:"-" doc:"hidden" category:"experimental"`
+
+	// DataobjScanPageCacheSize determines how many bytes of future page data
+	// should be downloaded before it's immediately needed. Used to reduce the
+	// number of roundtrips to object storage. Setting to zero disables
+	// downloading pages that are not immediately needed.
+	//
+	// This setting is only used when the v2 engine is being used.
+	DataobjScanPageCacheSize flagext.Bytes `yaml:"dataobjscan_page_cache_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	_ = opts.DataobjScanPageCacheSize.Set("0B")
+
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.StringVar(&opts.CataloguePath, prefix+"catalogue-path", "", "The path to the catalogue in the object store.")
+	f.Var(&opts.DataobjScanPageCacheSize, prefix+"dataobjscan-page-cache-size", "Experimental: Maximum total size of future pages for DataObjScan to download before they are needed, for roundtrip reduction to object storage. Setting to zero disables downloading future pages. Only used in the next generation query engine.")
+
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -447,7 +464,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
@@ -483,7 +500,7 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 

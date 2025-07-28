@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 
 	"github.com/go-kit/log/level"
@@ -23,6 +24,8 @@ const (
 	clusterPath     = prefixPath + "/api/v1/cluster/nodes"
 	clusterSelfPath = prefixPath + "/api/v1/cluster/nodes/self/details"
 	analyticsPath   = prefixPath + "/api/v1/analytics"
+	featuresPath    = prefixPath + "/api/v1/features"
+	goldfishPath    = prefixPath + "/api/v1/goldfish/queries"
 	notFoundPath    = prefixPath + "/api/v1/404"
 	contentTypeJSON = "application/json"
 )
@@ -39,6 +42,8 @@ func (s *Service) RegisterHandler() {
 	s.router.Path(analyticsPath).Handler(analytics.Handler())
 	s.router.Path(clusterPath).Handler(s.clusterMembersHandler())
 	s.router.Path(clusterSelfPath).Handler(s.clusterSelfHandler())
+	s.router.Path(featuresPath).Handler(s.featuresHandler())
+	s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
 
 	s.router.PathPrefix(proxyPath).Handler(s.clusterProxyHandler())
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
@@ -155,6 +160,20 @@ func (s *Service) clusterSelfHandler() http.Handler {
 	})
 }
 
+func (s *Service) featuresHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		features := map[string]any{
+			"goldfish": s.cfg.Goldfish.Enable,
+		}
+		w.Header().Set("Content-Type", contentTypeJSON)
+		if err := json.NewEncoder(w).Encode(features); err != nil {
+			level.Error(s.logger).Log("msg", "failed to encode features", "err", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+			return
+		}
+	})
+}
+
 func (s *Service) notFoundHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		node := r.URL.Query().Get("node")
@@ -176,4 +195,54 @@ func (s *Service) writeJSONError(w http.ResponseWriter, code int, message string
 		level.Error(s.logger).Log("msg", "failed to encode error response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *Service) goldfishQueriesHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.cfg.Goldfish.Enable {
+			s.writeJSONError(w, http.StatusNotFound, "goldfish feature is disabled")
+			return
+		}
+
+		// Parse query parameters
+		page := 1
+		pageSize := 20
+
+		if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+			if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+				page = p
+			}
+		}
+
+		if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
+			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+				pageSize = ps
+			}
+		}
+
+		var outcome string
+		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
+			switch strings.ToLower(outcomeStr) {
+			case "all", "match", "mismatch", "error":
+				outcome = outcomeStr
+			default:
+				outcome = "all"
+			}
+		}
+
+		// Get sampled queries
+		response, err := s.GetSampledQueries(page, pageSize, outcome)
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to retrieve sampled queries")
+			return
+		}
+
+		w.Header().Set("Content-Type", contentTypeJSON)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			level.Error(s.logger).Log("msg", "failed to encode goldfish response", "err", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+			return
+		}
+	})
 }

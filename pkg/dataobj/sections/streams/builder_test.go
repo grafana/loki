@@ -70,14 +70,14 @@ func Test(t *testing.T) {
 }
 
 func copyLabels(in labels.Labels) labels.Labels {
-	lb := make(labels.Labels, len(in))
-	for i, label := range in {
-		lb[i] = labels.Label{
-			Name:  strings.Clone(label.Name),
-			Value: strings.Clone(label.Value),
-		}
-	}
-	return lb
+	builder := labels.NewScratchBuilder(in.Len())
+
+	in.Range(func(l labels.Label) {
+		builder.Add(strings.Clone(l.Name), strings.Clone(l.Value))
+	})
+
+	builder.Sort()
+	return builder.Labels()
 }
 
 func buildObject(st *streams.Builder) ([]byte, error) {
