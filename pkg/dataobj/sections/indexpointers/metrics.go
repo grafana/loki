@@ -249,23 +249,24 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 // Observe observes section statistics for a given section.
 func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 	dec := newDecoder(section.reader)
-	columns, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
 		return err
 	}
-	m.datasetColumnCount.Observe(float64(len(columns)))
+	columnDescs := metadata.GetColumns()
+	m.datasetColumnCount.Observe(float64(len(columnDescs)))
 
-	columnPages, err := result.Collect(dec.Pages(ctx, columns))
+	columnPages, err := result.Collect(dec.Pages(ctx, columnDescs))
 	if err != nil {
 		return err
-	} else if len(columnPages) != len(columns) {
-		return fmt.Errorf("expected %d page lists, got %d", len(columns), len(columnPages))
+	} else if len(columnPages) != len(columnDescs) {
+		return fmt.Errorf("expected %d page lists, got %d", len(columnDescs), len(columnPages))
 	}
 
 	// Count metadata sizes across columns.
 	{
 		var totalColumnMetadataSize int
-		for i := range columns {
+		for i := range columnDescs {
 			columnMetadataSize := proto.Size(&indexpointersmd.ColumnMetadata{Pages: columnPages[i]})
 			m.datasetColumnMetadataSize.Observe(float64(columnMetadataSize))
 			totalColumnMetadataSize += columnMetadataSize
@@ -273,7 +274,7 @@ func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 		m.datasetColumnMetadataTotalSize.Observe(float64(totalColumnMetadataSize))
 	}
 
-	for i, column := range columns {
+	for i, column := range columnDescs {
 		columnType := column.Type.String()
 		pages := columnPages[i]
 		compression := column.Info.Compression

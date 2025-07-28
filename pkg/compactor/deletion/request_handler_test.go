@@ -339,64 +339,6 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("it merges requests with the same requestID", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now, EndTime: now.Add(time.Hour)},
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(2 * time.Hour), EndTime: now.Add(3 * time.Hour)},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(time.Hour), EndTime: now.Add(2 * time.Hour)},
-		}
-		h := NewDeleteRequestHandler(store, 0, 0, nil)
-
-		req := buildRequest("org-id", ``, "", "", false)
-
-		w := httptest.NewRecorder()
-		h.GetAllDeleteRequestsHandler(w, req)
-
-		require.Equal(t, w.Code, http.StatusOK)
-
-		var result []DeleteRequest
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-
-		require.Len(t, result, 2)
-		require.Equal(t, []DeleteRequest{
-			{RequestID: "test-request-1", Status: StatusReceived, CreatedAt: now, StartTime: now, EndTime: now.Add(3 * time.Hour)},
-			{RequestID: "test-request-2", Status: StatusReceived, CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
-		}, result)
-	})
-
-	t.Run("it only considers a request processed if all it's subqueries are processed", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-3", CreatedAt: now.Add(2 * time.Minute), Status: StatusReceived},
-		}
-		h := NewDeleteRequestHandler(store, 0, 0, nil)
-
-		req := buildRequest("org-id", ``, "", "", false)
-
-		w := httptest.NewRecorder()
-		h.GetAllDeleteRequestsHandler(w, req)
-
-		require.Equal(t, w.Code, http.StatusOK)
-
-		var result []DeleteRequest
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-
-		require.Len(t, result, 3)
-		require.Equal(t, []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: "66% Complete"},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-3", CreatedAt: now.Add(2 * time.Minute), Status: StatusReceived},
-		}, result)
-	})
-
 	t.Run("error getting from store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getAllErr = errors.New("something bad")

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 )
 
@@ -20,8 +21,9 @@ func CheckSection(section *dataobj.Section) bool { return section.Type == sectio
 
 // Section represents an opened logs section.
 type Section struct {
-	reader  dataobj.SectionReader
-	columns []*Column
+	reader   dataobj.SectionReader
+	columns  []*Column
+	sortInfo *datasetmd.SectionSortInfo
 }
 
 // Open opens a Section from an underlying [dataobj.Section]. Open returns an
@@ -41,12 +43,12 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 
 func (s *Section) init(ctx context.Context) error {
 	dec := newDecoder(s.reader)
-	cols, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to decode columns: %w", err)
+		return fmt.Errorf("failed to decode metadata: %w", err)
 	}
 
-	for _, col := range cols {
+	for _, col := range metadata.GetColumns() {
 		colType, ok := convertColumnType(col.Type)
 		if !ok {
 			// Skip over unrecognized columns.
@@ -62,6 +64,7 @@ func (s *Section) init(ctx context.Context) error {
 		})
 	}
 
+	s.sortInfo = metadata.SortInfo
 	return nil
 }
 
@@ -71,6 +74,27 @@ func (s *Section) init(ctx context.Context) error {
 // Unrecognized columns (e.g., when running older code against newer sterams
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// PrimarySortOrder returns the primary sort order information of the section
+// as a tuple of [ColumnType] and [SortDirection].
+func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
+	if s.sortInfo == nil || len(s.sortInfo.ColumnSorts) == 0 {
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("missing sort order information")
+	}
+
+	si := s.sortInfo.ColumnSorts[0] // primary sort order
+	idx := int(si.ColumnIndex)
+	if idx < 0 || idx >= len(s.columns) {
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("invalid column reference in sort info")
+	}
+
+	dir, ok := convertSortDirection(si.Direction)
+	if !ok {
+		return ColumnTypeInvalid, SortDirectionUnspecified, fmt.Errorf("invalid sort direction %d in sort info", si.Direction)
+	}
+
+	return s.columns[idx].Type, dir, nil
+}
 
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
@@ -116,6 +140,28 @@ func convertColumnType(protoType logsmd.ColumnType) (ColumnType, bool) {
 	}
 
 	return ColumnTypeInvalid, false
+}
+
+// SortDirection represents sort direction of a column.
+type SortDirection int
+
+const (
+	SortDirectionUnspecified SortDirection = 0 // Sort direction is unspecified.
+	SortDirectionAscending   SortDirection = 1 // SortDirectionAscending represents ascending sort order (smallest values first).
+	SortDirectionDescending  SortDirection = 2 // SortDirectionDescending represents descending sort order (largest values first).
+)
+
+func convertSortDirection(protoDirection datasetmd.SortDirection) (SortDirection, bool) {
+	switch protoDirection {
+	case datasetmd.SORT_DIRECTION_UNSPECIFIED:
+		return SortDirectionUnspecified, true
+	case datasetmd.SORT_DIRECTION_ASCENDING:
+		return SortDirectionAscending, true
+	case datasetmd.SORT_DIRECTION_DESCENDING:
+		return SortDirectionDescending, true
+	}
+
+	return SortDirectionUnspecified, false
 }
 
 func IsMetadataColumn(colType string) bool {

@@ -11,6 +11,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -58,15 +60,33 @@ func Test_dataobjScan(t *testing.T) {
 		},
 	})
 
+	var (
+		streamsSection *streams.Section
+		logsSection    *logs.Section
+	)
+
+	for _, sec := range obj.Sections() {
+		var err error
+
+		switch {
+		case streams.CheckSection(sec):
+			streamsSection, err = streams.Open(t.Context(), sec)
+			require.NoError(t, err, "failed to open streams section")
+
+		case logs.CheckSection(sec):
+			logsSection, err = logs.Open(t.Context(), sec)
+			require.NoError(t, err, "failed to open logs section")
+		}
+	}
+
 	t.Run("All columns", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:      obj,
-			StreamIDs:   []int64{1, 2}, // All streams
-			Section:     0,             // First section.
-			Projections: nil,           // All columns
-			Direction:   physical.DESC,
-			Limit:       0, // No limit
-			batchSize:   512,
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2}, // All streams
+			Projections:    nil,           // All columns
+
+			BatchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -92,27 +112,26 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 
 	t.Run("Column subset", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:    obj,
-			StreamIDs: []int64{1, 2}, // All streams
-			Section:   0,             // First section.
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2}, // All streams
 			Projections: []physical.ColumnExpression{
-				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeLabel}},
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
 			},
-			Direction: physical.DESC,
-			Limit:     0, // No limit
-			batchSize: 512,
+
+			BatchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
 		}
 
-		expectCSV := `1970-01-01 00:00:10,prod
-1970-01-01 00:00:05,prod
-1970-01-01 00:00:03,prod
-1970-01-01 00:00:02,prod`
+		expectCSV := `prod,1970-01-01 00:00:10
+prod,1970-01-01 00:00:05
+prod,1970-01-01 00:00:03
+prod,1970-01-01 00:00:02`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -121,30 +140,56 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
 
-	t.Run("Unknown column", func(t *testing.T) {
-		// Here, we'll check for a column which only exists once in the dataobj but is
-		// ambiguous from the perspective of the caller.
+	t.Run("Streams subset", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:    obj,
-			StreamIDs: []int64{1, 2}, // All streams
-			Section:   0,             // First section.
-			Projections: []physical.ColumnExpression{
-				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
-			},
-			Direction: physical.DESC,
-			Limit:     0, // No limit
-			batchSize: 512,
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{2}, // Only stream 2
+			Projections:    nil,        // All columns
+
+			BatchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
+			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
-		expectCSV := `prod,NULL
-prod,NULL
-prod,NULL
-prod,NULL`
+		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
+prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
+
+		expectRecord, err := CSVToArrow(expectFields, expectCSV)
+		require.NoError(t, err)
+		defer expectRecord.Release()
+
+		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
+	})
+
+	t.Run("Ambiguous column", func(t *testing.T) {
+		// Here, we'll check for a column which only exists once in the dataobj but is
+		// ambiguous from the perspective of the caller.
+		pipeline := newDataobjScanPipeline(dataobjScanOptions{
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2}, // All streams
+			Projections: []physical.ColumnExpression{
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
+			},
+			BatchSize: 512,
+		})
+
+		expectFields := []arrow.Field{
+			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
+		}
+
+		expectCSV := `prod
+prod
+prod
+prod`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
@@ -189,15 +234,32 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 		},
 	})
 
+	var (
+		streamsSection *streams.Section
+		logsSection    *logs.Section
+	)
+
+	for _, sec := range obj.Sections() {
+		var err error
+
+		switch {
+		case streams.CheckSection(sec):
+			streamsSection, err = streams.Open(t.Context(), sec)
+			require.NoError(t, err, "failed to open streams section")
+
+		case logs.CheckSection(sec):
+			logsSection, err = logs.Open(t.Context(), sec)
+			require.NoError(t, err, "failed to open logs section")
+		}
+	}
+
 	t.Run("All columns", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:      obj,
-			StreamIDs:   []int64{1, 2, 3}, // All streams
-			Section:     0,                // First section.
-			Projections: nil,              // All columns
-			Direction:   physical.DESC,
-			Limit:       0, // No limit
-			batchSize:   512,
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2, 3}, // All streams
+			Projections:    nil,              // All columns
+			BatchSize:      512,
 		})
 
 		expectFields := []arrow.Field{
@@ -226,15 +288,13 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 
 	t.Run("Ambiguous pod", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:    obj,
-			StreamIDs: []int64{1, 2, 3}, // All streams
-			Section:   0,                // First section.
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "pod", Type: types.ColumnTypeAmbiguous}},
 			},
-			Direction: physical.DESC,
-			Limit:     0, // No limit
-			batchSize: 512,
+			BatchSize: 512,
 		})
 
 		expectFields := []arrow.Field{
@@ -255,15 +315,13 @@ pod-1,override`
 
 	t.Run("Ambiguous namespace", func(t *testing.T) {
 		pipeline := newDataobjScanPipeline(dataobjScanOptions{
-			Object:    obj,
-			StreamIDs: []int64{1, 2, 3}, // All streams
-			Section:   0,
+			StreamsSection: streamsSection,
+			LogsSection:    logsSection,
+			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections: []physical.ColumnExpression{
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "namespace", Type: types.ColumnTypeAmbiguous}},
 			},
-			Direction: physical.DESC,
-			Limit:     0, // No limit
-			batchSize: 512,
+			BatchSize: 512,
 		})
 
 		expectFields := []arrow.Field{

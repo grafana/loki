@@ -143,14 +143,13 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 
 	forQuerytimeFiltering := r.URL.Query().Get(ForQuerytimeFilteringQueryParam) == "true"
-	deleteGroups, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
+	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	deleteRequests := mergeDeletes(deleteGroups)
 	// We have to retain UserID and SequenceNum in json encoding of deletion manifests.
 	// However, we do not want to return these to the users since they are not relevant.
 	// ToDo(Sandeep): See if we can avoid doing it when we move to proto encoding for deletion manifests.

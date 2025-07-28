@@ -315,6 +315,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
       fieldConfig: {
         defaults: {
           decimals: decimals,
+          thresholds: {
+            mode: 'absolute',
+            steps: thresholds,
+          },
           noValue: novalue,
           unit: unit,
         },

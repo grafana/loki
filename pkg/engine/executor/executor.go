@@ -5,23 +5,33 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
+
+	DataobjScanPageCacheSize int64
 }
 
-func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
+func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:      plan,
 		batchSize: cfg.BatchSize,
 		bucket:    cfg.Bucket,
+		logger:    logger,
+
+		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
 	}
 	if plan == nil {
 		return errorPipeline(errors.New("plan is nil"))
@@ -36,9 +46,12 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan) Pipeline {
 // Context is the execution context
 type Context struct {
 	batchSize int64
+	logger    log.Logger
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
+
+	dataobjScanPageCacheSize int64
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -73,33 +86,127 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(errors.New("no object store bucket configured"))
 	}
 
-	predicates := make([]logs.RowPredicate, 0, len(node.Predicates))
+	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	if err != nil {
+		return errorPipeline(fmt.Errorf("creating data object: %w", err))
+	}
+
+	var (
+		streamsSection *streams.Section
+		logsSection    *logs.Section
+	)
+
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		if streamsSection != nil {
+			return errorPipeline(fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+		}
+
+		var err error
+		streamsSection, err = streams.Open(ctx, sec)
+		if err != nil {
+			return errorPipeline(fmt.Errorf("opening streams section %q: %w", sec.Type, err))
+		}
+	}
+	if streamsSection == nil {
+		return errorPipeline(fmt.Errorf("streams section not found in data object %q", node.Location))
+	}
+
+	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
+		if i != node.Section {
+			continue
+		}
+
+		var err error
+		logsSection, err = logs.Open(ctx, sec)
+		if err != nil {
+			return errorPipeline(fmt.Errorf("opening logs section %q: %w", sec.Type, err))
+		}
+	}
+	if logsSection == nil {
+		return errorPipeline(fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+	}
+
+	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p)
+		conv, err := buildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(err)
 		}
 		predicates = append(predicates, conv)
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
-	if err != nil {
-		return errorPipeline(fmt.Errorf("creating data object: %w", err))
-	}
+	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
+		// TODO(rfratto): passing the streams section means that each DataObjScan
+		// will read the entire streams section (for IDs being loaded), which is
+		// going to be quite a bit of wasted effort.
+		//
+		// Longer term, there should be a dedicated plan node which handles joining
+		// streams and log records based on StreamID, which is shared between all
+		// sections in the same object.
+		StreamsSection: streamsSection,
 
-	return newDataobjScanPipeline(dataobjScanOptions{
-		Object:      obj,
+		LogsSection: logsSection,
 		StreamIDs:   node.StreamIDs,
-		Section:     node.Section,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
-		Direction: node.Direction,
-		Limit:     node.Limit,
+		// TODO(rfratto): pass custom allocator
+		Allocator: memory.DefaultAllocator,
 
-		batchSize: c.batchSize,
+		BatchSize: c.batchSize,
+		CacheSize: int(c.dataobjScanPageCacheSize),
 	})
+
+	sortType, sortDirection, err := logsSection.PrimarySortOrder()
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "could not determine primary sort order for logs section, forcing topk sort", "err", err)
+	}
+
+	// Wrap our pipeline to enforce expected sorting. We always emit logs in
+	// timestamp-sorted order, so we need to sort if either the section doesn't
+	// match the expected sort order or the requested sort type is not timestamp.
+	//
+	// If it's already sorted, we wrap by LimitPipeline to enforce the limit
+	// given to the node.
+	if node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp {
+		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.Direction)
+
+		pipeline, err = newTopkPipeline(topkOptions{
+			Inputs: []Pipeline{pipeline},
+
+			SortBy: []physical.ColumnExpression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: types.ColumnNameBuiltinTimestamp,
+						Type:   types.ColumnTypeBuiltin,
+					},
+				},
+			},
+			Ascending: node.Direction == physical.ASC,
+			K:         int(node.Limit),
+
+			MaxUnused: int(c.batchSize) * 2,
+		})
+		if err != nil {
+			return errorPipeline(err)
+		}
+	} else if node.Limit > 0 {
+		pipeline = NewLimitPipeline(pipeline, 0, node.Limit)
+	}
+
+	return pipeline
+}
+
+func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
+	switch dir {
+	case logs.SortDirectionAscending:
+		return physical.ASC
+	case logs.SortDirectionDescending:
+		return physical.DESC
+	}
+
+	return physical.SortOrder(0)
 }
 
 func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {

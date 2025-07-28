@@ -309,6 +309,9 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 	case NotPredicate:
 		return !checkPredicate(p.Inner, lookup, row)
 
+	case TruePredicate:
+		return true
+
 	case FalsePredicate:
 		return false
 
@@ -484,7 +487,7 @@ func (r *Reader) validatePredicate() error {
 				err = process(p.Column)
 			case FuncPredicate:
 				err = process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
@@ -590,7 +593,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 				process(p.Column)
 			case FuncPredicate:
 				process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
@@ -663,7 +666,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case FuncPredicate, nil:
+	case TruePredicate, FuncPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -713,7 +716,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 		return inner.Inner, nil
 
 	case FalsePredicate:
-		return nil, fmt.Errorf("can't simplify FalsePredicate")
+		return TruePredicate{}, nil
 
 	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
 		return OrPredicate{
@@ -851,7 +854,7 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 			columns[p.Column] = struct{}{}
 		case FuncPredicate:
 			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))

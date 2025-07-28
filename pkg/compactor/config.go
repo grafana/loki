@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -74,17 +76,21 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CompactorRing.RegisterFlagsWithPrefix("compactor.", "collectors/", f, skipFlags...)
 	f.IntVar(&cfg.CompactorRing.NumTokens, "compactor.ring.num-tokens", ringNumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", ringNumTokens))
 	f.IntVar(&cfg.CompactorRing.ReplicationFactor, "compactor.ring.replication-factor", ringReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ringReplicationFactor))
-	f.StringVar(&cfg.HorizontalScalingMode, "compactor.horizontal-scaling-mode", HorizontalScalingModeDisabled, fmt.Sprintf("Supported modes - "+
-		"[%s]: Keeps the horizontal scaling mode disabled. Locally runs all the functions of the compactor."+
-		"[%s]: Runs all functions of the compactor. Distributes work to workers where possible."+
-		"[%s]: Runs the compactor in worker mode, only working on jobs built by the main compactor.",
-		HorizontalScalingModeDisabled, HorizontalScalingModeMain, HorizontalScalingModeWorker))
+	f.StringVar(&cfg.HorizontalScalingMode, "compactor.horizontal-scaling-mode", HorizontalScalingModeDisabled,
+		fmt.Sprintf("Experimental: Configuration to turn on and run horizontally scalable compactor. Supported modes - "+
+			"[%s]: Keeps the horizontal scaling mode disabled. Locally runs all the functions of the compactor."+
+			"[%s]: Runs all functions of the compactor. Distributes work to workers where possible."+
+			"[%s]: Runs the compactor in worker mode, only working on jobs built by the main compactor.",
+			HorizontalScalingModeDisabled, HorizontalScalingModeMain, HorizontalScalingModeWorker))
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 }
 
 // Validate verifies the config does not contain inappropriate values
 func (cfg *Config) Validate() error {
+	if cfg.HorizontalScalingMode != HorizontalScalingModeDisabled {
+		log.WarnExperimentalUse("Horizontally Scalable Compactor", util_log.Logger)
+	}
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
@@ -116,7 +122,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	return nil
+	return cfg.WorkerConfig.Validate()
 }
 
 type JobsConfig struct {
@@ -140,7 +146,7 @@ type DeletionJobsConfig struct {
 
 func (c *DeletionJobsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.DeletionManifestStorePrefix, prefix+"deletion-manifest-store-prefix", "__deletion_manifest__/", "Object storage path prefix for storing deletion manifests.")
-	f.IntVar(&c.ChunkProcessingConcurrency, prefix+"chunk-processing-concurrency", 5, "Maximum number of chunks to process concurrently in each worker.")
+	f.IntVar(&c.ChunkProcessingConcurrency, prefix+"chunk-processing-concurrency", 3, "Maximum number of chunks to process concurrently in each worker.")
 	f.DurationVar(&c.Timeout, prefix+"timeout", 15*time.Minute, "Maximum time to wait for a job before considering it failed and retrying.")
 	f.IntVar(&c.MaxRetries, prefix+"max-retries", 3, "Maximum number of times to retry a failed or timed out job.")
 }

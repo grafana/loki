@@ -29,6 +29,12 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// PageCacheSize is the total size of additional pages to prefetch into the
+	// reader that the reader may read on future calls. Pages are prefetched any
+	// time a new page is required up to this size. Setting to 0 disables
+	// prefetching additional pages.
+	PageCacheSize int
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -82,6 +88,7 @@ func (opts *ReaderOptions) Validate() error {
 			case AndPredicate: // Nothing to do.
 			case OrPredicate: // Nothing to do.
 			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
@@ -191,7 +198,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -203,7 +210,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeLabel: // Appends labels as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
 			case ColumnTypeRows: // Appends rows as int64
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypeUncompressedSize: // Appends uncompressed size as int64
@@ -249,7 +256,7 @@ func (r *Reader) init() error {
 		Dataset:         dset,
 		Columns:         dset.Columns(),
 		Predicates:      preds,
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		TargetCacheSize: r.opts.PageCacheSize,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
@@ -302,6 +309,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		return dataset.NotPredicate{
 			Inner: mapPredicate(p.Inner, columnLookup),
 		}
+
+	case TruePredicate:
+		return dataset.TruePredicate{}
 
 	case FalsePredicate:
 		return dataset.FalsePredicate{}
@@ -407,6 +417,15 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 }
 
+// Close closes the Reader and releases any resources it holds. Closed Readers
+// can be reused by calling [Reader.Reset].
+func (r *Reader) Close() error {
+	if r.inner != nil {
+		return r.inner.Close()
+	}
+	return nil
+}
+
 func columnsSchema(cols []*Column) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(cols))
 	for _, col := range cols {
@@ -420,7 +439,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeStreamID:         arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeLabel:            arrow.BinaryTypes.Binary,
+	ColumnTypeLabel:            arrow.BinaryTypes.String,
 	ColumnTypeRows:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 }

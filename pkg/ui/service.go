@@ -3,10 +3,12 @@ package ui
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +22,9 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
+
+	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
+	_ "github.com/go-sql-driver/mysql" //nolint:revive
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
@@ -34,9 +39,10 @@ type Service struct {
 	client    *http.Client
 	localAddr string
 
-	cfg    Config
-	logger log.Logger
-	reg    prometheus.Registerer
+	cfg        Config
+	logger     log.Logger
+	reg        prometheus.Registerer
+	goldfishDB *sql.DB
 }
 
 func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
@@ -85,6 +91,9 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 	}
 	svc.Service = services.NewBasicService(nil, svc.run, svc.stop)
 	if err := svc.initUIFs(); err != nil {
+		return nil, err
+	}
+	if err := svc.initGoldfishDB(); err != nil {
 		return nil, err
 	}
 	svc.RegisterHandler()
@@ -175,6 +184,9 @@ func (s *Service) stop(_ error) error {
 	if s.reg != nil {
 		s.reg.Unregister(s.node.Metrics())
 	}
+	if s.goldfishDB != nil {
+		s.goldfishDB.Close()
+	}
 	return s.node.Stop()
 }
 
@@ -205,4 +217,76 @@ func deadlineDuration(ctx context.Context) (d time.Duration, ok bool) {
 		return time.Until(t), true
 	}
 	return 0, false
+}
+
+// initGoldfishDB initializes the database connection for goldfish features
+func (s *Service) initGoldfishDB() error {
+	if !s.cfg.Goldfish.Enable {
+		level.Info(s.logger).Log("msg", "goldfish feature disabled, skipping database initialization")
+		return nil
+	}
+
+	password := os.Getenv("GOLDFISH_DB_PASSWORD")
+	if password == "" {
+		level.Warn(s.logger).Log("msg", "GOLDFISH_DB_PASSWORD environment variable not set, goldfish features will be disabled")
+		s.cfg.Goldfish.Enable = false
+		return nil
+	}
+
+	// Build DSN for CloudSQL proxy connection
+	// MySQL DSN format: username:password@tcp(host:port)/dbname?params
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci",
+		s.cfg.Goldfish.CloudSQLUser,
+		password,
+		s.cfg.Goldfish.CloudSQLHost,
+		s.cfg.Goldfish.CloudSQLPort,
+		s.cfg.Goldfish.CloudSQLDatabase,
+	)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to open goldfish database connection, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
+	}
+
+	// Configure connection pool
+	db.SetMaxOpenConns(s.cfg.Goldfish.MaxConnections)
+	db.SetMaxIdleConns(s.cfg.Goldfish.MaxConnections / 2)
+	db.SetConnMaxIdleTime(time.Duration(s.cfg.Goldfish.MaxIdleTime) * time.Second)
+
+	// Verify connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		level.Warn(s.logger).Log("msg", "failed to ping goldfish database, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
+	}
+
+	// Verify tables exist
+	if err := s.verifyGoldfishTables(db); err != nil {
+		db.Close()
+		level.Warn(s.logger).Log("msg", "goldfish database tables not found, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		return nil
+	}
+
+	s.goldfishDB = db
+	level.Info(s.logger).Log("msg", "goldfish database connection initialized successfully")
+	return nil
+}
+
+// verifyGoldfishTables checks if the required goldfish tables exist
+func (s *Service) verifyGoldfishTables(db *sql.DB) error {
+	tables := []string{"sampled_queries", "comparison_outcomes"}
+
+	for _, table := range tables {
+		query := fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", table)
+		_, err := db.Exec(query)
+		if err != nil {
+			return fmt.Errorf("table %s not found or not accessible: %w", table, err)
+		}
+	}
+
+	return nil
 }

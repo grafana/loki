@@ -255,6 +255,9 @@
         "lustre": {
             "component": "lustre"
         },
+        "maintenance": {
+            "component": "maintenance"
+        },
         "managedidentities": {
             "component": "managedidentities"
         },

@@ -82,8 +82,6 @@ type Builder struct {
 
 	// streamLookup is a map of the stream ID in this index object to the pointer.
 	streamLookup map[streamKey]*SectionPointer
-	// streamObjectRefs is a map of the stream ID in the referenced logs object to the stream ID in this index object.
-	streamObjectRefs map[string]map[int64]int64
 	// pointers is the list of pointers to encode.
 	pointers []*SectionPointer
 
@@ -100,29 +98,16 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		metrics:  metrics,
 		pageSize: pageSize,
 
-		streamLookup:     make(map[streamKey]*SectionPointer),
-		streamObjectRefs: make(map[string]map[int64]int64),
-		pointers:         make([]*SectionPointer, 0, 1024),
+		streamLookup: make(map[streamKey]*SectionPointer),
+		pointers:     make([]*SectionPointer, 0, 1024),
 	}
 }
 
 // Type returns the [dataobj.SectionType] of the pointers builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
-// RecordStreamRef records a reference to a stream in a data object by storing the mapping from the Logs object's stream ID to the Index object's stream ID.
-func (b *Builder) RecordStreamRef(path string, idInObject int64, idInIndex int64) {
-	pathRef, ok := b.streamObjectRefs[path]
-	if !ok {
-		pathRef = make(map[int64]int64)
-		b.streamObjectRefs[path] = pathRef
-	}
-	pathRef[idInObject] = idInIndex
-}
-
 // ObserveStream observes a stream in the index by recording the start & end timestamps, line count, and uncompressed size per-section.
-func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts time.Time, uncompressedSize int64) {
-	indexStreamID := b.streamObjectRefs[path][idInObject]
-
+func (b *Builder) ObserveStream(path string, section int64, idInObject int64, idInIndex int64, ts time.Time, uncompressedSize int64) {
 	b.key.objectPath = path
 	b.key.section = section
 	b.key.streamID = idInObject
@@ -145,7 +130,7 @@ func (b *Builder) ObserveStream(path string, section int64, idInObject int64, ts
 		Path:             path,
 		Section:          section,
 		PointerKind:      PointerKindStreamIndex,
-		StreamID:         indexStreamID,
+		StreamID:         idInIndex,
 		StreamIDRef:      idInObject,
 		StartTs:          ts,
 		EndTs:            ts,
@@ -421,11 +406,10 @@ func encodeColumn(enc *encoder, columnType pointersmd.ColumnType, builder *datas
 	return columnEnc.Commit()
 }
 
-// Reset resets all state, allowing Streams to be reused.
+// Reset resets all state, allowing Pointers builder to be reused.
 func (b *Builder) Reset() {
 	b.pointers = sliceclear.Clear(b.pointers)
 	clear(b.streamLookup)
-	clear(b.streamObjectRefs)
 
 	b.metrics.minTimestamp.Set(0)
 	b.metrics.maxTimestamp.Set(0)

@@ -31,10 +31,9 @@ func TestAddingStreams(t *testing.T) {
 
 	tracker := NewBuilder(nil, 1024)
 	for _, tc := range tt {
-		tracker.RecordStreamRef(tc.path, tc.streamIDInObject, tc.streamID)
-		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.minTimestamp, tc.uncompressedSize)
+		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.streamID, tc.minTimestamp, tc.uncompressedSize)
 		// We Observe twice to track the max timestamp too. But we don't want to count the size twice.
-		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.maxTimestamp, 0)
+		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.streamID, tc.maxTimestamp, 0)
 	}
 
 	buf, err := buildObject(tracker)

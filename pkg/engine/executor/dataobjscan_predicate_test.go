@@ -1,11 +1,11 @@
 package executor
 
 import (
-	"fmt"
-	"math"
 	"testing"
-	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -14,765 +14,566 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-var (
-	testOpenStart = time.Unix(0, math.MinInt64).UTC()
-	testOpenEnd   = time.Unix(0, math.MaxInt64).UTC()
-)
+func Test_buildLogsPredicate(t *testing.T) {
+	var (
+		// streamID isn't included since [physical.Expression]s can't reference
+		// stream IDs.
 
-func newColumnExpr(column string, ty types.ColumnType) *physical.ColumnExpr {
+		timestampColumn = &logs.Column{Type: logs.ColumnTypeTimestamp}
+		metadataColumn  = &logs.Column{Name: "metadata", Type: logs.ColumnTypeMetadata}
+		messageColumn   = &logs.Column{Type: logs.ColumnTypeMessage}
+
+		columns = []*logs.Column{timestampColumn, metadataColumn, messageColumn}
+	)
+
+	tt := []struct {
+		name   string
+		expr   physical.Expression
+		expect logs.Predicate
+	}{
+		{
+			name:   "literal true",
+			expr:   physical.NewLiteral(true),
+			expect: logs.TruePredicate{},
+		},
+		{
+			name:   "literal false",
+			expr:   physical.NewLiteral(false),
+			expect: logs.FalsePredicate{},
+		},
+
+		{
+			name: "unary NOT",
+			expr: &physical.UnaryExpr{
+				Op:   types.UnaryOpNot,
+				Left: physical.NewLiteral(false),
+			},
+			expect: logs.NotPredicate{
+				Inner: logs.FalsePredicate{},
+			},
+		},
+
+		{
+			name: "binary AND",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpAnd,
+				Left:  physical.NewLiteral(true),
+				Right: physical.NewLiteral(false),
+			},
+			expect: logs.AndPredicate{
+				Left:  logs.TruePredicate{},
+				Right: logs.FalsePredicate{},
+			},
+		},
+		{
+			name: "binary OR",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpOr,
+				Left:  physical.NewLiteral(true),
+				Right: physical.NewLiteral(false),
+			},
+			expect: logs.OrPredicate{
+				Left:  logs.TruePredicate{},
+				Right: logs.FalsePredicate{},
+			},
+		},
+
+		{
+			name: "builtin timestamp reference",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral(int64(1234567890)),
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewInt64Scalar(1234567890),
+			},
+		},
+		{
+			name: "builtin message reference",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinMessage),
+				Right: physical.NewLiteral(int64(9876543210)),
+			},
+			expect: logs.EqualPredicate{
+				Column: messageColumn,
+				Value:  scalar.NewInt64Scalar(9876543210),
+			},
+		},
+		{
+			name: "metadata reference",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral(int64(5555555555)),
+			},
+			expect: logs.EqualPredicate{
+				Column: metadataColumn,
+				Value:  scalar.NewInt64Scalar(5555555555),
+			},
+		},
+		{
+			name: "ambiguous metadata reference",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeAmbiguous, "metadata"),
+				Right: physical.NewLiteral(int64(7777777777)),
+			},
+			expect: logs.EqualPredicate{
+				Column: metadataColumn,
+				Value:  scalar.NewInt64Scalar(7777777777),
+			},
+		},
+
+		{
+			name: "check column for null literal",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral(nil),
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.ScalarNull,
+			},
+		},
+		{
+			name: "check column for integer literal",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral(int64(42)),
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewInt64Scalar(42),
+			},
+		},
+		{
+			name: "check column for bytes literal",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral(datatype.Bytes(1024)),
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewInt64Scalar(1024),
+			},
+		},
+		{
+			name: "check column for timestamp literal",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral(datatype.Timestamp(1609459200000000000)), // 2021-01-01 00:00:00 UTC in nanoseconds
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewTimestampScalar(arrow.Timestamp(1609459200000000000), arrow.FixedWidthTypes.Timestamp_ns),
+			},
+		},
+		{
+			name: "check column for string literal",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: physical.NewLiteral("hello world"),
+			},
+			expect: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("hello world")), arrow.BinaryTypes.Binary),
+			},
+		},
+
+		{
+			name: "binary EQ",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("test_value"),
+			},
+			expect: logs.EqualPredicate{
+				Column: metadataColumn,
+				Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("test_value")), arrow.BinaryTypes.Binary),
+			},
+		},
+		{
+			name: "binary NEQ",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNeq,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("test_value"),
+			},
+			expect: logs.NotPredicate{
+				Inner: logs.EqualPredicate{
+					Column: metadataColumn,
+					Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("test_value")), arrow.BinaryTypes.Binary),
+				},
+			},
+		},
+		{
+			name: "binary GT",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGt,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.GreaterThanPredicate{
+				Column: metadataColumn,
+				Value:  scalar.NewInt64Scalar(100),
+			},
+		},
+		{
+			name: "binary GTE",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGte,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.OrPredicate{
+				Left:  logs.GreaterThanPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
+				Right: logs.EqualPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
+			},
+		},
+		{
+			name: "binary LT",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLt,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.LessThanPredicate{
+				Column: metadataColumn,
+				Value:  scalar.NewInt64Scalar(100),
+			},
+		},
+		{
+			name: "binary LTE",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLte,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.OrPredicate{
+				Left:  logs.LessThanPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
+				Right: logs.EqualPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
+			},
+		},
+
+		{
+			name: "binary EQ (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("test_value"),
+			},
+			expect: logs.FalsePredicate{}, // non-null value can't equal NULL column
+		},
+		{
+			name: "binary NEQ (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNeq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("test_value"),
+			},
+			expect: logs.TruePredicate{}, // non-null value != NULL column
+		},
+		{
+			name: "binary EQ NULL (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(nil),
+			},
+			expect: logs.TruePredicate{}, // NULL == NULL: always passes
+		},
+		{
+			name: "binary NEQ NULL (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNeq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(nil),
+			},
+			expect: logs.FalsePredicate{}, // NULL != NULL: always fails
+		},
+		{
+			name: "binary GT (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGt,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.FalsePredicate{}, // NULL > value always fails
+		},
+		{
+			name: "binary GTE (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGte,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.FalsePredicate{}, // NULL >= value always fails
+		},
+		{
+			name: "binary LT (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLt,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.FalsePredicate{}, // NULL < value always fails
+		},
+		{
+			name: "binary LTE (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLte,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(int64(100)),
+			},
+			expect: logs.FalsePredicate{}, // NULL <= value always fails
+		},
+		{
+			name: "binary MATCH_STR (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("substring"),
+			},
+			expect: logs.FalsePredicate{}, // match against non-existent column always fails
+		},
+		{
+			name: "binary NOT_MATCH_STR (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("substring"),
+			},
+			expect: logs.TruePredicate{}, // not match against non-existent column always passes
+		},
+		{
+			name: "binary MATCH_RE (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("^test.*"),
+			},
+			expect: logs.FalsePredicate{}, // match against non-existent column always fails
+		},
+		{
+			name: "binary NOT_MATCH_RE (invalid column)",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("^test.*"),
+			},
+			expect: logs.TruePredicate{}, // not match against non-existent column always passes
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expr == nil {
+				t.Skip()
+			}
+
+			actual, err := buildLogsPredicate(tc.expr, columns)
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, actual)
+		})
+	}
+}
+
+// Test_buildLogsPredicate_FuncPredicates tests cases of [buildLogsPredicate]
+// which generate [logs.FuncPredicate], testing that the generated functions are
+// correct.
+func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
+	var (
+		metadataColumn = &logs.Column{Name: "metadata", Type: logs.ColumnTypeMetadata}
+		columns        = []*logs.Column{metadataColumn}
+	)
+
+	type keepTest struct {
+		input    scalar.Scalar
+		expected bool
+	}
+
+	tt := []struct {
+		name           string
+		expr           physical.Expression
+		expectedColumn *logs.Column
+		keepTests      []keepTest
+	}{
+		{
+			name: "binary MATCH_STR",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("substring"),
+			},
+			expectedColumn: metadataColumn,
+			keepTests: []keepTest{
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("this contains substring here")), arrow.BinaryTypes.Binary),
+					expected: true,
+				},
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("this does not contain it")), arrow.BinaryTypes.Binary),
+					expected: false,
+				},
+				{
+					input:    scalar.NewStringScalar("string contains substring"),
+					expected: true,
+				},
+				{
+					input:    scalar.NewStringScalar("string does not contain it"),
+					expected: false,
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.Binary),
+					expected: false, // null binary can't match anything
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.String),
+					expected: false, // null string can't match anything
+				},
+			},
+		},
+		{
+			name: "binary NOT_MATCH_STR",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("substring"),
+			},
+			expectedColumn: metadataColumn,
+			keepTests: []keepTest{
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("this contains substring here")), arrow.BinaryTypes.Binary),
+					expected: false,
+				},
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("this does not contain it")), arrow.BinaryTypes.Binary),
+					expected: true,
+				},
+				{
+					input:    scalar.NewStringScalar("string contains substring"),
+					expected: false,
+				},
+				{
+					input:    scalar.NewStringScalar("string does not contain it"),
+					expected: true,
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.Binary),
+					expected: true, // null binary doesn't match, so "not match" is true
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.String),
+					expected: true, // null string doesn't match, so "not match" is true
+				},
+			},
+		},
+		{
+			name: "binary MATCH_RE",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("^test.*"),
+			},
+			expectedColumn: metadataColumn,
+			keepTests: []keepTest{
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("test string")), arrow.BinaryTypes.Binary),
+					expected: true,
+				},
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("not matching")), arrow.BinaryTypes.Binary),
+					expected: false,
+				},
+				{
+					input:    scalar.NewStringScalar("test123"),
+					expected: true,
+				},
+				{
+					input:    scalar.NewStringScalar("no match"),
+					expected: false,
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.Binary),
+					expected: false, // null binary can't match regex
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.String),
+					expected: false, // null string can't match regex
+				},
+			},
+		},
+		{
+			name: "binary NOT_MATCH_RE",
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: physical.NewLiteral("^test.*"),
+			},
+			expectedColumn: metadataColumn,
+			keepTests: []keepTest{
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("test string")), arrow.BinaryTypes.Binary),
+					expected: false,
+				},
+				{
+					input:    scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("not matching")), arrow.BinaryTypes.Binary),
+					expected: true,
+				},
+				{
+					input:    scalar.NewStringScalar("test123"),
+					expected: false,
+				},
+				{
+					input:    scalar.NewStringScalar("no match"),
+					expected: true,
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.Binary),
+					expected: true, // null binary doesn't match regex, so "not match" is true
+				},
+				{
+					input:    scalar.MakeNullScalar(arrow.BinaryTypes.String),
+					expected: true, // null string doesn't match regex, so "not match" is true
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := buildLogsPredicate(tc.expr, columns)
+			require.NoError(t, err)
+
+			// Verify it's a FuncPredicate
+			funcPred, ok := actual.(logs.FuncPredicate)
+			require.True(t, ok, "expected FuncPredicate, got %T", actual)
+
+			// Verify the column is correct
+			require.Equal(t, tc.expectedColumn, funcPred.Column)
+
+			// Test the Keep function behavior
+			for i, keepTest := range tc.keepTests {
+				result := funcPred.Keep(nil, keepTest.input)
+				require.Equal(t, keepTest.expected, result, "keepTest[%d] with input %v", i, keepTest.input)
+			}
+		})
+	}
+}
+
+func columnRef(ty types.ColumnType, column string) *physical.ColumnExpr {
 	return &physical.ColumnExpr{
 		Ref: types.ColumnRef{
-			Column: column,
 			Type:   ty,
+			Column: column,
 		},
-	}
-}
-
-func tsColExpr() *physical.ColumnExpr {
-	return newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
-}
-
-func ts(t time.Time) datatype.Timestamp {
-	return datatype.Timestamp(t.UnixNano())
-}
-
-func TestMapTimestampPredicate(t *testing.T) {
-	time100 := time.Unix(0, 100).UTC()
-	time200 := time.Unix(0, 200).UTC()
-	time300 := time.Unix(0, 300).UTC()
-
-	for _, tc := range []struct {
-		desc     string
-		expr     physical.Expression
-		want     logs.TimeRangeRowPredicate
-		errMatch string
-	}{
-		{
-			desc: "timestamp == 100",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp > 100",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpGt,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      testOpenEnd,
-				IncludeStart: false,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp >= 100",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpGte,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      testOpenEnd,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp < 100",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpLt,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    testOpenStart,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   false,
-			},
-		},
-		{
-			desc: "timestamp <= 100",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpLte,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    testOpenStart,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp > (timestamp < 100) - now invalid",
-			expr: &physical.BinaryExpr{
-				Left: tsColExpr(),
-				Op:   types.BinaryOpGt,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.BinaryExpr",
-		},
-		{
-			desc: "timestamp == (timestamp >= (timestamp <= 200)) - now invalid",
-			expr: &physical.BinaryExpr{
-				Left: tsColExpr(),
-				Op:   types.BinaryOpEq,
-				Right: &physical.BinaryExpr{
-					Left: tsColExpr(),
-					Op:   types.BinaryOpGte,
-					Right: &physical.BinaryExpr{
-						Left:  tsColExpr(),
-						Op:    types.BinaryOpLte,
-						Right: physical.NewLiteral(ts(time200)),
-					},
-				},
-			},
-			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.BinaryExpr",
-		},
-		{
-			desc:     "input is not BinaryExpr",
-			expr:     physical.NewLiteral(ts(time100)),
-			errMatch: "unsupported expression type for timestamp predicate: *physical.LiteralExpr, expected *physical.BinaryExpr",
-		},
-		{
-			desc: "LHS of BinaryExpr is not ColumnExpr",
-			expr: &physical.BinaryExpr{
-				Left:  physical.NewLiteral(ts(time100)),
-				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(ts(time200)),
-			},
-			errMatch: "invalid LHS for comparison: expected timestamp column, got 1970-01-01T00:00:00.0000001Z",
-		},
-		{
-			desc: "LHS column is not timestamp",
-			expr: &physical.BinaryExpr{
-				Left:  newColumnExpr("other_col", types.ColumnTypeBuiltin),
-				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			errMatch: "invalid LHS for comparison: expected timestamp column, got builtin.other_col",
-		},
-		{
-			desc: "RHS Literal is not a timestamp type",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpEq,
-				Right: physical.NewLiteral("not_a_timestamp"),
-			},
-			errMatch: "unsupported literal type for RHS: string, expected timestamp",
-		},
-		{
-			desc: "RHS is an unsupported type (ColumnExpr)",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpEq,
-				Right: newColumnExpr("another_ts", types.ColumnTypeBuiltin),
-			},
-			errMatch: "invalid RHS for comparison: expected literal timestamp, got *physical.ColumnExpr",
-		},
-		{
-			desc: "Unsupported operator (AND) used as a simple comparison",
-			expr: &physical.BinaryExpr{
-				Left:  tsColExpr(),
-				Op:    types.BinaryOpAnd,
-				Right: physical.NewLiteral(ts(time100)),
-			},
-			errMatch: "invalid left operand for AND: unsupported expression type for timestamp predicate: *physical.ColumnExpr, expected *physical.BinaryExpr",
-		},
-		{
-			desc: "Unsupported operator (OR) from outer op in nested scenario", // OR is still unsupported directly
-			expr: &physical.BinaryExpr{
-				Left: tsColExpr(),
-				Op:   types.BinaryOpOr,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			errMatch: "unsupported operator for timestamp predicate: OR",
-		},
-		{
-			desc: "timestamp > 100 AND timestamp < 200",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      time200,
-				IncludeStart: false,
-				IncludeEnd:   false,
-			},
-		},
-		{
-			desc: "timestamp >= 100 AND timestamp <= 200",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      time200,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp >= 100 AND timestamp < 100 (point exclusive)", // leads to impossible range
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
-		},
-		{
-			desc: "timestamp > 100 AND timestamp <= 100 (point exclusive)", // leads to impossible range
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000001 +0000 UTC) equals end_time (1970-01-01 00:00:00.0000001 +0000 UTC) but the range is exclusive",
-		},
-		{
-			desc: "timestamp >= 100 AND timestamp <= 100 (point inclusive)",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGte,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLte,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time100,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "timestamp == 100 AND timestamp == 200", // impossible
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
-		},
-		{
-			desc: "timestamp < 100 AND timestamp > 200", // impossible
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			errMatch: "impossible time range: start_time (1970-01-01 00:00:00.0000002 +0000 UTC) is after end_time (1970-01-01 00:00:00.0000001 +0000 UTC)",
-		},
-		{
-			desc: "(timestamp > 100 AND timestamp < 300) AND timestamp == 200",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left: &physical.BinaryExpr{
-						Left:  tsColExpr(),
-						Op:    types.BinaryOpGt,
-						Right: physical.NewLiteral(ts(time100)),
-					},
-					Op: types.BinaryOpAnd,
-					Right: &physical.BinaryExpr{
-						Left:  tsColExpr(),
-						Op:    types.BinaryOpLt,
-						Right: physical.NewLiteral(ts(time300)),
-					},
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpEq,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    time200,
-				EndTime:      time200,
-				IncludeStart: true,
-				IncludeEnd:   true,
-			},
-		},
-		{
-			desc: "AND with invalid left operand",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{ // Invalid: LHS not timestamp column
-					Left:  newColumnExpr("not_ts", types.ColumnTypeBuiltin),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			errMatch: "invalid left operand for AND: invalid LHS for comparison: expected timestamp column, got builtin.not_ts",
-		},
-		{
-			desc: "AND with invalid right operand (RHS literal type)",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpGt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{ // Invalid: RHS literal not timestamp
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral("not-a-time"),
-				},
-			},
-			errMatch: "invalid right operand for AND: unsupported literal type for RHS: string, expected timestamp",
-		},
-		{
-			desc: "timestamp < 100 AND timestamp < 200 (should be ts < 100)",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    testOpenStart,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   false,
-			},
-		},
-		{
-			desc: "timestamp < 200 AND timestamp < 100 (should be ts < 100)",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time200)),
-				},
-				Op: types.BinaryOpAnd,
-				Right: &physical.BinaryExpr{
-					Left:  tsColExpr(),
-					Op:    types.BinaryOpLt,
-					Right: physical.NewLiteral(ts(time100)),
-				},
-			},
-			want: logs.TimeRangeRowPredicate{
-				StartTime:    testOpenStart,
-				EndTime:      time100,
-				IncludeStart: true,
-				IncludeEnd:   false,
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			got, err := mapTimestampPredicate(tc.expr)
-			if tc.errMatch != "" {
-				require.ErrorContains(t, err, tc.errMatch)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.want, got)
-			}
-		})
-	}
-}
-
-func TestMapMetadataPredicate(t *testing.T) {
-	tests := []struct {
-		name          string
-		expr          physical.Expression
-		expectedPred  logs.RowPredicate
-		expectedErr   bool
-		expectedErrAs any // For errors.As checks
-	}{
-		{
-			name: "simple metadata matcher",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Right: physical.NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
-			expectedPred: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
-			expectedErr:  false,
-		},
-		{
-			name: "AND predicate",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Right: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "baz", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("qux"),
-					Op:    types.BinaryOpEq,
-				},
-				Op: types.BinaryOpAnd,
-			},
-			expectedPred: logs.AndRowPredicate{
-				Left:  logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
-				Right: logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
-			},
-			expectedErr: false,
-		},
-		{
-			name: "OR predicate",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Right: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "baz", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("qux"),
-					Op:    types.BinaryOpEq,
-				},
-				Op: types.BinaryOpOr,
-			},
-			expectedPred: logs.OrRowPredicate{
-				Left:  logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
-				Right: logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
-			},
-			expectedErr: false,
-		},
-		{
-			name: "NOT predicate",
-			expr: &physical.UnaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Op: types.UnaryOpNot,
-			},
-			expectedPred: logs.NotRowPredicate{
-				Inner: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
-			},
-			expectedErr: false,
-		},
-		{
-			name: "nested AND OR predicate",
-			expr: &physical.BinaryExpr{ // AND
-				Left: &physical.BinaryExpr{ // foo == "bar"
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Right: &physical.BinaryExpr{ // OR
-					Left: &physical.BinaryExpr{ // baz == "qux"
-						Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "baz", Type: types.ColumnTypeMetadata}},
-						Right: physical.NewLiteral("qux"),
-						Op:    types.BinaryOpEq,
-					},
-					Right: &physical.BinaryExpr{ // faz == "fuzz"
-						Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "faz", Type: types.ColumnTypeMetadata}},
-						Right: physical.NewLiteral("fuzz"),
-						Op:    types.BinaryOpEq,
-					},
-					Op: types.BinaryOpOr,
-				},
-				Op: types.BinaryOpAnd,
-			},
-			expectedPred: logs.AndRowPredicate{
-				Left: logs.MetadataMatcherRowPredicate{Key: "foo", Value: "bar"},
-				Right: logs.OrRowPredicate{
-					Left:  logs.MetadataMatcherRowPredicate{Key: "baz", Value: "qux"},
-					Right: logs.MetadataMatcherRowPredicate{Key: "faz", Value: "fuzz"},
-				},
-			},
-			expectedErr: false,
-		},
-		{
-			name: "error: unsupported binary operator",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Right: physical.NewLiteral("bar"),
-				Op:    types.BinaryOpGt, // GT is not supported for metadata
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name: "error: unsupported unary operator",
-			expr: &physical.UnaryExpr{
-				Left: &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Op:   types.UnaryOpAbs, // ABS is not supported
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name: "error: LHS not column expr in binary expr",
-			expr: &physical.BinaryExpr{
-				Left:  physical.NewLiteral("foo"),
-				Right: physical.NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name: "error: LHS column not metadata type",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeBuiltin}}, // Not metadata
-				Right: physical.NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name: "error: RHS not literal for EQ",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Right: &physical.ColumnExpr{Ref: types.ColumnRef{Column: "bar", Type: types.ColumnTypeMetadata}}, // Not literal
-				Op:    types.BinaryOpEq,
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name: "error: RHS literal not string for EQ",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "foo", Type: types.ColumnTypeMetadata}},
-				Right: physical.NewLiteral(int64(123)), // Not string
-				Op:    types.BinaryOpEq,
-			},
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-		{
-			name:         "error: unsupported expression type (LiteralExpr)",
-			expr:         physical.NewLiteral("just a string"),
-			expectedPred: nil,
-			expectedErr:  true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			pred, err := mapMetadataPredicate(tc.expr)
-
-			if tc.expectedErr {
-				require.Error(t, err)
-				if tc.expectedErrAs != nil {
-					require.ErrorAs(t, err, tc.expectedErrAs)
-				}
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.expectedPred, pred)
-			}
-		})
-	}
-}
-
-func TestMapMessagePredicate(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		expr         physical.Expression
-		expectedErr  string
-		expectedType string
-	}{
-		{
-			name: "string match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral("dataobjscan"),
-				Op:    types.BinaryOpMatchSubstr,
-			},
-			expectedType: "logs.LogMessageFilterRowPredicate",
-		},
-		{
-			name: "not string match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral("dataobjscan"),
-				Op:    types.BinaryOpNotMatchSubstr,
-			},
-			expectedType: "logs.LogMessageFilterRowPredicate",
-		},
-		{
-			name: "regex match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
-				Op:    types.BinaryOpMatchRe,
-			},
-			expectedType: "logs.LogMessageFilterRowPredicate",
-		},
-		{
-			name: "not regex match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral(`\d{4}-\d{2}-\d{2}`),
-				Op:    types.BinaryOpNotMatchRe,
-			},
-			expectedType: "logs.LogMessageFilterRowPredicate",
-		},
-		{
-			name: "pattern match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral("<_> dataobj <_>"),
-				Op:    types.BinaryOpMatchPattern,
-			},
-			expectedErr: "unsupported binary operator (MATCH_PAT) for log message predicate",
-		},
-		{
-			name: "not pattern match filter",
-			expr: &physical.BinaryExpr{
-				Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-				Right: physical.NewLiteral("<_> dataobj <_>"),
-				Op:    types.BinaryOpNotMatchPattern,
-			},
-			expectedErr: "unsupported binary operator (NOT_MATCH_PAT) for log message predicate",
-		},
-		{
-			name: "and filter",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-					Right: physical.NewLiteral("foo"),
-					Op:    types.BinaryOpMatchSubstr,
-				},
-				Right: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpNotMatchSubstr,
-				},
-				Op: types.BinaryOpAnd,
-			},
-			expectedType: "logs.AndRowPredicate",
-		},
-		{
-			name: "or filter",
-			expr: &physical.BinaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-					Right: physical.NewLiteral("foo"),
-					Op:    types.BinaryOpMatchSubstr,
-				},
-				Right: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-					Right: physical.NewLiteral("bar"),
-					Op:    types.BinaryOpNotMatchSubstr,
-				},
-				Op: types.BinaryOpOr,
-			},
-			expectedType: "logs.OrRowPredicate",
-		},
-		{
-			name: "not filter",
-			expr: &physical.UnaryExpr{
-				Left: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
-					Right: physical.NewLiteral("foo"),
-					Op:    types.BinaryOpMatchSubstr,
-				},
-				Op: types.UnaryOpNot,
-			},
-			expectedType: "logs.NotRowPredicate",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Logf("%s", tc.expr)
-			got, err := mapMessagePredicate(tc.expr)
-			if tc.expectedErr != "" {
-				require.ErrorContains(t, err, tc.expectedErr)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.expectedType, fmt.Sprintf("%T", got))
-			}
-		})
 	}
 }

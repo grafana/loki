@@ -47,7 +47,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				if err := decodeRow(streamsColumns, row, &stream, nil); err != nil {
+				if err := decodeRow(metadata.GetColumns(), row, &stream, nil); err != nil {
 					return err
 				}
 
