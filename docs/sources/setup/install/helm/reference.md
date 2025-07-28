@@ -6572,7 +6572,7 @@ See values.yaml
 		<tr>
 			<td>loki.commonConfig.compactor_grpc_address</td>
 			<td>string</td>
-			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.  If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
 			<td><pre lang="json">
 "{{ include \"loki.compactorAddress\" . }}"
 </pre>
