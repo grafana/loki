@@ -19,6 +19,7 @@ import (
 // - [arrow.INT64] maps to [datasetmd.VALUE_TYPE_INT64].
 // - [arrow.UINT64] maps to [datasetmd.VALUE_TYPE_UINT64].
 // - [arrow.TIMESTAMP] maps to [datasetmd.VALUE_TYPE_INT64].
+// - [arrow.STRING] maps to [datasetmd.VALUE_TYPE_BYTE_ARRAY].
 // - [arrow.BINARY] maps to [datasetmd.VALUE_TYPE_BYTE_ARRAY].
 //
 // DatasetType returns [datasetmd.VALUE_TYPE_UNSPECIFIED], false for
@@ -33,6 +34,8 @@ func DatasetType(arrowType arrow.DataType) (datasetmd.ValueType, bool) {
 		return datasetmd.VALUE_TYPE_UINT64, true
 	case arrow.TIMESTAMP:
 		return datasetmd.VALUE_TYPE_INT64, true
+	case arrow.STRING:
+		return datasetmd.VALUE_TYPE_BYTE_ARRAY, true
 	case arrow.BINARY:
 		return datasetmd.VALUE_TYPE_BYTE_ARRAY, true
 	}
@@ -47,7 +50,7 @@ func DatasetType(arrowType arrow.DataType) (datasetmd.ValueType, bool) {
 //
 // - For [datasetmd.VALUE_TYPE_INT64], s must be a [scalar.Int64] or [scalar.Timestamp].
 // - For [datasetmd.VALUE_TYPE_UINT64], s must be a [scalar.Uint64].
-// - For [datasetmd.VALUE_TYPE_BYTE_ARRAY], s must be a [scalar.Binary].
+// - For [datasetmd.VALUE_TYPE_BYTE_ARRAY], s must be a [scalar.Binary] or [scalar.String].
 //
 // If s references allocated memory, FromScalar will hold a reference to that
 // memory. Callers are responsible for releasing the scalar after the returned
@@ -82,15 +85,16 @@ func FromScalar(s scalar.Scalar, toType datasetmd.ValueType) dataset.Value {
 		return dataset.Uint64Value(s.Value)
 
 	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		s, ok := s.(*scalar.Binary)
-		if !ok {
+		switch s := s.(type) {
+		case *scalar.String:
+			s.Retain()
+			return dataset.ByteArrayValue(s.Value.Bytes())
+		case *scalar.Binary:
+			s.Retain()
+			return dataset.ByteArrayValue(s.Value.Bytes())
+		default:
 			panic(fmt.Sprintf("arrowconv.FromScalar: invalid conversion to BYTE_ARRAY; got %T, want *scalar.Binary", s))
 		}
-
-		// Retain the scalar to ensure that alloced memory doesn't get overwritten
-		// while the returned value is still active.
-		s.Retain()
-		return dataset.ByteArrayValue(s.Value.Bytes())
 
 	default:
 		panic(fmt.Sprintf("arrowconv.FromScalar: unsupported conversion to dataset.Value type %s", toType))
@@ -106,6 +110,7 @@ func FromScalar(s scalar.Scalar, toType datasetmd.ValueType) dataset.Value {
 //   - For [arrow.UINT64], v must be a [datasetmd.VALUE_TYPE_UINT64].
 //   - For [arrow.TIMESTAMP], v must be a [datasetmd.VALUE_TYPE_INT64], which
 //     will be converted into a nanosecond timestamp.
+//   - For [arrow.STRING], v must be a [datasetmd.VALUE_TYPE_BYTE_ARRAY].
 //   - For [arrow.BINARY], v must be a [datasetmd.VALUE_TYPE_BYTE_ARRAY].
 //
 // If v is nil, ToScalar returns a null scalar of the specified type. If toType
@@ -138,6 +143,12 @@ func ToScalar(v dataset.Value, toType arrow.DataType) scalar.Scalar {
 			panic(fmt.Sprintf("arrowconv.ToScalar: invalid conversion to TIMESTAMP; got %s, want %s", got, want))
 		}
 		return scalar.NewTimestampScalar(arrow.Timestamp(v.Int64()), toType)
+
+	case arrow.STRING:
+		if got, want := v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY; got != want {
+			panic(fmt.Sprintf("arrowconv.ToScalar: invalid conversion to STRING; got %s, want %s", got, want))
+		}
+		return scalar.NewStringScalarFromBuffer(memory.NewBufferBytes(v.ByteArray()))
 
 	case arrow.BINARY:
 		if got, want := v.Type(), datasetmd.VALUE_TYPE_BYTE_ARRAY; got != want {
