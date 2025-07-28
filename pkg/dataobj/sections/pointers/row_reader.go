@@ -117,10 +117,11 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 func (r *RowReader) initReader(ctx context.Context) error {
 	dec := newDecoder(r.sec.reader)
 
-	columnDescs, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+		return fmt.Errorf("reading metadata: %w", err)
 	}
+	columnDescs := metadata.GetColumns()
 
 	dset, err := newColumnsDataset(r.sec.Columns())
 	if err != nil {

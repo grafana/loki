@@ -37,9 +37,8 @@ func buildPointersDecoder(t *testing.T, pageSize int) *Section {
 	s := NewBuilder(nil, pageSize)
 	for _, d := range pointerTestData {
 		if d.PointerKind == PointerKindStreamIndex {
-			s.RecordStreamRef(d.Path, d.StreamIDRef, d.StreamID)
-			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StartTs, d.UncompressedSize)
-			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.EndTs, 0)
+			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StreamID, d.StartTs, d.UncompressedSize)
+			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StreamID, d.EndTs, 0)
 		} else {
 			s.RecordColumnIndex(d.Path, d.Section, d.ColumnName, d.ColumnIndex, d.ValuesBloomFilter)
 		}
