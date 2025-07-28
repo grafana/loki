@@ -7,13 +7,13 @@ on:
         required: false
         default: 'main'
         type: 'string'
-      test_dataobj_v1:
-        description: 'Test V1 data object store'
+      test_dataobj_old_engine:
+        description: 'Benchmark data object store with old engine'
         required: false
         default: true
         type: 'boolean'
-      test_dataobj_v2:
-        description: 'Test V2 data object store'
+      test_dataobj_new_engine:
+        description: 'Benchmark data object store with new engine'
         required: false
         default: false # Disabled by default due to less complete implementation
         type: 'boolean'
@@ -21,6 +21,11 @@ on:
         description: 'Fail fast on first test failure'
         required: false
         default: true
+        type: 'boolean'
+      instant_queries:
+        description: 'Run correctness tests for instant queries'
+        required: false
+        default: false
         type: 'boolean'
 permissions: {}
 jobs:
@@ -66,8 +71,8 @@ jobs:
           STORES=()
 
           # Use explicit equality checks to avoid template injection.
-          ${{ inputs.test_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.test_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.test_dataobj_old_engine == true }} && STORES+=("dataobj")
+          ${{ inputs.test_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
@@ -110,6 +115,7 @@ jobs:
           go test \
             -v -slow-tests \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
         working-directory: ./pkg/logql/bench

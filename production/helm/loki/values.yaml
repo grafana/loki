@@ -199,8 +199,8 @@ loki:
     runtime_config:
       file: /etc/loki/runtime-config/runtime-config.yaml
 
+    {{- if .Values.chunksCache.enabled }}
     {{- with .Values.chunksCache }}
-    {{- if .enabled }}
     chunk_store_config:
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
@@ -216,7 +216,26 @@ loki:
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
-    {{- end }}
+      {{- end }}
+      {{- with .Values.chunksCache.l2 }}
+      {{- if .enabled }}
+      l2_chunk_cache_handoff: {{ .l2ChunkCacheHandoff }}
+      chunk_cache_config_l2:
+        default_validity: {{ .defaultValidity }}
+        background:
+          writeback_goroutines: {{ .writebackParallelism }}
+          writeback_buffer: {{ .writebackBuffer }}
+          writeback_size_limit: {{ .writebackSizeLimit }}
+        memcached:
+          batch_size: {{ .batchSize }}
+          parallelism: {{ .parallelism }}
+        memcached_client:
+          addresses: {{ .addresses }}
+          consistent_hash: true
+          timeout: {{ .timeout }}
+          max_idle_conns: 72
+      {{- end }}
+      {{- end }}
     {{- end }}
 
     {{- if .Values.loki.schemaConfig }}
@@ -3287,7 +3306,7 @@ resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3385,10 +3404,12 @@ resultsCache:
     # -- PVC additional labels
     labels: {}
 chunksCache:
+  # -- Append to the name of the resources to make names different for l1 and l2
+  suffix: ""
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3397,7 +3418,7 @@ chunksCache:
   timeout: 2000ms
   # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
   defaultValidity: 0s
-  # -- Total number of chunks-cache replicas
+  # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
   replicas: 1
   # -- Port of the chunks-cache service
   port: 11211
@@ -3487,8 +3508,117 @@ chunksCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
-    # -- PVC additional labels
     labels: {}
+  # -- l2 memcache configuration
+  l2:
+    # -- Append to the name of the resources to make names different for l1 and l2
+    suffix: "l2"
+    # -- The age of chunks should be transfered from l1 cache to l2
+    # 4 days
+    l2ChunkCacheHandoff: 345600s
+    # -- Specifies whether memcached based chunks-cache-l2 should be enabled
+    enabled: false
+    # -- Comma separated addresses list in DNS Service Discovery format
+    addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc
+    # -- Batchsize for sending and receiving chunks from chunks cache
+    batchSize: 4
+    # -- Parallel threads for sending and receiving chunks from chunks cache
+    parallelism: 5
+    # -- Memcached operation timeout
+    timeout: 2000ms
+    # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
+    defaultValidity: 0s
+    # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
+    replicas: 1
+    # -- Port of the chunks-cache-l2 service
+    port: 11211
+    # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
+    allocatedMemory: 8192
+    # -- Maximum item memory for chunks-cache-l2 (in MB).
+    maxItemMemory: 5
+    # -- Maximum number of connections allowed
+    connectionLimit: 16384
+    # -- Max memory to use for cache write back
+    writebackSizeLimit: 500MB
+    # -- Max number of objects to use for cache write back
+    writebackBuffer: 500000
+    # -- Number of parallel threads for cache write back
+    writebackParallelism: 1
+    # -- Extra init containers for chunks-cache-l2 pods
+    initContainers: []
+    # -- Annotations for the chunks-cache-l2 pods
+    annotations: {}
+    # -- Node selector for chunks-cach-l2 pods
+    nodeSelector: {}
+    # -- Affinity for chunks-cache-l2 pods
+    affinity: {}
+    # -- topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints.
+    # labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.
+    topologySpreadConstraints: []
+    #  maxSkew: 1
+    #  topologyKey: kubernetes.io/hostname
+    #  whenUnsatisfiable: ScheduleAnyway
+    # -- Tolerations for chunks-cache-l2 pods
+    tolerations: []
+    # -- Pod Disruption Budget maxUnavailable
+    maxUnavailable: 1
+    # -- The name of the PriorityClass for chunks-cache-l2 pods
+    priorityClassName: null
+    # -- Labels for chunks-cache-l2 pods
+    podLabels: {}
+    # -- Annotations for chunks-cache-l2 pods
+    podAnnotations: {}
+    # -- Management policy for chunks-cache-l2 pods
+    podManagementPolicy: Parallel
+    # -- Grace period to allow the chunks-cache-l2 to shutdown before it is killed
+    terminationGracePeriodSeconds: 60
+    # -- Stateful chunks-cache strategy
+    statefulStrategy:
+      type: RollingUpdate
+    # -- Add extended options for chunks-cache-l2 memcached container. The format is the same as for the memcached -o/--extend flag.
+    # Example:
+    # extraExtendedOptions: 'tls,no_hashexpand'
+    extraExtendedOptions: ""
+    # -- Additional CLI args for chunks-cache-l2
+    extraArgs: {}
+    # -- Additional containers to be added to the chunks-cache-l2 pod.
+    extraContainers: []
+    # -- Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers).
+    # Example:
+    # extraVolumes:
+    # - name: extra-volume
+    #   secret:
+    #    secretName: extra-volume-secret
+    extraVolumes: []
+    # -- Additional volume mounts to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers).
+    # Example:
+    # extraVolumeMounts:
+    # - name: extra-volume
+    #   mountPath: /etc/extra-volume
+    #   readOnly: true
+    extraVolumeMounts: []
+    # -- Resource requests and limits for the chunks-cache-l2
+    # By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).
+    resources: null
+    # -- Service annotations and labels
+    service:
+      annotations: {}
+      labels: {}
+    # -- Persistence settings for the chunks-cache-l2
+    persistence:
+      # -- Enable creating PVCs for the chunks-cache-l2
+      enabled: false
+      # -- Size of persistent disk, must be in G or Gi
+      storageSize: 10G
+      # -- Storage class to be used.
+      # If defined, storageClassName: <storageClass>.
+      # If set to "-", storageClassName: "", which disables dynamic provisioning.
+      # If empty or set to null, no storageClassName spec is
+      # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+      storageClass: null
+      # -- Volume mount path
+      mountPath: /data
+      labels: {}
 ######################################################################################################################
 #
 # Subchart configurations

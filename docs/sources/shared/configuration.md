@@ -146,6 +146,35 @@ ui:
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
 
+  goldfish:
+    # Enable the Goldfish query comparison feature.
+    # CLI flag: -ui.goldfish.enable
+    [enable: <boolean> | default = false]
+
+    # CloudSQL username for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-user
+    [cloudsql_user: <string> | default = ""]
+
+    # CloudSQL host for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-host
+    [cloudsql_host: <string> | default = "127.0.0.1"]
+
+    # CloudSQL port for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-port
+    [cloudsql_port: <int> | default = 3306]
+
+    # CloudSQL database name for Goldfish.
+    # CLI flag: -ui.goldfish.cloudsql-database
+    [cloudsql_database: <string> | default = "goldfish"]
+
+    # Maximum number of database connections for Goldfish.
+    # CLI flag: -ui.goldfish.max-connections
+    [max_connections: <int> | default = 10]
+
+    # Maximum idle time for database connections in seconds.
+    # CLI flag: -ui.goldfish.max-idle-time
+    [max_idle_time: <int> | default = 300]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -863,6 +892,14 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.retain-for
   [retain_for: <duration> | default = 3h]
 
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1506,6 +1543,12 @@ ingest_limits_frontend_client:
 
 # Configuration for profiling options.
 [profiling: <profiling>]
+
+# List of limit fields to publish from the tenant limits endpoint. If empty, all
+# fields are returned. Use YAML field names (e.g., 'retention_period',
+# 'max_query_series').
+# CLI flag: -limits.tenant-limits-allow-publish
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -4438,6 +4481,17 @@ otlp_config:
 # CLI flag: -limits.pattern-persistence-enabled
 [pattern_persistence_enabled: <boolean> | default = false]
 
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
+
+# Minimum pattern rate (samples per second) required for a pattern to be
+# persisted. Patterns with lower rates will be filtered out during persistence.
+# CLI flag: -limits.pattern-rate-threshold
+[pattern_rate_threshold: <float> | default = 1]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
@@ -4836,6 +4890,13 @@ engine:
   # Experimental: Batch size of the next generation query engine.
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
+
+  # Experimental: Maximum total size of future pages for DataObjScan to download
+  # before they are needed, for roundtrip reduction to object storage. Setting
+  # to zero disables downloading future pages. Only used in the next generation
+  # query engine.
+  # CLI flag: -querier.engine.dataobjscan-page-cache-size
+  [dataobjscan_page_cache_size: <int> | default = 0B]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
