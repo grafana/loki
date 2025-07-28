@@ -40,11 +40,11 @@ func TestUpdater(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		var buf bytes.Buffer
-		_, err = builder.Flush(&buf)
+		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
+		t.Cleanup(func() { closer.Close() })
 
-		bucket := newInMemoryBucket(t, tenantID, unixTime(0), &buf)
+		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
 		builder.Reset()
 
 		updater := newUpdater(t, tenantID, bucket, builder, nil)
@@ -66,11 +66,11 @@ func TestUpdater(t *testing.T) {
 		err = builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
 		require.NoError(t, err)
 
-		var buf bytes.Buffer
-		_, err = builder.Flush(&buf)
+		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
+		t.Cleanup(func() { closer.Close() })
 
-		bucket := newInMemoryBucket(t, tenantID, unixTime(0), &buf)
+		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
 		builder.Reset()
 
 		updater := newUpdater(t, tenantID, bucket, nil, builder)
@@ -134,7 +134,7 @@ func newUpdater(t *testing.T, tenantID string, bucket objstore.Bucket, v1 *logso
 	return updater
 }
 
-func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, buf *bytes.Buffer) objstore.Bucket {
+func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, obj *dataobj.Object) objstore.Bucket {
 	t.Helper()
 
 	var (
@@ -142,9 +142,12 @@ func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, buf *byt
 		path   = metastorePath(tenantID, window)
 	)
 
-	if buf != nil && buf.Len() > 0 {
-		err := bucket.Upload(context.Background(), path, buf)
+	if obj != nil && obj.Size() > 0 {
+		reader, err := obj.Reader(t.Context())
 		require.NoError(t, err)
+		defer reader.Close()
+
+		require.NoError(t, bucket.Upload(t.Context(), path, reader))
 	}
 
 	return bucket

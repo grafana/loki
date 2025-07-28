@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"slices"
@@ -74,17 +73,16 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	err := b.builder.Append(stream)
 	require.NoError(b.t, err)
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
+	require.NoError(b.t, err)
+	defer closer.Close()
+
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	path, err := b.uploader.Upload(context.Background(), buf)
+	err = b.meta.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
-
-	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
-	require.NoError(b.t, err)
-
-	b.builder.Reset()
 }
 
 func TestStreamIDs(t *testing.T) {
