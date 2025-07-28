@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useCluster } from "@/contexts/use-cluster";
 import { getAvailableRings } from "@/lib/ring-utils";
-import { useFeatureFlags } from "@/contexts/feature-flags";
+import { useFeatureFlags } from "@/contexts/use-feature-flags";
 
 import {
   Sidebar,

@@ -29,6 +29,12 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// PageCacheSize is the total size of additional pages to prefetch into the
+	// reader that the reader may read on future calls. Pages are prefetched any
+	// time a new page is required up to this size. Setting to 0 disables
+	// prefetching additional pages.
+	PageCacheSize int
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -82,6 +88,7 @@ func (opts *ReaderOptions) Validate() error {
 			case AndPredicate: // Nothing to do.
 			case OrPredicate: // Nothing to do.
 			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
@@ -191,7 +198,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -203,7 +210,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
 			default:
 				// We'll only hit this if we added a new column type but forgot to
 				// support reading it.
@@ -244,8 +251,8 @@ func (r *Reader) init() error {
 	innerOptions := dataset.ReaderOptions{
 		Dataset:         dset,
 		Columns:         dset.Columns(),
-		Predicates:      preds,
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Predicates:      orderPredicates(preds),
+		TargetCacheSize: r.opts.PageCacheSize,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
@@ -298,6 +305,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		return dataset.NotPredicate{
 			Inner: mapPredicate(p.Inner, columnLookup),
 		}
+
+	case TruePredicate:
+		return dataset.TruePredicate{}
 
 	case FalsePredicate:
 		return dataset.FalsePredicate{}
@@ -403,6 +413,15 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 }
 
+// Close closes the Reader and releases any resources it holds. Closed Readers
+// can be reused by calling [Reader.Reset].
+func (r *Reader) Close() error {
+	if r.inner != nil {
+		return r.inner.Close()
+	}
+	return nil
+}
+
 func columnsSchema(cols []*Column) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(cols))
 	for _, col := range cols {
@@ -415,8 +434,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:   arrow.Null,
 	ColumnTypeStreamID:  arrow.PrimitiveTypes.Int64,
 	ColumnTypeTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMetadata:  arrow.BinaryTypes.Binary,
-	ColumnTypeMessage:   arrow.BinaryTypes.Binary,
+	ColumnTypeMetadata:  arrow.BinaryTypes.String,
+	ColumnTypeMessage:   arrow.BinaryTypes.String,
 }
 
 func columnToField(col *Column) arrow.Field {

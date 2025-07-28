@@ -205,7 +205,7 @@ func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Con
 	deleteGroups, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
-		RangeValuePrefix: []byte(userID),
+		RangeValuePrefix: []byte(userID + ":"),
 	})
 	if err != nil {
 		return nil, err
