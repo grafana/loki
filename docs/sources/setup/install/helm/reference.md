@@ -6579,6 +6579,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.compactor_grpc_client</td>
+			<td>object</td>
+			<td>Optional compactor grpc client configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.config</td>
 			<td>string</td>
 			<td>Config file contents for Loki</td>
@@ -6718,6 +6727,15 @@ null
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester_client</td>
+			<td>object</td>
+			<td>Optional ingester client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>

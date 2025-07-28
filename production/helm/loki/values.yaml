@@ -567,6 +567,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional ingester client configuration
+  ingester_client: {}
   # --  Optional block builder configuration
   block_builder: {}
   # --  Optional index gateway configuration
