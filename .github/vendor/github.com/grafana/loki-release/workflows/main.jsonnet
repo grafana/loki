@@ -16,7 +16,7 @@
     distMakeTargets=['dist', 'packages'],
     dryRun=false,
     dockerUsername='grafana',
-    golangCiLintVersion='v1.64.5',
+    golangCiLintVersion='v2.3.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
