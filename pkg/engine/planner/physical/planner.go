@@ -317,7 +317,6 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
