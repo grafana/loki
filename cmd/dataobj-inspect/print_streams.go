@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/alecthomas/kingpin/v2"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
