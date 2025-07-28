@@ -193,7 +193,7 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 	}, nil
 }
 
-func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	reader, err := b.Get(ctx, name)
 	if err != nil && !errors.Is(err, errNotFound) {
 		return err
@@ -204,6 +204,8 @@ func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.
 	new, err := f(reader)
 	if err != nil {
 		return err
+	} else if new != nil {
+		defer new.Close()
 	}
 
 	newObj, err := io.ReadAll(new)
