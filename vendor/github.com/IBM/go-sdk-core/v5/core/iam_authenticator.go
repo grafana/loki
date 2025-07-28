@@ -187,6 +187,7 @@ func (authenticator *IamAuthenticator) client() *http.Client {
 				transport := &http.Transport{
 					// #nosec G402
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+					Proxy:           http.ProxyFromEnvironment,
 				}
 				authenticator.Client.Transport = transport
 			}

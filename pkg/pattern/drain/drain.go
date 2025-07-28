@@ -26,18 +26,13 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -50,6 +45,8 @@ type Config struct {
 	ParamString          string
 	MaxEvictionRatio     float64
 	MaxAllowedLineLength int
+	MaxChunkAge          time.Duration
+	SampleInterval       time.Duration
 }
 
 type Limits interface {
@@ -141,21 +138,22 @@ func DefaultConfig() *Config {
 		MaxClusters:          300,
 		MaxEvictionRatio:     0.25,
 		MaxAllowedLineLength: 3000,
+		MaxChunkAge:          time.Hour,
+		SampleInterval:       10 * time.Second,
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, patternWriter aggregation.EntryWriter, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:        config,
-		rootNode:      createNode(),
-		metrics:       metrics,
-		format:        format,
-		patternWriter: patternWriter,
+		config:   config,
+		rootNode: createNode(),
+		metrics:  metrics,
+		format:   format,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -203,14 +201,13 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
-	patternWriter   aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
@@ -223,10 +220,10 @@ func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogClu
 		return nil
 	}
 
-	return d.train(lvl, d.tokens, d.state, ts, lbls)
+	return d.train(d.tokens, d.state, ts)
 }
 
-func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
@@ -260,16 +257,7 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 			Chunks:     Chunks{},
 		}
 		modeTs := model.TimeFromUnixNano(ts)
-		previousSample := matchCluster.append(modeTs)
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(modeTs, d.config.MaxChunkAge, d.config.SampleInterval)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -277,50 +265,11 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		previousSample := matchCluster.append(model.TimeFromUnixNano(ts))
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(model.TimeFromUnixNano(ts), d.config.MaxChunkAge, d.config.SampleInterval)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
-}
-
-func (d *Drain) writePattern(
-	ts model.Time,
-	streamLbls labels.Labels,
-	pattern string,
-	count int64,
-	lvl string,
-) {
-	service := streamLbls.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
-	newLbls := labels.New(
-		labels.Label{Name: constants.PatternLabel, Value: service},
-	)
-
-	newStructuredMetadata := []logproto.LabelAdapter{
-		{Name: constants.LevelLabel, Value: lvl},
-	}
-
-	if d.patternWriter != nil {
-		d.patternWriter.WriteEntry(
-			ts.Time(),
-			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
-			newLbls,
-			newStructuredMetadata,
-		)
-	}
 }
 
 func deduplicatePlaceholders(line string, placeholder string) string {
