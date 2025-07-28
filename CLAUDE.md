@@ -1,6 +1,7 @@
 # Loki Development Guide
 
 ## Build & Test Commands
+
 ```bash
 make all                      # build all binaries
 make loki                     # build loki only
