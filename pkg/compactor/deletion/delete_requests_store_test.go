@@ -536,7 +536,8 @@ func setupStoreType(t *testing.T, storeType DeleteRequestsStoreDBType) *testCont
 }
 
 var (
-	now   = model.Now()
-	user1 = "user1"
-	user2 = "user2"
+	now     = model.Now()
+	user1   = "user1"
+	user2   = "user2"
+	user123 = "user123"
 )

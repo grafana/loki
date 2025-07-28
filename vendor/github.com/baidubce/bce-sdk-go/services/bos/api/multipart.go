@@ -40,8 +40,8 @@ import (
 // RETURNS:
 //   - *InitiateMultipartUploadResult: the result data structure
 //   - error: nil if ok otherwise the specific error
-func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
-	args *InitiateMultipartUploadArgs, ctx *BosContext) (*InitiateMultipartUploadResult, error) {
+func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string, args *InitiateMultipartUploadArgs,
+	ctx *BosContext, options ...Option) (*InitiateMultipartUploadResult, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.POST)
@@ -51,6 +51,13 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 		contentType = RAW_CONTENT_TYPE
 	}
 	req.SetHeader(http.CONTENT_TYPE, contentType)
+	// Joiner for generate the user id list string for grant acl header
+	joiner := func(ids []string) string {
+		for i := range ids {
+			ids[i] = "id=\"" + ids[i] + "\""
+		}
+		return strings.Join(ids, ",")
+	}
 
 	// Optional arguments settings
 	if args != nil {
@@ -58,8 +65,20 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 			http.CACHE_CONTROL:       args.CacheControl,
 			http.CONTENT_DISPOSITION: args.ContentDisposition,
 			http.EXPIRES:             args.Expires,
+			http.CONTENT_ENCODING:    args.ContentEncoding,
 		})
-
+		if args.ObjectExpires > 0 {
+			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
+		}
+		if args.CopySource != "" {
+			req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(args.CopySource, false))
+		}
+		if len(args.GrantRead) != 0 {
+			req.SetHeader(http.BCE_GRANT_READ, joiner(args.GrantRead))
+		}
+		if len(args.GrantFullControl) != 0 {
+			req.SetHeader(http.BCE_GRANT_FULL_CONTROL, joiner(args.GrantFullControl))
+		}
 		if validStorageClass(args.StorageClass) {
 			req.SetHeader(http.BCE_STORAGE_CLASS, args.StorageClass)
 		} else {
@@ -86,7 +105,10 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 		}
 
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -117,8 +139,8 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 // RETURNS:
 //   - string: the etag of the uploaded part
 //   - error: nil if ok otherwise the specific error
-func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
-	content *bce.Body, args *UploadPartArgs, ctx *BosContext) (string, error) {
+func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int, content *bce.Body,
+	args *UploadPartArgs, ctx *BosContext, options ...Option) (string, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
@@ -151,7 +173,10 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 		}
 
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -189,8 +214,8 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 // RETURNS:
 //   - string: the etag of the uploaded part
 //   - error: nil if ok otherwise the specific error
-func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNumber int,
-	content []byte, args *UploadPartArgs, ctx *BosContext) (string, error) {
+func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNumber int, content []byte,
+	args *UploadPartArgs, ctx *BosContext, options ...Option) (string, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
@@ -245,6 +270,10 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
 	}
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return "", bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequestFromBytes(cli, req, resp, ctx, content); err != nil {
@@ -281,7 +310,7 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 //   - *CopyObjectResult: the lastModified and eTag of the part
 //   - error: nil if ok otherwise the specific error
 func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, partNumber int,
-	args *UploadPartCopyArgs, ctx *BosContext) (*CopyObjectResult, error) {
+	args *UploadPartCopyArgs, ctx *BosContext, options ...Option) (*CopyObjectResult, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
@@ -312,7 +341,10 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -341,8 +373,8 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 // RETURNS:
 //   - *CompleteMultipartUploadResult: the result data
 //   - error: nil if ok otherwise the specific error
-func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string,
-	body *bce.Body, args *CompleteMultipartUploadArgs, ctx *BosContext) (*CompleteMultipartUploadResult, error) {
+func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, body *bce.Body,
+	args *CompleteMultipartUploadArgs, ctx *BosContext, options ...Option) (*CompleteMultipartUploadResult, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.POST)
@@ -356,25 +388,33 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string,
 	}
 	req.SetBody(body)
 
-	// Optional arguments settings
-	if args.UserMeta != nil {
-		if err := setUserMetadata(req, args.UserMeta); err != nil {
-			return nil, err
+	if args != nil {
+		// Optional arguments settings
+		if args.UserMeta != nil {
+			if err := setUserMetadata(req, args.UserMeta); err != nil {
+				return nil, err
+			}
+		}
+		if len(args.Process) != 0 {
+			req.SetHeader(http.BCE_PROCESS, args.Process)
+		}
+		if len(args.ContentCrc32) != 0 {
+			req.SetHeader(http.BCE_CONTENT_CRC32, args.ContentCrc32)
+		}
+		if len(args.ContentCrc32c) != 0 {
+			req.SetHeader(http.BCE_CONTENT_CRC32C, args.ContentCrc32c)
+		}
+		if args.ContentCrc32cFlag {
+			req.SetHeader(http.BCE_CONTENT_CRC32C_FLAG, strconv.FormatBool(args.ContentCrc32cFlag))
+		}
+		if args.ObjectExpires > 0 {
+			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
 		}
 	}
-	if len(args.Process) != 0 {
-		req.SetHeader(http.BCE_PROCESS, args.Process)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
-	if len(args.ContentCrc32) != 0 {
-		req.SetHeader(http.BCE_CONTENT_CRC32, args.ContentCrc32)
-	}
-	if len(args.ContentCrc32c) != 0 {
-		req.SetHeader(http.BCE_CONTENT_CRC32C, args.ContentCrc32c)
-	}
-	if args.ContentCrc32cFlag {
-		req.SetHeader(http.BCE_CONTENT_CRC32C_FLAG, strconv.FormatBool(args.ContentCrc32cFlag))
-	}
-
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -411,12 +451,16 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string,
 //
 // RETURNS:
 //   - error: nil if ok otherwise the specific error
-func AbortMultipartUpload(cli bce.Client, bucket, object, uploadId string, ctx *BosContext) error {
+func AbortMultipartUpload(cli bce.Client, bucket, object, uploadId string, ctx *BosContext, options ...Option) error {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.DELETE)
 	req.SetParam("uploadId", uploadId)
 	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return err
@@ -442,8 +486,8 @@ func AbortMultipartUpload(cli bce.Client, bucket, object, uploadId string, ctx *
 // RETURNS:
 //   - *ListPartsResult: the uploaded parts info result
 //   - error: nil if ok otherwise the specific error
-func ListParts(cli bce.Client, bucket, object, uploadId string,
-	args *ListPartsArgs, ctx *BosContext) (*ListPartsResult, error) {
+func ListParts(cli bce.Client, bucket, object, uploadId string, args *ListPartsArgs,
+	ctx *BosContext, options ...Option) (*ListPartsResult, error) {
 	req := &BosRequest{}
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
@@ -458,7 +502,10 @@ func ListParts(cli bce.Client, bucket, object, uploadId string,
 			req.SetParam("maxParts", fmt.Sprintf("%d", args.MaxParts))
 		}
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
@@ -484,8 +531,8 @@ func ListParts(cli bce.Client, bucket, object, uploadId string,
 // RETURNS:
 //   - *ListMultipartUploadsResult: the unfinished uploaded parts info result
 //   - error: nil if ok otherwise the specific error
-func ListMultipartUploads(cli bce.Client, bucket string,
-	args *ListMultipartUploadsArgs, ctx *BosContext) (*ListMultipartUploadsResult, error) {
+func ListMultipartUploads(cli bce.Client, bucket string, args *ListMultipartUploadsArgs,
+	ctx *BosContext, options ...Option) (*ListMultipartUploadsResult, error) {
 	req := &BosRequest{}
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.GET)
@@ -507,7 +554,10 @@ func ListMultipartUploads(cli bce.Client, bucket string,
 			req.SetParam("prefix", args.Prefix)
 		}
 	}
-
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
 	// Send request and get the result
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
