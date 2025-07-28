@@ -66,7 +66,7 @@ func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expressi
 	}
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyPredicatePushdown(child, predicate); !ok {
-			return ok
+			return false
 		}
 	}
 	return true
@@ -198,15 +198,32 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// Always project timestamp column
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
-		return r.applyProjectionPushdown(node, projections)
-	}
+		return r.applyProjectionPushdown(node, projections, false)
+	case *Filter:
+		projections := extractColumnsFromPredicates(node.Predicates)
+		if len(projections) == 0 {
+			return false
+		}
 
+		// Filter nodes should only add their predicate columns to projections when
+		// there's already a projection list in the plan (indicating a metric query).
+		// For log queries that read all columns, filter columns should not be projected.
+		//
+		// Setting applyIfNotEmpty argument as true for this reason.
+		return r.applyProjectionPushdown(node, projections, true)
+	}
 	return false
 }
 
-func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []ColumnExpression) bool {
+// applyProjectionPushdown applies the projection pushdown rule to the given node.
+// if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
+func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
 	switch node := node.(type) {
 	case *DataObjScan:
+		if len(node.Projections) == 0 && applyIfNotEmpty {
+			return false
+		}
+
 		// Add to scan projections if not already present
 		changed := false
 		for _, colExpr := range projections {
@@ -235,7 +252,7 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 
 	anyChanged := false
 	for _, child := range r.plan.Children(node) {
-		if changed := r.applyProjectionPushdown(child, projections); changed {
+		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
 			anyChanged = true
 		}
 	}
@@ -298,16 +315,56 @@ func (o *optimization) applyRules(node Node) bool {
 
 // The optimizer can optimize physical plans using the provided optimization passes.
 type optimizer struct {
-	plan   *Plan
-	passes []*optimization
+	plan          *Plan
+	optimisations []*optimization
 }
 
 func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
-	return &optimizer{plan: plan, passes: passes}
+	return &optimizer{plan: plan, optimisations: passes}
 }
 
 func (o *optimizer) optimize(node Node) {
-	for _, pass := range o.passes {
-		pass.optimize(node)
+	for _, optimisation := range o.optimisations {
+		optimisation.optimize(node)
 	}
+}
+
+func extractColumnsFromPredicates(predicates []Expression) []ColumnExpression {
+	columns := make([]ColumnExpression, 0, len(predicates))
+	for _, p := range predicates {
+		extractColumnsFromExpression(p, &columns)
+	}
+
+	return deduplicateColumns(columns)
+}
+
+func extractColumnsFromExpression(expr Expression, columns *[]ColumnExpression) {
+	switch e := expr.(type) {
+	case *ColumnExpr:
+		*columns = append(*columns, e)
+	case *BinaryExpr:
+		extractColumnsFromExpression(e.Left, columns)
+		extractColumnsFromExpression(e.Right, columns)
+	case *UnaryExpr:
+		extractColumnsFromExpression(e.Left, columns)
+	default:
+		// Ignore other expression types
+	}
+}
+
+func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
+	seen := make(map[string]bool)
+	var result []ColumnExpression
+
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			key := colExpr.Ref.Column
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, col)
+			}
+		}
+	}
+
+	return result
 }

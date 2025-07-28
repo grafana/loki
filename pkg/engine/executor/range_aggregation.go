@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -54,7 +55,7 @@ func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluato
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *RangeAggregationPipeline) Read() error {
+func (r *RangeAggregationPipeline) Read(ctx context.Context) error {
 	// if the state already has an error, do not attempt to read.
 	if r.state.err != nil {
 		return r.state.err
@@ -64,7 +65,7 @@ func (r *RangeAggregationPipeline) Read() error {
 		r.state.batch.Release()
 	}
 
-	record, err := r.read()
+	record, err := r.read(ctx)
 	r.state = newState(record, err)
 
 	if err != nil {
@@ -77,7 +78,7 @@ func (r *RangeAggregationPipeline) Read() error {
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausing all inputs.
-func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
+func (r *RangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		isTSInRange  func(t time.Time) bool
 		tsColumnExpr = &physical.ColumnExpr{
@@ -106,7 +107,7 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
-			if err := input.Read(); err != nil {
+			if err := input.Read(ctx); err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
@@ -125,7 +126,7 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 					return nil, err
 				}
 
-				if vec.Type() != datatype.String {
+				if vec.Type() != datatype.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
 				}
 
@@ -163,15 +164,15 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 	fields = append(fields,
 		arrow.Field{
 			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     arrow.FixedWidthTypes.Timestamp_ns,
+			Type:     datatype.Arrow.Timestamp,
 			Nullable: false,
 			Metadata: datatype.ColumnMetadataBuiltinTimestamp,
 		},
 		arrow.Field{
 			Name:     types.ColumnNameGeneratedValue,
-			Type:     arrow.PrimitiveTypes.Int64,
+			Type:     datatype.Arrow.Integer,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer), // needs a new ColumnType, ColumnTypeComputed or Generated?
+			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer),
 		},
 	)
 
@@ -183,9 +184,9 @@ func (r *RangeAggregationPipeline) read() (arrow.Record, error) {
 
 		fields = append(fields, arrow.Field{
 			Name:     columnExpr.Ref.Column,
-			Type:     arrow.BinaryTypes.String,
+			Type:     datatype.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(columnExpr.Ref.Type, datatype.String),
+			Metadata: datatype.ColumnMetadata(columnExpr.Ref.Type, datatype.Loki.String),
 		})
 	}
 

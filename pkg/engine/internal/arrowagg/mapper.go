@@ -1,11 +1,6 @@
 package arrowagg
 
 import (
-	"hash/maphash"
-	"runtime"
-	"sync"
-	"weak"
-
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
@@ -13,17 +8,18 @@ import (
 // schema.
 //
 // Mapper caches mappings to speed up repeated lookups. Caches are cleared as
-// input [*arrow.Schema]s are garbage collected, or when calling
-// [Mapping.Reset].
+// [Mapper.RemoveSchema] is called, or when calling [Mapping.Reset].
 type Mapper struct {
 	target   []arrow.Field
-	hash     maphash.Hash
-	mappings sync.Map // map[uint64]weak.Pointer[mapping]
+	mappings map[*arrow.Schema]*mapping
 }
 
 // NewMapper creates a new Mapper that locates the target fields in a schema.
 func NewMapper(target []arrow.Field) *Mapper {
-	return &Mapper{target: target}
+	return &Mapper{
+		target:   target,
+		mappings: make(map[*arrow.Schema]*mapping),
+	}
 }
 
 // FieldIndex returns the index of the targetIndex'd field in the schema, or -1
@@ -32,86 +28,36 @@ func NewMapper(target []arrow.Field) *Mapper {
 //
 // FieldIndex returns -1 if targetIndex is out of bounds for the target slice
 // passed to [NewMapper].
-//
-// FieldIndex panics if encountering an unlikely hash collision between two
-// different schemas.
 func (m *Mapper) FieldIndex(schema *arrow.Schema, targetIndex int) int {
 	if targetIndex < 0 || targetIndex >= len(m.target) {
 		return -1
 	}
 
-	mapping := m.getMapper(schema)
+	mapping := m.getOrMakeMapping(schema)
 	if len(mapping.lookups) <= targetIndex {
 		return -1
 	}
 	return mapping.lookups[targetIndex]
 }
 
-func (m *Mapper) getMapper(schema *arrow.Schema) *mapping {
-	hash := m.hashSchema(schema)
-
-	var created *mapping
-
-Retry:
-	cached, ok := m.mappings.Load(hash)
-	if ok {
-		found := cached.(weak.Pointer[mapping]).Value()
-		if found == nil {
-			// The weak pointer was nil, so the cache entry is awaiting cleanup. To
-			// move forward, we'll delete it now and retry.
-			m.mappings.CompareAndDelete(hash, cached)
-			goto Retry
-		}
-
-		// [maphash] says that it's "collision resistant." If we believe that, then
-		// the birthday paradox tells us there's 50% of a collision when we have
-		// 2^32 cached schemas.
-		//
-		// It seems extremely unlikely for us to have anywhere close to 4.3 billion
-		// schemas in practice, so for now we panic on detecting a collision.
-		//
-		// If we ever hit this, we can consider using a more complex structure to
-		// allow for multiple mappings per hash.
-		if !found.Validate(schema) {
-			panic("arrowagg.Mapper: detected hash collision between two schemas")
-		}
-		return found
+func (m *Mapper) getOrMakeMapping(schema *arrow.Schema) *mapping {
+	if cached, ok := m.mappings[schema]; ok {
+		return cached
 	}
 
-	// Lazily initialize created to defer allocating anything until we know we
-	// might need it.
-	if created == nil {
-		created = newMapping(schema, m.target)
-	}
-
-	wp := weak.Make(created)
-
-	if _, loaded := m.mappings.LoadOrStore(hash, wp); loaded {
-		// Someone else stored a mapping before us; return to Retry.
-		goto Retry
-	}
-
-	// We successfully stored the mapping; add a cleanup to remove the entry when
-	// the schema is garbage collected.
-	runtime.AddCleanup(schema, func(hash uint64) {
-		// We use CompareAndDelete here to ensure that we're only deleting the weak
-		// pointer we contributed. Another goroutine may have already deleted our
-		// entry and replaced it with a new one.
-		m.mappings.CompareAndDelete(hash, wp)
-	}, hash)
-
-	return created
+	res := newMapping(schema, m.target)
+	m.mappings[schema] = res
+	return res
 }
 
-func (m *Mapper) hashSchema(schema *arrow.Schema) uint64 {
-	m.hash.Reset()
-	hashSchema(&m.hash, schema)
-	return m.hash.Sum64()
+// RemoveSchema removes an individual schema from the mapper.
+func (m *Mapper) RemoveSchema(schema *arrow.Schema) {
+	delete(m.mappings, schema)
 }
 
 // Reset resets the mapper, immediately clearing any cached mappings.
 func (m *Mapper) Reset() {
-	m.mappings.Clear()
+	clear(m.mappings)
 }
 
 type mapping struct {
@@ -141,21 +87,4 @@ func newMapping(schema *arrow.Schema, to []arrow.Field) *mapping {
 	}
 
 	return mapping
-}
-
-// Validate checks if m is valid for the given schema. This is used to cheaply
-// detect hash collisions.
-func (m *mapping) Validate(other *arrow.Schema) bool {
-	// Check if we've already checked this schema against the mapping.
-	if _, ok := m.checked[other]; ok {
-		return true
-	}
-
-	// If we haven't checked it yet, do so now.
-	if m.schema.Equal(other) {
-		m.checked[other] = struct{}{}
-		return true
-	}
-
-	return false
 }

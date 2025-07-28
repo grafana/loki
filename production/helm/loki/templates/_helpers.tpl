@@ -36,13 +36,15 @@ Params:
   ctx = . context
   component = component name (optional)
   rolloutZoneName = rollout zone name (optional)
+  suffix = component suffix (optional)
 */}}
 {{- define "loki.resourceName" -}}
 {{- $resourceName := include "loki.fullname" .ctx -}}
 {{- if .component -}}{{- $resourceName = printf "%s-%s" $resourceName .component -}}{{- end -}}
 {{- if and (not .component) .rolloutZoneName -}}{{- printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail -}}{{- end -}}
 {{- if .rolloutZoneName -}}{{- $resourceName = printf "%s-%s" $resourceName .rolloutZoneName -}}{{- end -}}
-{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install or shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness." $resourceName | fail -}}{{- end -}}
+{{- if .suffix -}}{{- $resourceName = printf "%s-%s" $resourceName .suffix -}}{{- end -}}
+{{- if gt (len $resourceName) 253 -}}{{- printf "Resource name (%s) exceeds kubernetes limit of 253 character. To fix: shorten release name if this will be a fresh install, shorten zone names (e.g. \"a\" instead of \"zone-a\") if using zone-awareness or suffix if used for component." $resourceName | fail -}}{{- end -}}
 {{- $resourceName -}}
 {{- end -}}
 
@@ -555,6 +557,14 @@ Memcached Exporter Docker image
 {{- include "loki.image" $dict -}}
 {{- end }}
 
+{{/*
+Memcached Exporter Docker image
+*/}}
+{{- define "loki.memcached.suffix" -}}
+{{- $suffix := default "" . -}}
+{{ if ne $suffix "" }}-{{ $suffix }}{{ end }}
+{{- end }}
+
 {{/* Allow KubeVersion to be overridden. */}}
 {{- define "loki.kubeVersion" -}}
   {{- default .Capabilities.KubeVersion.Version .Values.kubeVersionOverride -}}
@@ -619,6 +629,8 @@ Ingress service paths for distributed deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- $rulerServiceName := include "loki.rulerFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $compactorServiceName "paths" .Values.ingress.paths.compactor)}}
 {{- end -}}
 
 {{/*
@@ -631,6 +643,7 @@ Ingress service paths for legacy simple scalable deployment when backend compone
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- $backendServiceName := include "loki.backendFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -640,6 +653,7 @@ Ingress service paths for legacy simple scalable deployment
 {{- $readServiceName := include "loki.readFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.compactor )}}
 {{- $writeServiceName := include "loki.writeFullname" . }}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
@@ -652,6 +666,7 @@ Ingress service paths for single binary deployment
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.compactor )}}
 {{- end -}}
 
 {{/*
@@ -742,7 +757,7 @@ Create the service endpoint including port for MinIO.
 {{- end -}}
 
 {{/* Snippet for the nginx file used by gateway */}}
-{{- define "loki.nginxFile" }}
+{{- define "loki.nginxFile" -}}
 worker_processes  5;  ## Default: 1
 error_log  /dev/stderr;
 pid        /tmp/nginx.pid;
@@ -793,6 +808,17 @@ http {
   {{- tpl . $ | nindent 2 }}
   {{- end }}
 
+  # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
+  map $http_x_query_tags $query_tags {
+    ""        "noop=";            # When header is empty, set noop=
+    default   $http_x_query_tags; # Otherwise, preserve the original value
+  }
+
+  # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+  proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
     listen             8080 ssl;
@@ -812,6 +838,9 @@ http {
     {{- end }}
 
     location = / {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       return 200 'OK';
       auth_basic off;
     }
@@ -883,100 +912,175 @@ http {
 
     {{- if .Values.loki.ui.gateway.enabled }}
     location ^~ /ui {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     {{- end }}
 
     # Distributor
     location = /api/prom/push {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /loki/api/v1/push {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /distributor/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
     location = /otlp/v1/logs {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $distributorUrl }}$request_uri;
     }
 
     # Ingester
     location = /flush {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location ^~ /ingester/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
     location = /ingester {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
 
     # Ring
     location = /ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # MemberListKV
     location = /memberlist {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     # Ruler
     location = /ruler/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /api/prom/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /api/prom/rules/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /loki/api/v1/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location ^~ /loki/api/v1/rules/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/alerts {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
     location = /prometheus/api/v1/rules {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $rulerUrl }}$request_uri;
     }
 
     # Compactor
     location = /compactor/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/delete {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
     location = /loki/api/v1/cache/generation_numbers {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $compactorUrl }}$request_uri;
     }
 
     # IndexGateway
     location = /indexgateway/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $indexGatewayUrl }}$request_uri;
     }
 
     # QueryScheduler
     location = /scheduler/ring {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $schedulerUrl }}$request_uri;
     }
 
     # Config
     location = /config {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $ingesterUrl }}$request_uri;
     }
 
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
     # Admin API
     location ^~ /admin/api/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
     location = /admin/api {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
     {{- end }}
@@ -984,32 +1088,39 @@ http {
 
     # QueryFrontend, Querier
     location = /api/prom/tail {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location = /loki/api/v1/tail {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     }
     location ^~ /api/prom/ {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /api/prom {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
-    # if the X-Query-Tags header is empty, set a noop= without a value as empty values are not logged
-    set $query_tags $http_x_query_tags;
-    if ($query_tags !~* '') {
-      set $query_tags "noop=";
-    }
     location ^~ /loki/api/v1/ {
-      # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
-      proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1 {
+      {{- with .Values.gateway.nginxConfig.locationSnippet }}
+      {{- tpl . $ | nindent 6 }}
+      {{- end }}
       internal;        # to suppress 301
     }
 
@@ -1170,31 +1281,13 @@ the thanos_storage_config model*/}}
 {{- with .ctx.Values.loki.storage.object_store }}
 {{- if eq .type "s3" }}
 s3:
-  {{- with .s3 }}
-  bucket_name: {{ $bucketName }}
-  endpoint: {{ .endpoint }}
-  access_key_id: {{ .access_key_id }}
-  secret_access_key: {{ .secret_access_key }}
-  region: {{ .region }}
-  insecure: {{ .insecure }}
-  http:
-    {{ toYaml .http | nindent 4 }}
-  sse:
-    {{ toYaml .sse | nindent 4 }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
 {{- else if eq .type "gcs" }}
 gcs:
-  {{- with .gcs }}
-  bucket_name: {{ $bucketName }}
-  service_account: {{ .service_account }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
 {{- else if eq .type "azure" }}
 azure:
-  {{- with .azure }}
-  container_name: {{ $bucketName }}
-  account_name: {{ .account_name }}
-  account_key: {{ .account_key }}
-  {{- end }}
+{{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
 {{- end }}
 storage_prefix: {{ .storage_prefix }}
 {{- end }}

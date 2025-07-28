@@ -1401,13 +1401,12 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:                  stats,
-		origBytes:              b,
-		reader:                 nil, // will be initialized later
-		pool:                   pool,
-		format:                 format,
-		symbolizer:             symbolizer,
-		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
+		stats:      stats,
+		origBytes:  b,
+		reader:     nil, // will be initialized later
+		pool:       pool,
+		format:     format,
+		symbolizer: symbolizer,
 	}
 }
 
@@ -1622,8 +1621,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1653,7 +1651,6 @@ func (si *bufferedIterator) close() {
 	}
 
 	if !si.currStructuredMetadata.IsEmpty() {
-		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
 		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 

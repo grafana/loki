@@ -1893,6 +1893,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for chunks-cache pods</td>
@@ -2010,11 +2019,458 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.l2</td>
+			<td>object</td>
+			<td>l2 memcache configuration</td>
+			<td><pre lang="json">
+{
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
+  "affinity": {},
+  "allocatedMemory": 8192,
+  "annotations": {},
+  "batchSize": 4,
+  "connectionLimit": 16384,
+  "defaultValidity": "0s",
+  "enabled": false,
+  "extraArgs": {},
+  "extraContainers": [],
+  "extraExtendedOptions": "",
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "initContainers": [],
+  "l2ChunkCacheHandoff": "345600s",
+  "maxItemMemory": 5,
+  "maxUnavailable": 1,
+  "nodeSelector": {},
+  "parallelism": 5,
+  "persistence": {
+    "enabled": false,
+    "labels": {},
+    "mountPath": "/data",
+    "storageClass": null,
+    "storageSize": "10G"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "podManagementPolicy": "Parallel",
+  "port": 11211,
+  "priorityClassName": null,
+  "replicas": 1,
+  "resources": null,
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "statefulStrategy": {
+    "type": "RollingUpdate"
+  },
+  "suffix": "l2",
+  "terminationGracePeriodSeconds": 60,
+  "timeout": "2000ms",
+  "tolerations": [],
+  "topologySpreadConstraints": [],
+  "writebackBuffer": 500000,
+  "writebackParallelism": 1,
+  "writebackSizeLimit": "500MB"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.affinity</td>
+			<td>object</td>
+			<td>Affinity for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedMemory</td>
+			<td>int</td>
+			<td>Amount of memory allocated to chunks-cache-l2 for object storage (in MB).</td>
+			<td><pre lang="json">
+8192
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.annotations</td>
+			<td>object</td>
+			<td>Annotations for the chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.batchSize</td>
+			<td>int</td>
+			<td>Batchsize for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+4
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.connectionLimit</td>
+			<td>int</td>
+			<td>Maximum number of connections allowed</td>
+			<td><pre lang="json">
+16384
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.defaultValidity</td>
+			<td>string</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+"0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether memcached based chunks-cache-l2 should be enabled</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI args for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraContainers</td>
+			<td>list</td>
+			<td>Additional containers to be added to the chunks-cache-l2 pod.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraExtendedOptions</td>
+			<td>string</td>
+			<td>Add extended options for chunks-cache-l2 memcached container. The format is the same as for the memcached -o/--extend flag. Example: extraExtendedOptions: 'tls,no_hashexpand'</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumeMounts: - name: extra-volume   mountPath: /etc/extra-volume   readOnly: true</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.initContainers</td>
+			<td>list</td>
+			<td>Extra init containers for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
+			<td>string</td>
+			<td>The age of chunks should be transfered from l1 cache to l2 4 days</td>
+			<td><pre lang="json">
+"345600s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.maxItemMemory</td>
+			<td>int</td>
+			<td>Maximum item memory for chunks-cache-l2 (in MB).</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for chunks-cach-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.parallelism</td>
+			<td>int</td>
+			<td>Parallel threads for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache-l2</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "labels": {},
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache-l2</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podLabels</td>
+			<td>object</td>
+			<td>Labels for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podManagementPolicy</td>
+			<td>string</td>
+			<td>Management policy for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.port</td>
+			<td>int</td>
+			<td>Port of the chunks-cache-l2 service</td>
+			<td><pre lang="json">
+11211
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.replicas</td>
+			<td>int</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.resources</td>
+			<td>string</td>
+			<td>Resource requests and limits for the chunks-cache-l2 By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.service</td>
+			<td>object</td>
+			<td>Service annotations and labels</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.statefulStrategy</td>
+			<td>object</td>
+			<td>Stateful chunks-cache strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+"l2"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the chunks-cache-l2 to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.timeout</td>
+			<td>string</td>
+			<td>Memcached operation timeout</td>
+			<td><pre lang="json">
+"2000ms"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints. labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackBuffer</td>
+			<td>int</td>
+			<td>Max number of objects to use for cache write back</td>
+			<td><pre lang="json">
+500000
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackParallelism</td>
+			<td>int</td>
+			<td>Number of parallel threads for cache write back</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackSizeLimit</td>
+			<td>string</td>
+			<td>Max memory to use for cache write back</td>
+			<td><pre lang="json">
+"500MB"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.maxItemMemory</td>
 			<td>int</td>
 			<td>Maximum item memory for chunks-cache (in MB).</td>
 			<td><pre lang="json">
 5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -2043,6 +2499,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -2096,17 +2553,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>chunksCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>chunksCache.podLabels</td>
 			<td>object</td>
 			<td>Labels for chunks-cache pods</td>
@@ -2145,7 +2591,7 @@ null
 		<tr>
 			<td>chunksCache.replicas</td>
 			<td>int</td>
-			<td>Total number of chunks-cache replicas</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache before being expired</td>
 			<td><pre lang="json">
 1
 </pre>
@@ -2180,6 +2626,15 @@ null
 {
   "type": "RollingUpdate"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -2727,7 +3182,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -3059,6 +3515,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for distributor service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise</td>
 			<td>object</td>
 			<td>Configuration for running Enterprise Loki</td>
@@ -3083,7 +3548,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.1"
+    "tag": "3.5.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3140,7 +3605,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.4.0"
+  "version": "3.5.2"
 }
 </pre>
 </td>
@@ -3260,7 +3725,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -4247,7 +4712,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.28-alpine"
+"1.29-alpine"
 </pre>
 </td>
 		</tr>
@@ -4390,6 +4855,15 @@ See values.yaml
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 "{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -5847,6 +6321,9 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
+    "compactor": [
+      "/loki/api/v1/delete"
+    ],
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
@@ -5893,6 +6370,17 @@ null
 			<td><pre lang="json">
 [
   "loki.example.com"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.paths.compactor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Compactor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/loki/api/v1/delete"
 ]
 </pre>
 </td>
@@ -6060,6 +6548,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.block_builder</td>
+			<td>object</td>
+			<td>Optional block builder configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.commonConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
@@ -6202,7 +6699,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -6252,26 +6749,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.memcached</td>
+			<td>loki.operational_config</td>
 			<td>object</td>
-			<td>Configure memcached as an external cache for chunk and results cache. Disabled by default must enable and specify a host for each cache you would like to use.</td>
+			<td>Optional operational configuration</td>
 			<td><pre lang="json">
-{
-  "chunk_cache": {
-    "batch_size": 256,
-    "enabled": false,
-    "host": "",
-    "parallelism": 10,
-    "service": "memcached-client"
-  },
-  "results_cache": {
-    "default_validity": "12h",
-    "enabled": false,
-    "host": "",
-    "service": "memcached-client",
-    "timeout": "500ms"
-  }
-}
+{}
 </pre>
 </td>
 		</tr>
@@ -6554,7 +7036,7 @@ null
 		<tr>
 			<td>loki.tenants</td>
 			<td>list</td>
-			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br> Example: <pre> tenants:<br>   - name: "test-user-1"<br>     password: "test-password-1"<br>   - name: "test-user-2"<br>     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` </pre></td>
 			<td><pre lang="json">
 []
 </pre>
@@ -6736,6 +7218,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.kind</td>
+			<td>string</td>
+			<td>The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.</td>
+			<td><pre lang="json">
+"DaemonSet"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.labelname</td>
 			<td>string</td>
 			<td>The name of the label to look for at loki when doing the checks.</td>
@@ -6871,6 +7362,15 @@ false
   },
   "readOnlyRootFilesystem": true
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.enabled</td>
+			<td>bool</td>
+			<td>Enable the built in memcached server provided by the chart</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -10169,6 +10669,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for results-cache pods</td>
@@ -10286,6 +10795,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
@@ -10301,6 +10819,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -10314,6 +10833,15 @@ true
 			<td>Enable creating PVCs for the results-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10350,17 +10878,6 @@ null
 			<td>Annotations for results-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>resultsCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -11016,7 +11533,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.6"
+"1.30.7"
 </pre>
 </td>
 		</tr>
@@ -11062,6 +11579,15 @@ true
 			<td>Folder into which the rules will be placed.</td>
 			<td><pre lang="json">
 "/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folderAnnotation</td>
+			<td>string</td>
+			<td>The annotation overwriting the folder value. The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER. Useful for multi-tenancy setups.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

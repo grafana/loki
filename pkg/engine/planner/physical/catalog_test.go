@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -25,15 +26,15 @@ func TestCatalog_ConvertLiteral(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(123),
+			expr:    NewLiteral(int64(123)),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(time.Now()),
+			expr:    NewLiteral(datatype.Timestamp(time.Now().UnixNano())),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(time.Hour),
+			expr:    NewLiteral(datatype.Duration(time.Hour.Nanoseconds())),
 			wantErr: true,
 		},
 		{
@@ -96,7 +97,7 @@ func TestCatalog_ConvertColumnRef(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := convertColumnRef(tt.expr)
+			got, err := convertColumnRef(tt.expr, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				t.Log(err)
@@ -154,7 +155,7 @@ func TestCatalog_ExpressionToMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := expressionToMatchers(tt.expr)
+			got, err := expressionToMatchers(tt.expr, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				t.Log(err)

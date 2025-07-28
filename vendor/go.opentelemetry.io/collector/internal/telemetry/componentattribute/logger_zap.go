@@ -76,6 +76,7 @@ type otelTeeCoreWithAttributes struct {
 	lp          log.LoggerProvider
 	scopeName   string
 	level       zapcore.Level
+	wrapper     func(zapcore.Core) zapcore.Core
 }
 
 var _ coreWithAttributes = (*otelTeeCoreWithAttributes)(nil)
@@ -84,58 +85,28 @@ var _ coreWithAttributes = (*otelTeeCoreWithAttributes)(nil)
 // logs, component attributes are injected as instrumentation scope attributes.
 //
 // This is used when service::telemetry::logs::processors is configured.
-func NewOTelTeeCoreWithAttributes(consoleCore zapcore.Core, lp log.LoggerProvider, scopeName string, level zapcore.Level, attrs attribute.Set) zapcore.Core {
-	// TODO: Use `otelzap.WithAttributes` and remove `LoggerProviderWithAttributes`
-	// once we've upgraded to otelzap v0.11.0.
-	lpwa := LoggerProviderWithAttributes(lp, attrs)
+func NewOTelTeeCoreWithAttributes(consoleCore zapcore.Core, lp log.LoggerProvider, scopeName string, level zapcore.Level, attrs attribute.Set, wrapper func(zapcore.Core) zapcore.Core) zapcore.Core {
 	otelCore, err := zapcore.NewIncreaseLevelCore(otelzap.NewCore(
 		scopeName,
-		otelzap.WithLoggerProvider(lpwa),
+		otelzap.WithLoggerProvider(lp),
+		otelzap.WithAttributes(attrs.ToSlice()...),
 	), zap.NewAtomicLevelAt(level))
 	if err != nil {
 		panic(err)
 	}
 
 	return &otelTeeCoreWithAttributes{
-		Core:        zapcore.NewTee(consoleCore, otelCore),
+		Core:        zapcore.NewTee(consoleCore, wrapper(otelCore)),
 		consoleCore: consoleCore,
 		lp:          lp,
 		scopeName:   scopeName,
 		level:       level,
+		wrapper:     wrapper,
 	}
 }
 
 func (ocwa *otelTeeCoreWithAttributes) withAttributeSet(attrs attribute.Set) zapcore.Core {
-	return NewOTelTeeCoreWithAttributes(
-		tryWithAttributeSet(ocwa.consoleCore, attrs),
-		ocwa.lp, ocwa.scopeName, ocwa.level,
-		attrs,
-	)
-}
-
-type wrapperCoreWithAttributes struct {
-	zapcore.Core
-	from    zapcore.Core
-	wrapper func(zapcore.Core) zapcore.Core
-}
-
-var _ coreWithAttributes = (*wrapperCoreWithAttributes)(nil)
-
-// NewWrapperCoreWithAttributes applies a wrapper function to a core, similar to [zap.WrapCore]. The resulting wrapped core
-// allows setting component attributes on the inner core and reapplying the wrapper function when
-// needed.
-//
-// This is used when adding [zapcore.NewSamplerWithOptions] to our logger stack.
-func NewWrapperCoreWithAttributes(from zapcore.Core, wrapper func(zapcore.Core) zapcore.Core) zapcore.Core {
-	return &wrapperCoreWithAttributes{
-		Core:    wrapper(from),
-		from:    from,
-		wrapper: wrapper,
-	}
-}
-
-func (wcwa *wrapperCoreWithAttributes) withAttributeSet(attrs attribute.Set) zapcore.Core {
-	return NewWrapperCoreWithAttributes(tryWithAttributeSet(wcwa.from, attrs), wcwa.wrapper)
+	return NewOTelTeeCoreWithAttributes(tryWithAttributeSet(ocwa.consoleCore, attrs), ocwa.lp, ocwa.scopeName, ocwa.level, attrs, ocwa.wrapper)
 }
 
 // ZapLoggerWithAttributes creates a Zap Logger with a new set of injected component attributes.

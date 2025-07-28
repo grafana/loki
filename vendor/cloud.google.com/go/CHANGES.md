@@ -2,6 +2,28 @@
 
 
 
+## [0.121.4](https://github.com/googleapis/google-cloud-go/compare/v0.121.3...v0.121.4) (2025-07-17)
+
+
+### Bug Fixes
+
+* **geminidataanalytics:** Correct resource reference type for `parent` field in `data_chat_service.proto` ([98ba6f0](https://github.com/googleapis/google-cloud-go/commit/98ba6f06e69685bca510ca85c12124434f9ba1e8))
+* **internal/postprocessor:** Add git ([#12524](https://github.com/googleapis/google-cloud-go/issues/12524)) ([82030ee](https://github.com/googleapis/google-cloud-go/commit/82030eec5d66f25ebc3fee1fda4b45ced370fc2b))
+
+## [0.121.3](https://github.com/googleapis/google-cloud-go/compare/v0.121.2...v0.121.3) (2025-06-25)
+
+
+### Documentation
+
+* **impersonate:** Address TODO in impersonate/example_test.go ([#12401](https://github.com/googleapis/google-cloud-go/issues/12401)) ([dd096ec](https://github.com/googleapis/google-cloud-go/commit/dd096ec81944e785b9245fda7e7b46e9908cfe8f))
+
+## [0.121.2](https://github.com/googleapis/google-cloud-go/compare/v0.121.1...v0.121.2) (2025-05-21)
+
+
+### Documentation
+
+* **internal/generated:** Remove outdated pubsub snippets ([#12284](https://github.com/googleapis/google-cloud-go/issues/12284)) ([0338a40](https://github.com/googleapis/google-cloud-go/commit/0338a40d70206317d319e69911be0321fbb54e3f))
+
 ## [0.121.1](https://github.com/googleapis/google-cloud-go/compare/v0.121.0...v0.121.1) (2025-05-13)
 
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
@@ -157,22 +158,51 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
+	predicates := make([]Expression, len(lp.Predicates))
+	for i, predicate := range lp.Predicates {
+		predicates[i] = p.convertPredicate(predicate)
+	}
+
 	from, through := ctx.GetResolveTimeRange()
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), from, through)
+
+	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
 
 	nodes := make([]Node, 0, len(objects))
 	for i := range objects {
-		node := &DataObjScan{
-			Location:  objects[i],
-			StreamIDs: streams[i],
-			Sections:  sections[i],
-			Direction: ctx.direction, // apply direction from previously visited Sort node
+		scans := make([]Node, 0, len(sections[i]))
+
+		for _, section := range sections[i] {
+			scan := &DataObjScan{
+				Location:  objects[i],
+				StreamIDs: streams[i],
+				Section:   section,
+				Direction: ctx.direction, // apply direction from previously visited Sort node
+			}
+			p.plan.addNode(scan)
+
+			scans = append(scans, scan)
 		}
-		p.plan.addNode(node)
-		nodes = append(nodes, node)
+
+		if ctx.direction != UNSORTED && len(scans) > 0 {
+			sortMerge := &SortMerge{
+				Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+				Order:  ctx.direction, // apply direction from previously visited Sort node
+			}
+			p.plan.addNode(sortMerge)
+
+			for _, scan := range scans {
+				if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+					return nil, err
+				}
+			}
+
+			nodes = append(nodes, sortMerge)
+		} else {
+			nodes = append(nodes, scans...)
+		}
 	}
 	return nodes, nil
 }
@@ -297,7 +327,6 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},

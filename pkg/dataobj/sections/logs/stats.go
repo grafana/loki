@@ -29,6 +29,7 @@ type (
 		MetadataSize     uint64
 		ValuesCount      uint64
 		Cardinality      uint64
+		ColumnIndex      int64
 
 		Pages []PageStats
 	}
@@ -53,17 +54,18 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
 	dec := newDecoder(section.reader)
-	cols, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("reading columns")
 	}
+	columnDescs := metadata.GetColumns()
 
-	pageSets, err := result.Collect(dec.Pages(ctx, cols))
+	pageSets, err := result.Collect(dec.Pages(ctx, columnDescs))
 	if err != nil {
 		return stats, fmt.Errorf("reading pages: %w", err)
 	}
 
-	for i, col := range cols {
+	for i, col := range columnDescs {
 		stats.CompressedSize += col.Info.CompressedSize
 		stats.UncompressedSize += col.Info.UncompressedSize
 
@@ -79,6 +81,7 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 			MetadataSize:     col.Info.MetadataSize,
 			ValuesCount:      col.Info.ValuesCount,
 			Cardinality:      col.Info.Statistics.GetCardinalityCount(),
+			ColumnIndex:      int64(i),
 		}
 
 		for _, pages := range pageSets[i] {

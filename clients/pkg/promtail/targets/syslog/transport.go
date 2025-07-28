@@ -78,7 +78,7 @@ func (t *baseTransport) maxMessageLength() int {
 }
 
 func (t *baseTransport) connectionLabels(ip string) labels.Labels {
-	lb := labels.NewBuilder(nil)
+	lb := labels.NewBuilder(labels.EmptyLabels())
 	for k, v := range t.config.Labels {
 		lb.Set(string(k), string(v))
 	}
