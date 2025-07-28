@@ -649,7 +649,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Stream
 	b.scratchBuilder.Reset()
 	b.Range(func(name, value []byte) {
-		if labelsContain(b.add[StreamLabel], name) {
+		if !labelsContain(b.add[ParsedLabel], name) && !labelsContain(b.add[StructuredMetadataLabel], name) {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})

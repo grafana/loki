@@ -815,7 +815,7 @@ func logfmtBenchmark(b *testing.B, parser Stage, lines int) {
 		}
 
 		if resLbs.Labels().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
-				b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+				b.Fatalf("label was not extracted correctly! ts was %v, expected 2020-10-18T18:04:22.147378997Z, %+v\n", resLbs.Labels().Get("ts"), resLbs)
 			}
 		}
 	}
