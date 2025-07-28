@@ -69,6 +69,13 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
+	// Init stats object and use the context, otherwise we create a new one every time we increment a stat.
+	var statistics *stats.Context
+	if stats.IsPresent(ctx) {
+		statistics = stats.FromContext(ctx)
+	} else {
+		statistics, ctx = stats.NewContext(ctx)
+	}
 
 	if !r.ready {
 		err := r.init(ctx)
@@ -127,9 +134,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	r.dl.SetReadRange(readRange)
 
 	var (
-		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
-		passCount  int // tracks how many rows passed the predicate
-		statistics = stats.FromContext(ctx)
+		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
+		passCount int // tracks how many rows passed the predicate
 	)
 
 	// If there are no predicates, read all columns in the dataset
@@ -303,6 +309,9 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 	case NotPredicate:
 		return !checkPredicate(p.Inner, lookup, row)
 
+	case TruePredicate:
+		return true
+
 	case FalsePredicate:
 		return false
 
@@ -311,7 +320,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) == 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) == 0
 
 	case InPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -319,29 +328,25 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 			panic("checkPredicate: column not found")
 		}
 
-		found := false
-		for _, v := range p.Values {
-			if CompareValues(row.Values[columnIndex], v) == 0 {
-				found = true
-				break
-			}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type {
+			return false
 		}
-
-		return found
+		return p.Values.Contains(value)
 
 	case GreaterThanPredicate:
 		columnIndex, ok := lookup[p.Column]
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) > 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) > 0
 
 	case LessThanPredicate:
 		columnIndex, ok := lookup[p.Column]
 		if !ok {
 			panic("checkPredicate: column not found")
 		}
-		return CompareValues(row.Values[columnIndex], p.Value) < 0
+		return CompareValues(&row.Values[columnIndex], &p.Value) < 0
 
 	case FuncPredicate:
 		columnIndex, ok := lookup[p.Column]
@@ -482,7 +487,7 @@ func (r *Reader) validatePredicate() error {
 				err = process(p.Column)
 			case FuncPredicate:
 				err = process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
@@ -588,7 +593,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 				process(p.Column)
 			case FuncPredicate:
 				process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
@@ -661,7 +666,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case FuncPredicate, nil:
+	case TruePredicate, FuncPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -711,7 +716,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 		return inner.Inner, nil
 
 	case FalsePredicate:
-		return nil, fmt.Errorf("can't simplify FalsePredicate")
+		return TruePredicate{}, nil
 
 	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
 		return OrPredicate{
@@ -789,15 +794,15 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 
 		switch p := p.(type) {
 		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
-			include = CompareValues(p.Value, minValue) >= 0 && CompareValues(p.Value, maxValue) <= 0
+			include = CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0
 		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
-			include = CompareValues(maxValue, p.Value) > 0
+			include = CompareValues(&maxValue, &p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value
-			include = CompareValues(minValue, p.Value) < 0
+			include = CompareValues(&minValue, &p.Value) < 0
 		case InPredicate:
 			// Check if any value falls within the page's range
-			for _, v := range p.Values {
-				if CompareValues(v, minValue) >= 0 && CompareValues(v, maxValue) <= 0 {
+			for v := range p.Values.Iter() {
+				if CompareValues(&v, &minValue) >= 0 && CompareValues(&v, &maxValue) <= 0 {
 					include = true
 					break
 				}
@@ -849,7 +854,7 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 			columns[p.Column] = struct{}{}
 		case FuncPredicate:
 			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))
@@ -860,17 +865,18 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 	ret := make([]Column, 0, len(columns))
 	idxs := make([]int, 0, len(columns))
 	for c := range columns {
-		if !keep(c) {
-			continue
-		}
-
 		idx, ok := r.origColumnLookup[c]
 		if !ok {
 			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
 		}
 
+		c := r.dl.AllColumns()[idx]
+		if !keep(c) {
+			continue
+		}
+
 		idxs = append(idxs, idx)
-		ret = append(ret, r.dl.AllColumns()[idx])
+		ret = append(ret, c)
 	}
 
 	return ret, idxs, nil

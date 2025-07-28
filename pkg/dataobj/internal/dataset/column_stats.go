@@ -97,10 +97,10 @@ func (csb *columnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.
 			panic(fmt.Sprintf("ColumnStatsBuilder.buildStats: failed to unmarshal max value: %s", err))
 		}
 
-		if i == 0 || CompareValues(pageMin, minValue) < 0 {
+		if i == 0 || CompareValues(&pageMin, &minValue) < 0 {
 			minValue = pageMin
 		}
-		if i == 0 || CompareValues(pageMax, maxValue) > 0 {
+		if i == 0 || CompareValues(&pageMax, &maxValue) > 0 {
 			maxValue = pageMax
 		}
 	}

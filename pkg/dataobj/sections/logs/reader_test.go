@@ -26,24 +26,27 @@ func TestReader(t *testing.T) {
 	defer alloc.AssertSize(t, 0)
 
 	sec := buildSection(t, []logs.Record{
-		{StreamID: 1, Timestamp: unixTime(10), Metadata: nil, Line: []byte("hello, world!")},
-		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
-		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
+		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
+		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
+		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
 	})
 
 	var (
-		traceID = sec.Columns()[2]
-		message = sec.Columns()[3]
+		streamID = sec.Columns()[0]
+		traceID  = sec.Columns()[2]
+		message  = sec.Columns()[3]
 	)
 
+	require.Equal(t, "", streamID.Name)
+	require.Equal(t, logs.ColumnTypeStreamID, streamID.Type)
 	require.Equal(t, "trace_id", traceID.Name)
 	require.Equal(t, logs.ColumnTypeMetadata, traceID.Type)
 	require.Equal(t, "", message.Name)
 	require.Equal(t, logs.ColumnTypeMessage, message.Type)
 
 	r := logs.NewReader(logs.ReaderOptions{
-		Columns:   []*logs.Column{traceID, message},
+		Columns:   []*logs.Column{streamID, traceID, message},
 		Allocator: alloc,
 		Predicates: []logs.Predicate{
 			logs.FuncPredicate{
@@ -53,16 +56,23 @@ func TestReader(t *testing.T) {
 						return false
 					}
 
-					bb := value.(*scalar.Binary).Value.Bytes()
+					bb := value.(*scalar.String).Value.Bytes()
 					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
+				},
+			},
+			logs.InPredicate{
+				Column: streamID,
+				Values: []scalar.Scalar{
+					scalar.NewInt64Scalar(1),
+					scalar.NewInt64Scalar(2),
 				},
 			},
 		},
 	})
 
 	expect := arrowtest.Rows{
-		{"trace_id.metadata.binary": []byte("abcdef"), "message.binary": []byte("goodbye, world!")},
-		{"trace_id.metadata.binary": []byte("123456"), "message.binary": []byte("foo bar")},
+		{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
+		{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
 	}
 
 	actualTable, err := readTable(context.Background(), r)

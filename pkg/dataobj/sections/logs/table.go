@@ -82,8 +82,22 @@ func (t *table) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[
 	})
 }
 
-// Size returns the total size of the table in bytes.
-func (t *table) Size() int {
+// UncompressedSize returns the total uncompressed size of the table in bytes.
+func (t *table) UncompressedSize() int {
+	var size int
+
+	size += t.StreamID.ColumnInfo().UncompressedSize
+	size += t.Timestamp.ColumnInfo().UncompressedSize
+	for _, metadata := range t.Metadatas {
+		size += metadata.ColumnInfo().UncompressedSize
+	}
+	size += t.Message.ColumnInfo().UncompressedSize
+
+	return size
+}
+
+// CompressedSize returns the total compressed size of the table in bytes.
+func (t *table) CompressedSize() int {
 	var size int
 
 	size += t.StreamID.ColumnInfo().CompressedSize

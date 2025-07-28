@@ -78,7 +78,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -215,7 +215,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -276,10 +276,10 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := labels.New(append(ls, labels.Label{
+			shard := labels.StableHash(labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			})...).Hash() % uint64(nShards)
+			})...)) % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -300,7 +300,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 
 		r := labels.New(ls...)
 		stream.Labels = r.String()
-		stream.Hash = r.Hash()
+		stream.Hash = labels.StableHash(r)
 		streams = append(streams, stream)
 	}
 	return streams

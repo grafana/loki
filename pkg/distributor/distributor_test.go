@@ -16,8 +16,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/otlptranslator"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -31,6 +29,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -777,7 +776,7 @@ func TestStreamShard(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 
 	totalEntries := generateEntries(100)
@@ -872,7 +871,7 @@ func TestStreamShard(t *testing.T) {
 				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, labels.StableHash(lbls), s.Stream.Hash)
 				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
@@ -885,7 +884,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 	baseStream.Entries = generateEntries(2)
 
@@ -1176,7 +1175,7 @@ func TestStreamShardByTime(t *testing.T) {
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels:  tc.labels,
-				Hash:    lbls.Hash(),
+				Hash:    labels.StableHash(lbls),
 				Entries: tc.entries,
 			}
 
@@ -1211,10 +1210,9 @@ func generateEntries(n int) []logproto.Entry {
 
 func BenchmarkShardStream(b *testing.B) {
 	stream := logproto.Stream{}
-	labels := "{app='myapp', job='fizzbuzz'}"
-	lbs, err := syntax.ParseLabels(labels)
+	lbs, err := syntax.ParseLabels("{app='myapp', job='fizzbuzz'}")
 	require.NoError(b, err)
-	stream.Hash = lbs.Hash()
+	stream.Hash = labels.StableHash(lbs)
 	stream.Labels = lbs.String()
 
 	allEntries := generateEntries(25000)
@@ -1295,7 +1293,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1337,7 +1335,7 @@ func TestParseStreamLabels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver)
+			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -1345,7 +1343,7 @@ func TestParseStreamLabels(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedLabels.String(), lbsString)
 			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, tc.expectedLabels.Hash(), hash)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
 		})
 	}
 }
@@ -2083,6 +2081,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 		time.Sleep(i.succeedAfter)
 	}
 
+	labelNamer := otlptranslator.LabelNamer{}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, s := range in.Streams {
@@ -2091,7 +2090,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 				if strings.ContainsRune(sm.Value, utf8.RuneError) {
 					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
 				}
-				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+				if sm.Name != labelNamer.Build(sm.Name) {
 					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
 
 				}
@@ -2235,7 +2234,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 

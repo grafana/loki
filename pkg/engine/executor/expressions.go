@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -25,30 +26,79 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}, nil
 
 	case *physical.ColumnExpr:
-		schema := input.Schema()
-		for i := range input.NumCols() {
-			if input.ColumnName(int(i)) == expr.Ref.Column {
-				md := schema.Field(int(i)).Metadata
-				dt, ok := md.GetValue(types.MetadataKeyColumnDataType)
-				if !ok {
-					continue
+		fieldIndices := input.Schema().FieldIndices(expr.Ref.Column)
+		if len(fieldIndices) > 0 {
+			// For non-ambiguous look-ups, look for an exact match
+			if expr.Ref.Type != types.ColumnTypeAmbiguous {
+				for _, idx := range fieldIndices {
+					field := input.Schema().Field(idx)
+					dt, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
+					if !ok {
+						continue
+					}
+
+					ct, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
+					if !ok || ct != expr.Ref.Type.String() {
+						continue
+					}
+
+					return &Array{
+						array: input.Column(idx),
+						dt:    datatype.FromString(dt),
+						ct:    types.ColumnTypeFromString(ct),
+						rows:  input.NumRows(),
+					}, nil
 				}
-				ct, ok := md.GetValue(types.MetadataKeyColumnType)
-				if !ok {
-					ct = types.ColumnTypeAmbiguous.String()
+			} else {
+				// For ambiguous columns, collect all matching columns and order by precedence
+				var vecs []ColumnVector
+				for _, idx := range fieldIndices {
+					field := input.Schema().Field(idx)
+					dt, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
+					if !ok {
+						continue
+					}
+
+					ct, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
+					if !ok {
+						continue
+					}
+
+					// TODO(ashwanth): Support other data types in CoalesceVector.
+					// For now, ensure all vectors are strings to avoid type conflicts.
+					if datatype.Loki.String.String() != dt {
+						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
+					}
+
+					vecs = append(vecs, &Array{
+						array: input.Column(idx),
+						dt:    datatype.FromString(dt),
+						ct:    types.ColumnTypeFromString(ct),
+						rows:  input.NumRows(),
+					})
 				}
-				return &Array{
-					array: input.Column(int(i)),
-					dt:    datatype.FromString(dt),
-					ct:    types.ColumnTypeFromString(ct),
-					rows:  input.NumRows(),
-				}, nil
+
+				if len(vecs) > 1 {
+					// Multiple matches - sort by precedence and create CoalesceVector
+					slices.SortFunc(vecs, func(a, b ColumnVector) int {
+						return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
+					})
+
+					return &CoalesceVector{
+						vectors: vecs,
+						rows:    input.NumRows(),
+					}, nil
+				} else if len(vecs) == 1 {
+					return vecs[0], nil
+				}
 			}
+
 		}
+
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
-			value: datatype.NewStringLiteral(""),
+			value: datatype.NewLiteral(""),
 			rows:  input.NumRows(),
 			ct:    types.ColumnTypeGenerated,
 		}, nil
@@ -227,4 +277,65 @@ func (a *Array) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (a *Array) Len() int64 {
 	return int64(a.array.Len())
+}
+
+// CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
+// Vectors are ordered by precedence (highest precedence first).
+type CoalesceVector struct {
+	vectors []ColumnVector // Ordered by precedence (Generated first, Label last)
+	rows    int64
+}
+
+var _ ColumnVector = (*CoalesceVector)(nil)
+
+// ToArray implements [ColumnVector].
+func (m *CoalesceVector) ToArray() arrow.Array {
+	mem := memory.NewGoAllocator()
+	builder := array.NewBuilder(mem, m.Type().ArrowType())
+	defer builder.Release()
+
+	// use Value() method which already handles precedence logic
+	for i := 0; i < int(m.rows); i++ {
+		val := m.Value(i)
+		if val == nil {
+			builder.AppendNull()
+		} else {
+			// [CoalesceVector] only supports [datatype.String] for now
+			if strVal, ok := val.(string); ok {
+				builder.(*array.StringBuilder).Append(strVal)
+			} else {
+				// Fallback: convert to string representation
+				builder.(*array.StringBuilder).Append(fmt.Sprintf("%v", val))
+			}
+		}
+	}
+
+	return builder.NewArray()
+}
+
+// Value returns the value at the specified index position considering the precedence rules.
+func (m *CoalesceVector) Value(i int) any {
+	// Try each vector in precedence order
+	for _, vec := range m.vectors {
+		if val := vec.Value(i); val != nil {
+			return val
+		}
+	}
+	return nil
+}
+
+// Type implements ColumnVector.
+func (m *CoalesceVector) Type() datatype.DataType {
+	// TODO: Support other data types in CoalesceVector.
+	return datatype.Loki.String
+}
+
+// ColumnType implements ColumnVector.
+func (m *CoalesceVector) ColumnType() types.ColumnType {
+	return types.ColumnTypeAmbiguous
+}
+
+// Len implements ColumnVector.
+func (m *CoalesceVector) Len() int64 {
+	return m.rows
 }

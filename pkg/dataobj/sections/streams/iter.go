@@ -13,8 +13,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 // Iter iterates over streams in the provided decoder. All streams sections are
@@ -47,7 +47,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				if err := decodeRow(streamsColumns, row, &stream, nil); err != nil {
+				if err := decodeRow(metadata.GetColumns(), row, &stream, nil); err != nil {
 					return err
 				}
 
@@ -98,10 +98,8 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
 func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream, sym *symbolizer.Symbolizer) error {
-	labelColumns := labelColumns(columns)
-	stream.Labels = slicegrow.GrowToCap(stream.Labels, labelColumns)
-	stream.Labels = stream.Labels[:labelColumns]
-	nextLabelIdx := 0
+	labelBuilder := labelpool.Get()
+	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
@@ -145,15 +143,11 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream,
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			stream.Labels[nextLabelIdx].Name = column.Info.Name
-
 			if sym != nil {
-				stream.Labels[nextLabelIdx].Value = sym.Get(unsafeString(columnValue.ByteArray()))
+				labelBuilder.Add(column.Info.Name, sym.Get(unsafeString(columnValue.ByteArray())))
 			} else {
-				stream.Labels[nextLabelIdx].Value = string(columnValue.ByteArray())
+				labelBuilder.Add(column.Info.Name, string(columnValue.ByteArray()))
 			}
-
-			nextLabelIdx++
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
@@ -162,19 +156,10 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream,
 		}
 	}
 
-	stream.Labels = stream.Labels[:nextLabelIdx]
-
+	// Commit the final set of labels to the stream.
+	labelBuilder.Sort()
+	stream.Labels = labelBuilder.Labels()
 	return nil
-}
-
-func labelColumns(columns []*streamsmd.ColumnDesc) int {
-	var count int
-	for _, column := range columns {
-		if column.Type == streamsmd.COLUMN_TYPE_LABEL {
-			count++
-		}
-	}
-	return count
 }
 
 func unsafeSlice(data string, capacity int) []byte {

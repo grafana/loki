@@ -10,6 +10,6 @@ import (
 	"github.com/klauspost/cpuid/v2"
 )
 
-var hasAsm = cpuid.CPU.Supports(cpuid.ASIMD) && cpuid.CPU.Supports(cpuid.PMULL)
+var hasAsm = cpuid.CPU.Supports(cpuid.ASIMD, cpuid.PMULL, cpuid.SHA3)
 
 func updateAsm(crc uint64, p []byte) (checksum uint64)

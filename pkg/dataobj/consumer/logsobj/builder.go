@@ -3,12 +3,10 @@ package logsobj
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -69,14 +67,14 @@ type BuilderConfig struct {
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.TargetPageSize.Set("2MB")
 	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
-	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
+	_ = cfg.BufferSize.Set("16MB")
+	_ = cfg.TargetSectionSize.Set("128MB")
 
-	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
-	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
-	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
-	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
-	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
+	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The target maximum amount of uncompressed data to hold in data pages (for columnar sections). Uncompressed size is used for consistent I/O and planning.")
+	f.Var(&cfg.TargetObjectSize, prefix+"target-builder-memory-limit", "The target maximum size of the encoded object and all of its encoded sections (after compression), to limit memory usage of a builder.")
+	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
+	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
+	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of log section stripes to merge into a section at once. Must be greater than 1.")
 }
 
 // Validate validates the BuilderConfig.
@@ -217,7 +215,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 
 		// If our logs section has gotten big enough, we want to flush it to the
 		// encoder and start a new section.
-		if b.logs.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if b.logs.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := b.builder.Append(b.logs); err != nil {
 				return err
 			}
@@ -230,17 +228,17 @@ func (b *Builder) Append(stream logproto.Stream) error {
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
-	labels, ok := b.labelCache.Get(labelString)
+	cached, ok := b.labelCache.Get(labelString)
 	if ok {
-		return labels, nil
+		return cached, nil
 	}
 
-	labels, err := syntax.ParseLabels(labelString)
+	parsed, err := syntax.ParseLabels(labelString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse labels: %w", err)
+		return labels.EmptyLabels(), fmt.Errorf("failed to parse labels: %w", err)
 	}
-	b.labelCache.Add(labelString, labels)
-	return labels, nil
+	b.labelCache.Add(labelString, parsed)
+	return parsed, nil
 }
 
 // labelsEstimate estimates the size of a set of labels in bytes.
@@ -250,10 +248,10 @@ func labelsEstimate(ls labels.Labels) int {
 		valuesSize int
 	)
 
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		keysSize += len(l.Name)
 		valuesSize += len(l.Value)
-	}
+	})
 
 	// Keys are stored as columns directly, while values get compressed. We'll
 	// underestimate a 2x compression ratio.
@@ -276,17 +274,14 @@ func streamSizeEstimate(stream logproto.Stream) int {
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
-	l := make(labels.Labels, 0, len(md))
+	l := labels.NewScratchBuilder(len(md))
+
 	for _, label := range md {
-		l = append(l, labels.Label{Name: label.Name, Value: label.Value})
+		l.Add(label.Name, label.Value)
 	}
-	sort.Slice(l, func(i, j int) bool {
-		if l[i].Name == l[j].Name {
-			return cmp.Compare(l[i].Value, l[j].Value) < 0
-		}
-		return cmp.Compare(l[i].Name, l[j].Name) < 0
-	})
-	return l
+
+	l.Sort()
+	return l.Labels()
 }
 
 func (b *Builder) estimatedSize() int {

@@ -2297,6 +2297,24 @@ common:
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
 	})
+
+	t.Run("enable_ipv6 setting is propagated from common ring to all component rings", func(t *testing.T) {
+		yamlContent := `common:
+  ring:
+    instance_enable_ipv6: true`
+
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.True(t, config.Distributor.DistributorRing.EnableIPv6)
+		assert.True(t, config.Ingester.LifecyclerConfig.EnableInet6)
+		assert.True(t, config.IngestLimits.LifecyclerConfig.EnableInet6)
+		assert.True(t, config.IngestLimitsFrontend.LifecyclerConfig.EnableInet6)
+		assert.True(t, config.Ruler.Ring.EnableIPv6)
+		assert.True(t, config.QueryScheduler.SchedulerRing.EnableIPv6)
+		assert.True(t, config.CompactorConfig.CompactorRing.EnableIPv6)
+		assert.True(t, config.IndexGateway.Ring.EnableIPv6)
+		assert.True(t, config.Pattern.LifecyclerConfig.EnableInet6)
+	})
 }
 
 func TestNamedStores_applyDefaults(t *testing.T) {

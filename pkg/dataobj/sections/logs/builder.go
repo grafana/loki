@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -62,11 +63,12 @@ type Builder struct {
 	// encoded separately.
 
 	records     []Record // Buffered records to flush to a group.
-	recordsSize int
+	recordsSize int      // Byte size of all buffered records (uncompressed).
 
-	stripes      []*table // In-progress section; flushed with [mergeTables] into a single table.
-	stripeBuffer tableBuffer
-	stripesSize  int // Estimated byte size of all elements in stripes.
+	stripes                 []*table // In-progress section; flushed with [mergeTables] into a single table.
+	stripeBuffer            tableBuffer
+	stripesUncompressedSize int // Estimated byte size of all elements in stripes (uncompressed).
+	stripesCompressedSize   int // Estimated byte size of all elements in stripes (compressed).
 
 	sectionBuffer tableBuffer
 }
@@ -106,9 +108,9 @@ func recordSize(record Record) int {
 
 	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
-	for _, metadata := range record.Metadata {
+	record.Metadata.Range(func(metadata labels.Label) {
 		size += len(metadata.Value)
-	}
+	})
 	size += len(record.Line)
 
 	return size
@@ -128,7 +130,8 @@ func (b *Builder) flushRecords() {
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, compressionOpts, b.records)
 	b.stripes = append(b.stripes, stripe)
-	b.stripesSize += stripe.Size()
+	b.stripesUncompressedSize += stripe.UncompressedSize()
+	b.stripesCompressedSize += stripe.CompressedSize()
 
 	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0
@@ -150,8 +153,20 @@ func (b *Builder) flushSection() *table {
 	}
 
 	b.stripes = sliceclear.Clear(b.stripes)
-	b.stripesSize = 0
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
 	return section
+}
+
+// UncompressedSize returns the current uncompressed size of the logs section
+// in bytes.
+func (b *Builder) UncompressedSize() int {
+	var size int
+
+	size += b.recordsSize
+	size += b.stripesUncompressedSize
+
+	return size
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
@@ -159,7 +174,7 @@ func (b *Builder) EstimatedSize() int {
 	var size int
 
 	size += b.recordsSize
-	size += b.stripesSize
+	size += b.stripesCompressedSize
 
 	return size
 }
@@ -192,6 +207,22 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
+
+	// The first two columns of each row are *always* stream ID and timestamp.
+	//
+	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
+	logsEnc.SetSortInfo(&datasetmd.SectionSortInfo{
+		ColumnSorts: []*datasetmd.SectionSortInfo_ColumnSort{
+			{
+				ColumnIndex: 1, // timestamp
+				Direction:   datasetmd.SORT_DIRECTION_DESCENDING,
+			},
+			{
+				ColumnIndex: 0, // stream ID
+				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+			},
+		},
+	})
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
@@ -262,7 +293,8 @@ func (b *Builder) Reset() {
 
 	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripeBuffer.Reset()
-	b.stripesSize = 0
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
 
 	b.sectionBuffer.Reset()
 }

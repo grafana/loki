@@ -270,7 +270,7 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
-			tc.deleteRequest.Metrics = newDeleteRequestsManagerMetrics(nil)
+			tc.deleteRequest.TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deletedLinesTotal
 			isExpired, filterFunc := tc.deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
@@ -310,11 +310,11 @@ func mustParseLabel(input string) labels.Labels {
 func TestDeleteRequest_FilterFunction(t *testing.T) {
 	t.Run("one line matching with line filter", func(t *testing.T) {
 		dr := DeleteRequest{
-			Query:        `{foo="bar"} |= "some"`,
-			DeletedLines: 0,
-			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
-			StartTime:    0,
-			EndTime:      math.MaxInt64,
+			Query:                   `{foo="bar"} |= "some"`,
+			DeletedLines:            0,
+			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
+			StartTime:               0,
+			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -328,16 +328,16 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Now(), "", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "other line", labels.EmptyLabels()))
 		require.Equal(t, int32(1), dr.DeletedLines)
-		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("one line matching with structured metadata filter", func(t *testing.T) {
 		dr := DeleteRequest{
-			Query:        `{foo="bar"} | ping="pong"`,
-			DeletedLines: 0,
-			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
-			StartTime:    0,
-			EndTime:      math.MaxInt64,
+			Query:                   `{foo="bar"} | ping="pong"`,
+			DeletedLines:            0,
+			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
+			StartTime:               0,
+			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -351,16 +351,16 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Now(), "", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "some line", labels.EmptyLabels()))
 		require.Equal(t, int32(1), dr.DeletedLines)
-		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("one line matching with line and structured metadata filter", func(t *testing.T) {
 		dr := DeleteRequest{
-			Query:        `{foo="bar"} | ping="pong" |= "some"`,
-			DeletedLines: 0,
-			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
-			StartTime:    0,
-			EndTime:      math.MaxInt64,
+			Query:                   `{foo="bar"} | ping="pong" |= "some"`,
+			DeletedLines:            0,
+			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
+			StartTime:               0,
+			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -375,15 +375,15 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Now(), "some line", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "other line", labels.FromStrings(lblPing, lblPong)))
 		require.Equal(t, int32(1), dr.DeletedLines)
-		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("labels not matching", func(t *testing.T) {
 		dr := DeleteRequest{
-			Query:        `{foo="bar"} |= "some"`,
-			DeletedLines: 0,
-			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
-			UserID:       "tenant1",
+			Query:                   `{foo="bar"} |= "some"`,
+			DeletedLines:            0,
+			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
+			UserID:                  "tenant1",
 		}
 
 		lblStr := `{foo2="buzz"}`
@@ -398,17 +398,17 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Time{}, "some line", labels.EmptyLabels()))
 		require.Equal(t, int32(0), dr.DeletedLines)
 		// testutil.ToFloat64 panics when there are 0 metrics
-		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
+		require.Panics(t, func() { testutil.ToFloat64(dr.TotalLinesDeletedMetric) })
 	})
 
 	t.Run("no line filter", func(t *testing.T) {
 		now := model.Now()
 		dr := DeleteRequest{
-			Query:        `{namespace="default"}`,
-			DeletedLines: 0,
-			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
-			StartTime:    now.Add(-time.Hour),
-			EndTime:      now,
+			Query:                   `{namespace="default"}`,
+			DeletedLines:            0,
+			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
+			StartTime:               now.Add(-time.Hour),
+			EndTime:                 now,
 		}
 
 		lblStr := `{namespace="default"}`
@@ -425,7 +425,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 
 		require.Equal(t, int32(0), dr.DeletedLines)
 		// testutil.ToFloat64 panics when there are 0 metrics
-		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
+		require.Panics(t, func() { testutil.ToFloat64(dr.TotalLinesDeletedMetric) })
 	})
 }
 

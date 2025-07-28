@@ -37,9 +37,18 @@ func (b *deleteRequestBatch) requestCount() int {
 	return b.count
 }
 
+func (b *deleteRequestBatch) userIDs() []string {
+	userIDs := make([]string, 0, len(b.deleteRequestsToProcess))
+	for userID := range b.deleteRequestsToProcess {
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs
+}
+
 // addDeleteRequest add a requests to the batch
 func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
-	dr.Metrics = b.metrics
+	dr.TotalLinesDeletedMetric = b.metrics.deletedLinesTotal
 	ur, ok := b.deleteRequestsToProcess[dr.UserID]
 	if !ok {
 		ur = &userDeleteRequests{
@@ -61,15 +70,15 @@ func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
 	b.count++
 }
 
-func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
+func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) (bool, error) {
 	ur, ok := b.deleteRequestsToProcess[deleteRequest.UserID]
 	if !ok {
-		return nil
+		return false, nil
 	}
 	for _, requestLoadedForProcessing := range ur.requests {
 		isDuplicate, err := requestLoadedForProcessing.IsDuplicate(&deleteRequest)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if isDuplicate {
 			level.Info(util_log.Logger).Log(
@@ -79,10 +88,11 @@ func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
 				"user", deleteRequest.UserID,
 			)
 			b.duplicateRequests = append(b.duplicateRequests, deleteRequest)
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, skipRequest func(*DeleteRequest) bool) (bool, filter.Func) {
@@ -153,4 +163,22 @@ func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*DeleteReque
 	}
 
 	return userRequests.requests
+}
+
+func (b *deleteRequestBatch) getAllRequests() []*DeleteRequest {
+	requests := make([]*DeleteRequest, 0, b.count)
+	for _, ur := range b.deleteRequestsToProcess {
+		requests = append(requests, ur.requests...)
+	}
+
+	return requests
+}
+
+func (b *deleteRequestBatch) getDeletionIntervalForUser(userID string) model.Interval {
+	userRequests, ok := b.deleteRequestsToProcess[userID]
+	if !ok {
+		return model.Interval{}
+	}
+
+	return userRequests.requestsInterval
 }

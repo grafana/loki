@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -116,7 +115,7 @@ func (t *PushTarget) run() error {
 func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := tenant.TenantID(r.Context())
-	req, _, err := push.ParseRequest(logger, userID, t.config.MaxSendMsgSize, r, push.EmptyLimits{}, nil, push.ParseLokiRequest, nil, nil, "")
+	req, _, err := push.ParseRequest(logger, userID, t.config.MaxSendMsgSize, r, push.EmptyLimits{}, nil, push.ParseLokiRequest, nil, nil, "", "loki")
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -129,7 +128,6 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 			lastErr = err
 			continue
 		}
-		sort.Sort(ls)
 
 		lb := labels.NewBuilder(ls)
 
@@ -140,19 +138,19 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 
 		// Apply relabeling
 		processed, keep := relabel.Process(lb.Labels(), t.relabelConfig...)
-		if !keep || len(processed) == 0 {
+		if !keep || processed.IsEmpty() {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
 		// Convert to model.LabelSet
 		filtered := model.LabelSet{}
-		for i := range processed {
-			if strings.HasPrefix(processed[i].Name, "__") {
-				continue
+		processed.Range(func(lbl labels.Label) {
+			if strings.HasPrefix(lbl.Name, "__") {
+				return // (will continue Range loop, not abort)
 			}
-			filtered[model.LabelName(processed[i].Name)] = model.LabelValue(processed[i].Value)
-		}
+			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		})
 
 		for _, entry := range stream.Entries {
 			e := api.Entry{

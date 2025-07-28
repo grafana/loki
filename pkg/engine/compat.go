@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 
 	"github.com/grafana/loki/pkg/push"
@@ -19,9 +21,8 @@ import (
 
 type ResultBuilder interface {
 	CollectRecord(arrow.Record)
-	Build() logqlmodel.Result
+	Build(stats.Result, *metadata.Context) logqlmodel.Result
 	Len() int
-	SetStats(stats.Result)
 }
 
 var _ ResultBuilder = &streamsResultBuilder{}
@@ -36,7 +37,6 @@ func newStreamsResultBuilder() *streamsResultBuilder {
 type streamsResultBuilder struct {
 	streams map[string]int
 	data    logqlmodel.Streams
-	stats   stats.Result
 	count   int
 }
 
@@ -45,7 +45,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		stream, entry := b.collectRow(rec, row)
 
 		// Ignore rows that don't have stream labels, log line, or timestamp
-		if stream.Len() == 0 || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
+		if stream.IsEmpty() || entry.Line == "" || entry.Timestamp.Equal(time.Time{}) {
 			continue
 		}
 
@@ -106,23 +106,26 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			switch arr := col.(type) {
 			case *array.String:
 				metadata.Set(colName, arr.Value(i))
+				// include structured metadata in stream labels
+				lbs.Set(colName, arr.Value(i))
 			}
 			continue
 		}
 	}
 	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
+	// set to a non-nil value to match with existing engine.
+	entry.Parsed = logproto.FromLabelsToLabelAdapters(labels.Labels{})
 
 	return lbs.Labels(), entry
 }
 
-func (b *streamsResultBuilder) SetStats(s stats.Result) {
-	b.stats = s
-}
-
-func (b *streamsResultBuilder) Build() logqlmodel.Result {
+func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	sort.Sort(b.data)
 	return logqlmodel.Result{
 		Data:       b.data,
-		Statistics: b.stats,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
 	}
 }
 
@@ -133,7 +136,6 @@ func (b *streamsResultBuilder) Len() int {
 type vectorResultBuilder struct {
 	data        promql.Vector
 	lblsBuilder *labels.Builder
-	stats       stats.Result
 }
 
 func newVectorResultBuilder() *vectorResultBuilder {
@@ -175,7 +177,8 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 				return promql.Sample{}, false
 			}
 
-			sample.T = int64(col.(*array.Timestamp).Value(i))
+			// [promql.Sample] expects milliseconds as timestamp unit
+			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
 		case types.ColumnNameGeneratedValue:
 			if col.IsNull(i) {
 				return promql.Sample{}, false
@@ -188,7 +191,7 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 			sample.F = float64(col.Value(i))
 		default:
 			// allow any string columns
-			if colDataType == datatype.String.String() {
+			if colDataType == datatype.Loki.String.String() {
 				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
 			}
 		}
@@ -198,15 +201,16 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 	return sample, true
 }
 
-func (b *vectorResultBuilder) Build() logqlmodel.Result {
+func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	sort.Slice(b.data, func(i, j int) bool {
+		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
+	})
 	return logqlmodel.Result{
 		Data:       b.data,
-		Statistics: b.stats,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
 	}
-}
-
-func (b *vectorResultBuilder) SetStats(s stats.Result) {
-	b.stats = s
 }
 
 func (b *vectorResultBuilder) Len() int {
