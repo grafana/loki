@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -12,17 +11,16 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-const logsDrilldownAppName = "grafana-lokiexplore-app"
-
 var nowFunc = func() time.Time { return time.Now() }
-var ErrAggMetricsDrilldownOnly = fmt.Errorf("aggregated metric queries can only be accessed from Logs Drilldown")
+var ErrInternalStreamsDrilldownOnly = fmt.Errorf("internal streams can only be queried from Logs Drilldown")
 
 func ValidateQueryRequest(ctx context.Context, req logql.QueryParams, limits Limits) (time.Time, time.Time, error) {
 	userID, err := tenant.TenantID(ctx)
@@ -45,7 +43,7 @@ func ValidateQueryRequest(ctx context.Context, req logql.QueryParams, limits Lim
 	return ValidateQueryTimeRangeLimits(ctx, userID, limits, req.GetStart(), req.GetEnd())
 }
 
-// ValidateAggregatedMetricQuery checks if the query is accessing __aggregated_metric__ streams
+// ValidateAggregatedMetricQuery checks if the query is accessing __aggregated_metric__ or __pattern__ streams
 // and ensures that only queries from Grafana Explore Logs can access them.
 func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) error {
 	selector, err := req.LogSelector()
@@ -53,41 +51,25 @@ func ValidateAggregatedMetricQuery(ctx context.Context, req logql.QueryParams) e
 		return err
 	}
 
-	// Check if the query targets aggregated metrics
-	isAggregatedMetricQuery := false
+	// Check if the query targets aggregated metrics or patterns
+	isInternalStreamQuery := false
 	matchers := selector.Matchers()
 
 	for _, matcher := range matchers {
-		if matcher.Name == push.AggregatedMetricLabel {
-			isAggregatedMetricQuery = true
+		if matcher.Name == constants.AggregatedMetricLabel || matcher.Name == constants.PatternLabel {
+			isInternalStreamQuery = true
 			break
 		}
 	}
 
-	if !isAggregatedMetricQuery {
+	if !isInternalStreamQuery {
 		return nil
 	}
 
-	tags := httpreq.ExtractQueryTagsFromContext(ctx)
-	kvs := httpreq.TagsToKeyValues(tags)
-
-	// KVs is an []interface{} of key value pairs, so iterate by keys
-	for i := 0; i < len(kvs); i += 2 {
-		current, ok := kvs[i].(string)
-		if !ok {
-			continue
-		}
-
-		next, ok := kvs[i+1].(string)
-		if !ok {
-			continue
-		}
-
-		if current == "source" && strings.EqualFold(next, logsDrilldownAppName) {
-			return nil
-		}
+	if httpreq.IsLogsDrilldownRequest(ctx) {
+		return nil
 	}
-	return ErrAggMetricsDrilldownOnly
+	return ErrInternalStreamsDrilldownOnly
 }
 
 func ValidateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
@@ -98,7 +80,7 @@ func ValidateQueryTimeRangeLimits(ctx context.Context, userID string, limits Tim
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
-		level.Debug(spanlogger.FromContext(ctx)).Log(
+		level.Debug(spanlogger.FromContext(ctx, util_log.Logger)).Log(
 			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
 			"original", origStartTime,
 			"updated", from)

@@ -24,10 +24,11 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -387,7 +388,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, registerer),
+			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
 		)
@@ -1014,10 +1015,9 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
 func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "ingester started to handle GetStreamRates")
-		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("ingester started to handle GetStreamRates")
+	defer sp.AddEvent("ingester finished handling GetStreamRates")
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
@@ -1123,7 +1123,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 	_, ctx = metadata.NewContext(ctx)
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 
 	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {
@@ -1155,9 +1155,11 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
-	if sp != nil {
-		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
-	}
+	sp.AddEvent("finished instance query sample", trace.WithAttributes(
+		attribute.String("selector", req.Selector),
+		attribute.String("start", req.Start.String()),
+		attribute.String("end", req.End.String()),
+	))
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
@@ -1356,11 +1358,52 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-	return instance.Series(ctx, req)
+
+	resp, err := instance.Series(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		var storeSeries []logproto.SeriesIdentifier
+		var parsed syntax.Expr
+
+		groups := []string{""}
+		if len(req.Groups) != 0 {
+			groups = req.Groups
+		}
+
+		for _, group := range groups {
+			if group != "" {
+				parsed, err = syntax.ParseExpr(group)
+				if err != nil {
+					return nil, err
+				}
+			}
+			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector:  group,
+					Limit:     1,
+					Start:     start,
+					End:       end,
+					Direction: logproto.FORWARD,
+					Shards:    req.Shards,
+					Plan: &plan.QueryPlan{
+						AST: parsed,
+					},
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			resp.Series = append(resp.Series, storeSeries...)
+		}
+	}
+	return resp, nil
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	sp := opentracing.SpanFromContext(ctx)
+	sp := trace.SpanFromContext(ctx)
 
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1408,15 +1451,15 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 
 	merged := index_stats.MergeStats(resps...)
 	if sp != nil {
-		sp.LogKV(
-			"user", user,
-			"from", req.From.Time(),
-			"through", req.Through.Time(),
-			"matchers", syntax.MatchersString(matchers),
-			"streams", merged.Streams,
-			"chunks", merged.Chunks,
-			"bytes", merged.Bytes,
-			"entries", merged.Entries,
+		sp.SetAttributes(
+			attribute.String("user", user),
+			attribute.String("from", req.From.Time().String()),
+			attribute.String("through", req.Through.Time().String()),
+			attribute.String("matchers", syntax.MatchersString(matchers)),
+			attribute.Int64("streams", int64(merged.Streams)),
+			attribute.Int64("chunks", int64(merged.Chunks)),
+			attribute.Int64("bytes", int64(merged.Bytes)),
+			attribute.Int64("entries", int64(merged.Entries)),
 		)
 	}
 

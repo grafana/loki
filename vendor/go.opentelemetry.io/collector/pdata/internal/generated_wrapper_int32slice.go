@@ -23,6 +23,11 @@ func NewInt32Slice(orig *[]int32, state *State) Int32Slice {
 	return Int32Slice{orig: orig, state: state}
 }
 
+func CopyOrigInt32Slice(dst, src []int32) []int32 {
+	dst = dst[:0]
+	return append(dst, src...)
+}
+
 func FillTestInt32Slice(tv Int32Slice) {
 }
 

@@ -1,3 +1,32 @@
+# v1.33.19 (2025-04-10)
+
+* No change notes available for this release.
+
+# v1.33.18 (2025-04-03)
+
+* No change notes available for this release.
+
+# v1.33.17 (2025-03-04.2)
+
+* **Bug Fix**: Add assurance test for operation order.
+
+# v1.33.16 (2025-02-27)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.15 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.14 (2025-02-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.13 (2025-02-04)
+
+* No change notes available for this release.
+
 # v1.33.12 (2025-01-31)
 
 * **Dependency Update**: Updated to the latest SDK module versions

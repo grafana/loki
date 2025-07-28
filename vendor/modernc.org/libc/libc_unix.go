@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build unix && !(linux && (amd64 || arm64 || loong64))
+//go:build unix && !(linux && (amd64 || arm64 || loong64 || ppc64le || s390x || riscv64 || 386 || arm))
 
 package libc // import "modernc.org/libc"
 
@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -56,21 +55,21 @@ func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigacti
 	signals[signum] = handler
 	switch handler {
 	case signal.SIG_DFL:
-		panic(todo("%v %#x", syscall.Signal(signum), handler))
+		panic(todo("%v %#x", unix.Signal(signum), handler))
 	case signal.SIG_IGN:
 		switch r {
 		case signal.SIG_DFL:
-			gosignal.Ignore(syscall.Signal(signum)) //TODO
+			gosignal.Ignore(unix.Signal(signum)) //TODO
 		case signal.SIG_IGN:
-			gosignal.Ignore(syscall.Signal(signum))
+			gosignal.Ignore(unix.Signal(signum))
 		default:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		}
 	default:
 		switch r {
 		case signal.SIG_DFL:
 			c := make(chan os.Signal, 1)
-			gosignal.Notify(c, syscall.Signal(signum))
+			gosignal.Notify(c, unix.Signal(signum))
 			go func() { //TODO mechanism to stop/cancel
 				for {
 					<-c
@@ -82,9 +81,9 @@ func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigacti
 				}
 			}()
 		case signal.SIG_IGN:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		default:
-			panic(todo("%v %#x", syscall.Signal(signum), handler))
+			panic(todo("%v %#x", unix.Signal(signum), handler))
 		}
 	}
 	return r
@@ -140,7 +139,11 @@ func Xremove(t *TLS, pathname uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v pathname=%v, (%v:)", t, pathname, origin(2))
 	}
-	panic(todo(""))
+	if err := os.Remove(GoString(pathname)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+	return 0
 }
 
 // long pathconf(const char *path, int name);
@@ -1381,5 +1384,21 @@ func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_hour = remsecs / int32(3600)
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_min = remsecs / int32(60) % int32(60)
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
+	return 0
+}
+
+// int clock_gettime(clockid_t clk_id, struct timespec *tp);
+func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	var ts unix.Timespec
+	if err := unix.ClockGettime(clk_id, &ts); err != nil {
+		t.setErrno(err)
+		trc("FAIL: %v", err)
+		return -1
+	}
+
+	*(*unix.Timespec)(unsafe.Pointer(tp)) = ts
 	return 0
 }

@@ -6,13 +6,14 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Creates and returns access and refresh tokens for clients and applications that
 // are authenticated using IAM entities. The access token can be used to fetch
-// short-term credentials for the assigned Amazon Web Services accounts or to
+// short-lived credentials for the assigned Amazon Web Services accounts or to
 // access application APIs using bearer authentication.
 func (c *Client) CreateTokenWithIAM(ctx context.Context, params *CreateTokenWithIAMInput, optFns ...func(*Options)) (*CreateTokenWithIAMOutput, error) {
 	if params == nil {
@@ -59,7 +60,7 @@ type CreateTokenWithIAMInput struct {
 	Assertion *string
 
 	// Used only when calling this API for the Authorization Code grant type. This
-	// short-term code is used to identify this authorization request. The code is
+	// short-lived code is used to identify this authorization request. The code is
 	// obtained through a redirect from IAM Identity Center to a redirect URI persisted
 	// in the Authorization Code GrantOptions for the application.
 	Code *string
@@ -75,7 +76,7 @@ type CreateTokenWithIAMInput struct {
 	RedirectUri *string
 
 	// Used only when calling this API for the Refresh Token grant type. This token is
-	// used to refresh short-term tokens, such as the access token, that might expire.
+	// used to refresh short-lived tokens, such as the access token, that might expire.
 	//
 	// For more information about the features and limitations of the current IAM
 	// Identity Center OIDC implementation, see Considerations for Using this Guide in
@@ -122,6 +123,11 @@ type CreateTokenWithIAMOutput struct {
 	// A bearer token to access Amazon Web Services accounts and applications assigned
 	// to a user.
 	AccessToken *string
+
+	// A structure containing information from the idToken . Only the identityContext
+	// is in it, which is a value extracted from the idToken . This provides direct
+	// access to identity information without requiring JWT parsing.
+	AwsAdditionalDetails *types.AwsAdditionalDetails
 
 	// Indicates the time in seconds when an access token will expire.
 	ExpiresIn int32
@@ -224,6 +230,9 @@ func (c *Client) addOperationCreateTokenWithIAMMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateTokenWithIAMValidationMiddleware(stack); err != nil {

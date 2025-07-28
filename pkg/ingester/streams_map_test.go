@@ -26,9 +26,7 @@ func TestStreamsMap(t *testing.T) {
 			limiter.rateLimitStrategy,
 			"fake",
 			model.Fingerprint(1),
-			labels.Labels{
-				{Name: "foo", Value: "bar"},
-			},
+			labels.FromStrings("foo", "bar"),
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
@@ -43,9 +41,7 @@ func TestStreamsMap(t *testing.T) {
 			limiter.rateLimitStrategy,
 			"fake",
 			model.Fingerprint(2),
-			labels.Labels{
-				{Name: "bar", Value: "foo"},
-			},
+			labels.FromStrings("bar", "foo"),
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,

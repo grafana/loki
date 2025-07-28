@@ -20,6 +20,8 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Checking for config changes
 
+<!-- vale Grafana.Spelling = NO -->
+
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```bash
@@ -34,6 +36,12 @@ The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sn
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
 ## Main / Unreleased
+
+#### Distributor Max Receive Limits for uncompressed bytes
+
+The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+
+Supported clients should check the configuration options for max send message size if applicable.
 
 ## 3.4.0
 
@@ -1756,3 +1764,4 @@ If you attempt to add a v1.4.0 ingester to a ring created by Loki v1.2.0 or olde
 This will result in distributors failing to write and a general ingestion failure for the system.
 
 If this happens to you, you will want to rollback your deployment immediately. You need to remove the v1.4.0 ingester from the ring ASAP, this should allow the existing ingesters to re-insert their tokens.  You will also want to remove any v1.4.0 distributors as they will not understand the old ring either and will fail to send traffic.
+<!-- vale Grafana.Spelling = YES -->

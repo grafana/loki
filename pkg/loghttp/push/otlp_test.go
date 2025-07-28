@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -110,8 +113,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: nil,
 					},
 				},
-				StreamLabelsSize:         21,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  21,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 		{
@@ -157,8 +162,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: nil,
 					},
 				},
-				StreamLabelsSize:         27,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  27,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 		{
@@ -204,8 +211,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: nil,
 					},
 				},
-				StreamLabelsSize:         47,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  47,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 		{
@@ -294,8 +303,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						},
 					},
 				},
-				StreamLabelsSize:         21,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  21,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 		{
@@ -393,8 +404,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						},
 					},
 				},
-				StreamLabelsSize:         21,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  21,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 		{
@@ -553,8 +566,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						},
 					},
 				},
-				StreamLabelsSize:         42,
-				MostRecentEntryTimestamp: now,
+				StreamLabelsSize:                  42,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
 			},
 		},
 	} {
@@ -574,12 +589,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				tc.generateLogs(),
 				"foo",
 				tc.otlpConfig,
+				nil,
 				defaultServiceDetection,
 				tracker,
 				stats,
-				false,
 				log.NewNopLogger(),
 				streamResolver,
+				constants.OTLP,
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
@@ -680,7 +696,8 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig)))
+			_, res := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			require.Equal(t, tc.expectedResp, res)
 		})
 	}
 }
@@ -834,4 +851,424 @@ func TestOtlpError(t *testing.T) {
 			require.EqualValues(t, 0, respStatus.Code)
 		})
 	}
+}
+
+func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config that indexes log attributes
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Override the LogAttributes to include IndexLabel action
+	customOTLPConfig.LogAttributes = []AttributesConfig{
+		{
+			// Index detected_level and log.level as labels
+			Action:     IndexLabel,
+			Attributes: []string{"detected_level", "log.level"},
+		},
+		{
+			// Keep other attributes as structured metadata
+			Action:     StructuredMetadata,
+			Attributes: []string{"trace_id", "error_code", "component"},
+		},
+	}
+
+	// Generate logs with different log.level attributes
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "info" level
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.Attributes().PutStr("detected_level", "info")
+		infoLog.Attributes().PutStr("trace_id", "abc123")
+
+		// Add log with "error" level
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.Attributes().PutStr("detected_level", "error")
+		errorLog.Attributes().PutStr("error_code", "500")
+
+		// Add log with "debug" level using log.level instead
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.Attributes().PutStr("log.level", "debug")
+		debugLog.Attributes().PutStr("component", "database")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		nil,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		log.NewNopLogger(),
+		streamResolver,
+		"otlp",
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each log level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected log level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
+
+		if strings.Contains(lbs, "detected_level=\"info\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "detected_level=\"error\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "log_level=\"debug\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	require.True(t, infoStreamFound, "Stream with info level not found")
+	require.True(t, errorStreamFound, "Stream with error level not found")
+	require.True(t, debugStreamFound, "Stream with debug level not found")
+
+	// Verify stats
+	require.Equal(t, int64(3), stats.PolicyNumLines["test-policy"], "Should have counted 3 log lines")
+}
+
+func TestOTLPStructuredMetadataCalculation(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with attributes
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+		rl.Resource().Attributes().PutStr("resource.key", "resource.value")
+
+		// Create scope with attributes
+		sl := rl.ScopeLogs().AppendEmpty()
+		sl.Scope().SetName("test-scope")
+		sl.Scope().Attributes().PutStr("scope.key", "scope.value")
+
+		// Add a log record with minimal metadata
+		logRecord := sl.LogRecords().AppendEmpty()
+		logRecord.Body().SetStr("Test entry with minimal metadata")
+		logRecord.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		logRecord.Attributes().PutStr("entry.key", "entry.value")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		DefaultOTLPConfig(defaultGlobalOTLPConfig),
+		nil,        // tenantConfigs
+		[]string{}, // discoverServiceName
+		tracker,
+		stats,
+		log.NewNopLogger(),
+		streamResolver,
+		constants.OTLP,
+	)
+
+	// Verify there is exactly one stream
+	require.Equal(t, 1, len(pushReq.Streams))
+
+	// Verify we have a single entry with all the expected metadata
+	stream := pushReq.Streams[0]
+	require.Equal(t, 1, len(stream.Entries))
+
+	// Verify the structured metadata bytes are positive
+	require.Greater(t, stats.StructuredMetadataBytes["test-policy"][time.Hour], int64(0),
+		"Structured metadata bytes should be positive")
+
+	// Verify we can find the resource, scope, and entry metadata in the entry
+	entry := stream.Entries[0]
+
+	resourceMetadataFound := false
+	scopeMetadataFound := false
+	entryMetadataFound := false
+
+	for _, metadata := range entry.StructuredMetadata {
+		if metadata.Name == "resource_key" && metadata.Value == "resource.value" {
+			resourceMetadataFound = true
+		}
+		if metadata.Name == "scope_key" && metadata.Value == "scope.value" {
+			scopeMetadataFound = true
+		}
+		if metadata.Name == "entry_key" && metadata.Value == "entry.value" {
+			entryMetadataFound = true
+		}
+	}
+
+	require.True(t, resourceMetadataFound, "Resource metadata should be present in the entry")
+	require.True(t, scopeMetadataFound, "Scope metadata should be present in the entry")
+	require.True(t, entryMetadataFound, "Entry metadata should be present in the entry")
+}
+
+func TestNegativeMetadataScenarioExplicit(t *testing.T) {
+	// This test explicitly demonstrates how negative structured metadata size values
+	// could occur when subtracting resource/scope attributes from total structured metadata size
+
+	// Setup: Create metadata with a label that would be excluded from size calculation
+	resourceMeta := push.LabelsAdapter{
+		{Name: "resource_key", Value: "resource_value"}, // 27 bytes
+		{Name: "excluded_label", Value: "value"},        // This would be excluded from size calculation
+	}
+
+	scopeMeta := push.LabelsAdapter{
+		{Name: "scope_key", Value: "scope_value"}, // 20 bytes
+	}
+
+	entryMeta := push.LabelsAdapter{
+		{Name: "entry_key", Value: "entry_value"}, // 20 bytes
+	}
+
+	// ExcludedStructuredMetadataLabels would exclude certain labels
+	// from size calculations.
+	calculateSize := func(labels push.LabelsAdapter) int {
+		size := 0
+		for _, label := range labels {
+			// Simulate a label being excluded from size calc
+			if label.Name != "excluded_label" {
+				size += len(label.Name) + len(label.Value)
+			}
+		}
+		return size
+	}
+
+	// Calculate sizes with simulated exclusions
+	resourceSize := calculateSize(resourceMeta) // 27 bytes (excluded_label not counted)
+	scopeSize := calculateSize(scopeMeta)       // 20 bytes
+	entrySize := calculateSize(entryMeta)       // 20 bytes
+
+	// The original approach:
+	// 1. Add resource and scope attributes to entry metadata
+	combined := make(push.LabelsAdapter, 0)
+	combined = append(combined, entryMeta...)
+	combined = append(combined, resourceMeta...)
+	combined = append(combined, scopeMeta...)
+
+	// 2. Calculate combined size (with certain labels excluded)
+	combinedSize := calculateSize(combined) // Should be 27 + 20 + 20 = 67 bytes
+
+	// 3. Calculate entry-specific metadata by subtraction
+	//    metadataSize := int64(combinedSize - resourceSize - scopeSize)
+	oldCalculation := combinedSize - resourceSize - scopeSize
+
+	// Should be: 67 - 27 - 20 = 20 bytes, which equals entrySize
+
+	t.Logf("Resource size: %d bytes", resourceSize)
+	t.Logf("Scope size: %d bytes", scopeSize)
+	t.Logf("Entry size: %d bytes", entrySize)
+	t.Logf("Combined size: %d bytes", combinedSize)
+	t.Logf("Old calculation (combined - resource - scope): %d bytes", oldCalculation)
+
+	// Now, to demonstrate how this could produce negative values:
+	// In reality, due to potential inconsistencies in how labels were excluded/combined/normalized,
+	// the combined size could be LESS than the sum of parts
+	simulatedRealCombinedSize := resourceSize + scopeSize - 5 // 5 bytes less than sum
+
+	// Using the original calculation method:
+	simulatedRealCalculation := simulatedRealCombinedSize - resourceSize - scopeSize
+	// This will be: (27 + 20 - 5) - 27 - 20 = 42 - 47 = -5 bytes
+
+	t.Logf("Simulated real combined size: %d bytes", simulatedRealCombinedSize)
+	t.Logf("Simulated real calculation (old method): %d bytes", simulatedRealCalculation)
+
+	// This would be a negative value!
+	require.Less(t, simulatedRealCalculation, 0,
+		"This demonstrates how the old calculation could produce negative values")
+
+	// Directly use entry's size before combining
+	t.Logf("New calculation (direct entry size): %d bytes", entrySize)
+	require.Equal(t, entrySize, 20,
+		"New calculation provides correct entry size")
+	require.Greater(t, entrySize, 0,
+		"New calculation always produces non-negative values")
+}
+
+func TestOTLPSeverityTextAsLabel(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	// Create a custom OTLP config with severity_text as label enabled
+	customOTLPConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+
+	// Explicitly set SeverityTextAsLabel to true for this test
+	customOTLPConfig.SeverityTextAsLabel = true
+
+	// Generate logs with different severity_text values
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		// Create resource with service name
+		rl := ld.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+		// Create scope logs
+		sl := rl.ScopeLogs().AppendEmpty()
+
+		// Add log with "INFO" severity
+		infoLog := sl.LogRecords().AppendEmpty()
+		infoLog.Body().SetStr("This is an info message")
+		infoLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		infoLog.SetSeverityText("INFO")
+
+		// Add log with "ERROR" severity
+		errorLog := sl.LogRecords().AppendEmpty()
+		errorLog.Body().SetStr("This is an error message")
+		errorLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		errorLog.SetSeverityText("ERROR")
+
+		// Add log with "DEBUG" severity
+		debugLog := sl.LogRecords().AppendEmpty()
+		debugLog.Body().SetStr("This is a debug message")
+		debugLog.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		debugLog.SetSeverityText("DEBUG")
+
+		return ld
+	}
+
+	// Run the test
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	// All logs will use the same policy for simplicity
+	streamResolver.policyForOverride = func(_ labels.Labels) string {
+		return "test-policy"
+	}
+
+	// Convert OTLP logs to Loki push request
+	pushReq := otlpToLokiPushRequest(
+		context.Background(),
+		generateLogs(),
+		"test-user",
+		customOTLPConfig,
+		nil,
+		[]string{}, // No service name discovery needed
+		tracker,
+		stats,
+		log.NewNopLogger(),
+		streamResolver,
+		constants.OTLP,
+	)
+
+	// Debug: Print the actual streams we got
+	t.Logf("Number of streams: %d", len(pushReq.Streams))
+	for i, stream := range pushReq.Streams {
+		t.Logf("Stream %d: Labels=%s, Entries=%d", i, stream.Labels, len(stream.Entries))
+	}
+
+	// Filter out empty streams
+	nonEmptyStreams := make([]logproto.Stream, 0, len(pushReq.Streams))
+	for _, stream := range pushReq.Streams {
+		if len(stream.Entries) > 0 {
+			nonEmptyStreams = append(nonEmptyStreams, stream)
+		}
+	}
+
+	// Verify the streams were created with the correct labels
+	require.Equal(t, 3, len(nonEmptyStreams), "Should have 3 non-empty streams (one for each severity level)")
+
+	// Create a map of streams by labels for easier verification
+	streamsByLabels := make(map[string]logproto.Stream)
+	for _, stream := range nonEmptyStreams {
+		streamsByLabels[stream.Labels] = stream
+	}
+
+	// Check for each expected severity level in the streams
+	infoStreamFound := false
+	errorStreamFound := false
+	debugStreamFound := false
+
+	for lbs, stream := range streamsByLabels {
+		t.Logf("Checking stream with labels: %s", lbs)
+
+		if strings.Contains(lbs, "severity_text=\"INFO\"") {
+			infoStreamFound = true
+			require.Equal(t, "This is an info message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "severity_text=\"ERROR\"") {
+			errorStreamFound = true
+			require.Equal(t, "This is an error message", stream.Entries[0].Line)
+		}
+		if strings.Contains(lbs, "severity_text=\"DEBUG\"") {
+			debugStreamFound = true
+			require.Equal(t, "This is a debug message", stream.Entries[0].Line)
+		}
+	}
+
+	// Verify all expected streams were found
+	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
+	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
+	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
 }

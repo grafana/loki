@@ -357,7 +357,11 @@ type size_t = uint64 /* <builtin>:9:23 */
 
 type wchar_t = int32 /* <builtin>:15:24 */
 
-var X__darwin_check_fd_set_overflow uintptr /* <builtin>:146:5: */
+// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/_types/_fd_def.h:54
+// int __darwin_check_fd_set_overflow(int, const void *, int) __API_AVAILABLE(macosx(11.0), ios(14.0), tvos(14.0), watchos(7.0));
+func X__darwin_check_fd_set_overflow(tls *TLS, _ int32, _ uintptr, _ int32) int32 {
+	return 1
+}
 
 // pthread opaque structures
 

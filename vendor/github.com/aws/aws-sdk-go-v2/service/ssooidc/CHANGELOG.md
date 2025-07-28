@@ -1,3 +1,63 @@
+# v1.30.1 (2025-04-03)
+
+* No change notes available for this release.
+
+# v1.30.0 (2025-03-27)
+
+* **Feature**: This release adds AwsAdditionalDetails in the CreateTokenWithIAM API response.
+
+# v1.29.2 (2025-03-24)
+
+* No change notes available for this release.
+
+# v1.29.1 (2025-03-04.2)
+
+* **Bug Fix**: Add assurance test for operation order.
+
+# v1.29.0 (2025-02-27)
+
+* **Feature**: Track credential providers via User-Agent Feature ids
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.15 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.14 (2025-02-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.13 (2025-01-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.12 (2025-01-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.11 (2025-01-24)
+
+* **Documentation**: Fixed typos in the descriptions.
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.22.2.
+
+# v1.28.10 (2025-01-17)
+
+* **Bug Fix**: Fix bug where credentials weren't refreshed during retry loop.
+
+# v1.28.9 (2025-01-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.8 (2025-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.7 (2024-12-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.28.6 (2024-12-02)
 
 * **Dependency Update**: Updated to the latest SDK module versions

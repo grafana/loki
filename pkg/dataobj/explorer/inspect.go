@@ -9,14 +9,11 @@ import (
 	"time"
 
 	"github.com/thanos-io/objstore"
-	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 type FileMetadata struct {
@@ -68,6 +65,9 @@ type SectionMetadata struct {
 	TotalUncompressedSize uint64            `json:"totalUncompressedSize"`
 	ColumnCount           int               `json:"columnCount"`
 	Columns               []ColumnWithPages `json:"columns"`
+	Distribution          []uint64          `json:"distribution"`
+	MinTimestamp          time.Time         `json:"minTimestamp"`
+	MaxTimestamp          time.Time         `json:"maxTimestamp"`
 }
 
 func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +90,10 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 
 	metadata := inspectFile(r.Context(), s.bucket, filename)
 	metadata.LastModified = attrs.LastModified.UTC()
+	for _, section := range metadata.Sections {
+		section.MinTimestamp = section.MinTimestamp.UTC().Truncate(time.Second)
+		section.MaxTimestamp = section.MaxTimestamp.UTC().Truncate(time.Second)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
@@ -98,35 +102,8 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Helper functions moved from service.go
-func getEncodingName(encoding datasetmd.EncodingType) string {
-	encodingName, ok := datasetmd.EncodingType_name[int32(encoding)]
-	if !ok {
-		return fmt.Sprintf("UNKNOWN(%d)", encoding)
-	}
-	return strings.TrimPrefix(encodingName, "ENCODING_TYPE_")
-}
-
-func getValueTypeName(valueType datasetmd.ValueType) string {
-	valueTypeName, ok := datasetmd.ValueType_name[int32(valueType)]
-	if !ok {
-		return fmt.Sprintf("UNKNOWN(%d)", valueType)
-	}
-	return strings.TrimPrefix(valueTypeName, "VALUE_TYPE_")
-}
-
-func getCompressionName(compression datasetmd.CompressionType) string {
-	compressionName, ok := datasetmd.CompressionType_name[int32(compression)]
-	if !ok {
-		return fmt.Sprintf("UNKNOWN(%d)", compression)
-	}
-	return strings.TrimPrefix(compressionName, "COMPRESSION_TYPE_")
-}
-
 func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string) FileMetadata {
-	reader := encoding.BucketDecoder(bucket, path)
-
-	sections, err := reader.Sections(ctx)
+	obj, err := dataobj.FromBucket(ctx, bucket, path)
 	if err != nil {
 		return FileMetadata{
 			Error: fmt.Sprintf("failed to read sections: %v", err),
@@ -134,179 +111,138 @@ func inspectFile(ctx context.Context, bucket objstore.BucketReader, path string)
 	}
 
 	result := FileMetadata{
-		Sections: make([]SectionMetadata, 0, len(sections)),
+		Sections: make([]SectionMetadata, 0, len(obj.Sections())),
 	}
 
-	for _, section := range sections {
-		sectionMeta := SectionMetadata{
-			Type: section.Type.String(),
-		}
-
-		switch section.Type {
-		case filemd.SECTION_TYPE_LOGS:
-			sectionMeta, err = inspectLogsSection(ctx, reader, section)
+	for _, section := range obj.Sections() {
+		switch {
+		case streams.CheckSection(section):
+			streamsSection, err := streams.Open(ctx, section)
 			if err != nil {
 				return FileMetadata{
-					Error: fmt.Sprintf("failed to inspect logs section: %v", err),
+					Error: fmt.Sprintf("failed to open streams section: %v", err),
 				}
 			}
-		case filemd.SECTION_TYPE_STREAMS:
-			sectionMeta, err = inspectStreamsSection(ctx, reader, section)
+			meta, err := inspectStreamsSection(ctx, section.Type, streamsSection)
 			if err != nil {
 				return FileMetadata{
 					Error: fmt.Sprintf("failed to inspect streams section: %v", err),
 				}
 			}
-		}
+			result.Sections = append(result.Sections, meta)
 
-		result.Sections = append(result.Sections, sectionMeta)
+		case logs.CheckSection(section):
+			logsSection, err := logs.Open(ctx, section)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to open logs section: %v", err),
+				}
+			}
+			meta, err := inspectLogsSection(ctx, section.Type, logsSection)
+			if err != nil {
+				return FileMetadata{
+					Error: fmt.Sprintf("failed to inspect logs section: %v", err),
+				}
+			}
+			result.Sections = append(result.Sections, meta)
+		}
 	}
 
 	return result
 }
 
-func inspectLogsSection(ctx context.Context, reader encoding.Decoder, section *filemd.SectionInfo) (SectionMetadata, error) {
-	meta := SectionMetadata{
-		Type: section.Type.String(),
-	}
-
-	dec := reader.LogsDecoder()
-	cols, err := dec.Columns(ctx, section)
+func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.Section) (SectionMetadata, error) {
+	stats, err := logs.ReadStats(ctx, sec)
 	if err != nil {
-		return meta, err
+		return SectionMetadata{}, err
 	}
 
-	meta.Columns = make([]ColumnWithPages, len(cols)) // Pre-allocate with final size
-	meta.ColumnCount = len(cols)
-
-	// Create error group for parallel execution
-	g, ctx := errgroup.WithContext(ctx)
-
-	// Process each column in parallel
-	for i, col := range cols {
-		meta.TotalCompressedSize += col.Info.CompressedSize
-		meta.TotalUncompressedSize += col.Info.UncompressedSize
-
-		g.Go(func() error {
-			// Get pages for the column
-			pageSets, err := result.Collect(dec.Pages(ctx, []*logsmd.ColumnDesc{col}))
-			if err != nil {
-				return err
-			}
-
-			var pageInfos []PageInfo
-			for _, pages := range pageSets {
-				for _, page := range pages {
-					if page.Info != nil {
-						pageInfos = append(pageInfos, PageInfo{
-							UncompressedSize: page.Info.UncompressedSize,
-							CompressedSize:   page.Info.CompressedSize,
-							CRC32:            page.Info.Crc32,
-							RowsCount:        page.Info.RowsCount,
-							Encoding:         getEncodingName(page.Info.Encoding),
-							DataOffset:       page.Info.DataOffset,
-							DataSize:         page.Info.DataSize,
-							ValuesCount:      page.Info.ValuesCount,
-						})
-					}
-				}
-			}
-
-			// Safely assign to pre-allocated slice
-			meta.Columns[i] = ColumnWithPages{
-				Name:             col.Info.Name,
-				Type:             col.Type.String(),
-				ValueType:        getValueTypeName(col.Info.ValueType),
-				RowsCount:        col.Info.RowsCount,
-				Compression:      getCompressionName(col.Info.Compression),
-				UncompressedSize: col.Info.UncompressedSize,
-				CompressedSize:   col.Info.CompressedSize,
-				MetadataOffset:   col.Info.MetadataOffset,
-				MetadataSize:     col.Info.MetadataSize,
-				ValuesCount:      col.Info.ValuesCount,
-				Pages:            pageInfos,
-				Statistics:       NewStatsFrom(col.Info.Statistics),
-			}
-			return nil
-		})
+	meta := SectionMetadata{
+		Type:                  ty.String(),
+		TotalCompressedSize:   stats.CompressedSize,
+		TotalUncompressedSize: stats.UncompressedSize,
+		ColumnCount:           len(stats.Columns),
 	}
 
-	// Wait for all goroutines to complete
-	if err := g.Wait(); err != nil {
-		return meta, err
+	for _, col := range stats.Columns {
+		colMeta := ColumnWithPages{
+			Name:             col.Name,
+			Type:             col.Type,
+			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			RowsCount:        col.RowsCount,
+			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
+			UncompressedSize: col.UncompressedSize,
+			CompressedSize:   col.CompressedSize,
+			MetadataOffset:   col.MetadataOffset,
+			MetadataSize:     col.MetadataSize,
+			ValuesCount:      col.ValuesCount,
+			Statistics:       Statistics{CardinalityCount: col.Cardinality},
+		}
+
+		for _, page := range col.Pages {
+			colMeta.Pages = append(colMeta.Pages, PageInfo{
+				UncompressedSize: page.UncompressedSize,
+				CompressedSize:   page.CompressedSize,
+				CRC32:            page.CRC32,
+				RowsCount:        page.RowsCount,
+				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
+				DataOffset:       page.DataOffset,
+				DataSize:         page.DataSize,
+				ValuesCount:      page.ValuesCount,
+			})
+		}
+
+		meta.Columns = append(meta.Columns, colMeta)
 	}
 
 	return meta, nil
 }
 
-func inspectStreamsSection(ctx context.Context, reader encoding.Decoder, section *filemd.SectionInfo) (SectionMetadata, error) {
-	meta := SectionMetadata{
-		Type: section.Type.String(),
-	}
-
-	dec := reader.StreamsDecoder()
-	cols, err := dec.Columns(ctx, section)
+func inspectStreamsSection(ctx context.Context, ty dataobj.SectionType, sec *streams.Section) (SectionMetadata, error) {
+	stats, err := streams.ReadStats(ctx, sec)
 	if err != nil {
-		return meta, err
+		return SectionMetadata{}, err
 	}
 
-	meta.Columns = make([]ColumnWithPages, len(cols)) // Pre-allocate with final size
-	meta.ColumnCount = len(cols)
-
-	// Create error group for parallel execution
-	g, ctx := errgroup.WithContext(ctx)
-
-	// Process each column in parallel
-	for i, col := range cols {
-		meta.TotalCompressedSize += col.Info.CompressedSize
-		meta.TotalUncompressedSize += col.Info.UncompressedSize
-
-		g.Go(func() error {
-			// Get pages for the column
-			pageSets, err := result.Collect(dec.Pages(ctx, []*streamsmd.ColumnDesc{col}))
-			if err != nil {
-				return err
-			}
-
-			var pageInfos []PageInfo
-			for _, pages := range pageSets {
-				for _, page := range pages {
-					if page.Info != nil {
-						pageInfos = append(pageInfos, PageInfo{
-							UncompressedSize: page.Info.UncompressedSize,
-							CompressedSize:   page.Info.CompressedSize,
-							CRC32:            page.Info.Crc32,
-							RowsCount:        page.Info.RowsCount,
-							Encoding:         getEncodingName(page.Info.Encoding),
-							DataOffset:       page.Info.DataOffset,
-							DataSize:         page.Info.DataSize,
-							ValuesCount:      page.Info.ValuesCount,
-						})
-					}
-				}
-			}
-
-			// Safely assign to pre-allocated slice
-			meta.Columns[i] = ColumnWithPages{
-				Name:             col.Info.Name,
-				Type:             col.Type.String(),
-				ValueType:        getValueTypeName(col.Info.ValueType),
-				RowsCount:        col.Info.RowsCount,
-				Compression:      getCompressionName(col.Info.Compression),
-				UncompressedSize: col.Info.UncompressedSize,
-				CompressedSize:   col.Info.CompressedSize,
-				MetadataOffset:   col.Info.MetadataOffset,
-				MetadataSize:     col.Info.MetadataSize,
-				ValuesCount:      col.Info.ValuesCount,
-				Pages:            pageInfos,
-			}
-			return nil
-		})
+	meta := SectionMetadata{
+		Type:                  ty.String(),
+		TotalCompressedSize:   stats.CompressedSize,
+		TotalUncompressedSize: stats.UncompressedSize,
+		ColumnCount:           len(stats.Columns),
+		Distribution:          stats.TimestampDistribution,
+		MinTimestamp:          stats.MinTimestamp,
+		MaxTimestamp:          stats.MaxTimestamp,
 	}
 
-	// Wait for all goroutines to complete
-	if err := g.Wait(); err != nil {
-		return meta, err
+	for _, col := range stats.Columns {
+		colMeta := ColumnWithPages{
+			Name:             col.Name,
+			Type:             col.Type,
+			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			RowsCount:        col.RowsCount,
+			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
+			UncompressedSize: col.UncompressedSize,
+			CompressedSize:   col.CompressedSize,
+			MetadataOffset:   col.MetadataOffset,
+			MetadataSize:     col.MetadataSize,
+			ValuesCount:      col.ValuesCount,
+			Statistics:       Statistics{CardinalityCount: col.Cardinality},
+		}
+
+		for _, page := range col.Pages {
+			colMeta.Pages = append(colMeta.Pages, PageInfo{
+				UncompressedSize: page.UncompressedSize,
+				CompressedSize:   page.CompressedSize,
+				CRC32:            page.CRC32,
+				RowsCount:        page.RowsCount,
+				Encoding:         strings.TrimPrefix(page.Encoding, "ENCODING_TYPE_"),
+				DataOffset:       page.DataOffset,
+				DataSize:         page.DataSize,
+				ValuesCount:      page.ValuesCount,
+			})
+		}
+
+		meta.Columns = append(meta.Columns, colMeta)
 	}
 
 	return meta, nil

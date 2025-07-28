@@ -9,7 +9,7 @@ metadata:
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.write.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -56,7 +56,7 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.writeLabels" . | nindent 8 }}
-        {{- with merge .Values.loki.podLabels .Values.write.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.write.podLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist

@@ -29,12 +29,13 @@ services:
   memcached:
     logging:
       <<: *logging
-    image: memcached:1.6.37-alpine
+    image: memcached:1.6.38-alpine
 
   jaeger:
     logging:
       <<: *logging
-    image: jaegertracing/all-in-one
+    #  Use 1.62 specifically since 1.63 removes the agent which we depend on for now.
+    image: jaegertracing/all-in-one:1.70.0
     ports:
       - 16686:16686
       - "14268"

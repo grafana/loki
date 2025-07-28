@@ -2,84 +2,50 @@ package limits
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+type httpTenantLimitsResponse struct {
+	Tenant  string  `json:"tenant"`
+	Streams uint64  `json:"streams"`
+	Rate    float64 `json:"rate"`
+}
+
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
-func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-
-	// Get the rate window cutoff for rate calculations
-	rateWindowCutoff := time.Now().Add(-s.cfg.BucketDuration).UnixNano()
-
-	// Calculate stream counts and status per tenant
-	type tenantLimits struct {
-		Tenant        string  `json:"tenant"`
-		ActiveStreams uint64  `json:"activeStreams"`
-		Rate          float64 `json:"rate"`
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	tenant := mux.Vars(r)["tenant"]
+	if tenant == "" {
+		http.Error(w, "invalid tenant", http.StatusBadRequest)
+		return
 	}
-
-	// Get tenant and partitions from query parameters
-	params := r.URL.Query()
-	tenant := params.Get("tenant")
-	var (
-		activeStreams uint64
-		totalSize     uint64
-		response      tenantLimits
-	)
-
-	for _, partitions := range s.metadata[tenant] {
-		for _, stream := range partitions {
-			if stream.lastSeenAt >= cutoff {
-				activeStreams++
-
-				// Calculate size only within the rate window
-				for _, bucket := range stream.rateBuckets {
-					if bucket.timestamp >= rateWindowCutoff {
-						totalSize += bucket.size
-					}
-				}
-			}
+	var streams, sumBuckets uint64
+	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+		streams++
+		for _, bucket := range stream.rateBuckets {
+			sumBuckets += bucket.size
 		}
-	}
-
-	// Calculate rate using only data from within the rate window
-	calculatedRate := float64(totalSize) / s.cfg.WindowSize.Seconds()
-
-	if activeStreams > 0 {
-		response = tenantLimits{
-			Tenant:        tenant,
-			ActiveStreams: activeStreams,
-			Rate:          calculatedRate,
-		}
-	} else {
-		// If no active streams found, return zeros
-		response = tenantLimits{
-			Tenant:        tenant,
-			ActiveStreams: 0,
-			Rate:          0,
-		}
-	}
+	})
+	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
 
 	// Log the calculated values for debugging
 	level.Debug(s.logger).Log(
 		"msg", "HTTP endpoint calculated stream usage",
 		"tenant", tenant,
-		"active_streams", activeStreams,
-		"total_size", util.HumanizeBytes(totalSize),
+		"streams", streams,
+		"sum_buckets", util.HumanizeBytes(sumBuckets),
 		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"calculated_rate", util.HumanizeBytes(uint64(calculatedRate)),
+		"rate", util.HumanizeBytes(uint64(rate)),
 	)
 
 	// Use util.WriteJSONResponse to write the JSON response
-	util.WriteJSONResponse(w, response)
+	util.WriteJSONResponse(w, httpTenantLimitsResponse{
+		Tenant:  tenant,
+		Streams: streams,
+		Rate:    rate,
+	})
 }

@@ -15,12 +15,12 @@ import (
 // this code doesn't produce values at constant delta (mod cycle length).
 // The 32 bit limit is per this implementation, the algorithm used has no intrinsic limit on the cycle size.
 // Properties include:
-//	- Adjustable limits on creation (hi, lo).
-//	- Positionable/randomly accessible (Pos, Seek).
-//	- Repeatable (deterministic).
-//	- Can run forward or backward (Next, Prev).
-//	- For a billion numbers cycle the Next/Prev PRN can be produced in cca 100-150ns.
-//	  That's like 5-10 times slower compared to PRNs generated using the (non FC) rand package.
+//   - Adjustable limits on creation (hi, lo).
+//   - Positionable/randomly accessible (Pos, Seek).
+//   - Repeatable (deterministic).
+//   - Can run forward or backward (Next, Prev).
+//   - For a billion numbers cycle the Next/Prev PRN can be produced in cca 100-150ns.
+//     That's like 5-10 times slower compared to PRNs generated using the (non FC) rand package.
 type FC32 struct {
 	cycle   int64     // On average: 3 * delta / 2, (HQ: 2 * delta)
 	delta   int64     // hi - lo

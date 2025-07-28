@@ -34,14 +34,14 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "InvalidBucketName",
+			Code:       InvalidBucketName,
 			Message:    err.Error(),
 		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "XMinioInvalidObjectName",
+			Code:       XMinioInvalidObjectName,
 			Message:    err.Error(),
 		}
 	}
@@ -659,14 +659,14 @@ func (c *Client) getObject(ctx context.Context, bucketName, objectName string, o
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, ObjectInfo{}, nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "InvalidBucketName",
+			Code:       InvalidBucketName,
 			Message:    err.Error(),
 		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return nil, ObjectInfo{}, nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "XMinioInvalidObjectName",
+			Code:       XMinioInvalidObjectName,
 			Message:    err.Error(),
 		}
 	}

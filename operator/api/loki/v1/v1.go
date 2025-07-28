@@ -96,6 +96,8 @@ var (
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.
 	ErrRuleMustMatchNamespace = errors.New("rule needs to have a matcher for the namespace")
+	// ErrRuleExclusiveNamespaceLabel indicates that a rule must not specify both kubernetes_namespace_name and k8s_namespace_name labels
+	ErrRuleExclusiveNamespaceLabel = errors.New("rule must not specify both kubernetes_namespace_name and k8s_namespace_name labels")
 	// ErrSeverityLabelMissing indicates that an alerting rule is missing the severity label
 	ErrSeverityLabelMissing = errors.New("rule requires label: severity")
 	// ErrSeverityLabelInvalid indicates that an alerting rule has an invalid value for the summary label

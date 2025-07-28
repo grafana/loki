@@ -23,7 +23,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/goccy/go-json"
+	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
@@ -35,14 +35,14 @@ func (c *Client) PromptObject(ctx context.Context, bucketName, objectName, promp
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "InvalidBucketName",
+			Code:       InvalidBucketName,
 			Message:    err.Error(),
 		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
 		return nil, ErrorResponse{
 			StatusCode: http.StatusBadRequest,
-			Code:       "XMinioInvalidObjectName",
+			Code:       XMinioInvalidObjectName,
 			Message:    err.Error(),
 		}
 	}

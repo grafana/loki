@@ -334,20 +334,43 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 			})
 		} else if modify := mod.GetUpdate(); modify != nil {
 			newcf := newColumnFamily(req.Name+"/columnFamilies/"+mod.Id, 0, modify)
+			updateMask := mod.GetUpdateMask()
+			paths := updateMask.GetPaths()
+
 			cf, ok := tbl.families[mod.Id]
 			if !ok {
 				return nil, fmt.Errorf("no such family %q", mod.Id)
 			}
-			if cf.valueType != nil {
-				_, isOldAggregateType := cf.valueType.Kind.(*btapb.Type_AggregateType)
-				if isOldAggregateType && cf.valueType != newcf.valueType {
-					return nil, status.Errorf(codes.InvalidArgument, "Immutable fields 'value_type.aggregate_type' cannot be updated")
-				}
+
+			var utr *btapb.ColumnFamily
+			if len(paths) > 0 &&
+				!updateMask.IsValid(utr) {
+				return nil, status.Errorf(codes.InvalidArgument,
+					"incorrect path in UpdateMask; got: %v",
+					updateMask)
 			}
 
-			// assume that we ALWAYS want to replace by the new setting
-			// we may need partial update through
-			tbl.families[mod.Id] = newcf
+			if len(paths) == 0 {
+				// Assume that the update is only modifying the GC policy.
+				cf.gcRule = newcf.gcRule
+			}
+
+			for _, path := range paths {
+				switch path {
+				case "value_type":
+					if cf.valueType != nil &&
+						cf.valueType.GetAggregateType() != nil {
+						// The existing column family is an aggregate type, and the update
+						// is attempting to modify its immutable type.
+						return nil, status.Errorf(codes.InvalidArgument,
+							"Immutable fields 'value_type.aggregate_type' cannot be updated")
+					}
+
+					cf.valueType = newcf.valueType
+				case "gc_rule":
+					cf.gcRule = newcf.gcRule
+				}
+			}
 		}
 	}
 
@@ -1425,6 +1448,14 @@ func (s *server) SampleRowKeys(req *btpb.SampleRowKeysRequest, stream btpb.Bigta
 		})
 	}
 	return err
+}
+
+func (s *server) PrepareQuery(context.Context, *btpb.PrepareQueryRequest) (*btpb.PrepareQueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support PrepareQuery")
+}
+
+func (s *server) ExecuteQuery(*btpb.ExecuteQueryRequest, btpb.Bigtable_ExecuteQueryServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support ExecuteQuery")
 }
 
 // needGC is invoked whenever the server needs gcloop running.

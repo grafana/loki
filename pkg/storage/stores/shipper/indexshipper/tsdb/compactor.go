@@ -288,24 +288,23 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 	}
 }
 
-// ForEachChunk iterates over all the chunks in the builder and calls the callback function.
-func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.ChunkEntryCallback) error {
+// ForEachSeries iterates over all the chunks in the builder and calls the callback function.
+func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.SeriesCallback) error {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{c.periodConfig},
 	}
 
-	chunkEntry := retention.ChunkEntry{
-		ChunkRef: retention.ChunkRef{
-			UserID: getUnsafeBytes(c.userID),
-		},
-	}
 	logprotoChunkRef := logproto.ChunkRef{
 		UserID: c.userID,
 	}
+	series := retention.NewSeries()
 	for seriesID, stream := range c.builder.streams {
+		series.Reset(
+			getUnsafeBytes(seriesID),
+			getUnsafeBytes(c.userID),
+			withoutTenantLabel(stream.labels),
+		)
 		logprotoChunkRef.Fingerprint = uint64(stream.fp)
-		chunkEntry.SeriesID = getUnsafeBytes(seriesID)
-		chunkEntry.Labels = withoutTenantLabel(stream.labels)
 
 		for i := 0; i < len(stream.chunks) && ctx.Err() == nil; i++ {
 			chk := stream.chunks[i]
@@ -313,19 +312,19 @@ func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.Ch
 			logprotoChunkRef.Through = chk.Through()
 			logprotoChunkRef.Checksum = chk.Checksum
 
-			chunkEntry.ChunkID = getUnsafeBytes(schemaCfg.ExternalKey(logprotoChunkRef))
-			chunkEntry.From = logprotoChunkRef.From
-			chunkEntry.Through = logprotoChunkRef.Through
+			series.AppendChunks(retention.Chunk{
+				ChunkID: schemaCfg.ExternalKey(logprotoChunkRef),
+				From:    logprotoChunkRef.From,
+				Through: logprotoChunkRef.Through,
+			})
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 
-			deleteChunk, err := callback(chunkEntry)
-			if err != nil {
-				return err
-			}
-
-			if deleteChunk {
-				// add the chunk to the list of chunks to delete which would be taken care of while building the index.
-				c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], chk)
-			}
+		err := callback(series)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -334,24 +333,22 @@ func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.Ch
 
 // IndexChunk adds the chunk to the list of chunks to index.
 // Before accepting the chunk it checks if it falls within the tableInterval and rejects it if not.
-func (c *compactedIndex) IndexChunk(chk chunk.Chunk) (bool, error) {
-	if chk.From > c.tableInterval.End || c.tableInterval.Start > chk.Through {
+func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
+	if chunkRef.From > c.tableInterval.End || c.tableInterval.Start > chunkRef.Through {
 		return false, nil
 	}
 
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
-	b := labels.NewBuilder(chk.Metric)
+	b := labels.NewBuilder(lbls)
 	b.Del(labels.MetricName)
 	ls := b.Labels().String()
 
-	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-
 	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
-		Checksum: chk.Checksum,
-		MinTime:  int64(chk.From),
-		MaxTime:  int64(chk.Through),
-		KB:       uint32(approxKB),
-		Entries:  uint32(chk.Data.Entries()),
+		Checksum: chunkRef.Checksum,
+		MinTime:  int64(chunkRef.From),
+		MaxTime:  int64(chunkRef.Through),
+		KB:       sizeInKB,
+		Entries:  logEntriesCount,
 	})
 
 	return true, nil
@@ -365,6 +362,22 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 	}
 	delete(c.builder.streams, seriesID)
 	delete(c.deleteChunks, seriesID)
+	return nil
+}
+
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
+	if err != nil {
+		return err
+	}
+
+	seriesID := labels.String()
+	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(from),
+		MaxTime:  int64(through),
+	})
+
 	return nil
 }
 
@@ -395,6 +408,13 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 		}
 	}
 	c.indexChunks = nil
+
+	// cleanup any empty streams due to chunk removals above
+	for seriesID, stream := range c.builder.streams {
+		if len(stream.chunks) == 0 {
+			delete(c.indexChunks, seriesID)
+		}
+	}
 
 	id, err := c.builder.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{

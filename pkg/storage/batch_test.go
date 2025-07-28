@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -1118,22 +1119,22 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("3")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(3 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("4"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("4")),
 							Value:     1.,
 						},
 					},
@@ -1208,17 +1209,17 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("3")),
 							Value:     1.,
 						},
 					},
@@ -1276,12 +1277,12 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: time.Unix(1, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: time.Unix(2, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("2")),
 							Value:     1.,
 						},
 					},
@@ -1326,12 +1327,12 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: time.Unix(1, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: time.Unix(1, 0).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("2")),
 							Value:     1.,
 						},
 					},
@@ -1381,17 +1382,17 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 					Samples: []logproto.Sample{
 						{
 							Timestamp: from.UnixNano(),
-							Hash:      xxhash.Sum64String("1"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("1")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("2"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("2")),
 							Value:     1.,
 						},
 						{
 							Timestamp: from.Add(2 * time.Millisecond).UnixNano(),
-							Hash:      xxhash.Sum64String("3"),
+							Hash:      util.UniqueSampleHash(fooLabels.String(), unsafeGetBytes("3")),
 							Value:     1.,
 						},
 					},
@@ -1818,4 +1819,8 @@ func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
 		}
 	}
 	return streams
+}
+
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }

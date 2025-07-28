@@ -1,3 +1,11 @@
+# v1.8.3 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+
+# v1.8.2 (2025-01-24)
+
+* **Bug Fix**: Refactor filepath.Walk to filepath.WalkDir
+
 # v1.8.1 (2024-08-15)
 
 * **Dependency Update**: Bump minimum Go version to 1.21.

@@ -14,6 +14,8 @@ For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [
 
 {{< youtube id="snXhe1fDDa8" >}}
 
+For more information about using OpenTelemetry with Grafana products, refer to the [Grafana OpenTelemetry documentation](https://grafana.com/docs/opentelemetry/).
+
 ## Loki configuration
 
 When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata](../../get-started/labels/structured-metadata/).

@@ -12,14 +12,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -30,8 +34,11 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/tracing"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/querier")
 
 var (
 	_ querier.Store = &Store{}
@@ -46,20 +53,20 @@ var (
 	shardedObjectsPool = sync.Pool{
 		New: func() any {
 			return &shardedObject{
-				streams:    make(map[int64]dataobj.Stream),
+				streams:    make(map[int64]streams.Stream),
 				streamsIDs: make([]int64, 0, 1024),
-				logReaders: make([]*dataobj.LogsReader, 0, 16),
+				logReaders: make([]*logs.RowReader, 0, 16),
 			}
 		},
 	}
 	logReaderPool = sync.Pool{
 		New: func() any {
-			return &dataobj.LogsReader{}
+			return &logs.RowReader{}
 		},
 	}
 	streamReaderPool = sync.Pool{
 		New: func() any {
-			return &dataobj.StreamsReader{}
+			return &streams.RowReader{}
 		},
 	}
 )
@@ -180,34 +187,37 @@ type object struct {
 
 // objectsForTimeRange returns data objects for the given time range.
 func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time, logger log.Logger) ([]object, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "objectsForTimeRange")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "objectsForTimeRange")
+	defer span.End()
 
-	span.SetTag("from", from)
-	span.SetTag("through", through)
+	span.SetAttributes(
+		attribute.String("from", from.String()),
+		attribute.String("through", through.String()),
+	)
 
 	files, err := s.metastore.DataObjects(ctx, from, through)
 	if err != nil {
 		return nil, err
 	}
 
-	logParams := []interface{}{
+	level.Debug(logger).Log(
 		"msg", "found data objects for time range",
 		"count", len(files),
 		"from", from,
 		"through", through,
-	}
-	level.Debug(logger).Log(logParams...)
-
-	span.LogKV(logParams...)
-	span.LogKV("files", files)
+	)
+	span.AddEvent("found data objects for time range", trace.WithAttributes(
+		attribute.Int("count", len(files)),
+		attribute.StringSlice("files", files)),
+	)
 
 	objects := make([]object, 0, len(files))
 	for _, path := range files {
-		objects = append(objects, object{
-			Object: dataobj.FromBucket(s.bucket, path),
-			path:   path,
-		})
+		obj, err := dataobj.FromBucket(ctx, s.bucket, path)
+		if err != nil {
+			return nil, fmt.Errorf("getting object from bucket: %w", err)
+		}
+		objects = append(objects, object{Object: obj, path: path})
 	}
 	return objects, nil
 }
@@ -228,24 +238,32 @@ func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req lo
 		}
 	}()
 	streamsPredicate := streamPredicate(selector.Matchers(), req.Start, req.End)
-	// TODO: support more predicates and combine with log.Pipeline.
-	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicates []logs.RowPredicate
+	logsPredicates = append(logsPredicates, logs.TimeRangeRowPredicate{
 		StartTime:    req.Start,
 		EndTime:      req.End,
 		IncludeStart: true,
 		IncludeEnd:   false,
+	})
+
+	p, expr := buildLogsPredicateFromPipeline(selector)
+	if p != nil {
+		logsPredicates = append(logsPredicates, p)
 	}
+	req.Plan.AST = expr
+
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.EntryIterator, len(shardedObjects))
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
-			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectLogs")
-			defer span.Finish()
-			span.SetTag("object", obj.object.path)
-			span.SetTag("sections", len(obj.logReaders))
+			ctx, span := tracer.Start(ctx, "object selectLogs", trace.WithAttributes(
+				attribute.String("object", obj.object.path),
+				attribute.Int("sections", len(obj.logReaders)),
+			))
+			defer span.End()
 
-			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicates, req)
 			if err != nil {
 				return err
 			}
@@ -278,11 +296,18 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
 	// TODO: support more predicates and combine with log.Pipeline.
-	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+	var logsPredicates []logs.RowPredicate
+	logsPredicates = append(logsPredicates, logs.TimeRangeRowPredicate{
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
 		IncludeEnd:   false,
+	})
+
+	var predicateFromExpr logs.RowPredicate
+	predicateFromExpr, expr = buildLogsPredicateFromSampleExpr(expr)
+	if predicateFromExpr != nil {
+		logsPredicates = append(logsPredicates, predicateFromExpr)
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -290,12 +315,14 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
-			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectSamples")
-			defer span.Finish()
-			span.SetTag("object", obj.object.path)
-			span.SetTag("sections", len(obj.logReaders))
+			ctx, span := tracer.Start(ctx, "object selectSamples", trace.WithAttributes(
+				attribute.String("object", obj.object.path),
+				attribute.Int("sections", len(obj.logReaders)),
+			))
 
-			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
+			defer span.End()
+
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicates, expr)
 			if err != nil {
 				return err
 			}
@@ -312,17 +339,17 @@ func selectSamples(ctx context.Context, objects []object, shard logql.Shard, exp
 
 type shardedObject struct {
 	object       object
-	streamReader *dataobj.StreamsReader
-	logReaders   []*dataobj.LogsReader
+	streamReader *streams.RowReader
+	logReaders   []*logs.RowReader
 
 	streamsIDs []int64
-	streams    map[int64]dataobj.Stream
+	streams    map[int64]streams.Stream
 }
 
 // shardSections returns a list of section indices to read per metadata based on the sharding configuration.
 // The returned slice has the same length as the input metadatas, and each element contains the list of section indices
 // that should be read for that metadata.
-func shardSections(metadatas []dataobj.Metadata, shard logql.Shard) [][]int {
+func shardSections(metadatas []sectionsStats, shard logql.Shard) [][]int {
 	// Count total sections before sharding
 	var totalSections int
 	for _, metadata := range metadatas {
@@ -362,10 +389,10 @@ func shardObjects(
 	shard logql.Shard,
 	logger log.Logger,
 ) ([]*shardedObject, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "shardObjects")
-	defer span.Finish()
+	ctx, span := tracer.Start(ctx, "shardObjects")
+	defer span.End()
 
-	metadatas, err := fetchMetadatas(ctx, objects)
+	metadatas, err := fetchSectionsStats(ctx, objects)
 	if err != nil {
 		return nil, err
 	}
@@ -389,13 +416,23 @@ func shardObjects(
 		}
 
 		reader := shardedObjectsPool.Get().(*shardedObject)
-		reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
+		reader.streamReader = streamReaderPool.Get().(*streams.RowReader)
 		reader.object = objects[i]
-		reader.streamReader.Reset(objects[i].Object, 0)
+
+		sec, err := findStreamsSection(ctx, objects[i].Object)
+		if err != nil {
+			return nil, fmt.Errorf("finding streams section: %w", err)
+		}
+		reader.streamReader.Reset(sec)
 
 		for _, section := range sections {
-			logReader := logReaderPool.Get().(*dataobj.LogsReader)
-			logReader.Reset(objects[i].Object, section)
+			sec, err := findLogsSection(ctx, objects[i].Object, section)
+			if err != nil {
+				return nil, fmt.Errorf("finding logs section: %w", err)
+			}
+
+			logReader := logReaderPool.Get().(*logs.RowReader)
+			logReader.Reset(sec)
 			reader.logReaders = append(reader.logReaders, logReader)
 		}
 		shardedReaders = append(shardedReaders, reader)
@@ -416,16 +453,44 @@ func shardObjects(
 	}
 
 	level.Debug(logger).Log(logParams...)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(logParams...)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(logParams)...)
 
 	return shardedReaders, nil
 }
 
+func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs.Section, error) {
+	var count int
+
+	for _, section := range obj.Sections() {
+		if !logs.CheckSection(section) {
+			continue
+		}
+		if count == index {
+			return logs.Open(ctx, section)
+		}
+		count++
+	}
+
+	return nil, fmt.Errorf("object does not have logs section %d (max %d)", index, count)
+}
+
+func findStreamsSection(ctx context.Context, obj *dataobj.Object) (*streams.Section, error) {
+	for _, section := range obj.Sections() {
+		if !streams.CheckSection(section) {
+			continue
+		}
+		return streams.Open(ctx, section)
+	}
+
+	return nil, fmt.Errorf("object has no streams sections")
+}
+
 func (s *shardedObject) reset() {
+	_ = s.streamReader.Close()
 	streamReaderPool.Put(s.streamReader)
 	for i, reader := range s.logReaders {
+		_ = reader.Close()
 		logReaderPool.Put(reader)
 		s.logReaders[i] = nil
 	}
@@ -436,8 +501,8 @@ func (s *shardedObject) reset() {
 	clear(s.streams)
 }
 
-func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate streams.RowPredicate, logsPredicates []logs.RowPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicates); err != nil {
 		return nil, err
 	}
 
@@ -449,10 +514,16 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("msg", "starting selectLogs in section", "index", i)
-				defer sp.LogKV("msg", "selectLogs section done", "index", i)
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("starting selectLogs in section", trace.WithAttributes(
+				attribute.Int("index", i),
+			))
+			defer func() {
+				sp.AddEvent("selectLogs section done", trace.WithAttributes(
+					attribute.Int("index", i),
+				))
+			}()
+
 			iter, err := newEntryIterator(ctx, s.streams, reader, req)
 			if err != nil {
 				return err
@@ -468,8 +539,8 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
-	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate streams.RowPredicate, logsPredicates []logs.RowPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicates); err != nil {
 		return nil, err
 	}
 
@@ -482,10 +553,16 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("msg", "starting selectSamples in section", "index", i)
-				defer sp.LogKV("msg", "selectSamples section done", "index", i)
-			}
+			sp := trace.SpanFromContext(ctx)
+			sp.AddEvent("starting selectSamples in section", trace.WithAttributes(
+				attribute.Int("index", i),
+			))
+			defer func() {
+				sp.AddEvent("selectSamples section done", trace.WithAttributes(
+					attribute.Int("index", i),
+				))
+			}()
+
 			// extractors is not thread safe, so we need to create a new one for each object
 			extractors, err := expr.Extractors()
 			if err != nil {
@@ -507,12 +584,12 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 	return iter.NewSortSampleIterator(iterators), nil
 }
 
-func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate) error {
+func (s *shardedObject) setPredicate(streamsPredicate streams.RowPredicate, logsPredicates []logs.RowPredicate) error {
 	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
 		return err
 	}
 	for _, reader := range s.logReaders {
-		if err := reader.SetPredicate(logsPredicate); err != nil {
+		if err := reader.SetPredicates(logsPredicates); err != nil {
 			return err
 		}
 	}
@@ -520,11 +597,11 @@ func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, 
 }
 
 func (s *shardedObject) matchStreams(ctx context.Context) error {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("msg", "starting matchStreams")
-		defer sp.LogKV("msg", "matchStreams done")
-	}
-	streamsPtr := streamsPool.Get().(*[]dataobj.Stream)
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("starting matchStreams")
+	defer sp.AddEvent("matchStreams done")
+
+	streamsPtr := streamsPool.Get().(*[]streams.Stream)
 	defer streamsPool.Put(streamsPtr)
 	streams := *streamsPtr
 
@@ -551,30 +628,42 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 	return nil
 }
 
-// fetchMetadatas fetches metadata of objects in parallel
-func fetchMetadatas(ctx context.Context, objects []object) ([]dataobj.Metadata, error) {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("msg", "fetching metadata", "objects", len(objects))
-		defer sp.LogKV("msg", "fetched metadata")
+// fetchSectionsStats retrieves section count of objects.
+func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats, error) {
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("fetching metadata", trace.WithAttributes(
+		attribute.Int("objects", len(objects)),
+	))
+	defer sp.AddEvent("fetched metadata")
+
+	res := make([]sectionsStats, 0, len(objects))
+
+	for _, obj := range objects {
+		var stats sectionsStats
+
+		for _, section := range obj.Sections() {
+			switch {
+			case streams.CheckSection(section):
+				stats.StreamsSections++
+			case logs.CheckSection(section):
+				stats.LogsSections++
+			}
+		}
+
+		res = append(res, stats)
 	}
-	g, ctx := errgroup.WithContext(ctx)
-	metadatas := make([]dataobj.Metadata, len(objects))
-	for i, obj := range objects {
-		g.Go(func() error {
-			var err error
-			metadatas[i], err = obj.Object.Metadata(ctx)
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return metadatas, nil
+
+	return res, nil
+}
+
+type sectionsStats struct {
+	StreamsSections int
+	LogsSections    int
 }
 
 // streamPredicate creates a dataobj.StreamsPredicate from a list of matchers and a time range
-func streamPredicate(matchers []*labels.Matcher, start, end time.Time) dataobj.StreamsPredicate {
-	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
+func streamPredicate(matchers []*labels.Matcher, start, end time.Time) streams.RowPredicate {
+	var predicate streams.RowPredicate = streams.TimeRangeRowPredicate{
 		StartTime:    start,
 		EndTime:      end,
 		IncludeStart: true,
@@ -583,7 +672,7 @@ func streamPredicate(matchers []*labels.Matcher, start, end time.Time) dataobj.S
 
 	// If there are any matchers, combine them with an AND predicate
 	if len(matchers) > 0 {
-		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+		predicate = streams.AndRowPredicate{
 			Left:  predicate,
 			Right: matchersToPredicate(matchers),
 		}
@@ -592,22 +681,22 @@ func streamPredicate(matchers []*labels.Matcher, start, end time.Time) dataobj.S
 }
 
 // matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
-func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
-	var left dataobj.StreamsPredicate
+func matchersToPredicate(matchers []*labels.Matcher) streams.RowPredicate {
+	var left streams.RowPredicate
 	for _, matcher := range matchers {
-		var right dataobj.StreamsPredicate
+		var right streams.RowPredicate
 		switch matcher.Type {
 		case labels.MatchEqual:
-			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
+			right = streams.LabelMatcherRowPredicate{Name: matcher.Name, Value: matcher.Value}
 		default:
-			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
+			right = streams.LabelFilterRowPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
 				return matcher.Matches(value)
 			}}
 		}
 		if left == nil {
 			left = right
 		} else {
-			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+			left = streams.AndRowPredicate{
 				Left:  left,
 				Right: right,
 			}
@@ -631,4 +720,83 @@ func parseShards(shards []string) (logql.Shard, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", parsed[0].Variant())
 	}
 	return parsed[0], nil
+}
+
+func buildLogsPredicateFromSampleExpr(expr syntax.SampleExpr) (logs.RowPredicate, syntax.SampleExpr) {
+	var (
+		predicate logs.RowPredicate
+		skip      bool
+	)
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.BinOpExpr:
+			// we might not encounter BinOpExpr at this point since the lhs and rhs are evaluated separately?
+			skip = true
+		case *syntax.RangeAggregationExpr:
+			if !skip {
+				predicate, e.Left.Left = buildLogsPredicateFromPipeline(e.Left.Left)
+			}
+		}
+		return true
+	})
+
+	return predicate, expr
+}
+
+func buildLogsPredicateFromPipeline(expr syntax.LogSelectorExpr) (logs.RowPredicate, syntax.LogSelectorExpr) {
+	// Check if expr is a PipelineExpr, other implementations have no stages
+	pipelineExpr, ok := expr.(*syntax.PipelineExpr)
+	if !ok {
+		return nil, expr
+	}
+
+	var (
+		predicate       logs.RowPredicate
+		remainingStages = make([]syntax.StageExpr, 0, len(pipelineExpr.MultiStages))
+		appendPredicate = func(p logs.RowPredicate) {
+			if predicate == nil {
+				predicate = p
+			} else {
+				predicate = logs.AndRowPredicate{
+					Left:  predicate,
+					Right: p,
+				}
+			}
+		}
+	)
+
+Outer:
+	for i, stage := range pipelineExpr.MultiStages {
+		switch s := stage.(type) {
+		case *syntax.LineFmtExpr:
+			// modifies the log line, break early as we cannot apply any more predicates
+			remainingStages = append(remainingStages, pipelineExpr.MultiStages[i:]...)
+			break Outer
+
+		case *syntax.LineFilterExpr:
+			// Convert the line filter to a predicate
+			f, err := s.Filter()
+			if err != nil {
+				remainingStages = append(remainingStages, s)
+				continue
+			}
+
+			// Create a line filter predicate
+			appendPredicate(logs.LogMessageFilterRowPredicate{
+				Keep: func(line []byte) bool {
+					return f.Filter(line)
+				},
+			})
+
+		default:
+			remainingStages = append(remainingStages, s)
+		}
+	}
+
+	if len(remainingStages) == 0 {
+		return predicate, pipelineExpr.Left // return MatchersExpr
+	}
+	pipelineExpr.MultiStages = remainingStages
+
+	return predicate, pipelineExpr
 }

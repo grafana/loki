@@ -11,25 +11,24 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
-	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 var (
-	backendClients = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingest_limits_backend_clients",
-		Help: "The current number of ingest limits backend clients.",
+	numClients = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingest_limits_clients",
+		Help: "The current number of ingest limits clients.",
 	})
-	backendRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "loki_ingest_limits_backend_client_request_duration_seconds",
-		Help:    "Time spent doing ingest limits backend requests.",
+	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "loki_ingest_limits_client_request_duration_seconds",
+		Help:    "Time spent doing ingest limits requests.",
 		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 	}, []string{"operation", "status_code"})
 )
@@ -67,7 +66,7 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Client is a gRPC client for the ingest-limits.
 type Client struct {
-	logproto.IngestLimitsClient
+	proto.IngestLimitsClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
@@ -82,6 +81,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	opts = append(opts, dialOpts...)
 	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
@@ -89,7 +89,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		IngestLimitsClient: logproto.NewIngestLimitsClient(conn),
+		IngestLimitsClient: proto.NewIngestLimitsClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		Closer:             conn,
 	}, nil
@@ -105,20 +105,18 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
-	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	}
-	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(backendRequestDuration))
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(requestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
-	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	}
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(backendRequestDuration))
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(requestDuration))
 
 	return unaryInterceptors, streamInterceptors
 }
@@ -141,7 +139,7 @@ func NewPool(
 		poolCfg,
 		ring_client.NewRingServiceDiscovery(ring),
 		factory,
-		backendClients,
+		numClients,
 		logger,
 	)
 }

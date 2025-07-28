@@ -6,7 +6,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -104,11 +103,8 @@ func (m *MultiStore) GetObject(ctx context.Context, objectKey string) (io.ReadCl
 }
 
 func (m *MultiStore) GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
-	sp, _ := opentracing.StartSpanFromContext(ctx, "GetObjectRange")
-	if sp != nil {
-		sp.LogKV("objectKey", objectKey, "off", off, "length", length)
-	}
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "GetObjectRange")
+	defer sp.End()
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {
 		return nil, err

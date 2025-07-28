@@ -17,7 +17,7 @@ type Item interface {
 ```
 
 ```go
-// DefaultItem describes an items designed to work with DefaultDelegate.
+// DefaultItem describes an item designed to work with DefaultDelegate.
 type DefaultItem interface {
 	Item
 	Title() string
@@ -66,6 +66,6 @@ own `ItemDelegate` too ([example][customDelegate]).
 
 [kancli]: https://github.com/charmbracelet/kancli/blob/main/main.go#L45
 [itemDelegate]: https://pkg.go.dev/github.com/charmbracelet/bubbles/list#ItemDelegate
-[replacedLine]: https://github.com/charmbracelet/bubbletea/blob/master/examples/list-default/main.go#L77
-[listDefault]: https://github.com/charmbracelet/bubbletea/tree/master/examples/list-default
-[customDelegate]: https://github.com/charmbracelet/bubbletea/blob/master/examples/list-simple/main.go#L29-L50
+[replacedLine]: https://github.com/charmbracelet/bubbletea/blob/main/examples/list-default/main.go#L77
+[listDefault]: https://github.com/charmbracelet/bubbletea/tree/main/examples/list-default
+[customDelegate]: https://github.com/charmbracelet/bubbletea/blob/main/examples/list-simple/main.go#L29-L50

@@ -78,15 +78,19 @@ func main() {
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		return boltdbcompactor.ForEachChunk(context.Background(), t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
-			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
-				Checksum: extractChecksumFromChunkID(entry.ChunkID),
-				MinTime:  int64(entry.From),
-				MaxTime:  int64(entry.Through),
-				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
-				Entries:  10000,                  // guess: 10k entries
-			}})
-			return false, nil
+		return boltdbcompactor.ForEachSeries(context.Background(), t.Bucket([]byte("index")), periodConfig, func(s retention.Series) error {
+			chunkMetas := make([]index.ChunkMeta, 0, len(s.Chunks()))
+			for _, chunk := range s.Chunks() {
+				chunkMetas = append(chunkMetas, index.ChunkMeta{
+					Checksum: extractChecksumFromChunkID([]byte(chunk.ChunkID)),
+					MinTime:  int64(chunk.From),
+					MaxTime:  int64(chunk.Through),
+					KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
+					Entries:  10000,                  // guess: 10k entries
+				})
+			}
+			builder.AddSeries(s.Labels(), model.Fingerprint(s.Labels().Hash()), chunkMetas)
+			return nil
 		})
 	}); err != nil {
 		panic(err)
