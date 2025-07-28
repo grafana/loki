@@ -72,7 +72,7 @@ func (cmd *listStreamsCommand) listStreams(ctx context.Context, dataObj *dataobj
 		}
 	}
 	sorted := make([]int64, 0, len(result))
-	for id, _ := range result {
+	for id := range result {
 		sorted = append(sorted, id)
 	}
 	slices.Sort(sorted)
