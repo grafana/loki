@@ -83,8 +83,8 @@ func (m *mockBucket) Name() string { return "mock" }
 func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
 	return objstore.ObjectAttributes{}, nil
 }
-func (m *mockBucket) GetAndReplace(_ context.Context, name string, _ func(io.Reader) (io.Reader, error)) error {
-	return m.Upload(context.Background(), name, bytes.NewReader([]byte{}))
+func (m *mockBucket) GetAndReplace(_ context.Context, name string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
+	return m.Upload(context.Background(), name, io.NopCloser(bytes.NewReader([]byte{})))
 }
 func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
 	return false
