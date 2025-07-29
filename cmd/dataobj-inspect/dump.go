@@ -49,7 +49,7 @@ func (cmd *dumpCommand) dumpFile(name string) {
 		case logs.CheckSection(sec):
 			cmd.dumpLogsSection(context.TODO(), offset, sec)
 		default:
-			exitWithError(errors.New("unknown section"))
+			exitWithError(fmt.Errorf("unknown section: %s", sec.Type))
 		}
 	}
 }
