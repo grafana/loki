@@ -161,6 +161,9 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	sortType, sortDirection, err := logsSection.PrimarySortOrder()
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "could not determine primary sort order for logs section, forcing topk sort", "err", err)
+
+		sortType = logs.ColumnTypeInvalid
+		sortDirection = logs.SortDirectionUnspecified
 	}
 
 	// Wrap our pipeline to enforce expected sorting. We always emit logs in
@@ -168,8 +171,8 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	// match the expected sort order or the requested sort type is not timestamp.
 	//
 	// If it's already sorted, we wrap by LimitPipeline to enforce the limit
-	// given to the node.
-	if node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp {
+	// given to the node (if defined).
+	if node.Direction != physical.UNSORTED && (node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp) {
 		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.Direction)
 
 		pipeline, err = newTopkPipeline(topkOptions{
@@ -206,7 +209,7 @@ func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
 		return physical.DESC
 	}
 
-	return physical.SortOrder(0)
+	return physical.UNSORTED
 }
 
 func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
