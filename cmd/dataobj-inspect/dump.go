@@ -97,7 +97,7 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 		if err != nil && !errors.Is(err, io.EOF) {
 			exitWithError(err)
 		}
-		if n == 0 {
+		if n == 0 && errors.Is(err, io.EOF) {
 			return
 		}
 		for _, r := range tmp[0:n] {
