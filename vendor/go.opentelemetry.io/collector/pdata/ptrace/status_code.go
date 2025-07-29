@@ -5,6 +5,7 @@ package ptrace // import "go.opentelemetry.io/collector/pdata/ptrace"
 
 import (
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // StatusCode mirrors the codes defined at
@@ -28,4 +29,8 @@ func (sc StatusCode) String() string {
 		return "Error"
 	}
 	return ""
+}
+
+func (sc StatusCode) marshalJSONStream(dest *json.Stream) {
+	dest.WriteInt32(int32(sc))
 }
