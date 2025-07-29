@@ -18,7 +18,8 @@ import (
 
 // dumpCommand dumps the contents of the data object.
 type dumpCommand struct {
-	files *[]string
+	files      *[]string
+	printLines *bool
 }
 
 func (cmd *dumpCommand) run(c *kingpin.ParseContext) error {
@@ -105,7 +106,7 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 			r.Metadata.Range(func(l labels.Label) {
 				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)
 			})
-			if len(r.Line) > 0 {
+			if *cmd.printLines && len(r.Line) > 0 {
 				bold.Printf("\t\t> ")
 				for pos, char := range string(r.Line) {
 					fmt.Printf("%c", char)
@@ -122,5 +123,6 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 func addDumpCommand(app *kingpin.Application) {
 	cmd := &dumpCommand{}
 	dump := app.Command("dump", "Dump the contents of the data object.").Action(cmd.run)
+	cmd.printLines = dump.Flag("print-lines", "Prints the lines of each column.").Bool()
 	cmd.files = dump.Arg("file", "The file to dump.").ExistingFiles()
 }
