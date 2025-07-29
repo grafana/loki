@@ -1535,7 +1535,7 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 func getAllSeriesProgressKeys(t *testing.T, db *bbolt.DB) map[string]struct{} {
 	keys := make(map[string]struct{})
 	err := db.View(func(tx *bbolt.Tx) error {
-		return tx.Bucket([]byte(boltdbBucketName)).ForEach(func(k, v []byte) error {
+		return tx.Bucket(boltdbBucketName).ForEach(func(k, _ []byte) error {
 			keys[string(k)] = struct{}{}
 			return nil
 		})
