@@ -158,6 +158,10 @@ func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicat
 		return nil, nil, nil, fmt.Errorf("failed to resolve data object sections: %w", err)
 	}
 
+	sort.Slice(sectionDescriptors, func(i, j int) bool {
+		return sectionDescriptors[i].Start.Before(sectionDescriptors[j].Start) && sectionDescriptors[i].End.Before(sectionDescriptors[j].End)
+	})
+
 	return filterDescriptorsForShard(shard, sectionDescriptors)
 }
 
