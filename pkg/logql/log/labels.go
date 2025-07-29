@@ -49,7 +49,6 @@ func (l labelsResult) String() string {
 	return l.s
 }
 
-// TODO: this is slow.
 func (l labelsResult) Labels() labels.Labels {
 	size := l.stream.Len() + l.structuredMetadata.Len() + l.parsed.Len()
 	b := labels.NewScratchBuilder(size)
