@@ -126,14 +126,16 @@ func (s *columnarLabels) len() int {
 }
 
 func (s *columnarLabels) get(key []byte) ([]byte, bool) {
-	/*
-	for i := 0; i < len(s.names.indices); i++ {
-		if bytes.Equal(s.names.get(i), key) {
-			return s.values.get(i), true
+	// Benchmarking showed that linear search is faster for small number of labels.
+	if s.names.len() <= 50 {
+		for i := 0; i < len(s.names.indices); i++ {
+			if bytes.Equal(s.names.get(i), key) {
+				return s.values.get(i), true
+			}
 		}
+		return nil, false
 	}
-	return nil, false
-	*/
+
 	idx := s.names.index(key)
 	if idx == -1 {
 		return nil, false
