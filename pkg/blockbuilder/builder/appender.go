@@ -284,7 +284,7 @@ func (m *streamsMap) getLabelsFromFingerprint(fp model.Fingerprint) labels.Label
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 	var fp uint64
-	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
+	fp, i.buf = ls.HashWithoutLabels(i.buf)
 	return i.mapper.MapFP(model.Fingerprint(fp), ls)
 }
 

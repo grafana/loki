@@ -226,6 +226,7 @@ func (wrt *Writer) SubscribeWrite(subscriber WriteEventSubscriber) {
 // across every write.
 type entryWriter struct {
 	reusableWALRecord *wal.Record
+	lbsBuf            []byte // buffer for hashing labels
 }
 
 // newEntryWriter creates a new entryWriter.
@@ -247,7 +248,7 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, _ log.Logger) error {
 
 	var fp uint64
 	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
-	fp, _ = lbs.HashWithoutLabels(nil, []string(nil)...)
+	fp, ew.lbsBuf = lbs.HashWithoutLabels(ew.lbsBuf)
 
 	// Append the entry to an already existing stream (if any)
 	ew.reusableWALRecord.RefEntries = append(ew.reusableWALRecord.RefEntries, wal.RefEntries{

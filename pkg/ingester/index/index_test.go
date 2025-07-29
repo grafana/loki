@@ -69,7 +69,7 @@ func BenchmarkHash(b *testing.B) {
 	b.Run("xxash", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			var fp uint64
-			fp, buf = logproto.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf, []string(nil)...)
+			fp, buf = logproto.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf)
 			result = util.HashFP(model.Fingerprint(fp)) % 16
 		}
 	})

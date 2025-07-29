@@ -19,6 +19,6 @@ func newHasher() *hasher {
 // It is not guaranteed to be stable across different Loki processes or versions.
 func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	var hash uint64
-	hash, h.buf = lbs.HashWithoutLabels(h.buf, []string(nil)...)
+	hash, h.buf = lbs.HashWithoutLabels(h.buf)
 	return hash
 }
