@@ -985,12 +985,16 @@ adminApi:
   # -- Update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
