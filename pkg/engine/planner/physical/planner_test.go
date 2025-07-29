@@ -110,28 +110,32 @@ func TestMockCatalog(t *testing.T) {
 
 func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, string(scan.Location))
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		for _, scan := range plan.Children(n) {
-			obj, ok := scan.(*DataObjScan)
-			if !ok {
-				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-			}
-			res = append(res, string(obj.Location))
-		}
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
 
 func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, []int{scan.Section})
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		for _, scan := range plan.Children(n) {
-			obj, ok := scan.(*DataObjScan)
-			if !ok {
-				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-			}
-			res = append(res, []int{obj.Section})
-		}
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
