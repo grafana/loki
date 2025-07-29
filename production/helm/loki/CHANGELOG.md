@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.34.0
 
 - [CHANGE] Updated version of Grafana Loki to 3.5.3
+- [CHANGE] BREAKING - Fix serviceName in zone-aware ingester statefulsets [#18558](https://github.com/grafana/loki/pull/18558)
 - [FEATURE] Expose labels on volumeClaimTemplates [#13317](https://github.com/grafana/loki/pull/13317)
 - [FEATURE] Allow setting custom labels for ingester statefulsets [#18536](https://github.com/grafana/loki/pull/18536)
 - [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
@@ -26,7 +27,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
 - [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680)
-- [BUGFIX] Fix serviceName in zone-aware ingester statefulsets [#18558](https://github.com/grafana/loki/pull/18558)
 
 ## 6.33.0
 
