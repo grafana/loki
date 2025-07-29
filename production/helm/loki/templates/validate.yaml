@@ -46,5 +46,5 @@
 {{- end }}
 
 {{- if and .Values.querier.kedaAutoscaling.enabled .Values.querier.autoscaling.enabled}}
-{{- fail "Cannot enable both HPA and Keda based autoscaling at the same time."}}
+{{- fail "Cannot enable both HPA and Keda based autoscaling for querier at the same time."}}
 {{- end }}
