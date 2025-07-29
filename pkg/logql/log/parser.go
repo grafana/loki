@@ -158,7 +158,8 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), j.valueBuffer)
 
 		if j.captureJSONPath {
-			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
+            // TODO: very this is ok. buildJSONPathFromPrefixBuffer uses and unsafe string 
+			j.lbs.SetJSONPath(sanitizedKey, []string{unsafeGetString(key)})
 		}
 
 		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
