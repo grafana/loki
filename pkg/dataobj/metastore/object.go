@@ -513,6 +513,11 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
 func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
+	if streamPredicate == nil {
+		// At least one stream matcher is required, currently.
+		return nil, nil
+	}
+
 	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
 	defer timer.ObserveDuration()
 
