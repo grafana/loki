@@ -13,9 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Expose labels on volumeClaimTemplates [#13317](https://github.com/grafana/loki/pull/13317)
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the single-binary pods. [#18547](https://github.com/grafana/loki/pull/18547)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced
 - [FEATURE] Allow setting custom labels for ingester statefulsets [#18536](https://github.com/grafana/loki/pull/18536)
