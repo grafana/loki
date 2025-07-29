@@ -1,6 +1,9 @@
 package log
 
-import "bytes"
+import (
+	"bytes"
+	"slices"
+)
 
 type stringColumn struct {
 	data    []byte
@@ -42,7 +45,6 @@ func (s *stringColumn) reset() {
 }
 
 func (s *stringColumn) get(i int) []byte {
-	// TODO: test this. It's tricky
 	index := s.indices[i]
 	start := s.offsets[index]
 	if index+1 >= len(s.offsets) {
@@ -51,6 +53,33 @@ func (s *stringColumn) get(i int) []byte {
 
 	end := s.offsets[index+1]
 	return s.data[start:end]
+}
+
+func (s *stringColumn) index(value []byte) int {
+	idx := bytes.Index(s.data, value)
+	if idx == -1 {
+		return -1
+	}
+
+	// Find index in offsets
+	idx = slices.Index(s.offsets, idx)
+	if idx == -1 {
+		return -1
+	}
+
+	// Verify length
+	var length int
+	if idx+1 >= len(s.offsets) {
+		length = len(s.data) - s.offsets[idx]
+	} else {
+		length = s.offsets[idx+1] - s.offsets[idx]
+	}
+	if length != len(value) {
+		return -1
+	}
+
+	// Find index in indices
+	return slices.Index(s.indices, idx)
 }
 
 func (s *stringColumn) len() int {
@@ -97,13 +126,19 @@ func (s *columnarLabels) len() int {
 }
 
 func (s *columnarLabels) get(key []byte) ([]byte, bool) {
-	// TODO: to a string search on s.names.data
+	/*
 	for i := 0; i < len(s.names.indices); i++ {
 		if bytes.Equal(s.names.get(i), key) {
 			return s.values.get(i), true
 		}
 	}
 	return nil, false
+	*/
+	idx := s.names.index(key)
+	if idx == -1 {
+		return nil, false
+	}
+	return s.values.get(idx), true
 }
 
 func (s *columnarLabels) getAt(i int) (name, value []byte) {
