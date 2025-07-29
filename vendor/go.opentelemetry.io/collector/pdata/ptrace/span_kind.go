@@ -5,6 +5,7 @@ package ptrace // import "go.opentelemetry.io/collector/pdata/ptrace"
 
 import (
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // SpanKind is the type of span. Can be used to specify additional relationships between spans
@@ -51,4 +52,8 @@ func (sk SpanKind) String() string {
 		return "Consumer"
 	}
 	return ""
+}
+
+func (sk SpanKind) marshalJSONStream(dest *json.Stream) {
+	dest.WriteInt32(int32(sk))
 }
