@@ -65,7 +65,7 @@ func (cmd *listStreamsCommand) listStreams(ctx context.Context, dataObj *dataobj
 				if n == 0 && errors.Is(err, io.EOF) {
 					break
 				}
-				for _, s := range tmp[0:n] {
+				for _, s := range tmp[:n] {
 					result[s.ID] = s
 				}
 			}

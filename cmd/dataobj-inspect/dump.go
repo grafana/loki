@@ -73,7 +73,7 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 		if n == 0 && errors.Is(err, io.EOF) {
 			return
 		}
-		for _, s := range tmp[0:n] {
+		for _, s := range tmp[:n] {
 			bold.Printf("\t\tid: %d, labels:\n", s.ID)
 			s.Labels.Range(func(l labels.Label) {
 				fmt.Printf("\t\t\t%s=%s\n", l.Name, l.Value)

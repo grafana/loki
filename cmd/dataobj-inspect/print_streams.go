@@ -68,7 +68,7 @@ func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *datao
 				if n == 0 && errors.Is(err, io.EOF) {
 					break
 				}
-				for _, r := range tmp[0:n] {
+				for _, r := range tmp[:n] {
 					if _, ok := printStreamIDs[r.StreamID]; ok || printAll {
 						fmt.Printf("%s\n", string(r.Line))
 					}
