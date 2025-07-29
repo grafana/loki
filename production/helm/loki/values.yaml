@@ -1488,6 +1488,9 @@ singleBinary:
     enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1612,6 +1615,9 @@ write:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1729,6 +1735,9 @@ read:
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1836,6 +1845,9 @@ backend:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1984,6 +1996,9 @@ ingester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2489,6 +2504,9 @@ indexGateway:
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**
     inMemory: false
     # -- Size of persistent or memory disk
@@ -2598,6 +2616,9 @@ compactor:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2698,6 +2719,9 @@ bloomGateway:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2797,6 +2821,9 @@ bloomPlanner:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2998,6 +3025,9 @@ patternIngester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -3095,6 +3125,9 @@ ruler:
   persistence:
     # -- Enable creating PVCs which is required when using recording rules
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
