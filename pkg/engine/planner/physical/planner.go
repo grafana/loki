@@ -200,22 +200,26 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			}
 
 			nodes = append(nodes, sortMerge)
-		} else if len(scans) > 0 {
-			// Add a merge node to map N inputs to 1 output.
-			merge := &Merge{}
-			p.plan.addNode(merge)
-
-			for _, scan := range scans {
-				if err := p.plan.addEdge(Edge{Parent: merge, Child: scan}); err != nil {
-					return nil, err
-				}
-			}
-
-			nodes = append(nodes, merge)
 		} else {
 			nodes = append(nodes, scans...)
 		}
 	}
+
+	if ctx.direction == UNSORTED && len(nodes) > 0 {
+		// Add a merge node to map N inputs to 1 output.
+		merge := &Merge{}
+		p.plan.addNode(merge)
+
+		for _, node := range nodes {
+			if err := p.plan.addEdge(Edge{Parent: merge, Child: node}); err != nil {
+				return nil, err
+			}
+		}
+
+		nodes = nodes[:0]
+		nodes = append(nodes, merge)
+	}
+
 	return nodes, nil
 }
 
