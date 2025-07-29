@@ -10234,6 +10234,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.sccEnabled</td>
 			<td>bool</td>
 			<td>For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.</td>
