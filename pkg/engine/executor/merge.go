@@ -19,7 +19,7 @@ var _ Pipeline = (*Merge)(nil)
 
 func NewMergePipeline(inputs []Pipeline) (*Merge, error) {
 	if len(inputs) == 0 {
-		return nil, fmt.Errorf("no inputs provided for union pipeline")
+		return nil, fmt.Errorf("no inputs provided for merge pipeline")
 	}
 
 	return &Merge{
