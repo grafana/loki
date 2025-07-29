@@ -6347,7 +6347,8 @@ null
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
-      "/otlp/v1/logs"
+      "/otlp/v1/logs",
+      "/ui"
     ],
     "queryFrontend": [
       "/api/prom/query",
@@ -6413,7 +6414,8 @@ null
 [
   "/api/prom/push",
   "/loki/api/v1/push",
-  "/otlp/v1/logs"
+  "/otlp/v1/logs",
+  "/ui"
 ]
 </pre>
 </td>
@@ -10228,6 +10230,15 @@ false
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
 			<td><pre lang="json">
 false
 </pre>
