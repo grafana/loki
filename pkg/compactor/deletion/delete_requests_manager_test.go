@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -1018,7 +1019,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				deletionMode:    tc.deletionMode.String(),
 			}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
+			require.NoError(t, mgr.Init(nil, nil))
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
 
@@ -1105,7 +1106,7 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	for _, tc := range tt {
 		mgr, err := NewDeleteRequestsManager(t.TempDir(), &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 		require.NoError(t, err)
-		require.NoError(t, mgr.Init(nil))
+		require.NoError(t, mgr.Init(nil, nil))
 		mgr.MarkPhaseStarted()
 		require.NotNil(t, mgr.currentBatch)
 
@@ -1292,7 +1293,7 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
+			require.NoError(t, mgr.Init(nil, nil))
 
 			wg := sync.WaitGroup{}
 			mgrCtx, mgrCtxCancel := context.WithCancel(context.Background())
@@ -1314,21 +1315,20 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 			require.Equal(t, tc.expExpired, isExpired)
 
 			// see if stopping the manager properly retains the progress and loads back when initialized
-			storedSeriesProgress := mgr.processedSeries
+			storedSeriesProgress := getAllSeriesProgressKeys(t, mgr.seriesProgress)
 			mgrCtxCancel()
 			wg.Wait()
 
 			mgr, err = NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 			require.NoError(t, err)
-			require.NoError(t, mgr.Init(nil))
-			require.Equal(t, storedSeriesProgress, mgr.processedSeries)
+			require.NoError(t, mgr.Init(nil, nil))
+			require.Equal(t, storedSeriesProgress, getAllSeriesProgressKeys(t, mgr.seriesProgress))
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)
 
 			// when the mark phase ends, series progress should get cleared
 			mgr.MarkPhaseFinished()
-			require.Len(t, mgr.processedSeries, 0)
-			require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+			require.Len(t, getAllSeriesProgressKeys(t, mgr.seriesProgress), 0)
 		})
 	}
 }
@@ -1345,7 +1345,7 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 
 	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, false, nil, nil)
 	require.NoError(t, err)
-	require.NoError(t, mgr.Init(nil))
+	require.NoError(t, mgr.Init(nil, nil))
 	mgr.MarkPhaseStarted()
 	require.NotNil(t, mgr.currentBatch)
 
@@ -1356,8 +1356,7 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 
 	// timeout should not clear the series progress
 	mgr.MarkPhaseFinished()
-	require.Len(t, mgr.processedSeries, 2)
-	require.NoError(t, mgr.storeSeriesProgress())
+	require.Len(t, getAllSeriesProgressKeys(t, mgr.seriesProgress), 2)
 	require.FileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 
 	// load the requests again for processing
@@ -1366,7 +1365,53 @@ func TestDeleteRequestsManager_SeriesProgressWithTimeout(t *testing.T) {
 
 	// not hitting the timeout should clear the series progress
 	mgr.MarkPhaseFinished()
-	require.Len(t, mgr.processedSeries, 0)
+	require.Len(t, getAllSeriesProgressKeys(t, mgr.seriesProgress), 0)
+}
+
+func TestDeleteRequestsManagerWithoutHorizontalScalingMode_SeriesProgress(t *testing.T) {
+	workingDir := t.TempDir()
+
+	user1 := []byte("user1")
+	lblFooBar := mustParseLabel(`{foo="bar"}`)
+	deleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: []DeleteRequest{
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 0, EndTime: 100, Status: StatusReceived},
+		{RequestID: "1", Query: lblFooBar.String(), UserID: string(user1), StartTime: 100, EndTime: 200, Status: StatusReceived},
+	}}
+
+	mgr, err := NewDeleteRequestsManager(workingDir, deleteRequestsStore, time.Hour, 70, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, true, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, mgr.Init(struct{ TablesManager }{}, nil))
+
+	// series progress file should not have been created
+	require.Nil(t, mgr.seriesProgress)
+	require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+
+	mgr.MarkPhaseStarted()
+	require.NotNil(t, mgr.currentBatch)
+
+	// MarkSeriesAsProcessed should be just ignored and not fail
+	require.NoError(t, mgr.MarkSeriesAsProcessed(user1, []byte(lblFooBar.String()), lblFooBar, "t1"))
+	// expiry check should not fail either
+	isExpired, _ := mgr.Expired(user1, retention.Chunk{From: 0, Through: 50}, lblFooBar, []byte(lblFooBar.String()), "t1", model.Now())
+	require.True(t, isExpired)
+
+	// mark phases should not cause any trouble due to a nil series progress file reference
+	mgr.MarkPhaseTimedOut()
+	mgr.MarkPhaseFinished()
+
+	// series progress file should still not be present
+	require.Nil(t, mgr.seriesProgress)
+	require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
+
+	// load the requests again for processing
+	mgr.MarkPhaseStarted()
+	require.NotNil(t, mgr.currentBatch)
+
+	// do not hit the timeout this time and see if things continue to work as usual
+	mgr.MarkPhaseFinished()
+
+	// series progress file should still not be present
+	require.Nil(t, mgr.seriesProgress)
 	require.NoFileExists(t, filepath.Join(workingDir, seriesProgressFilename))
 }
 
@@ -1485,4 +1530,17 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	}
 
 	return false
+}
+
+func getAllSeriesProgressKeys(t *testing.T, db *bbolt.DB) map[string]struct{} {
+	keys := make(map[string]struct{})
+	err := db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket(boltdbBucketName).ForEach(func(k, _ []byte) error {
+			keys[string(k)] = struct{}{}
+			return nil
+		})
+	})
+	require.NoError(t, err)
+
+	return keys
 }

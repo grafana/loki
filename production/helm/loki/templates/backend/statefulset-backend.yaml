@@ -51,6 +51,7 @@ spec:
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        kubectl.kubernetes.io/default-container: "loki"
       labels:
         {{- include "loki.backendLabels" . | nindent 8 }}
         {{- with merge (dict) .Values.loki.podLabels .Values.backend.podLabels }}
@@ -75,75 +76,6 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-      {{- if .Values.sidecar.rules.enabled }}
-        - name: loki-sc-rules
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
-          {{- end }}
-          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
-          env:
-            - name: METHOD
-              value: {{ .Values.sidecar.rules.watchMethod }}
-            - name: LABEL
-              value: "{{ .Values.sidecar.rules.label }}"
-            {{- if .Values.sidecar.rules.labelValue }}
-            - name: LABEL_VALUE
-              value: {{ quote .Values.sidecar.rules.labelValue }}
-            {{- end }}
-            - name: FOLDER
-              value: "{{ .Values.sidecar.rules.folder }}"
-            - name: RESOURCE
-              value: {{ quote .Values.sidecar.rules.resource }}
-            {{- if .Values.sidecar.enableUniqueFilenames }}
-            - name: UNIQUE_FILENAMES
-              value: "{{ .Values.sidecar.enableUniqueFilenames }}"
-            {{- end }}
-            {{- if .Values.sidecar.rules.searchNamespace }}
-            - name: NAMESPACE
-              value: "{{ .Values.sidecar.rules.searchNamespace | join "," }}"
-            {{- end }}
-            {{- if .Values.sidecar.skipTlsVerify }}
-            - name: SKIP_TLS_VERIFY
-              value: "{{ .Values.sidecar.skipTlsVerify }}"
-            {{- end }}
-            {{- if .Values.sidecar.rules.script }}
-            - name: SCRIPT
-              value: "{{ .Values.sidecar.rules.script }}"
-            {{- end }}
-            {{- if .Values.sidecar.rules.watchServerTimeout }}
-            - name: WATCH_SERVER_TIMEOUT
-              value: "{{ .Values.sidecar.rules.watchServerTimeout }}"
-            {{- end }}
-            {{- if .Values.sidecar.rules.watchClientTimeout }}
-            - name: WATCH_CLIENT_TIMEOUT
-              value: "{{ .Values.sidecar.rules.watchClientTimeout }}"
-            {{- end }}
-            {{- if .Values.sidecar.rules.logLevel }}
-            - name: LOG_LEVEL
-              value: "{{ .Values.sidecar.rules.logLevel }}"
-            {{- end }}
-          {{- if .Values.sidecar.livenessProbe }}
-          livenessProbe:
-          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
-          {{- end }}
-          {{- if .Values.sidecar.readinessProbe }}
-          readinessProbe:
-          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
-          {{- end }}
-          {{- if .Values.sidecar.resources }}
-          resources:
-          {{- toYaml .Values.sidecar.resources | nindent 12 }}
-          {{- end }}
-          {{- if .Values.sidecar.securityContext }}
-          securityContext:
-          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
-          {{- end }}
-          volumeMounts:
-            - name: sc-rules-volume
-              mountPath: {{ .Values.sidecar.rules.folder | quote }}
-        {{- end}}
         - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
@@ -198,6 +130,83 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- if .Values.sidecar.rules.enabled }}
+        - name: loki-sc-rules
+          {{- if .Values.sidecar.image.sha }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          {{- else }}
+          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
+          env:
+            - name: METHOD
+              value: {{ .Values.sidecar.rules.watchMethod }}
+            - name: LABEL
+              value: "{{ .Values.sidecar.rules.label }}"
+            {{- if .Values.sidecar.rules.labelValue }}
+            - name: LABEL_VALUE
+              value: {{ quote .Values.sidecar.rules.labelValue }}
+            {{- end }}
+            - name: FOLDER
+              value: "{{ .Values.sidecar.rules.folder }}"
+            {{- if .Values.sidecar.rules.folderAnnotation }}
+            - name: FOLDER_ANNOTATION
+              value: "{{ .Values.sidecar.rules.folderAnnotation }}"
+            {{- end }}
+            - name: RESOURCE
+              value: {{ quote .Values.sidecar.rules.resource }}
+            {{- if .Values.sidecar.enableUniqueFilenames }}
+            - name: UNIQUE_FILENAMES
+              value: "{{ .Values.sidecar.enableUniqueFilenames }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.searchNamespace }}
+            - name: NAMESPACE
+              value: "{{ .Values.sidecar.rules.searchNamespace | join "," }}"
+            {{- end }}
+            {{- if .Values.sidecar.skipTlsVerify }}
+            - name: SKIP_TLS_VERIFY
+              value: "{{ .Values.sidecar.skipTlsVerify }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.script }}
+            - name: SCRIPT
+              value: "{{ .Values.sidecar.rules.script }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchServerTimeout }}
+            - name: WATCH_SERVER_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchServerTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.watchClientTimeout }}
+            - name: WATCH_CLIENT_TIMEOUT
+              value: "{{ .Values.sidecar.rules.watchClientTimeout }}"
+            {{- end }}
+            {{- if .Values.sidecar.rules.logLevel }}
+            - name: LOG_LEVEL
+              value: "{{ .Values.sidecar.rules.logLevel }}"
+            {{- end }}
+          {{- if .Values.sidecar.livenessProbe }}
+          livenessProbe:
+          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.readinessProbe }}
+          readinessProbe:
+          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.startupProbe }}
+          startupProbe:
+          {{- toYaml .Values.sidecar.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.resources }}
+          resources:
+          {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          {{- end }}
+          {{- if .Values.sidecar.securityContext }}
+          securityContext:
+          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+        {{- end}}
         {{- with .Values.backend.extraContainers }}
         {{- toYaml . | nindent 8}}
         {{- end }}
@@ -262,6 +271,10 @@ spec:
         name: data
         {{- with .Values.backend.persistence.annotations }}
         annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.backend.persistence.labels }}
+        labels:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:

@@ -165,6 +165,15 @@ func validCannedAcl(val string) bool {
 	return false
 }
 
+func isAclHeaderkey(key string) bool {
+	if key == http.BCE_ACL ||
+		key == http.BCE_GRANT_READ ||
+		key == http.BCE_GRANT_FULL_CONTROL {
+		return true
+	}
+	return false
+}
+
 func validObjectTagging(tagging string) (bool, string) {
 	if len(tagging) > 4000 {
 		return false, ""
@@ -188,6 +197,23 @@ func validObjectTagging(tagging string) (bool, string) {
 	return true, strings.Join(encodeTagging, "&")
 }
 
+func taggingMapToStr(tags map[string]string) string {
+	var values []string
+	for k, v := range tags {
+		encodeKey := url.QueryEscape(k)
+		encodeValue := url.QueryEscape(v)
+		if len(encodeKey) > 128 || len(encodeValue) > 256 ||
+			len(encodeKey) == 0 || len(encodeValue) == 0 {
+			continue
+		}
+		values = append(values, encodeKey+"="+encodeValue)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, "&")
+}
+
 func toHttpHeaderKey(key string) string {
 	var result bytes.Buffer
 	needToUpper := true
@@ -207,7 +233,7 @@ func toHttpHeaderKey(key string) string {
 
 func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 	for k, v := range args {
-		if len(v) == 0 {
+		if len(v) == 0 || v == "false" {
 			continue
 		}
 		switch k {
@@ -240,9 +266,6 @@ func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 		case http.BCE_CONTENT_CRC32C:
 			fallthrough
 		case http.BCE_CONTENT_CRC32C_FLAG:
-			if v == "false" {
-				continue
-			}
 			fallthrough
 		case http.BCE_COPY_SOURCE_RANGE:
 			fallthrough
@@ -253,6 +276,18 @@ func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 		case http.BCE_COPY_SOURCE_IF_MODIFIED_SINCE:
 			fallthrough
 		case http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5:
+			fallthrough
+		case http.BCE_FORBID_OVERWRITE:
+			fallthrough
+		case http.BCE_OBJECT_EXPIRES:
 			req.SetHeader(k, v)
 		}
 	}
@@ -481,4 +516,11 @@ func ParseObjectTagResult(rawData []byte) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("decode tags error")
 	}
 	return tags, nil
+}
+
+func joinUserIds(ids []string) string {
+	for i := range ids {
+		ids[i] = "id=\"" + ids[i] + "\""
+	}
+	return strings.Join(ids, ",")
 }

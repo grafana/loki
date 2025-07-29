@@ -267,12 +267,17 @@ func markForDelete(
 			return nil
 		}
 
+		// Removing logs with filter is an intensive operation. However, tracking processed series is not free either.
+		// We want to only track series which have logs to be removed with filter, to skip the ones we have already processed
+		// and not have too much data for tracking.
+		seriesHasLogsToRemoveWithFilter := false
 		for i := 0; i < len(chunks) && iterCtx.Err() == nil; i++ {
 			c := chunks[i]
 			// see if the chunk is deleted completely or partially
 			if expired, filterFunc := expiration.Expired(s.UserID(), c, s.Labels(), s.SeriesID(), tableName, now); expired {
 				linesDeleted := true // tracks whether we deleted at least some data from the chunk
 				if filterFunc != nil {
+					seriesHasLogsToRemoveWithFilter = true
 					wroteChunks := false
 					var err error
 					wroteChunks, linesDeleted, err = chunkRewriter.rewriteChunk(ctx, s.UserID(), c, tableInterval, filterFunc)
@@ -326,7 +331,12 @@ func markForDelete(
 			return err
 		}
 
-		return expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName)
+		if seriesHasLogsToRemoveWithFilter {
+			if err := expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {

@@ -48,6 +48,7 @@ spec:
         {{- with .Values.singleBinary.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        kubectl.kubernetes.io/default-container: "loki"
       labels:
         {{- include "loki.singleBinarySelectorLabels" . | nindent 8 }}
         {{- with .Values.loki.podLabels }}
@@ -79,7 +80,62 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-      {{- if .Values.sidecar.rules.enabled }}
+        - name: loki
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target={{ .Values.singleBinary.targetModule }}
+            {{- with .Values.singleBinary.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: {{ .Values.loki.server.http_listen_port }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with .Values.singleBinary.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.singleBinary.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            {{- if .Values.singleBinary.persistence.enabled }}
+            - name: storage
+              mountPath: /var/loki
+            {{- end }}
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
+            {{- if .Values.sidecar.rules.enabled }}
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            {{- end}}
+            {{- with .Values.singleBinary.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.singleBinary.resources | nindent 12 }}
+        {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
           {{- if .Values.sidecar.image.sha }}
           image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
@@ -136,6 +192,10 @@ spec:
           readinessProbe:
           {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.startupProbe }}
+          startupProbe:
+          {{- toYaml .Values.sidecar.startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.resources }}
           resources:
           {{- toYaml .Values.sidecar.resources | nindent 12 }}
@@ -148,61 +208,6 @@ spec:
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}
-        - name: loki
-          image: {{ include "loki.image" . }}
-          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          args:
-            - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.singleBinary.targetModule }}
-            {{- with .Values.singleBinary.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          ports:
-            - name: http-metrics
-              containerPort: {{ .Values.loki.server.http_listen_port }}
-              protocol: TCP
-            - name: grpc
-              containerPort: {{ .Values.loki.server.grpc_listen_port }}
-              protocol: TCP
-            - name: http-memberlist
-              containerPort: 7946
-              protocol: TCP
-          {{- with .Values.singleBinary.extraEnv }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.singleBinary.extraEnvFrom }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          securityContext:
-            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-            - name: config
-              mountPath: /etc/loki/config
-            - name: runtime-config
-              mountPath: /etc/loki/runtime-config
-            {{- if .Values.singleBinary.persistence.enabled }}
-            - name: storage
-              mountPath: /var/loki
-            {{- end }}
-            {{- if .Values.enterprise.enabled }}
-            - name: license
-              mountPath: /etc/loki/license
-            {{- end }}
-            {{- if .Values.sidecar.rules.enabled }}
-            - name: sc-rules-volume
-              mountPath: {{ .Values.sidecar.rules.folder | quote }}
-            {{- end}}
-            {{- with .Values.singleBinary.extraVolumeMounts }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          resources:
-            {{- toYaml .Values.singleBinary.resources | nindent 12 }}
         {{- with .Values.singleBinary.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -259,6 +264,10 @@ spec:
         name: storage
         {{- with .Values.singleBinary.persistence.annotations }}
         annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.singleBinary.persistence.labels }}
+        labels:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:
