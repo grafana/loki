@@ -5666,13 +5666,7 @@ null
   "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
-    "claims": [
-      {
-        "name": "data",
-        "size": "10Gi",
-        "storageClass": null
-      }
-    ],
+    "claims": [],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
     "inMemory": false,
@@ -5718,18 +5712,45 @@ null
       "annotations": {},
       "extraAffinity": {},
       "nodeSelector": null,
+      "persistence": {
+        "claims": [
+          {
+            "name": "data",
+            "size": "10Gi",
+            "storageClass": null
+          }
+        ]
+      },
       "podAnnotations": {}
     },
     "zoneB": {
       "annotations": {},
       "extraAffinity": {},
       "nodeSelector": null,
+      "persistence": {
+        "claims": [
+          {
+            "name": "data",
+            "size": "10Gi",
+            "storageClass": null
+          }
+        ]
+      },
       "podAnnotations": {}
     },
     "zoneC": {
       "annotations": {},
       "extraAffinity": {},
       "nodeSelector": null,
+      "persistence": {
+        "claims": [
+          {
+            "name": "data",
+            "size": "10Gi",
+            "storageClass": null
+          }
+        ]
+      },
       "podAnnotations": {}
     }
   }
@@ -5996,7 +6017,7 @@ null
 			<td>list</td>
 			<td>List of the ingester PVCs</td>
 			<td><pre lang="list">
-
+[]
 </pre>
 </td>
 		</tr>
@@ -6155,18 +6176,45 @@ Defaults to allow skew no more than 1 node
     "annotations": {},
     "extraAffinity": {},
     "nodeSelector": null,
+    "persistence": {
+      "claims": [
+        {
+          "name": "data",
+          "size": "10Gi",
+          "storageClass": null
+        }
+      ]
+    },
     "podAnnotations": {}
   },
   "zoneB": {
     "annotations": {},
     "extraAffinity": {},
     "nodeSelector": null,
+    "persistence": {
+      "claims": [
+        {
+          "name": "data",
+          "size": "10Gi",
+          "storageClass": null
+        }
+      ]
+    },
     "podAnnotations": {}
   },
   "zoneC": {
     "annotations": {},
     "extraAffinity": {},
     "nodeSelector": null,
+    "persistence": {
+      "claims": [
+        {
+          "name": "data",
+          "size": "10Gi",
+          "storageClass": null
+        }
+      ]
+    },
     "podAnnotations": {}
   }
 }
@@ -6214,6 +6262,15 @@ true
   "annotations": {},
   "extraAffinity": {},
   "nodeSelector": null,
+  "persistence": {
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ]
+  },
   "podAnnotations": {}
 }
 </pre>
@@ -6243,6 +6300,32 @@ true
 			<td>optionally define a node selector for this zone</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.persistence</td>
+			<td>object</td>
+			<td>Specific persistent volume claims propreties for zone A</td>
+			<td><pre lang="json">
+{
+  "claims": [
+    {
+      "name": "data",
+      "size": "10Gi",
+      "storageClass": null
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.persistence.claims</td>
+			<td>list</td>
+			<td>List of the ingester PVCs</td>
+			<td><pre lang="list">
+
 </pre>
 </td>
 		</tr>
@@ -6283,6 +6366,32 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.persistence</td>
+			<td>object</td>
+			<td>Specific persistent volume claims propreties for zone A</td>
+			<td><pre lang="json">
+{
+  "claims": [
+    {
+      "name": "data",
+      "size": "10Gi",
+      "storageClass": null
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.persistence.claims</td>
+			<td>list</td>
+			<td>List of the ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.zoneAwareReplication.zoneB.podAnnotations</td>
 			<td>object</td>
 			<td>Specific annotations to add to zone B pods</td>
@@ -6315,6 +6424,32 @@ null
 			<td>optionally define a node selector for this zone</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.persistence</td>
+			<td>object</td>
+			<td>Specific persistent volume claims propreties for zone A</td>
+			<td><pre lang="json">
+{
+  "claims": [
+    {
+      "name": "data",
+      "size": "10Gi",
+      "storageClass": null
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.persistence.claims</td>
+			<td>list</td>
+			<td>List of the ingester PVCs</td>
+			<td><pre lang="list">
+
 </pre>
 </td>
 		</tr>
