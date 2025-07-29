@@ -512,6 +512,10 @@ loki:
           prefix: index_
           period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
+  ## A separate loki ruler storage configuration can be provided via rulerStorage.storage section:
+  ##  rulerConfig:
+  ##    storage:
+  ##      type: local
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
