@@ -70,6 +70,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return c.executeLimit(ctx, n, inputs)
 	case *physical.Filter:
 		return c.executeFilter(ctx, n, inputs)
+	case *physical.Merge:
+		return c.executeMerge(ctx, n, inputs)
 	case *physical.Projection:
 		return c.executeProjection(ctx, n, inputs)
 	case *physical.RangeAggregation:
@@ -241,12 +243,24 @@ func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inpu
 		return emptyPipeline()
 	}
 
-	// TODO: support multiple inputs
 	if len(inputs) > 1 {
 		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
 	return NewFilterPipeline(filter, inputs[0], c.evaluator)
+}
+
+func (c *Context) executeMerge(_ context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := NewMergePipeline(inputs)
+	if err != nil {
+		return errorPipeline(err)
+	}
+
+	return pipeline
 }
 
 func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
