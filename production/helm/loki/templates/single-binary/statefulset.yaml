@@ -256,28 +256,34 @@ spec:
         {{- with .Values.singleBinary.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-  {{- if .Values.singleBinary.persistence.enabled }}
-  volumeClaimTemplates:
-    - apiVersion: v1
-      kind: PersistentVolumeClaim
-      metadata:
-        name: storage
-        {{- with .Values.singleBinary.persistence.annotations }}
-        annotations:
-          {{- toYaml . | nindent 10 }}
+        {{- if .Values.singleBinary.persistence.enabled }}
+        {{- if .Values.singleBinary.persistence.existingClaim }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.singleBinary.persistence.existingClaim }}
+        {{- else }}
+        volumeClaimTemplates:
+          - apiVersion: v1
+            kind: PersistentVolumeClaim
+            metadata:
+              name: storage
+              {{- with .Values.singleBinary.persistence.annotations }}
+              annotations:
+                {{- toYaml . | nindent 10 }}
+              {{- end }}
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              {{- with .Values.singleBinary.persistence.storageClass }}
+              storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+              {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.singleBinary.persistence.size | quote }}
+              {{- with .Values.singleBinary.persistence.selector }}
+              selector:
+                {{- toYaml . | nindent 10 }}
+              {{- end }}
+          {{- end }}
         {{- end }}
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        {{- with .Values.singleBinary.persistence.storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ .Values.singleBinary.persistence.size | quote }}
-        {{- with .Values.singleBinary.persistence.selector }}
-        selector:
-          {{- toYaml . | nindent 10 }}
-        {{- end }}
-  {{- end }}
 {{- end }}
