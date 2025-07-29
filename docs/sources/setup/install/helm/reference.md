@@ -61,6 +61,7 @@ This is the generated reference for the Loki Helm Chart values.
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +81,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -199,6 +201,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for admin-api Pods</td>
@@ -262,6 +273,15 @@ This is the generated reference for the Loki Helm Chart values.
   "annotations": {},
   "labels": {}
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10210,6 +10230,15 @@ false
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
 			<td><pre lang="json">
 false
 </pre>
