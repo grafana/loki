@@ -179,6 +179,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- with .Values.loki.block_builder }}
     block_builder:
       {{- tpl (. | toYaml) $ | nindent 4 }}
