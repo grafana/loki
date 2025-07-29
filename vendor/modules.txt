@@ -667,7 +667,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v28.3.2+incompatible
+# github.com/docker/docker v28.3.3+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
