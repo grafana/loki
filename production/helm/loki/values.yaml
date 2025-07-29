@@ -1335,6 +1335,7 @@ ingress:
       - /api/prom/push
       - /loki/api/v1/push
       - /otlp/v1/logs
+      - /ui
     # -- Paths that are exposed by Loki Query Frontend.
     # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
     # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
