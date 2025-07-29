@@ -11770,6 +11770,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.affinity</td>
 			<td>object</td>
 			<td>Affinity for single binary pods.</td>
