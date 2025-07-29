@@ -62,7 +62,7 @@ func (cmd *listStreamsCommand) listStreams(ctx context.Context, dataObj *dataobj
 				if err != nil && !errors.Is(err, io.EOF) {
 					exitWithError(err)
 				}
-				if n == 0 {
+				if n == 0 && errors.Is(err, io.EOF) {
 					break
 				}
 				for _, s := range tmp[0:n] {

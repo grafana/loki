@@ -65,7 +65,7 @@ func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *datao
 				if err != nil && !errors.Is(err, io.EOF) {
 					exitWithError(err)
 				}
-				if n == 0 {
+				if n == 0 && errors.Is(err, io.EOF) {
 					break
 				}
 				for _, r := range tmp[0:n] {
