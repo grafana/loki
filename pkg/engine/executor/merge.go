@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 )
@@ -11,8 +12,9 @@ import (
 // Merge is a pipeline that takes N inputs and sequentially consumes each one of them.
 // It completely exhausts an input before moving to the next one.
 type Merge struct {
-	inputs []Pipeline
-	state  state
+	inputs    []Pipeline
+	exhausted []bool
+	state     state
 }
 
 var _ Pipeline = (*Merge)(nil)
@@ -23,7 +25,8 @@ func NewMergePipeline(inputs []Pipeline) (*Merge, error) {
 	}
 
 	return &Merge{
-		inputs: inputs,
+		inputs:    inputs,
+		exhausted: make([]bool, len(inputs)),
 	}, nil
 }
 
@@ -49,9 +52,19 @@ func (m *Merge) Read(ctx context.Context) error {
 }
 
 func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
-	for _, input := range m.inputs {
+	if !slices.Contains(m.exhausted, false) {
+		return nil, EOF
+	}
+
+	for i, input := range m.inputs {
+		if m.exhausted[i] {
+			continue
+		}
+
 		if err := input.Read(ctx); err != nil {
 			if errors.Is(err, EOF) {
+				input.Close()
+				m.exhausted[i] = true
 				continue
 			}
 
@@ -73,8 +86,11 @@ func (m *Merge) Close() {
 		m.state.batch.Release()
 	}
 
-	for _, input := range m.inputs {
-		input.Close()
+	for i, input := range m.inputs {
+		// exhausted inputs are already closed
+		if !m.exhausted[i] {
+			input.Close()
+		}
 	}
 }
 
