@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -130,7 +131,7 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
+	level.Debug(spanlogger.FromContext(ctx, m.logger)).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
 	var storePaths []string
@@ -154,18 +155,20 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
+
+	logger := spanlogger.FromContext(ctx, m.logger)
+	level.Debug(logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
 	var storePaths []string
 	for path := range iterStorePaths(tenantID, start, end) {
 		storePaths = append(storePaths, path)
 	}
-	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
+	level.Debug(logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
 
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
-	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(paths, ","), "err", err)
+	level.Debug(logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(paths, ","), "err", err)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -173,7 +176,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := streamPredicateFromMatchers(start, end, matchers...)
 	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
-	level.Debug(m.logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
+	level.Debug(logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
 	}
@@ -183,10 +186,10 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	}
 
 	// Remove objects that do not contain any matching streams
-	level.Debug(m.logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(paths), "streams", len(streamIDs), "sections", len(sections))
+	level.Debug(logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(paths), "streams", len(streamIDs), "sections", len(sections))
 	for i := 0; i < len(paths); i++ {
 		if len(streamIDs[i]) == 0 {
-			level.Debug(m.logger).Log("msg", "remove object", "path", paths[i])
+			level.Debug(logger).Log("msg", "remove object", "path", paths[i])
 			paths = slices.Delete(paths, i, i+1)
 			streamIDs = slices.Delete(streamIDs, i, i+1)
 			sections = slices.Delete(sections, i, i+1)
@@ -247,7 +250,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	level.Debug(m.logger).Log("msg", "resolved sections", "duration", duration, "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
+	level.Debug(spanlogger.FromContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
 
 	return streamSectionPointers, nil
 }
@@ -279,7 +282,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
+	level.Debug(spanlogger.FromContext(ctx, m.logger)).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
 
 	// Get all metastore paths for the time range
 	var storePaths []string
