@@ -9,6 +9,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -16,6 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
+
+var tracer = otel.Tracer("pkg/engine/executor")
 
 type Config struct {
 	BatchSize int64
@@ -34,11 +39,11 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
 	}
 	if plan == nil {
-		return errorPipeline(errors.New("plan is nil"))
+		return errorPipeline(ctx, errors.New("plan is nil"))
 	}
 	node, err := plan.Root()
 	if err != nil {
-		return errorPipeline(err)
+		return errorPipeline(ctx, err)
 	}
 	return c.execute(ctx, node)
 }
@@ -63,33 +68,45 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	switch n := node.(type) {
 	case *physical.DataObjScan:
-		return c.executeDataObjScan(ctx, n)
+		return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
 	case *physical.SortMerge:
-		return c.executeSortMerge(ctx, n, inputs)
+		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
 	case *physical.Limit:
-		return c.executeLimit(ctx, n, inputs)
+		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
-		return c.executeFilter(ctx, n, inputs)
+		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return c.executeProjection(ctx, n, inputs)
+		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
-		return c.executeRangeAggregation(ctx, n, inputs)
+		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
-		return c.executeVectorAggregation(ctx, n, inputs)
+		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
 	default:
-		return errorPipeline(fmt.Errorf("invalid node type: %T", node))
+		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
 }
 
 func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
+		attribute.String("location", string(node.Location)),
+		attribute.Int("section", node.Section),
+		attribute.Stringer("direction", node.Direction),
+		attribute.Int("limit", int(node.Limit)),
+		attribute.Int("num_stream_ids", len(node.StreamIDs)),
+		attribute.Int("num_predicates", len(node.Predicates)),
+		attribute.Int("num_projections", len(node.Projections)),
+	))
+	defer span.End()
+
 	if c.bucket == nil {
-		return errorPipeline(errors.New("no object store bucket configured"))
+		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
 	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
 	if err != nil {
-		return errorPipeline(fmt.Errorf("creating data object: %w", err))
+		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
+	span.AddEvent("opened dataobj")
 
 	var (
 		streamsSection *streams.Section
@@ -98,17 +115,19 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 
 	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 		if streamsSection != nil {
-			return errorPipeline(fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
 		}
 
 		var err error
 		streamsSection, err = streams.Open(ctx, sec)
 		if err != nil {
-			return errorPipeline(fmt.Errorf("opening streams section %q: %w", sec.Type, err))
+			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
 		}
+		span.AddEvent("opened streams section")
+		break
 	}
 	if streamsSection == nil {
-		return errorPipeline(fmt.Errorf("streams section not found in data object %q", node.Location))
+		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
 	}
 
 	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
@@ -119,11 +138,13 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		var err error
 		logsSection, err = logs.Open(ctx, sec)
 		if err != nil {
-			return errorPipeline(fmt.Errorf("opening logs section %q: %w", sec.Type, err))
+			return errorPipeline(ctx, fmt.Errorf("opening logs section %q: %w", sec.Type, err))
 		}
+		span.AddEvent("opened logs section")
+		break
 	}
 	if logsSection == nil {
-		return errorPipeline(fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
 	}
 
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
@@ -131,10 +152,11 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	for _, p := range node.Predicates {
 		conv, err := buildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
-			return errorPipeline(err)
+			return errorPipeline(ctx, err)
 		}
 		predicates = append(predicates, conv)
 	}
+	span.AddEvent("constructed predicate")
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
@@ -192,10 +214,12 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 			MaxUnused: int(c.batchSize) * 2,
 		})
 		if err != nil {
-			return errorPipeline(err)
+			return errorPipeline(ctx, err)
 		}
+		span.AddEvent("injected topk")
 	} else if node.Limit > 0 {
 		pipeline = NewLimitPipeline(pipeline, 0, node.Limit)
+		span.AddEvent("injected limit")
 	}
 
 	return pipeline
@@ -212,65 +236,102 @@ func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
 	return physical.UNSORTED
 }
 
-func (c *Context) executeSortMerge(_ context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeSortMerge", trace.WithAttributes(
+		attribute.Stringer("order", sortmerge.Order),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	if sortmerge.Column != nil {
+		span.SetAttributes(attribute.Stringer("column", sortmerge.Column))
+	}
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
 	if err != nil {
-		return errorPipeline(err)
+		return errorPipeline(ctx, err)
 	}
 	return pipeline
 }
 
-func (c *Context) executeLimit(_ context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
+func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
+		attribute.Int("skip", int(limit.Skip)),
+		attribute.Int("fetch", int(limit.Fetch)),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	if len(inputs) > 1 {
-		return errorPipeline(fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
+		return errorPipeline(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
 	}
 
 	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
-func (c *Context) executeFilter(_ context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeFilter", trace.WithAttributes(
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	// TODO: support multiple inputs
 	if len(inputs) > 1 {
-		return errorPipeline(fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
+		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
 	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
-func (c *Context) executeProjection(_ context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
+func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeProjection", trace.WithAttributes(
+		attribute.Int("num_columns", len(proj.Columns)),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	if len(inputs) > 1 {
 		// unsupported for now
-		return errorPipeline(fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
+		return errorPipeline(ctx, fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
 
 	if len(proj.Columns) == 0 {
-		return errorPipeline(fmt.Errorf("projection expects at least one column, got 0"))
+		return errorPipeline(ctx, fmt.Errorf("projection expects at least one column, got 0"))
 	}
 
 	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
 	if err != nil {
-		return errorPipeline(err)
+		return errorPipeline(ctx, err)
 	}
 	return p
 }
 
-func (c *Context) executeRangeAggregation(_ context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeRangeAggregation", trace.WithAttributes(
+		attribute.Int("num_partition_by", len(plan.PartitionBy)),
+		attribute.Int64("start_ts", plan.Start.UnixNano()),
+		attribute.Int64("end_ts", plan.End.UnixNano()),
+		attribute.Int64("range_interval", int64(plan.Range)),
+		attribute.Int64("step", int64(plan.Step)),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -283,20 +344,26 @@ func (c *Context) executeRangeAggregation(_ context.Context, plan *physical.Rang
 		step:          plan.Step,
 	})
 	if err != nil {
-		return errorPipeline(err)
+		return errorPipeline(ctx, err)
 	}
 
 	return pipeline
 }
 
-func (c *Context) executeVectorAggregation(_ context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeVectorAggregation", trace.WithAttributes(
+		attribute.Int("num_group_by", len(plan.GroupBy)),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
 	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
 	if err != nil {
-		return errorPipeline(err)
+		return errorPipeline(ctx, err)
 	}
 
 	return pipeline
