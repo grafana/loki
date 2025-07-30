@@ -80,7 +80,12 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 //  3. Evaluate the physical plan with the executor.
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	ctx, span := tracer.Start(ctx, "QueryEngine.Execute", trace.WithAttributes(
+		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
+		attribute.Stringer("start", params.Start()),
+		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("step", params.Step()),
+		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
 	))
 	defer span.End()
