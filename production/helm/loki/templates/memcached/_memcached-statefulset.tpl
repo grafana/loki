@@ -56,6 +56,9 @@ spec:
       {{- if .priorityClassName }}
       priorityClassName: {{ .priorityClassName }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $.ctx)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
+      {{- end }}
       securityContext:
         {{- toYaml $.ctx.Values.memcached.podSecurityContext | nindent 8 }}
       initContainers:
