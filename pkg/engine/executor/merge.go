@@ -24,6 +24,10 @@ func NewMergePipeline(inputs []Pipeline) (*Merge, error) {
 		return nil, fmt.Errorf("no inputs provided for merge pipeline")
 	}
 
+	for i := range inputs {
+		inputs[i] = newPrefetchingPipeline(inputs[i])
+	}
+
 	return &Merge{
 		inputs:    inputs,
 		exhausted: make([]bool, len(inputs)),
