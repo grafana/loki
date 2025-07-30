@@ -39,11 +39,11 @@ type JobRunner interface {
 }
 
 type WorkerConfig struct {
-	NumWorkers int `yaml:"num_workers"`
+	NumWorkers int `yaml:"num_sub_workers"`
 }
 
 func (c *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&c.NumWorkers, prefix+"num-workers", 0, "Number of workers to run for concurrent processing of jobs. Setting it to 0 will run a worker per available CPU core.")
+	f.IntVar(&c.NumWorkers, prefix+"num-sub-workers", 0, "Number of sub-workers to run for concurrent processing of jobs. Setting it to 0 will run a subworker per available CPU core.")
 }
 
 func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {

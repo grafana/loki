@@ -40,7 +40,7 @@
 {{- fail "You must provide a schema_config for Loki, one is not provided as this will be individual for every Loki cluster. See https://grafana.com/docs/loki/latest/operations/storage/schema/ for schema information. For quick testing (with no persistence) add `--set loki.useTestSchema=true`"}}
 {{- end }}
 
-{{- if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
+{{- if and (eq (include "loki.isUsingObjectStorage" . ) "true") (not .Values.minio.enabled) }}
 {{- $bucketNames := .Values.loki.storage.bucketNames -}}
 {{- if not (hasKey $bucketNames "chunks") }}
 {{- fail "Please define loki.storage.bucketName.chunks" }}

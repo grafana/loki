@@ -229,17 +229,19 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 	initialSectionPointersCount := len(streamSectionPointers)
 
-	// Search the section AMQs to estimate sections that might match the predicates
-	// AMQs may return false positives so this is an over-estimate.
-	pointerMatchers := pointerPredicateFromMatchers(predicates...)
-	sectionMembershipEstimates, err := m.estimateSectionsForPredicates(ctx, paths, pointerMatchers)
-	if err != nil {
-		return nil, err
-	}
+	if len(predicates) > 0 {
+		// Search the section AMQs to estimate sections that might match the predicates
+		// AMQs may return false positives so this is an over-estimate.
+		pointerMatchers := pointerPredicateFromMatchers(predicates...)
+		sectionMembershipEstimates, err := m.estimateSectionsForPredicates(ctx, paths, pointerMatchers)
+		if err != nil {
+			return nil, err
+		}
 
-	streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
-	if len(streamSectionPointers) == 0 {
-		return nil, errors.New("no relevant sections returned")
+		streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+		if len(streamSectionPointers) == 0 {
+			return nil, errors.New("no relevant sections returned")
+		}
 	}
 
 	duration := sectionsTimer.ObserveDuration()
@@ -381,9 +383,7 @@ func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Match
 		return predicates[0]
 	}
 
-	current := streams.AndRowPredicate{
-		Left: predicates[0],
-	}
+	current := predicates[0]
 
 	for _, predicate := range predicates[1:] {
 		and := streams.AndRowPredicate{
@@ -513,6 +513,11 @@ func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
 func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []string, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
+	if streamPredicate == nil {
+		// At least one stream matcher is required, currently.
+		return nil, nil
+	}
+
 	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
 	defer timer.ObserveDuration()
 
@@ -540,6 +545,11 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, paths []str
 				return fmt.Errorf("reading streams from index: %w", err)
 			}
 			streamReadTimer.ObserveDuration()
+
+			if len(matchingStreamIDs) == 0 {
+				// No streams match, so skip reading the section pointers or we'll match all of them.
+				return nil
+			}
 
 			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 			sectionPointerReadTimer := prometheus.NewTimer(m.metrics.streamFilterPointersReadDuration)
