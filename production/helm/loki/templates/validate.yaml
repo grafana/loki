@@ -46,7 +46,7 @@
 {{- fail "Please define loki.storage.bucketNames.chunks" }}
 {{- end }}
 
-{{- if .Values.ruler.enabled }}
+{{- if and (.Values.ruler.enabled) (eq .Values.loki.rulerConfig.storage.type "local") }}
 {{- if not (hasKey $bucketNames "ruler") }}
 {{- fail "Please define loki.storage.bucketNames.ruler" }}
 {{- end }}
