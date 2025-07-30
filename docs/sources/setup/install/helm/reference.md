@@ -59,6 +59,7 @@ This is the generated reference for the Loki Helm Chart values.
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
   "livenessProbe": {},
@@ -131,7 +132,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
-			<td>Conifgure optional extraContainers</td>
+			<td>Configure optional extraContainers</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -179,6 +180,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in admin-api pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -359,6 +369,7 @@ This is the generated reference for the Loki Helm Chart values.
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -529,6 +540,15 @@ null
 			<td>Volumes to add to the backend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the backend pods.</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -812,6 +832,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1015,6 +1036,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the boom-builder</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-builder image. Overrides `loki.image.registry`</td>
@@ -1171,6 +1201,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1304,6 +1335,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-gateway</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -1572,6 +1612,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1706,6 +1747,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-planner</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -2070,6 +2120,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.initContainers</td>
 			<td>list</td>
 			<td>Extra init containers for chunks-cache pods</td>
@@ -2097,6 +2156,7 @@ true
   "extraExtendedOptions": "",
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "l2ChunkCacheHandoff": "345600s",
   "maxItemMemory": 5,
@@ -2250,6 +2310,15 @@ false
 			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -2801,6 +2870,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -2936,6 +3006,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the compactor</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -3235,6 +3314,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -3441,6 +3521,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the distributor</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the distributor image. Overrides `loki.image.registry`</td>
@@ -3632,6 +3721,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "hookType": "post-install",
+    "hostUsers": "nil",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3793,6 +3883,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hookType": "post-install",
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3827,7 +3918,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.affinity</td>
 			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
+			<td>Affinity for provisioner Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3893,6 +3984,15 @@ true
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
 			<td><pre lang="json">
 "post-install"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in provisioner pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -3968,7 +4068,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.nodeSelector</td>
 			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
+			<td>Node selector for provisioner Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4009,7 +4109,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
-			<td>Tolerations for tokengen Pods</td>
+			<td>Tolerations for provisioner Pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4048,6 +4148,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
   "nodeSelector": {},
@@ -4160,6 +4261,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the `gateway` pod</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -4536,6 +4646,15 @@ true
 			<td>Volumes to add to the gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the gateway</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -5112,6 +5231,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -5229,6 +5349,15 @@ Hard node anti-affinity
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the index-gateway</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -5513,6 +5642,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -5775,6 +5905,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ingester</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -7001,6 +7140,15 @@ true
 			<td>Volumes to add to the canary pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in loki-canary pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -8281,6 +8429,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8401,6 +8550,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the overrides-exporter</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -8579,6 +8737,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8716,6 +8875,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the pattern ingester</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -9025,6 +9193,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9251,6 +9420,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the querier</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the querier image. Overrides `loki.image.registry`</td>
@@ -9447,6 +9625,7 @@ Defaults to allow skew no more then 1 node
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9651,6 +9830,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-frontend</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the query-frontend image. Overrides `loki.image.registry`</td>
@@ -9815,6 +10003,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9916,6 +10105,15 @@ Hard node anti-affinity
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-scheduler</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -10135,6 +10333,7 @@ false
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -10303,6 +10502,15 @@ null
 			<td>Volumes to add to the read pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the read pods.</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -10665,6 +10873,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in results-cache pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.initContainers</td>
 			<td>list</td>
 			<td>Extra init containers for results-cache pods</td>
@@ -10989,6 +11206,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -11135,6 +11353,15 @@ true
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ruler</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -11732,6 +11959,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the single binary pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the single binary image. Overrides `loki.image.registry`</td>
@@ -11968,6 +12204,7 @@ null
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -12086,6 +12323,15 @@ false
 			<td>Volumes to add to the table-manager pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in table-manager pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12224,6 +12470,7 @@ false
   "annotations": {},
   "canaryServiceAddress": "http://loki-canary:3500/metrics",
   "enabled": true,
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -12253,6 +12500,15 @@ false
 			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
 			<td><pre lang="json">
 "http://loki-canary:3500/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in test pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12521,6 +12777,15 @@ null
 			<td>Volumes to add to the write pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the write pods.</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
