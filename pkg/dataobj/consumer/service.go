@@ -65,6 +65,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 		},
 	}
 
+	kafkaCfg.Topic = "loki.multi-tenant"
 	consumerClient, err := consumer.NewGroupClient(
 		kafkaCfg,
 		partitionRing,
@@ -105,19 +106,19 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 	defer s.partitionMtx.Unlock()
 
 	for topic, parts := range partitions {
-		tenant, virtualShard, err := s.codec.Decode(topic)
+		// tenant, virtualShard, err := s.codec.Decode(topic)
 		// TODO: should propage more effectively
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
-			continue
-		}
+		// if err != nil {
+		// 	level.Error(s.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
+		// 	continue
+		// }
 
 		if _, ok := s.partitionHandlers[topic]; !ok {
 			s.partitionHandlers[topic] = make(map[int32]*partitionProcessor)
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}

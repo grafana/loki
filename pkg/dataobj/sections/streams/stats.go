@@ -20,7 +20,8 @@ type (
 		MaxTimestamp          time.Time
 		TimestampDistribution []uint64 // Stream count per hour.
 
-		Columns []ColumnStats
+		Columns  []ColumnStats
+		TenantID string
 	}
 
 	// ColumnStats provides statistics about a column in a section.
@@ -64,8 +65,9 @@ func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	if err != nil {
 		return stats, fmt.Errorf("reading metadata: %w", err)
 	}
-	columnDescs := metadata.GetColumns()
+	stats.TenantID = metadata.GetTenantID()
 
+	columnDescs := metadata.GetColumns()
 	pageSets, err := result.Collect(dec.Pages(ctx, columnDescs))
 	if err != nil {
 		return stats, fmt.Errorf("reading pages: %w", err)

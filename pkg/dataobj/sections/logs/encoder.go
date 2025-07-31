@@ -35,6 +35,7 @@ var (
 type encoder struct {
 	data *bytes.Buffer
 
+	tenantID  string
 	columns   []*logsmd.ColumnDesc // closed columns.
 	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
 	sortInfo  *datasetmd.SectionSortInfo
@@ -84,6 +85,12 @@ func (enc *encoder) SetSortInfo(info *datasetmd.SectionSortInfo) {
 	enc.sortInfo = info
 }
 
+// setTenantID sets the tenant ID for the logs section.
+// This should be called before committing the encoder.
+func (enc *encoder) SetTenantID(tenantID string) {
+	enc.tenantID = tenantID
+}
+
 // MetadataSize returns an estimate of the current size of the metadata for the
 // section. MetadataSize includes an estimate for the currently open element.
 func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
@@ -96,6 +103,7 @@ func (enc *encoder) Metadata() proto.Message {
 	return &logsmd.Metadata{
 		Columns:  columns,
 		SortInfo: enc.sortInfo,
+		TenantID: enc.tenantID,
 	}
 }
 

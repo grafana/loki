@@ -61,7 +61,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.En
 	// or derived from the bucket structure if it's multi-tenant aware.
 	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
 	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, bucketClient, logql.NoLimits, nil, logger)
+	queryEngine := engine.New(engineOpts, bucketClient, logql.NoLimits, nil, logger, false)
 
 	return &DataObjV2EngineStore{
 		engine:   queryEngine,

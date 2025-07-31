@@ -41,7 +41,7 @@ func Test(t *testing.T) {
 		StripeMergeLimit: 2,
 	}
 
-	tracker := logs.NewBuilder(nil, opts)
+	tracker := logs.NewBuilder("test", nil, opts)
 	for _, record := range records {
 		tracker.Append(record)
 	}

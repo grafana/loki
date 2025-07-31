@@ -27,7 +27,7 @@ type decoder struct {
 func (rd *decoder) Metadata(ctx context.Context) (*logsmd.Metadata, error) {
 	rc, err := rd.sr.Metadata(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("reading streams section metadata: %w", err)
+		return nil, fmt.Errorf("reading logs section metadata: %w", err)
 	}
 	defer rc.Close()
 

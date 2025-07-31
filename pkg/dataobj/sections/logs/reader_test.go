@@ -89,7 +89,7 @@ func TestReader(t *testing.T) {
 func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 	t.Helper()
 
-	sectionBuilder := logs.NewBuilder(nil, logs.BuilderOptions{
+	sectionBuilder := logs.NewBuilder("test", nil, logs.BuilderOptions{
 		PageSizeHint:     8192,
 		BufferSize:       4192,
 		StripeMergeLimit: 2,

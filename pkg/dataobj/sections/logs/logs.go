@@ -24,6 +24,7 @@ type Section struct {
 	reader   dataobj.SectionReader
 	columns  []*Column
 	sortInfo *datasetmd.SectionSortInfo
+	tenantID string
 }
 
 // Open opens a Section from an underlying [dataobj.Section]. Open returns an
@@ -47,6 +48,7 @@ func (s *Section) init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode metadata: %w", err)
 	}
+	s.tenantID = metadata.GetTenantID()
 
 	for _, col := range metadata.GetColumns() {
 		colType, ok := convertColumnType(col.Type)
@@ -67,6 +69,9 @@ func (s *Section) init(ctx context.Context) error {
 	s.sortInfo = metadata.SortInfo
 	return nil
 }
+
+// TenantID returns the tenant that owns the section.
+func (s *Section) TenantID() string { return s.tenantID }
 
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
