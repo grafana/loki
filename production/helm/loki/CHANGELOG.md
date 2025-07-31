@@ -65,7 +65,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [BUGFIX] Add comments, clarifying ruler setup. [#18607](https://github.com/grafana/loki/pull/18607)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
+- [ENHANCEMENT] add missing revisionHistoryLimit to `admin-api`, `enterprise-gateway`, and `loki-canary`. [#18638](https://github.com/grafana/loki/pull/18638)
 
 ## 6.34.0
 
