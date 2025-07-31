@@ -82,7 +82,7 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
 	github.com/prometheus/prometheus v0.304.3-0.20250710152723-d2f1f4fb27af
