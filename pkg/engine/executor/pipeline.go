@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Transport uint8
@@ -111,7 +113,11 @@ func (p *GenericPipeline) Transport() Transport {
 	return p.t
 }
 
-func errorPipeline(err error) Pipeline {
+func errorPipeline(ctx context.Context, err error) Pipeline {
+	span := trace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+
 	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) state {
 		return state{err: fmt.Errorf("failed to execute pipeline: %w", err)}
 	})
@@ -223,13 +229,16 @@ func (p *prefetchWrapper) Value() (arrow.Record, error) {
 
 // Close implements [Pipeline].
 func (p *prefetchWrapper) Close() {
-	// NOTE(rfratto): We don't need to drain p.ch because all writes to p.ch are
-	// guaranteed to abort if the context is canceled.
-	//
-	// Attempting to drain p.ch here anyway can cause a deadlock if the
-	// [prefetchWrapper.Close] is called before [prefetchWrapper.init].
 	if p.cancel != nil {
 		p.cancel(errors.New("pipeline is closed"))
+
+		// Wait for the prefetch goroutine to finish. This avoids race conditions
+		// where we close a pipeline right before it's read.
+		//
+		// This check can only be done if p.cancel is non-nil, otherwise we may
+		// deadlock if [prefetchWrapper.Close] is called before
+		// [prefetchWrapper.init].
+		<-p.ch
 	}
 	if p.state.batch != nil {
 		p.state.batch.Release()
@@ -237,3 +246,40 @@ func (p *prefetchWrapper) Close() {
 	}
 	p.Pipeline.Close()
 }
+
+type tracedPipeline struct {
+	name  string
+	inner Pipeline
+}
+
+var _ Pipeline = (*tracedPipeline)(nil)
+
+// tracePipeline wraps a [Pipeline] to record each call to Read with a span.
+func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
+	return &tracedPipeline{
+		name:  name,
+		inner: pipeline,
+	}
+}
+
+func (p *tracedPipeline) Read(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, p.name+".Read")
+	defer span.End()
+
+	err := p.inner.Read(ctx)
+	if err != nil && !errors.Is(err, EOF) {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
+	return err
+}
+
+func (p *tracedPipeline) Value() (arrow.Record, error) { return p.inner.Value() }
+
+func (p *tracedPipeline) Close() { p.inner.Close() }
+
+func (p *tracedPipeline) Inputs() []Pipeline { return p.inner.Inputs() }
+
+func (p *tracedPipeline) Transport() Transport { return Local }
