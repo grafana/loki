@@ -57,7 +57,10 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobj
 		opts.Allocator = memory.DefaultAllocator
 	}
 
-	return &dataobjScan{opts: opts}
+	return &dataobjScan{
+		opts:   opts,
+		logger: logger,
+	}
 }
 
 func (s *dataobjScan) Read(ctx context.Context) error {
