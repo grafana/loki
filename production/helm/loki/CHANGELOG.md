@@ -139,17 +139,7 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [BUGFIX] Add comments, clarifying ruler setup. [#18607](https://github.com/grafana/loki/pull/18607)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
-- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
-- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the single-binary pods. [#18547](https://github.com/grafana/loki/pull/18547)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
-- [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
-- [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced
-- [FEATURE] Allow setting custom labels for ingester statefulsets [#18536](https://github.com/grafana/loki/pull/18536)
-- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true
-- [BUGFIX] Fix serviceName in zone-aware ingester statefulsets [#18558](https://github.com/grafana/loki/pull/18558)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
-- [ENHANCEMENT] Expose Loki UI in pure ingress. [18400](https://github.com/grafana/loki/pull/18400)
-- [ENHANCEMENT] Allow scaling querier with keda. [16873](https://github.com/grafana/loki/pull/16873)
+- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.34.0
 
