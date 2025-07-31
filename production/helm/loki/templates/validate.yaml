@@ -44,6 +44,7 @@
 {{- if not .Values.enterprise.adminToken.secret }}
 {{- fail "enterprise.adminToken.secret must be set when enterprise.provisioner.enabled is true. Please create an admin token secret and specify its name." }}
 {{- end }}
+{{- end }}
 
 {{- if and .Values.querier.kedaAutoscaling.enabled .Values.querier.autoscaling.enabled}}
 {{- fail "Cannot enable both HPA and Keda based autoscaling for querier at the same time."}}
