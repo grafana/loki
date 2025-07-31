@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -221,6 +222,13 @@ func TestMultiTenantBuilder_MultiTenants(t *testing.T) {
 				logsSections = append(logsSections, sec)
 			}
 		}
+		// Sort the result as the order of tenant sections is not stable.
+		slices.SortFunc(streamSections, func(a, b *streams.Section) int {
+			return strings.Compare(a.TenantID(), b.TenantID())
+		})
+		slices.SortFunc(logsSections, func(a, b *logs.Section) int {
+			return strings.Compare(a.TenantID(), b.TenantID())
+		})
 		require.Equal(t, "tenant1", streamSections[0].TenantID())
 		require.Equal(t, "tenant2", streamSections[1].TenantID())
 		require.Equal(t, "tenant1", logsSections[0].TenantID())
