@@ -16,8 +16,11 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
@@ -241,6 +244,92 @@ func TestValuesEmptyMatcher(t *testing.T) {
 			require.NotEqual(t, slices.Index(matchedValues, expectedValue), -1)
 		}
 	})
+}
+
+func TestSectionsForStreamMatchers(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	})
+	require.NoError(t, err)
+
+	for i, ts := range testStreams {
+		lbls, err := syntax.ParseLabels(ts.Labels)
+		require.NoError(t, err)
+
+		newIdx, err := builder.AppendStream(streams.Stream{
+			ID:               int64(i),
+			Labels:           lbls,
+			MinTimestamp:     ts.Entries[0].Timestamp,
+			MaxTimestamp:     ts.Entries[0].Timestamp,
+			UncompressedSize: 0,
+		})
+		require.NoError(t, err)
+		err = builder.ObserveLogLine("test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		require.NoError(t, err)
+	}
+
+	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
+	stats, err := builder.Flush(buf)
+	require.NoError(t, err)
+
+	bucket := objstore.NewInMemBucket()
+
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
+	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+	path, err := uploader.Upload(context.Background(), buf)
+	require.NoError(t, err)
+
+	metastoreUpdater := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
+
+	err = metastoreUpdater.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	require.NoError(t, err)
+
+	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+
+	tests := []struct {
+		name       string
+		matchers   []*labels.Matcher
+		predicates []*labels.Matcher
+		wantCount  int
+	}{
+		{
+			name:       "no matchers returns no sections",
+			matchers:   nil,
+			predicates: nil,
+			wantCount:  0,
+		},
+		{
+			name: "single matcher returns matching sections",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: nil,
+			wantCount:  1,
+		},
+		{
+			name: "non-existent matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "doesnotexist"),
+			},
+			predicates: nil,
+			wantCount:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sections, err := mstore.Sections(ctx, now.Add(-time.Hour), now.Add(time.Hour), tt.matchers, tt.predicates)
+			require.NoError(t, err)
+			require.Len(t, sections, tt.wantCount)
+		})
+	}
 }
 
 func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
