@@ -75,6 +75,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
 		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
+	case *physical.Merge:
+		return tracePipeline("physical.Merge", c.executeMerge(ctx, n, inputs))
 	case *physical.Projection:
 		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
@@ -286,12 +288,29 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return emptyPipeline()
 	}
 
-	// TODO: support multiple inputs
 	if len(inputs) > 1 {
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
 	return NewFilterPipeline(filter, inputs[0], c.evaluator)
+}
+
+func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := NewMergePipeline(inputs)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
