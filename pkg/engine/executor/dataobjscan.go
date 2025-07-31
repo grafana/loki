@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -38,6 +39,7 @@ type dataobjScan struct {
 	logger log.Logger
 
 	initialized     bool
+	initedAt        time.Time
 	streams         *streamsView
 	streamsInjector *streamInjector
 	reader          *logs.Reader
@@ -92,6 +94,7 @@ func (s *dataobjScan) init() error {
 	}
 
 	s.initialized = true
+	s.initedAt = time.Now().UTC()
 	return nil
 }
 
@@ -413,7 +416,7 @@ func (s *dataobjScan) Close() {
 	// log reader stats before closing
 	if s.initialized {
 		if stats := s.reader.Stats(); stats != nil {
-			stats.LogSummary(s.logger)
+			stats.LogSummary(s.logger, time.Since(s.initedAt))
 		}
 	}
 

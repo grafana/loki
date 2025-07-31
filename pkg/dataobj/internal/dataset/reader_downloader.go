@@ -600,10 +600,13 @@ func (page *readerPage) PageInfo() *PageInfo {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
+	page.column.dl.stats.ReadPageCalls++
 	if page.data != nil {
+		page.column.dl.stats.PagesFoundInCache++
 		return page.data, nil
 	}
 
+	page.column.dl.stats.BatchDownloadRequests++
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}

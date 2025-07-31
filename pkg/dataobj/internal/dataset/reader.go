@@ -67,6 +67,8 @@ func NewReader(opts ReaderOptions) *Reader {
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
+	r.stats.ReadCalls++
+
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -413,7 +415,6 @@ func (r *Reader) Stats() *ReadStats {
 		return nil
 	}
 
-	r.stats.TotalPagesRead = r.inner.PagesAccessed()
 	r.stats.DownloadStats = r.dl.DownloadStats()
 	return &r.stats
 }
@@ -542,10 +543,10 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
 			r.stats.PrimaryColumns++
-			// r.stats.PrimaryColumnPages += uint64(column.ColumnInfo().PageCount)
+			r.stats.PrimaryColumnPages += uint64(column.ColumnInfo().PagesCount)
 		} else {
 			r.stats.SecondaryColumns++
-			// r.stats.SecondaryColumnPages += uint64(column.ColumnInfo().PageCount)
+			r.stats.SecondaryColumnPages += uint64(column.ColumnInfo().PagesCount)
 		}
 	}
 
