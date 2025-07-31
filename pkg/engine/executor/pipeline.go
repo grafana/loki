@@ -283,3 +283,57 @@ func (p *tracedPipeline) Close() { p.inner.Close() }
 func (p *tracedPipeline) Inputs() []Pipeline { return p.inner.Inputs() }
 
 func (p *tracedPipeline) Transport() Transport { return Local }
+
+type lazyPipeline struct {
+	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
+
+	inputs []Pipeline
+	built  Pipeline
+}
+
+// newLazyPipeline allows for defering construction of a [Pipeline] to query
+// execution time instead of planning time. This is useful for pipelines which
+// are expensive to construct, or have dependencies which are only available
+// during execution.
+//
+// The ctor function will be invoked on the first call to [Pipeline.Read].
+func newLazyPipeline(ctor func(ctx context.Context, inputs []Pipeline) Pipeline, inputs []Pipeline) *lazyPipeline {
+	return &lazyPipeline{
+		ctor:   ctor,
+		inputs: inputs,
+	}
+}
+
+var _ Pipeline = (*lazyPipeline)(nil)
+
+// Read reads the next value from the inner pipeline. If this is the first call
+// to Read, the inner  pipeline will be constructed using the provided context.
+func (lp *lazyPipeline) Read(ctx context.Context) error {
+	if lp.built == nil {
+		lp.built = lp.ctor(ctx, lp.inputs)
+	}
+	return lp.built.Read(ctx)
+}
+
+// Value returns the current value from the lazily constructed pipeline. If the
+// pipeline has not been constructed yet, it returns an error.
+func (lp *lazyPipeline) Value() (arrow.Record, error) {
+	if lp.built == nil {
+		return nil, fmt.Errorf("lazyPipeline not built yet")
+	}
+	return lp.built.Value()
+}
+
+// Close closes the lazily constructed pipeline if it has been built.
+func (lp *lazyPipeline) Close() {
+	if lp.built != nil {
+		lp.built.Close()
+	}
+	lp.built = nil
+}
+
+// Inputs implements [Pipeline].
+func (lp *lazyPipeline) Inputs() []Pipeline { return lp.inputs }
+
+// Transport implements [Pipeline].
+func (lp *lazyPipeline) Transport() Transport { return Local }
