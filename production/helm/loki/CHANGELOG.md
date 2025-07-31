@@ -24,7 +24,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Fix serviceName in zone-aware ingester statefulsets [#18558](https://github.com/grafana/loki/pull/18558)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
 - [ENHANCEMENT] Expose Loki UI in pure ingress. [18400](https://github.com/grafana/loki/pull/18400)
-- [ENHANCEMENT] add missing revisionHistoryLimit to `admin-api`, `enterprise-gateway`, and `loki-canary`. [18638](https://github.com/grafana/loki/pull/18638)
+- [ENHANCEMENT] add missing revisionHistoryLimit to `admin-api`, `enterprise-gateway`, and `loki-canary`. [#18638](https://github.com/grafana/loki/pull/18638)
 
 ## 6.34.0
 
