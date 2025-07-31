@@ -13,6 +13,79 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+
+## 6.34.0
+
+- [CHANGE] Updated version of Grafana Loki to 3.5.3
+- [CHANGE] **BREAKING** Fixed serviceName in zone-aware ingester StatefulSets to reference correct headless services [#18558](https://github.com/grafana/loki/pull/18558). **Upgrade Impact**: Users with zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`) must manually delete the ingester StatefulSets before upgrading: `kubectl delete statefulset <release-name>-ingester-zone-a <release-name>-ingester-zone-b <release-name>-ingester-zone-c --cascade=orphan`. PersistentVolumeClaims and data will be preserved. **See**: [Helm chart upgrade guide](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+- [FEATURE] Expose labels on volumeClaimTemplates [#13317](https://github.com/grafana/loki/pull/13317)
+- [FEATURE] Allow setting custom labels for ingester statefulsets [#18536](https://github.com/grafana/loki/pull/18536)
+- [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
+- [ENHANCEMENT] Expose Loki UI in pure ingress. [18400](https://github.com/grafana/loki/pull/18400)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
+- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
+- [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
+- [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
+- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
+## 6.33.0
+
+- [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
+- [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
+- [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
+- [ENHANCEMENT] Add FOLDER_ANNOTATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+- [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
+- [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
+- [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)
+- [BUGFIX] Add release namespace metadata to HorizontalPodAutoscaling that lack it. [#18453](https://github.com/grafana/loki/pull/18453)
+- [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
+
+## 6.32.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.5.2
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.5.2
+- [FEATURE] Add support for templated `loki.operational_config` [#17045](https://github.com/grafana/loki/pull/17045)
+- [FEATURE] Add option to use deployment type instead of daemonset in canary. [#17364](https://github.com/grafana/loki/pull/17364)
+- [ENHANCEMENT] Allow specifying additional labels for memcached statefulsets volume claim templates [#15554](https://github.com/grafana/loki/pull/15554)
+- [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
+- [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
+- [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
+- [BUGFIX] Add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
+- [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
+
+## 6.31.0
+
+- [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
+- [FEATURE] Added pdb for pattern ingester [#17058](https://github.com/grafana/loki/pull/17058)
+- [FEATURE] Added trafficDistribution to service-distributor for multi-az purpose [#17742](https://github.com/grafana/loki/pull/17742)
+- [FEATURE] Allow external memcached setup [#17432](https://github.com/grafana/loki/pull/17432)
+- [FEATURE] Add block_builder config to helm chart [#17451](https://github.com/grafana/loki/pull/17451)
+- [FEATURE] Support bypass all s3/gcs/azure config in object_store [#17597](https://github.com/grafana/loki/pull/17597)
+- [FEATURE] Allow passing tenant password hash instead of password to avoid idempotency issue with the gateway secret [12032](https://github.com/grafana/loki/issues/12032).
+- [BUGFIX] Ensure ui.enabled=true is set in loki ConfigMap when loki.ui.enabled=true is set in values.yaml to actually enable the UI [#17562](https://github.com/grafana/loki/pull/17562)
+- [BUGFIX] Fix custom gateway nginx config rendering error [#18167](https://github.com/grafana/loki/pull/18167)
+- [BUGFIX] Allow metrics networkpolicy only from namespace [#17555](https://github.com/grafana/loki/pull/17555)
+- [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
+- [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
+
+## 6.30.1
+
+- [BUGFIX] Add livenessProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191#issuecomment-2769843275)
+
+## 6.29.1
+
+- [FEATURE] Added support for the rules sidecar in the ruler pods in distributed mode
+- [FEATURE] Added affinity property to the loki-canary deamonset
+- [BUGFIX] Ensure global.extraEnv and global.extraEnvFrom applied to all resources consistently ([#16828](https://github.com/grafana/loki/pull/16828))
+- [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
+- [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
+- [FEATURE] Add config support for external memcache cluster by setting the following config:
+    memcached:
+        enabled: false # <- setting false here
+    resultsCache:
+        addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
+    chunksCache:
+        addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
+
 ## 6.29.0
 
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources

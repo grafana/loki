@@ -37,6 +37,30 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+#### Distributor Max Receive Limits for uncompressed bytes
+
+The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
+
+Supported clients should check the configuration options for max send message size if applicable.
+
+## Helm Chart Upgrades
+
+### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
+
+{{< admonition type="warning" >}}
+Helm chart version 6.34.0 introduces a **breaking change** that affects users with zone-aware ingester replication enabled.
+{{< /admonition >}}
+
+If you are using zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`), upgrading to Helm chart 6.34.0 requires manual StatefulSet deletion before the upgrade. This is due to a fix for the `serviceName` field in zone-aware ingester StatefulSets, which is an immutable field in Kubernetes.
+
+**For detailed upgrade instructions, see**: [Helm Chart 6.x Upgrade Guide - Zone-aware Ingester Breaking Change](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+
+Key points:
+- Only affects deployments with `ingester.zoneAwareReplication.enabled: true`
+- Requires manual StatefulSet deletion with `--cascade=orphan` 
+- **No data loss** - PersistentVolumeClaims and data are preserved
+- New StatefulSets will be created with correct service references
+
 ## 3.4.0
 
 ### Loki 3.4.0
