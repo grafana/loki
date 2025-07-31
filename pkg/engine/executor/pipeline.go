@@ -229,13 +229,16 @@ func (p *prefetchWrapper) Value() (arrow.Record, error) {
 
 // Close implements [Pipeline].
 func (p *prefetchWrapper) Close() {
-	// NOTE(rfratto): We don't need to drain p.ch because all writes to p.ch are
-	// guaranteed to abort if the context is canceled.
-	//
-	// Attempting to drain p.ch here anyway can cause a deadlock if the
-	// [prefetchWrapper.Close] is called before [prefetchWrapper.init].
 	if p.cancel != nil {
 		p.cancel(errors.New("pipeline is closed"))
+
+		// Wait for the prefetch goroutine to finish. This avoids race conditions
+		// where we close a pipeline right before it's read.
+		//
+		// This check can only be done if p.cancel is non-nil, otherwise we may
+		// deadlock if [prefetchWrapper.Close] is called before
+		// [prefetchWrapper.init].
+		<-p.ch
 	}
 	if p.state.batch != nil {
 		p.state.batch.Release()
