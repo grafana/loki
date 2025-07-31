@@ -16,7 +16,7 @@ const (
 	NodeTypeLimit
 	NodeTypeRangeAggreation
 	NodeTypeVectorAggregation
-	NotTypeMerge
+	NodeTypeMerge
 )
 
 func (t NodeType) String() string {
@@ -25,7 +25,7 @@ func (t NodeType) String() string {
 		return "DataObjScan"
 	case NodeTypeSortMerge:
 		return "SortMerge"
-	case NotTypeMerge:
+	case NodeTypeMerge:
 		return "Merge"
 	case NodeTypeProjection:
 		return "Projection"

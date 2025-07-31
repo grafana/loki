@@ -21,7 +21,7 @@ func (m *Merge) ID() string {
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (m *Merge) Type() NodeType {
-	return NotTypeMerge
+	return NodeTypeMerge
 }
 
 // Accept implements the [Node] interface.
