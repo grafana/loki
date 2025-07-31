@@ -515,6 +515,7 @@ loki:
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
+    enable_sharding: true
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
