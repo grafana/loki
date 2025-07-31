@@ -68,7 +68,16 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	switch n := node.(type) {
 	case *physical.DataObjScan:
-		return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
+		// DataObjScan reads from object storage to determine the full pipeline to
+		// construct, making it expensive to call during planning time.
+		//
+		// TODO(rfratto): find a way to remove the logic from executeDataObjScan
+		// which wraps the pipeline with a topk/limit without reintroducing
+		// planning cost for thousands of scan nodes.
+		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
+		}, inputs)
+
 	case *physical.SortMerge:
 		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
 	case *physical.Limit:
