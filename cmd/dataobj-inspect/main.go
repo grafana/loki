@@ -1,34 +1,22 @@
 package main
 
 import (
-	"flag"
-	"log"
+	"fmt"
 	"os"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/tools"
+	"github.com/alecthomas/kingpin/v2"
 )
 
-func main() {
-	flag.Parse()
-
-	for _, f := range flag.Args() {
-		printFile(f)
-	}
+func exitWithError(err error) {
+	fmt.Fprint(os.Stderr, err.Error())
+	os.Exit(1)
 }
 
-func printFile(filename string) {
-	f, err := os.Open(filename)
-	if err != nil {
-		log.Printf("%s: %v", filename, err)
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	fi, err := f.Stat()
-	if err != nil {
-		log.Printf("%s: %v", filename, err)
-		return
-	}
-
-	tools.Inspect(f, fi.Size())
+func main() {
+	app := kingpin.New("dataobj-inspect", "A command-line tool to inspect data objects.")
+	addDumpCommand(app)
+	addStatsCommand(app)
+	addListStreamsCommand(app)
+	addPrintStreamsCommand(app)
+	kingpin.MustParse(app.Parse(os.Args[1:]))
 }
