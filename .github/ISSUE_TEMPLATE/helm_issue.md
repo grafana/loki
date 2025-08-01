@@ -109,6 +109,7 @@ body:
       label: Enter the command that you execute and failing/misfunctioning.
       description: Enter the command as-is as how you executed.
       placeholder: helm install my-loki grafana/loki --version 6.34.0 --values values.yaml
+      render: shell
     validations:
       required: true
 
