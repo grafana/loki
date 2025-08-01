@@ -55,6 +55,10 @@ type SampledQuery struct {
 	CellAStatusCode   *int    `json:"cellAStatusCode" db:"cell_a_status_code"`
 	CellBStatusCode   *int    `json:"cellBStatusCode" db:"cell_b_status_code"`
 
+	// Trace IDs
+	CellATraceID *string `json:"cellATraceID" db:"cell_a_trace_id"`
+	CellBTraceID *string `json:"cellBTraceID" db:"cell_b_trace_id"`
+
 	SampledAt time.Time `json:"sampledAt" db:"sampled_at"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 
@@ -64,12 +68,12 @@ type SampledQuery struct {
 
 // ComparisonOutcome represents a comparison result from the database
 type ComparisonOutcome struct {
-	CorrelationID      string      `json:"correlationId" db:"correlation_id"`
-	ComparisonStatus   string      `json:"comparisonStatus" db:"comparison_status"`
-	DifferenceDetails  interface{} `json:"differenceDetails" db:"difference_details"`
-	PerformanceMetrics interface{} `json:"performanceMetrics" db:"performance_metrics"`
-	ComparedAt         time.Time   `json:"comparedAt" db:"compared_at"`
-	CreatedAt          time.Time   `json:"createdAt" db:"created_at"`
+	CorrelationID      string    `json:"correlationId" db:"correlation_id"`
+	ComparisonStatus   string    `json:"comparisonStatus" db:"comparison_status"`
+	DifferenceDetails  any       `json:"differenceDetails" db:"difference_details"`
+	PerformanceMetrics any       `json:"performanceMetrics" db:"performance_metrics"`
+	ComparedAt         time.Time `json:"comparedAt" db:"compared_at"`
+	CreatedAt          time.Time `json:"createdAt" db:"created_at"`
 }
 
 // GoldfishAPIResponse represents the paginated API response
@@ -118,6 +122,7 @@ func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*Goldfi
 			sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
 			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
 			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
+			sq.cell_a_trace_id, sq.cell_b_trace_id,
 			sq.sampled_at, sq.created_at,
 			CASE
 				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
@@ -204,6 +209,7 @@ func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*Goldfi
 			&q.CellAEntriesReturned, &q.CellBEntriesReturned, &q.CellASplits, &q.CellBSplits,
 			&q.CellAShards, &q.CellBShards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
+			&q.CellATraceID, &q.CellBTraceID,
 			&q.SampledAt, &q.CreatedAt,
 			&q.ComparisonStatus,
 		)

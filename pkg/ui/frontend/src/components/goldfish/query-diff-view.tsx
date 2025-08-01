@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -294,6 +294,38 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                 </div>
                 <div className="col-span-2 text-left font-mono text-xs text-muted-foreground">
                   {query.cellBResponseHash ? `${query.cellBResponseHash.substring(0, 8)}...` : "N/A"}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Trace IDs */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Trace IDs</h4>
+              <div className="grid grid-cols-7 gap-4">
+                <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  <span>Trace ID</span>
+                </div>
+                <div className="col-span-2 text-right">
+                  {query.cellATraceID ? (
+                    <a href="#" className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                      {query.cellATraceID}
+                    </a>
+                  ) : (
+                    <span className="font-mono text-xs">N/A</span>
+                  )}
+                </div>
+                <div className="col-span-1"></div>
+                <div className="col-span-2 text-left">
+                  {query.cellBTraceID ? (
+                    <a href="#" className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                      {query.cellBTraceID}
+                    </a>
+                  ) : (
+                    <span className="font-mono text-xs">N/A</span>
+                  )}
                 </div>
               </div>
             </div>

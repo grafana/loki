@@ -35,6 +35,10 @@ export interface SampledQuery {
   cellAStatusCode: number | null;
   cellBStatusCode: number | null;
   
+  // Trace IDs
+  cellATraceID: string | null;
+  cellBTraceID: string | null;
+  
   sampledAt: string;
   createdAt: string;
   comparisonStatus: string;

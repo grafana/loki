@@ -1798,6 +1798,8 @@ github.com/richardartoul/molecule/src/protowire
 # github.com/rivo/uniseg v0.4.7
 ## explicit; go 1.18
 github.com/rivo/uniseg
+# github.com/rogpeppe/go-internal v1.14.1
+## explicit; go 1.23
 # github.com/rs/xid v1.6.0
 ## explicit; go 1.16
 github.com/rs/xid
