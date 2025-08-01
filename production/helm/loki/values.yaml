@@ -155,8 +155,10 @@ loki:
       {{- toYaml . | nindent 2}}
     {{- end}}
 
+    {{- with .Values.loki.pattern_ingester }}
     pattern_ingester:
-      enabled: {{ .Values.loki.pattern_ingester.enabled }}
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     memberlist:
     {{- if .Values.loki.memberlistConfig }}
@@ -176,6 +178,11 @@ loki:
 
     {{- with .Values.loki.ingester }}
     ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -301,6 +308,11 @@ loki:
 
     {{- with .Values.loki.compactor }}
     compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.compactor_grpc_client }}
+    compactor_grpc_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -535,6 +547,8 @@ loki:
       up_to: 3
   # --  Optional compactor configuration
   compactor: {}
+  # --  Optional compactor grpc client configuration
+  compactor_grpc_client: {}
   # --  Optional pattern ingester configuration
   pattern_ingester:
     enabled: false
@@ -553,6 +567,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional ingester client configuration
+  ingester_client: {}
   # --  Optional block builder configuration
   block_builder: {}
   # --  Optional index gateway configuration
