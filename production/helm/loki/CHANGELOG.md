@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Expose all storage configuration properties [#18509](https://github.com/grafana/loki/pull/18509)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
 
 ## 6.34.0
@@ -28,8 +29,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
 - [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
-## 6.33.0
 
+## 6.33.0
 - [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
 - [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
 - [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
