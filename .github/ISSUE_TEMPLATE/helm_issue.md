@@ -92,6 +92,7 @@ body:
     attributes:
       label: Enter the changed values of values.yaml?
       description: Please enter only values which differ from the defaults. Enter `NONE` if nothing's changed. Include any Loki configuration, storage, authentication, or resource settings you've modified.
+      render: yaml
       placeholder: |
         loki:
           auth_enabled: true
