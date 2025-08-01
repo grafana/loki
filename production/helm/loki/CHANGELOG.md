@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
+- [BUGFIX] enable ruler sharding by default to make it work in simple scalable mode, where backend component (which includes ruler) is scaled to 3 replicas by default.
 
 ## 6.34.0
 
