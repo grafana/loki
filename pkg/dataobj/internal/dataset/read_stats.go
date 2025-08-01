@@ -40,18 +40,18 @@ func (ds *DownloadStats) Reset() {
 	ds.SecondaryColumnUncompressedBytes = 0
 }
 
-// ReadStats tracks statistics about dataset read operations.
-type ReadStats struct {
-	ReadCalls int // Total number of read calls made to the reader
-
+// ReaderStats tracks statistics about dataset read operations.
+type ReaderStats struct {
 	// Column statistics
-	PrimaryColumns   int // Number of primary columns
-	SecondaryColumns int // Number of secondary columns
+	PrimaryColumns   int // Number of primary columns to read from the dataset
+	SecondaryColumns int // Number of secondary columns to read from the dataset
 
 	// Page statistics
 	PrimaryColumnPages   uint64        // Total pages in primary columns
 	SecondaryColumnPages uint64        // Total pages in secondary columns
 	DownloadStats        DownloadStats // Download statistics for primary and secondary columns
+
+	ReadCalls int // Total number of read calls made to the reader
 
 	// Row statistics
 	MaxRows                uint64 // Maximum number of rows across all columns
@@ -64,35 +64,40 @@ type ReadStats struct {
 	SecondaryRowBytes uint64 // Total bytes read for secondary rows
 }
 
-func (s *ReadStats) Reset() {
-	s.ReadCalls = 0
+func (s *ReaderStats) Reset() {
 	s.PrimaryColumns = 0
 	s.SecondaryColumns = 0
-	s.MaxRows = 0
-	s.RowsToReadAfterPruning = 0
-	s.PrimaryRowsRead = 0
-	s.SecondaryRowsRead = 0
-	s.PrimaryRowBytes = 0
-	s.SecondaryRowBytes = 0
+
 	s.PrimaryColumnPages = 0
 	s.SecondaryColumnPages = 0
 	s.DownloadStats.Reset()
+
+	s.ReadCalls = 0
+
+	s.MaxRows = 0
+	s.RowsToReadAfterPruning = 0
+
+	s.PrimaryRowsRead = 0
+	s.SecondaryRowsRead = 0
+
+	s.PrimaryRowBytes = 0
+	s.SecondaryRowBytes = 0
+
 }
 
 // LogSummary logs a summary of the read statistics to the provided logger.
-func (s *ReadStats) LogSummary(logger log.Logger, duration time.Duration) {
-	logValues := make([]any, 0, 30)
+func (s *ReaderStats) LogSummary(logger log.Logger, execDuration time.Duration) {
+	logValues := make([]any, 0, 35)
 	logValues = append(logValues, "msg", "dataset reader stats",
-		"duration", duration,
+		"execution_duration", execDuration,
 		"read_calls", s.ReadCalls,
-		"primary_columns", s.PrimaryColumns,
-		"secondary_columns", s.SecondaryColumns,
-
 		"max_rows", s.MaxRows,
 		"rows_to_read_after_pruning", s.RowsToReadAfterPruning,
 		"primary_rows_read", s.PrimaryRowsRead,
 		"secondary_rows_read", s.SecondaryRowsRead,
 
+		"primary_columns", s.PrimaryColumns,
+		"secondary_columns", s.SecondaryColumns,
 		"primary_column_pages", s.PrimaryColumnPages,
 		"secondary_column_pages", s.SecondaryColumnPages,
 

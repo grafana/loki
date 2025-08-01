@@ -224,7 +224,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	return builder.NewRecord(), readErr
 }
 
-func (r *Reader) Stats() *dataset.ReadStats {
+func (r *Reader) Stats() *dataset.ReaderStats {
 	if !r.ready {
 		return nil
 	}

@@ -53,7 +53,7 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
-	stats  ReadStats         // Stats about the read operation.
+	stats  ReaderStats       // Stats about the read operation.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -410,7 +410,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 	}
 }
 
-func (r *Reader) Stats() *ReadStats {
+func (r *Reader) Stats() *ReaderStats {
 	if !r.ready {
 		return nil
 	}
