@@ -38,6 +38,8 @@ type QuerySample struct {
 	CellBResponseSize int64
 	CellAStatusCode   int
 	CellBStatusCode   int
+	CellATraceID      string
+	CellBTraceID      string
 
 	// Query engine version tracking
 	CellAUsedNewEngine bool
