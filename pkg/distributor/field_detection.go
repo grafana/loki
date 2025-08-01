@@ -41,6 +41,7 @@ var (
 		"LEVEL",
 		"Level",
 		"log.level",
+		"LogLevel",
 		"severity",
 		"SEVERITY",
 		"Severity",
