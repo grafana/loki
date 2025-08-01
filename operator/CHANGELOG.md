@@ -1,5 +1,13 @@
 ## Main
 
+## [0.8.1](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.8.1) (2025-07-23)
+
+
+### Bug Fixes
+
+* **operator:** Fix type of maximum OpenShift version property ([#18066](https://github.com/grafana/loki/issues/18066)) ([f7c7dfa](https://github.com/grafana/loki/commit/f7c7dfa910d03e2ddc9c95c8d22fb3bff5c78e6b))
+* **operator:** Update maximum OpenShift version ([#17954](https://github.com/grafana/loki/issues/17954)) ([6b55918](https://github.com/grafana/loki/commit/6b5591826393100144fcdf8cd6c3ca1c340dffaf))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 
