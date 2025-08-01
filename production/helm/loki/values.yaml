@@ -1126,6 +1126,8 @@ gateway:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: gateway
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config for gateway pods
   dnsConfig: {}
@@ -1476,6 +1478,8 @@ singleBinary:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: single-binary
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config for single binary pods
   dnsConfig: {}
@@ -1600,6 +1604,8 @@ write:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: write
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
@@ -1718,6 +1724,8 @@ read:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: read
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
@@ -1828,6 +1836,8 @@ backend:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: backend
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
@@ -1965,6 +1975,8 @@ ingester:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ingester
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
@@ -2140,6 +2152,8 @@ distributor:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: distributor
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2247,6 +2261,8 @@ querier:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: querier
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2341,6 +2357,8 @@ queryFrontend:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-frontend
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2406,6 +2424,8 @@ queryScheduler:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-scheduler
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
@@ -2472,6 +2492,8 @@ indexGateway:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: index-gateway
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2544,6 +2566,8 @@ compactor:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: compactor
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
@@ -2654,6 +2678,8 @@ bloomGateway:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-gateway
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
@@ -2755,6 +2781,8 @@ bloomPlanner:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-planner
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
@@ -2903,6 +2931,8 @@ bloomBuilder:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-builder
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2946,6 +2976,8 @@ patternIngester:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -3086,6 +3118,8 @@ ruler:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ruler
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -3238,6 +3272,8 @@ overridesExporter:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: overrides-exporter
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -3995,6 +4031,8 @@ tableManager:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: table-manager
+              app.kubernetes.io/instance: loki
+              app.kubernetes.io/name: loki
           topologyKey: kubernetes.io/hostname
   # -- DNS config table-manager pods
   dnsConfig: {}
