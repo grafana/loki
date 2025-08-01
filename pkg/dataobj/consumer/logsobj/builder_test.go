@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
@@ -140,4 +141,30 @@ func TestBuilder_Append(t *testing.T) {
 		}
 		require.NoError(t, err)
 	}
+}
+
+// TestBuilder_Append_MaxAge ensures that the buffer eventually reports full
+// once max age is reached.
+func TestBuilder_Append_MaxAge(t *testing.T) {
+	clock := quartz.NewMock(t)
+	cfg := testBuilderConfig
+	cfg.MaxAge = time.Minute
+	builder, err := NewBuilder(cfg)
+	require.NoError(t, err)
+	builder.clock = clock
+	stream := logproto.Stream{
+		Labels: `{cluster="test",app="foo"}`,
+		Entries: []push.Entry{{
+			Timestamp: time.Now().UTC(),
+			Line:      "a",
+		}},
+	}
+	require.NoError(t, builder.Append(stream))
+	// Advance the clock. This should not fail as we have not exceeded the
+	// max age.
+	clock.Advance(time.Minute)
+	require.NoError(t, builder.Append(stream))
+	// Advance the clock once more, we should now have exceeded the max age.
+	clock.Advance(time.Second)
+	require.EqualError(t, builder.Append(stream), "builder full")
 }
