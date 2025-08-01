@@ -10,7 +10,7 @@ body:
       value: |
         Thanks for taking the time to fill out this feature request for the Loki Helm chart!
         
-        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/). This issue tracker is for feature requests specific to the Loki Helm chart.
+        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue tracker is for feature requests specific to the Loki Helm chart.
 
   - type: input
     id: chart-name
@@ -29,7 +29,7 @@ body:
       options:
         - Single Binary (monolithic)
         - Simple Scalable (read, write, backend components)
-        - Microservices (all components separated)
+        - Distributed (all components separated)
         - All deployment modes
         - Not applicable
     validations:

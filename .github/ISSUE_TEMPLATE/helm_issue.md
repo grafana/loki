@@ -10,7 +10,7 @@ body:
       value: |
         Thanks for taking the time to fill out this bug report for the Loki Helm chart! Please be cautious with the sensitive information/logs while filing the issue.
         
-        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/). This issue tracker is for bugs specific to the Loki Helm chart.
+        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue tracker is for bugs specific to the Loki Helm chart.
   - type: textarea
     id: desc
     attributes:
@@ -59,7 +59,7 @@ body:
       options:
         - Single Binary (monolithic)
         - Simple Scalable (read, write, backend components)
-        - Microservices (all components separated)
+        - Distributed (all components separated)
     validations:
       required: true
 
