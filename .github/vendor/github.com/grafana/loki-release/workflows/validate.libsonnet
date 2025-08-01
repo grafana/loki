@@ -48,7 +48,7 @@ local validationJob = _validationJob(false);
                      + step.withId('gather-tests')
                      + step.withRun(|||
                        echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
+                         | grep -e "pkg/push" -e "integration" -e "operator" -e "lambda-promtail" -e "helm" -v \
                          | cut  -d / -f 2,3 \
                          | uniq \
                          | sort \
@@ -86,10 +86,26 @@ local validationJob = _validationJob(false);
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                    gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),
+
+  testLambdaPromtail: validationJob
+                      + job.withSteps([
+                        common.fetchReleaseRepo,
+                        common.fixDubiousOwnership,
+                        common.fetchReleaseLib,
+                        step.new('install dependencies')
+                        + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+                        + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+                        step.new('test lambda-promtail package')
+                        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+                        + step.withWorkingDirectory('release/tools/lambda-promtail')
+                        + step.withRun(|||
+                          gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+                        |||),
+                      ]),
 
   testPushPackage: validationJob
                    + job.withSteps([
@@ -109,7 +125,7 @@ local validationJob = _validationJob(false);
                      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                      + step.withWorkingDirectory('release/pkg/push')
                      + step.withRun(|||
-                       gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+                       gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
                      |||),
                    ]),
 
@@ -160,7 +176,7 @@ local validationJob = _validationJob(false);
       step.new('faillint')
       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
       + step.withRun(|||
-        faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+        GOFLAGS="-tags=slicelabels" faillint -paths "sync/atomic=go.uber.org/atomic" ./...
       |||)
       + step.withWorkingDirectory('release'),
     ]),
@@ -175,7 +191,7 @@ local validationJob = _validationJob(false);
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': false,  // we want a PR to fail if the target branch fails
-          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
+          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled,slicelabels',
         }),
       ],
     )
@@ -204,6 +220,7 @@ local validationJob = _validationJob(false);
                'golangciLint',
                'lintFiles',
                'integration',
+               'testLambdaPromtail',
                'testPackages',
                'testPushPackage',
              ])
@@ -226,6 +243,7 @@ local validationJob = _validationJob(false);
            'golangciLint',
            'lintFiles',
            'integration',
+           'testLambdaPromtail',
            'testPackages',
            'testPushPackage',
          ])
