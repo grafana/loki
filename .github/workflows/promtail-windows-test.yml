@@ -2,9 +2,17 @@ name: Promtail Windows Test
 on:
   pull_request:
     branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]
+    paths-ignore:
+      - "production/helm/**"
+      - "**.md"
+      - "docs/sources/**"
   push:
     tags: ['v[0-9].[0-9]+.[0-9]+']
     branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]
+    paths-ignore:
+      - "production/helm/**"
+      - "**.md"
+      - "docs/sources/**"
 jobs:
   build:
     runs-on: windows-latest
