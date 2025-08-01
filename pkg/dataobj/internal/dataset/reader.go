@@ -53,6 +53,7 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
+	stats  ReadStats         // Stats about the read operation.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -150,11 +151,13 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		rowsRead = count
 		passCount = count
 
+		r.stats.PrimaryRowsRead += uint64(rowsRead)
 		statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
 		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
+		r.stats.PrimaryRowBytes += uint64(primaryColumnBytes)
 		statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], statistics)
@@ -187,6 +190,9 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		for i := range count {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
+
+		r.stats.SecondaryRowsRead += uint64(count)
+		r.stats.SecondaryRowBytes += uint64(totalBytesFilled)
 		statistics.AddPostPredicateDecompressedBytes(totalBytesFilled)
 	}
 
@@ -275,7 +281,9 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 	}
 
 	stats.AddPrePredicateDecompressedRows(int64(rowsRead))
+	r.stats.PrimaryRowsRead += uint64(rowsRead)
 	stats.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+	r.stats.PrimaryRowBytes += uint64(primaryColumnBytes)
 	return rowsRead, passCount, nil
 }
 
@@ -400,6 +408,16 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 	}
 }
 
+func (r *Reader) Stats() *ReadStats {
+	if !r.ready {
+		return nil
+	}
+
+	r.stats.TotalPagesRead = r.inner.PagesAccessed()
+	r.stats.DownloadStats = r.dl.DownloadStats()
+	return &r.stats
+}
+
 // Close closes the Reader. Closed Readers can be reused by calling
 // [Reader.Reset].
 func (r *Reader) Close() error {
@@ -429,6 +447,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.row = 0
 	r.ranges = sliceclear.Clear(r.ranges)
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
+	r.stats.Reset()
 	r.ready = false
 }
 
@@ -522,6 +541,11 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
+			r.stats.PrimaryColumns++
+			// r.stats.PrimaryColumnPages += uint64(column.ColumnInfo().PageCount)
+		} else {
+			r.stats.SecondaryColumns++
+			// r.stats.SecondaryColumnPages += uint64(column.ColumnInfo().PageCount)
 		}
 	}
 
@@ -556,6 +580,9 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	}
 	statistics := stats.FromContext(ctx)
 	statistics.AddTotalRowsAvailable(int64(rowsCount))
+
+	r.stats.MaxRows = rowsCount
+	r.stats.RowsToReadAfterPruning = ranges.TotalRowCount()
 
 	return nil
 }

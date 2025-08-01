@@ -52,7 +52,7 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	if opts.Allocator == nil {
 		opts.Allocator = memory.DefaultAllocator
 	}
@@ -407,6 +407,13 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
+	// log reader stats before closing
+	if s.initialized {
+		if stats := s.reader.Stats(); stats != nil {
+			stats.LogSummary(s.logger)
+		}
+	}
+
 	if s.streams != nil {
 		s.streams.Close()
 	}

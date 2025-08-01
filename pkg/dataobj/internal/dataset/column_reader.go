@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
@@ -23,6 +24,8 @@ type columnReader struct {
 	reader *pageReader
 
 	nextRow int64
+
+	pageAccessed []bool // Tracks which pages have been accessed.
 }
 
 // newColumnReader creates a new column reader for the given column.
@@ -66,6 +69,7 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			}
 
 			cr.pageIndex = pageIndex
+			cr.pageAccessed[pageIndex] = true
 		}
 
 		// Ensure that our page reader is set to the correct row within the page.
@@ -133,6 +137,9 @@ func (cr *columnReader) init(ctx context.Context) error {
 		startRow = endRow + 1
 	}
 
+	cr.pageAccessed = slices.Grow(cr.pageAccessed, len(cr.pages))
+	cr.pageAccessed = cr.pageAccessed[:len(cr.pages)]
+
 	cr.initialized = true
 	return nil
 }
@@ -191,6 +198,7 @@ func (cr *columnReader) Reset(column Column) {
 	cr.pageIndex = -1
 
 	cr.ranges = sliceclear.Clear(cr.ranges)
+	cr.pageAccessed = sliceclear.Clear(cr.pageAccessed)
 
 	if cr.reader != nil {
 		// Resetting takes the place of calling Close here.
@@ -198,6 +206,15 @@ func (cr *columnReader) Reset(column Column) {
 	}
 
 	cr.nextRow = 0
+}
+
+func (cr *columnReader) PagesAccessed() (count uint64) {
+	for _, accessed := range cr.pageAccessed {
+		if accessed {
+			count++
+		}
+	}
+	return
 }
 
 // Close closes the columnReader. Closed columnReaders can be reused by calling

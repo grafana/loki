@@ -337,6 +337,15 @@ func (pr *basicReader) maxRows() int {
 	return rows
 }
 
+func (pr *basicReader) PagesAccessed() (total uint64) {
+	for _, r := range pr.readers {
+		if r != nil {
+			total += r.PagesAccessed()
+		}
+	}
+	return
+}
+
 // Reset resets the basicReader to read from the start of the provided columns.
 // This permits reusing a basicReader rather than allocating a new one.
 func (pr *basicReader) Reset(columns []Column) {

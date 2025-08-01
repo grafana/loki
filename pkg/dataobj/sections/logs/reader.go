@@ -224,6 +224,14 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	return builder.NewRecord(), readErr
 }
 
+func (r *Reader) Stats() *dataset.ReadStats {
+	if !r.ready {
+		return nil
+	}
+
+	return r.inner.Stats()
+}
+
 func (r *Reader) init() error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
