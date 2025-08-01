@@ -167,4 +167,10 @@ func TestBuilder_Append_MaxAge(t *testing.T) {
 	// Advance the clock once more, we should now have exceeded the max age.
 	clock.Advance(time.Second)
 	require.EqualError(t, builder.Append(stream), "builder full")
+	// Reset the builder. It should not be full.
+	builder.Reset()
+	require.NoError(t, builder.Append(stream))
+	// Advance the clock, and it should have exceeded the max age again.
+	clock.Advance(time.Minute + time.Second)
+	require.EqualError(t, builder.Append(stream), "builder full")
 }
