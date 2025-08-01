@@ -86,7 +86,7 @@ local validationJob = _validationJob(false);
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                    gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),
@@ -103,7 +103,7 @@ local validationJob = _validationJob(false);
                         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                         + step.withWorkingDirectory('release/tools/lambda-promtail')
                         + step.withRun(|||
-                          gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+                          gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
                         |||),
                       ]),
 
@@ -125,7 +125,7 @@ local validationJob = _validationJob(false);
                      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                      + step.withWorkingDirectory('release/pkg/push')
                      + step.withRun(|||
-                       gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+                       gotestsum -- -tags slicelabels -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
                      |||),
                    ]),
 
@@ -176,7 +176,7 @@ local validationJob = _validationJob(false);
       step.new('faillint')
       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
       + step.withRun(|||
-        faillint -paths "sync/atomic=go.uber.org/atomic" ./...
+        GOFLAGS="-tags=slicelabels" faillint -paths "sync/atomic=go.uber.org/atomic" ./...
       |||)
       + step.withWorkingDirectory('release'),
     ]),
@@ -190,8 +190,8 @@ local validationJob = _validationJob(false);
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
-          'only-new-issues': true,
-          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
+          'only-new-issues': false,  // we want a PR to fail if the target branch fails
+          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled,slicelabels',
         }),
       ],
     )
