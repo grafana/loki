@@ -1,0 +1,27 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.querier.kedaAutoscaling.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "loki.querierFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.querierLabels" . | nindent 4 }}
+spec:
+  advanced:
+    horizontalPodAutoscalerConfig:
+      {{- with .Values.querier.kedaAutoscaling.behavior }}
+      behavior:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  pollingInterval: {{ .Values.querier.kedaAutoscaling.pollingInterval | default .Values.loki.kedaAutoscaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.querier.kedaAutoscaling.cooldownPeriod }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "loki.querierFullname" . }}
+  minReplicas: {{ .Values.querier.kedaAutoscaling.minReplicas }}
+  maxReplicas: {{ .Values.querier.kedaAutoscaling.maxReplicas }}
+  triggers: 
+    {{- tpl (.Values.querier.kedaAutoscaling.triggers | toYaml) $ | nindent 4 }}
+{{- end }}

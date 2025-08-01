@@ -54,3 +54,7 @@
 {{- fail "Please define loki.storage.bucketName.admin" }}
 {{- end }}
 {{- end }}
+
+{{- if and .Values.querier.kedaAutoscaling.enabled .Values.querier.autoscaling.enabled}}
+{{- fail "Cannot enable both HPA and Keda based autoscaling for querier at the same time."}}
+{{- end }}
