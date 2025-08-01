@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.7
-	github.com/baidubce/bce-sdk-go v0.9.236
+	github.com/baidubce/bce-sdk-go v0.9.237
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -82,7 +82,7 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
 	github.com/prometheus/prometheus v0.304.3-0.20250710152723-d2f1f4fb27af
@@ -144,7 +144,7 @@ require (
 	github.com/prometheus/sigv4 v0.2.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/shirou/gopsutil/v4 v4.25.6
+	github.com/shirou/gopsutil/v4 v4.25.7
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.4
 	github.com/twmb/franz-go v1.18.1
@@ -247,8 +247,8 @@ require (
 	github.com/sercand/kuberesolver/v6 v6.0.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.13 // indirect
-	github.com/tklauser/numcpus v0.7.0 // indirect
+	github.com/tklauser/go-sysconf v0.3.15 // indirect
+	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

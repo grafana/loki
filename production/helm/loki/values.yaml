@@ -670,6 +670,9 @@ enterprise:
     adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
+    # -- Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed
+    rbac:
+      create: true
     # -- Additional Kubernetes environment
     env: []
     # -- Additional labels for the `tokengen` Job
