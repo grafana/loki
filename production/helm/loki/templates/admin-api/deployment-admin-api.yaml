@@ -20,6 +20,7 @@ spec:
       {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.adminApi.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}  
   template:
     metadata:
       labels:
