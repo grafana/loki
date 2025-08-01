@@ -40379,6 +40379,15 @@ func (c *SubnetworksListUsableCall) ReturnPartialSuccess(returnPartialSuccess bo
 	return c
 }
 
+// ServiceProject sets the optional parameter "serviceProject": The project id
+// or project number in which the subnetwork is intended to be used. Only
+// applied for Shared VPC. See Shared VPC documentation
+// (https://cloud.google.com/vpc/docs/shared-vpc/)
+func (c *SubnetworksListUsableCall) ServiceProject(serviceProject string) *SubnetworksListUsableCall {
+	c.urlParams_.Set("serviceProject", serviceProject)
+	return c
+}
+
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.

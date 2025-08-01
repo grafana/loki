@@ -61,6 +61,7 @@ This is the generated reference for the Loki Helm Chart values.
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +81,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -199,6 +201,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for admin-api Pods</td>
@@ -262,6 +273,15 @@ This is the generated reference for the Loki Helm Chart values.
   "annotations": {},
   "labels": {}
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -352,6 +372,7 @@ This is the generated reference for the Loki Helm Chart values.
       "emptyDir": {}
     },
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
@@ -582,6 +603,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1160,6 +1190,7 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
+    "labels": {},
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1376,6 +1407,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for bloom gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-gateway pods</td>
@@ -1541,9 +1581,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1722,7 +1763,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.annotations</td>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-planner PVCs</td>
 			<td><pre lang="json">
@@ -1731,11 +1781,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.claims</td>
-			<td>list</td>
-			<td>List of the bloom-planner PVCs</td>
-			<td><pre lang="list">
-
+			<td>bloomPlanner.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for bloom planner PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2750,9 +2800,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -2933,7 +2984,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.annotations</td>
+			<td>compactor.persistence.claims</td>
+			<td>list</td>
+			<td>List of the compactor PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for compactor PVCs</td>
 			<td><pre lang="json">
@@ -2942,11 +3002,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.claims</td>
-			<td>list</td>
-			<td>List of the compactor PVCs</td>
-			<td><pre lang="list">
-
+			<td>compactor.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for compactor PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5275,6 +5335,7 @@ null
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
     "inMemory": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null,
     "whenDeleted": "Retain",
@@ -5480,6 +5541,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for index gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent or memory disk</td>
@@ -5658,6 +5728,7 @@ null
     "tag": null
   },
   "initContainers": [],
+  "labels": {},
   "lifecycle": {},
   "livenessProbe": {},
   "maxUnavailable": 1,
@@ -6344,7 +6415,8 @@ null
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
-      "/otlp/v1/logs"
+      "/otlp/v1/logs",
+      "/ui"
     ],
     "queryFrontend": [
       "/api/prom/query",
@@ -6410,7 +6482,8 @@ null
 [
   "/api/prom/push",
   "/loki/api/v1/push",
-  "/otlp/v1/logs"
+  "/otlp/v1/logs",
+  "/ui"
 ]
 </pre>
 </td>
@@ -6716,7 +6789,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.2"
+"3.5.3"
 </pre>
 </td>
 		</tr>
@@ -8706,9 +8779,10 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -8899,7 +8973,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.annotations</td>
+			<td>patternIngester.persistence.claims</td>
+			<td>list</td>
+			<td>List of the pattern ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for pattern ingester PVCs</td>
 			<td><pre lang="json">
@@ -8908,11 +8991,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.claims</td>
-			<td>list</td>
-			<td>List of the pattern ingester PVCs</td>
-			<td><pre lang="list">
-
+			<td>patternIngester.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9141,12 +9224,6 @@ null
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
-  "persistence": {
-    "annotations": {},
-    "enabled": false,
-    "size": "10Gi",
-    "storageClass": null
-  },
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
@@ -9423,42 +9500,6 @@ null
 			<td>Node selector for querier pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.annotations</td>
-			<td>object</td>
-			<td>Annotations for querier PVCs</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.enabled</td>
-			<td>bool</td>
-			<td>Enable creating PVCs for the querier cache</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -10231,6 +10272,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.sccEnabled</td>
 			<td>bool</td>
 			<td>For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.</td>
@@ -10287,6 +10337,7 @@ false
   "persistence": {
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null
@@ -10516,6 +10567,7 @@ false
 {
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
+  "labels": {},
   "selector": null,
   "size": "10Gi",
   "storageClass": null
@@ -10538,6 +10590,15 @@ false
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11129,6 +11190,7 @@ null
   "persistence": {
     "annotations": {},
     "enabled": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null
   },
@@ -11335,6 +11397,15 @@ null
 			<td>Enable creating PVCs which is required when using recording rules</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for ruler PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11716,6 +11787,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.affinity</td>
 			<td>object</td>
 			<td>Affinity for single binary pods.</td>
@@ -11910,6 +11990,15 @@ true
 			<td>Enable persistent disk</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12705,6 +12794,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

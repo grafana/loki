@@ -12,6 +12,24 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+- [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
+- [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
+- [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
+
+## 6.34.0
+
+- [CHANGE] Updated version of Grafana Loki to 3.5.3
+- [CHANGE] **BREAKING** Fixed serviceName in zone-aware ingester StatefulSets to reference correct headless services [#18558](https://github.com/grafana/loki/pull/18558). **Upgrade Impact**: Users with zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`) must manually delete the ingester StatefulSets before upgrading: `kubectl delete statefulset <release-name>-ingester-zone-a <release-name>-ingester-zone-b <release-name>-ingester-zone-c --cascade=orphan`. PersistentVolumeClaims and data will be preserved. **See**: [Helm chart upgrade guide](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+- [FEATURE] Expose labels on volumeClaimTemplates [#13317](https://github.com/grafana/loki/pull/13317)
+- [FEATURE] Allow setting custom labels for ingester statefulsets [#18536](https://github.com/grafana/loki/pull/18536)
+- [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
+- [ENHANCEMENT] Expose Loki UI in pure ingress. [18400](https://github.com/grafana/loki/pull/18400)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api. [#18546](https://github.com/grafana/loki/pull/18546)
+- [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
+- [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
+- [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
+- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
 ## 6.33.0
 
 - [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
@@ -23,10 +41,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)
 - [BUGFIX] Add release namespace metadata to HorizontalPodAutoscaling that lack it. [#18453](https://github.com/grafana/loki/pull/18453)
 - [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
-- [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
-- [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
-- [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
-- [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 
 ## 6.32.0
 
