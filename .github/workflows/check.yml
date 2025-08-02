@@ -9,10 +9,19 @@
       "use_github_app_token": true
 "name": "check"
 "on":
-  "pull_request": {}
+  "pull_request":
+    "paths-ignore":
+    - "production/helm/**"
+    - "**.md"
+    - "docs/sources/**"
+
   "push":
     "branches":
     - "main"
+    "paths-ignore":
+    - "production/helm/**"
+    - "**.md"
+    - "docs/sources/**"
 "permissions":
   "contents": "read"
   "pull-requests": "read"
