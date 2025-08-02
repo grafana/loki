@@ -1088,6 +1088,12 @@ dataobj:
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
+      # The maximum age of a builder before it is flushed. This ensures that
+      # objects are built at least once per max-age if
+      # target-builder-memory-limit is not reached. 0 means disabled.
+      # CLI flag: -dataobj-consumer.max-age
+      [max_age: <duration> | default = 1h]
+
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
