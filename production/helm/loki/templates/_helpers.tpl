@@ -1183,6 +1183,18 @@ enableServiceLinks: false
 {{- printf "%s" $querierAddress }}
 {{- end }}
 
+{{/* Determine headless querier address for tail proxy */}}
+{{- define "loki.querierHeadlessAddress" -}}
+{{- $querierAddress := "" }}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $querierHost := include "loki.querierFullname" .}}
+{{- $querierUrl := printf "http://%s-headless.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
+{{- $querierAddress = $querierUrl }}
+{{- end -}}
+{{- printf "%s" $querierAddress }}
+{{- end }}
+
 {{/* Determine index-gateway address */}}
 {{- define "loki.indexGatewayAddress" -}}
 {{- $idxGatewayAddress := ""}}
