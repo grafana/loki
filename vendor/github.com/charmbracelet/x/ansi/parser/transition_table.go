@@ -30,7 +30,7 @@ func NewTransitionTable(size int) TransitionTable {
 
 // SetDefault sets default transition.
 func (t TransitionTable) SetDefault(action Action, state State) {
-	for i := 0; i < len(t); i++ {
+	for i := range t {
 		t[i] = action<<TransitionActionShift | state
 	}
 }
