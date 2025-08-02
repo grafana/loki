@@ -13,8 +13,6 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
-
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
 func BenchmarkWriteMetastores(b *testing.B) {
@@ -46,9 +44,9 @@ func BenchmarkWriteMetastores(b *testing.B) {
 			// Add test data spanning multiple metastore windows
 			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-			flushStats := make([]logsobj.FlushStats, 1000)
+			stats := make([]flushStats, 1000)
 			for i := 0; i < 1000; i++ {
-				flushStats[i] = logsobj.FlushStats{
+				stats[i] = flushStats{
 					MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
 					MaxTimestamp: now,
 				}
@@ -58,7 +56,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 			t.ReportAllocs()
 			for i := 0; i < t.N; i++ {
 				// Test writing metastores
-				stats := flushStats[i%len(flushStats)]
+				stats := stats[i%len(stats)]
 				err := m.Update(ctx, "path", stats.MinTimestamp, stats.MaxTimestamp)
 				require.NoError(t, err)
 			}
@@ -96,7 +94,7 @@ func TestWriteMetastores(t *testing.T) {
 			// Add test data spanning multiple metastore windows
 			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-			flushStats := logsobj.FlushStats{
+			stats := flushStats{
 				MinTimestamp: now.Add(-1 * time.Hour),
 				MaxTimestamp: now,
 			}
@@ -104,7 +102,7 @@ func TestWriteMetastores(t *testing.T) {
 			require.Len(t, bucket.Objects(), 0)
 
 			// Test writing metastores
-			err := m.Update(ctx, "test-dataobj-path", flushStats.MinTimestamp, flushStats.MaxTimestamp)
+			err := m.Update(ctx, "test-dataobj-path", stats.MinTimestamp, stats.MaxTimestamp)
 			require.NoError(t, err)
 
 			require.Len(t, bucket.Objects(), 1)
@@ -113,7 +111,7 @@ func TestWriteMetastores(t *testing.T) {
 				originalSize = len(obj)
 			}
 
-			flushResult2 := logsobj.FlushStats{
+			flushResult2 := flushStats{
 				MinTimestamp: now.Add(-15 * time.Minute),
 				MaxTimestamp: now,
 			}
@@ -460,4 +458,9 @@ func TestObjectOverlapsRange(t *testing.T) {
 			}
 		})
 	}
+}
+
+type flushStats struct {
+	MinTimestamp time.Time
+	MaxTimestamp time.Time
 }

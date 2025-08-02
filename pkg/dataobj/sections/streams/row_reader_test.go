@@ -1,7 +1,6 @@
 package streams_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -89,16 +88,12 @@ func buildStreamsSection(t *testing.T, pageSize int) *streams.Section {
 		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}
 
-	var buf bytes.Buffer
-
 	builder := dataobj.NewBuilder()
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := streams.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

@@ -3,6 +3,9 @@ package dataobj
 import (
 	"bytes"
 	"fmt"
+	"io"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // A Builder builds data objects from a set of incoming log data. Log data is
@@ -56,22 +59,48 @@ func (b *Builder) Bytes() int {
 	return b.encoder.Bytes()
 }
 
-// Flush flushes all buffered data to the buffer provided. Calling Flush can
-// result in a no-op if there is no buffered data to flush.
+// Flush constructs a new Object from the accumulated sections. Allocated
+// resources for the Object must be released by calling Close on the returned
+// io.Closer. After closing, the returned Object must no longer be read.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending
-// data and allow new data to be appended.
-func (b *Builder) Flush(output *bytes.Buffer) (int64, error) {
-	sz, err := b.encoder.Flush(output)
+// Flush returns an error if the object could not be constructed.
+// [Builder.Reset] is called after a successful flush to discard any pending
+// data, allowing new data to be appended.
+func (b *Builder) Flush() (*Object, io.Closer, error) {
+	flushSize, err := b.encoder.FlushSize()
 	if err != nil {
-		return sz, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("determining object size: %w", err)
+	}
+
+	buf := bufpool.Get(int(flushSize))
+
+	closer := func() error {
+		bufpool.Put(buf)
+		return nil
+	}
+
+	sz, err := b.encoder.Flush(buf)
+	if err != nil {
+		return nil, nil, fmt.Errorf("flushing object: %w", err)
+	}
+
+	obj, err := FromReaderAt(bytes.NewReader(buf.Bytes()), sz)
+	if err != nil {
+		bufpool.Put(buf)
+		return nil, nil, fmt.Errorf("error building object: %w", err)
 	}
 
 	b.Reset()
-	return sz, nil
+	return obj, funcIOCloser(closer), nil
 }
 
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
 	b.encoder.Reset()
+}
+
+type funcIOCloser func() error
+
+func (fc funcIOCloser) Close() error {
+	return fc()
 }

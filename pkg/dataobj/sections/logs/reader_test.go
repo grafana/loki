@@ -102,12 +102,9 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 	objectBuilder := dataobj.NewBuilder()
 	require.NoError(t, objectBuilder.Append(sectionBuilder))
 
-	var buf bytes.Buffer
-	_, err := objectBuilder.Flush(&buf)
+	obj, closer, err := objectBuilder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := logs.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

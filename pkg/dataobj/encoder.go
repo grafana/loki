@@ -196,9 +196,25 @@ func (enc *encoder) Bytes() int {
 	return enc.data.Len()
 }
 
+// FlushSize returns the exact number of bytes that would be written upon
+// calling [encoder.Flush].
+func (enc *encoder) FlushSize() (int64, error) {
+	return enc.flush(streamio.Discard)
+}
+
 // Flush flushes any buffered data to the underlying writer. After flushing,
 // enc is reset.
 func (enc *encoder) Flush(w streamio.Writer) (int64, error) {
+	size, err := enc.flush(w)
+	if err != nil {
+		return size, err
+	}
+
+	enc.Reset()
+	return size, nil
+}
+
+func (enc *encoder) flush(w streamio.Writer) (int64, error) {
 	cw := countingWriter{w: w}
 
 	if enc.data == nil {
@@ -241,7 +257,6 @@ func (enc *encoder) Flush(w streamio.Writer) (int64, error) {
 		return cw.count, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
-	enc.Reset()
 	return cw.count, nil
 }
 
