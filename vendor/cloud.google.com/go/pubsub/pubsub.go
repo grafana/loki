@@ -31,6 +31,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -155,7 +156,7 @@ func NewClientWithConfig(ctx context.Context, projectID string, config *ClientCo
 	if addr := os.Getenv("PUBSUB_EMULATOR_HOST"); addr != "" {
 		emulatorOpts := []option.ClientOption{
 			option.WithEndpoint(addr),
-			option.WithGRPCDialOption(grpc.WithInsecure()),
+			option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 			option.WithoutAuthentication(),
 			option.WithTelemetryDisabled(),
 			internaloption.SkipDialSettingsValidation(),
