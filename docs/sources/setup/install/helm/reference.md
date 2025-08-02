@@ -11241,7 +11241,7 @@ null
 		<tr>
 			<td>ruler.directories</td>
 			<td>object</td>
-			<td>Directories containing rules files</td>
+			<td>Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.</td>
 			<td><pre lang="json">
 {}
 </pre>
