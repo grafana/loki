@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // newDecoder creates a new [decoder] for the given [dataobj.SectionReader].
@@ -48,10 +52,13 @@ func (rd *decoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) resu
 			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
 		}
 
+		numWindows := 0
 		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
+
+			numWindows++
 
 			var (
 				windowOffset = window.Start().GetInfo().MetadataOffset
@@ -87,6 +94,8 @@ func (rd *decoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) resu
 			}
 		}
 
+		level.Debug(utillog.WithContext(ctx, utillog.Logger)).Log("msg", "logs.decoder: retrieve page desc", "num_columns", len(columns), "window_size", humanize.Bytes(windowing.S3WindowSize), "total_windows", numWindows)
+
 		for _, data := range results {
 			if !yield(data) {
 				return nil
@@ -121,10 +130,13 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 
 		// TODO(rfratto): If there are many windows, it may make sense to read them
 		// in parallel.
+		numWindows := 0
 		for window := range windowing.Iter(pages, pageInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
+
+			numWindows++
 
 			var (
 				windowOffset = window.Start().GetInfo().DataOffset
@@ -160,6 +172,8 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 
 			bufpool.Put(buffer)
 		}
+
+		level.Debug(utillog.WithContext(ctx, utillog.Logger)).Log("msg", "logs.decoder: read pages", "num_pages", len(pages), "window_size", humanize.Bytes(windowing.S3WindowSize), "total_windows", numWindows)
 
 		for _, data := range results {
 			if !yield(data) {

@@ -54,6 +54,7 @@ func (enc *encoder) OpenColumn(columnType indexpointersmd.ColumnType, info *data
 		Info: &datasetmd.ColumnInfo{
 			Name:             info.Name,
 			ValueType:        info.Type,
+			PagesCount:       uint64(info.PagesCount),
 			RowsCount:        uint64(info.RowsCount),
 			ValuesCount:      uint64(info.ValuesCount),
 			Compression:      info.Compression,

@@ -15,6 +15,7 @@ type (
 		Type        datasetmd.ValueType       // Type of values in the column.
 		Compression datasetmd.CompressionType // Compression used for the column.
 
+		PagesCount       int // Total number of pages in the column.
 		RowsCount        int // Total number of rows in the column.
 		ValuesCount      int // Total number of non-NULL values in the column.
 		CompressedSize   int // Total size of all pages in the column after compression.
