@@ -4,7 +4,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-namespace-only
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -21,7 +21,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-egress-dns
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -41,7 +41,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-ingress
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -77,7 +77,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-ingress-metrics
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" .}}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -109,7 +109,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-egress-alertmanager
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -136,7 +136,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-egress-external-storage
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -171,7 +171,7 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-{{ $component }}-world-egress
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
 spec:
   endpointSelector:
     matchLabels:
@@ -197,7 +197,7 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-backend-kubeapiserver-egress
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
 spec:
   endpointSelector:
     matchLabels:
@@ -215,7 +215,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: {{ include "loki.name" . }}-egress-discovery
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:

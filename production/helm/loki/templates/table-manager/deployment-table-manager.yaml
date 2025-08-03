@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.tableManagerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.tableManagerLabels" . | nindent 4 }}
   annotations:

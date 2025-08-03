@@ -7,7 +7,7 @@ kind: ConfigMap
 {{- end }}
 metadata:
   name: {{ tpl .Values.loki.generatedConfigObjectName . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 {{- if eq .Values.loki.configStorageType "Secret" }}

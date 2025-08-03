@@ -39,6 +39,8 @@ global:
 nameOverride: null
 # -- Overrides the chart's computed fullname
 fullnameOverride: null
+# -- Overrides the chart's namespace
+namespaceOverride: null
 # -- Overrides the chart's cluster label
 clusterLabelOverride: null
 # -- Image pull secrets for Docker images
@@ -314,7 +316,7 @@ loki:
       enabled: true
       discovery:
         join_peers:
-          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+          - '{{ include "loki.queryFrontendFullname" . }}.{{ include "loki.namespace" . }}.svc.{{ .Values.global.clusterDomain }}'
     {{- end }}
     {{- with .Values.loki.querier }}
     querier:
@@ -3317,7 +3319,7 @@ resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ include "loki.namespace" $ }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3420,7 +3422,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ include "loki.namespace" $ }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3530,7 +3532,7 @@ chunksCache:
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
     enabled: false
     # -- Comma separated addresses list in DNS Service Discovery format
-    addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc
+    addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ include "loki.namespace" $ }}.svc'
     # -- Batchsize for sending and receiving chunks from chunks cache
     batchSize: 4
     # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3900,7 +3902,8 @@ monitoring:
       password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
-      secretNamespace: "{{ .Release.Namespace }}"
+      # @default -- The same namespace as the loki chart is installed in.
+      secretNamespace: '{{ include "loki.namespace" . }}'
     # -- DEPRECATED Grafana Agent configuration
     grafanaAgent:
       # -- DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs.
