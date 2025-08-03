@@ -1695,6 +1695,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- init containers to add to the read pods
+  initContainers: []
   # -- Containers to add to the read pods
   extraContainers: []
   # -- Environment variables to add to the read pods
@@ -2131,6 +2133,8 @@ distributor:
   extraVolumes: []
   # -- Resource requests and limits for the distributor
   resources: {}
+  # -- Init containers to add to the distributor pods
+  initContainers: []
   # -- Containers to add to the distributor pods
   extraContainers: []
   # -- Grace period to allow the distributor to shutdown before it is killed
@@ -2332,6 +2336,8 @@ queryFrontend:
   extraVolumes: []
   # -- Resource requests and limits for the query-frontend
   resources: {}
+  # -- init containers to add to the query-frontend pods
+  initContainers: []
   # -- Containers to add to the query-frontend pods
   extraContainers: []
   # -- Grace period to allow the query-frontend to shutdown before it is killed
@@ -2397,6 +2403,8 @@ queryScheduler:
   extraVolumes: []
   # -- Resource requests and limits for the query-scheduler
   resources: {}
+  # -- init containers to add to the query-scheduler pods
+  initContainers: []
   # -- Containers to add to the query-scheduler pods
   extraContainers: []
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
@@ -2894,6 +2902,8 @@ bloomBuilder:
   extraVolumes: []
   # -- Resource requests and limits for the bloom-builder
   resources: {}
+  # -- Init containers to add to the bloom-builder pods
+  initContainers: [ ]
   # -- Containers to add to the bloom-builder pods
   extraContainers: []
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
