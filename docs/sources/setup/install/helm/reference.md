@@ -387,7 +387,8 @@ This is the generated reference for the Loki Helm Chart values.
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "backend",
   "terminationGracePeriodSeconds": 300,
@@ -729,6 +730,15 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.type</td>
+			<td>string</td>
+			<td>Service type for backend Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -2831,6 +2841,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -3155,6 +3166,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceType</td>
+			<td>string</td>
+			<td>Service type for compactor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the compactor to shutdown before it is killed</td>
@@ -3240,6 +3260,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -3544,6 +3565,15 @@ null
 			<td>Labels for distributor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.serviceType</td>
+			<td>string</td>
+			<td>Service type for distributor service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -5348,6 +5378,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -5631,6 +5662,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceType</td>
+			<td>object</td>
+			<td>Service type for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the index-gateway to shutdown before it is killed.</td>
@@ -5756,6 +5796,7 @@ null
   "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -6155,6 +6196,15 @@ false
 			<td>Labels for ingestor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceType</td>
+			<td>string</td>
+			<td>Service type for ingestor service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -9231,6 +9281,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -9567,6 +9618,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceType</td>
+			<td>string</td>
+			<td>Service Type for querier service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the querier to shutdown before it is killed</td>
@@ -9651,6 +9711,7 @@ Defaults to allow skew no more then 1 node
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9945,6 +10006,15 @@ null
 			<td>Labels for query-frontend service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.serviceType</td>
+			<td>string</td>
+			<td>Service Type for query-frontend service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -10351,7 +10421,8 @@ false
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
@@ -10707,6 +10778,15 @@ null
 			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.type</td>
+			<td>string</td>
+			<td>Service Type for read Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -12102,6 +12182,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Service Type for single binary Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
@@ -12920,6 +13009,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.type</td>
+			<td>string</td>
+			<td>Service Type for write Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>

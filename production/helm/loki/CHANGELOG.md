@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Allow configuring service types. [#15882](https://github.com/grafana/loki/pull/15882)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
 - [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 - [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
