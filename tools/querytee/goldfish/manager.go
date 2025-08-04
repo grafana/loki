@@ -128,6 +128,8 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CellBResponseSize:  cellBResp.Size,
 		CellAStatusCode:    cellAResp.StatusCode,
 		CellBStatusCode:    cellBResp.StatusCode,
+		CellATraceID:       cellAResp.TraceID,
+		CellBTraceID:       cellBResp.TraceID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
 		SampledAt:          time.Now(),
@@ -251,10 +253,11 @@ type ResponseData struct {
 	Hash          string
 	Size          int64
 	UsedNewEngine bool
+	TraceID       string
 }
 
-// CaptureResponse captures response data for comparison
-func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData, error) {
+// CaptureResponse captures response data for comparison including trace ID
+func CaptureResponse(resp *http.Response, duration time.Duration, traceID string) (*ResponseData, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -286,6 +289,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 		Hash:          hash,
 		Size:          size,
 		UsedNewEngine: usedNewEngine,
+		TraceID:       traceID,
 	}, nil
 }
 

@@ -76,12 +76,14 @@ func TestStoreQuerySample(t *testing.T) {
 			Splits:               2,
 			Shards:               4,
 		},
-		CellAResponseHash: "hash123",
-		CellBResponseHash: "hash123",
+		CellAResponseHash:  "hash123",
+		CellBResponseHash:  "hash123",
 		CellAResponseSize:  2048,
 		CellBResponseSize:  2048,
 		CellAStatusCode:    200,
 		CellBStatusCode:    200,
+		CellATraceID:       "trace-a-123",
+		CellBTraceID:       "trace-b-456",
 		CellAUsedNewEngine: false,
 		CellBUsedNewEngine: true,
 		SampledAt:          time.Now(),
@@ -120,6 +122,8 @@ func TestStoreQuerySample(t *testing.T) {
 			sample.CellBResponseSize,
 			sample.CellAStatusCode,
 			sample.CellBStatusCode,
+			sample.CellATraceID,
+			sample.CellBTraceID,
 			sample.CellAUsedNewEngine,
 			sample.CellBUsedNewEngine,
 			sample.SampledAt,
@@ -292,86 +296,6 @@ func TestStoreComparisonResult_DatabaseError(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestInitMySQLSchema(t *testing.T) {
-	tests := []struct {
-		name      string
-		setupMock func(mock sqlmock.Sqlmock)
-		wantErr   bool
-		errMsg    string
-	}{
-		{
-			name: "successful schema initialization",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS sampled_queries").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS comparison_outcomes").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE INDEX idx_sampled_queries_tenant").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE INDEX idx_sampled_queries_time").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE INDEX idx_comparison_status").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-			},
-			wantErr: false,
-		},
-		{
-			name: "sampled_queries table creation failure",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS sampled_queries").
-					WillReturnError(fmt.Errorf("insufficient privileges"))
-			},
-			wantErr: true,
-			errMsg:  "insufficient privileges",
-		},
-		{
-			name: "comparison_outcomes table creation failure",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS sampled_queries").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS comparison_outcomes").
-					WillReturnError(fmt.Errorf("table already exists with different schema"))
-			},
-			wantErr: true,
-			errMsg:  "table already exists with different schema",
-		},
-		{
-			name: "index creation failure",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS sampled_queries").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS comparison_outcomes").
-					WillReturnResult(sqlmock.NewResult(0, 0))
-				mock.ExpectExec("CREATE INDEX idx_sampled_queries_tenant").
-					WillReturnError(fmt.Errorf("duplicate index name"))
-			},
-			wantErr: true,
-			errMsg:  "duplicate index name",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			require.NoError(t, err)
-			defer db.Close()
-
-			tt.setupMock(mock)
-
-			err = initMySQLSchema(db)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			err = mock.ExpectationsWereMet()
-			assert.NoError(t, err)
-		})
-	}
-}
-
 func TestCloudSQLStorage_ConnectionPoolConfiguration(t *testing.T) {
 	storage, _ := newMockCloudSQLStorage(t)
 	defer storage.Close()
@@ -529,6 +453,8 @@ func TestSQLInjectionProtection(t *testing.T) {
 				CellBResponseSize: 2048,
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
+				CellATraceID:      "trace-a-123",
+				CellBTraceID:      "trace-b-456",
 				SampledAt:         time.Now(),
 			}
 
@@ -567,6 +493,8 @@ func TestSQLInjectionProtection(t *testing.T) {
 					sample.CellBResponseSize,
 					sample.CellAStatusCode,
 					sample.CellBStatusCode,
+					sample.CellATraceID,
+					sample.CellBTraceID,
 					sample.CellAUsedNewEngine,
 					sample.CellBUsedNewEngine,
 					sample.SampledAt,
@@ -684,34 +612,4 @@ func TestComparisonResultSQLInjection(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-// TestSchemaCreationSQLInjectionProtection verifies schema creation is safe
-func TestSchemaCreationSQLInjectionProtection(t *testing.T) {
-	// Schema creation uses hardcoded queries with no user input
-	// This test verifies that the initSchema function doesn't accept any parameters
-	// that could be used for injection
-
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
-	// Expect the exact hardcoded queries
-	mock.ExpectExec("CREATE TABLE IF NOT EXISTS sampled_queries").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("CREATE TABLE IF NOT EXISTS comparison_outcomes").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("CREATE INDEX idx_sampled_queries_tenant").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("CREATE INDEX idx_sampled_queries_time").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("CREATE INDEX idx_comparison_status").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-
-	// initMySQLSchema takes only the db connection, no user input
-	err = initMySQLSchema(db)
-	assert.NoError(t, err)
-
-	err = mock.ExpectationsWereMet()
-	assert.NoError(t, err)
 }

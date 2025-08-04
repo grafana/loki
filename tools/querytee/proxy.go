@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/middleware"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -252,10 +253,17 @@ func (p *Proxy) Start() error {
 	}
 
 	p.srvListener = listener
+	// Wrap router with tracing middleware
+	var handler http.Handler = router
+	// Always wrap with tracing middleware when tracing libraries are available
+	tracer := middleware.NewTracer(nil, false, nil)
+	handler = tracer.Wrap(router)
+	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled")
+
 	p.srv = &http.Server{
 		ReadTimeout:  1 * time.Minute,
 		WriteTimeout: 2 * time.Minute,
-		Handler:      router,
+		Handler:      handler,
 	}
 
 	// Run in a dedicated goroutine.
