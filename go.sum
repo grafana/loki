@@ -673,8 +673,6 @@ github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34 h1:t1Nfp9udkvbYiCwNEz
 github.com/grafana/ckit v0.0.0-20250514165824-dd4adf36ad34/go.mod h1:THPMJBdU2XgYUsYCG/PvtaYj1/NH4uNjw7U5kNohrLY=
 github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2 h1:qhugDMdQ4Vp68H0tp/0iN17DM2ehRo1rLEdOFe/gB8I=
 github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2/go.mod h1:w/aiO1POVIeXUQyl0VQSZjl5OAGDTL5aX+4v0RA1tcw=
-github.com/grafana/dskit v0.0.0-20250723143816-ff33c5829b96 h1:Wsc21GtcFgqqVuP6SCKaQDoliVW5Agcrmb3PYBUwYS4=
-github.com/grafana/dskit v0.0.0-20250723143816-ff33c5829b96/go.mod h1:kImsvJ1xnmeT9Z6StK+RdEKLzlpzBsKwJbEQfmBJdFs=
 github.com/grafana/dskit v0.0.0-20250804051503-9430c6c06c07 h1:LSf0CTxgMIUtfCbhS34Gz2SumQiNOPBmmkw1oqRDDZw=
 github.com/grafana/dskit v0.0.0-20250804051503-9430c6c06c07/go.mod h1:kImsvJ1xnmeT9Z6StK+RdEKLzlpzBsKwJbEQfmBJdFs=
 github.com/grafana/go-gelf/v2 v2.0.1 h1:BOChP0h/jLeD+7F9mL7tq10xVkDG15he3T1zHuQaWak=
