@@ -1110,7 +1110,7 @@ enableServiceLinks: false
 {{- else if $isDistributed -}}
 {{- $compactorAddress = include "loki.compactorFullname" . -}}
 {{- end -}}
-{{- printf "http://%s:%s" $compactorAddress (.Values.loki.server.http_listen_port | toString) }}
+{{- printf "%s.%s.svc.%s:%s" $compactorAddress .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) }}
 {{- end }}
 
 {{/* Determine query-scheduler address */}}
