@@ -130,6 +130,23 @@ type Lexer interface {
 	AnalyseText(text string) float32
 }
 
+// Trace is the trace of a tokenisation process.
+type Trace struct {
+	Lexer   string  `json:"lexer"`
+	State   string  `json:"state"`
+	Rule    int     `json:"rule"`
+	Pattern string  `json:"pattern"`
+	Pos     int     `json:"pos"`
+	Length  int     `json:"length"`
+	Elapsed float64 `json:"elapsedMs"` // Elapsed time spent matching for this rule.
+}
+
+// TracingLexer is a Lexer that can trace its tokenisation process.
+type TracingLexer interface {
+	Lexer
+	SetTracing(enable bool)
+}
+
 // Lexers is a slice of lexers sortable by name.
 type Lexers []Lexer
 
