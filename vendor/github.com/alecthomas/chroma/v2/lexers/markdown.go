@@ -5,7 +5,7 @@ import (
 )
 
 // Markdown lexer.
-var Markdown = Register(DelegatingLexer(HTML, MustNewLexer(
+var Markdown = Register(MustNewLexer(
 	&Config{
 		Name:      "markdown",
 		Aliases:   []string{"md", "mkd"},
@@ -13,7 +13,7 @@ var Markdown = Register(DelegatingLexer(HTML, MustNewLexer(
 		MimeTypes: []string{"text/x-markdown"},
 	},
 	markdownRules,
-)))
+))
 
 func markdownRules() Rules {
 	return Rules{
@@ -40,7 +40,7 @@ func markdownRules() Rules {
 			{"`[^`]+`", LiteralStringBacktick, nil},
 			{`[@#][\w/:]+`, NameEntity, nil},
 			{`(!?\[)([^]]+)(\])(\()([^)]+)(\))`, ByGroups(Text, NameTag, Text, Text, NameAttribute, Text), nil},
-			{`.|\n`, Other, nil},
+			{`.|\n`, Text, nil},
 		},
 	}
 }
