@@ -34,10 +34,6 @@ type PartitionInstanceLifecyclerConfig struct {
 	// InstanceID is the ID of the instance managed by the lifecycler.
 	InstanceID string
 
-	// MultiPartitionOwnership is the flag that indicates whether the lifecycler should allow owning multiple partitions.
-	// This changes the InstanceID used to register the owner in the ring.
-	MultiPartitionOwnership bool
-
 	// WaitOwnersCountOnPending is the minimum number of owners to wait before switching a
 	// PENDING partition to ACTIVE.
 	WaitOwnersCountOnPending int
@@ -209,13 +205,13 @@ func (l *PartitionInstanceLifecycler) stopping(_ error) error {
 	// Remove the instance from partition owners, if configured to do so.
 	if l.RemoveOwnerOnShutdown() {
 		err := l.updateRing(context.Background(), func(ring *PartitionRingDesc) (bool, error) {
-			return ring.RemoveOwner(l.partitionOwnerID()), nil
+			return ring.RemoveOwner(l.cfg.InstanceID), nil
 		})
 
 		if err != nil {
-			level.Error(l.logger).Log("msg", "failed to remove instance from partition owners on shutdown", "instance", l.cfg.InstanceID, "partition_owner_id", l.partitionOwnerID(), "partition", l.cfg.PartitionID, "err", err)
+			level.Error(l.logger).Log("msg", "failed to remove instance from partition owners on shutdown", "instance", l.cfg.InstanceID, "partition", l.cfg.PartitionID, "err", err)
 		} else {
-			level.Info(l.logger).Log("msg", "instance removed from partition owners", "instance", l.cfg.InstanceID, "partition_owner_id", l.partitionOwnerID(), "partition", l.cfg.PartitionID)
+			level.Info(l.logger).Log("msg", "instance removed from partition owners", "instance", l.cfg.InstanceID, "partition", l.cfg.PartitionID)
 		}
 	}
 
@@ -265,15 +261,6 @@ func (l *PartitionInstanceLifecycler) updateRing(ctx context.Context, update fun
 	})
 }
 
-// partitionOwnerID returns the instance ID used to register the owner in the ring.
-func (l *PartitionInstanceLifecycler) partitionOwnerID() string {
-	if l.cfg.MultiPartitionOwnership {
-		return multiPartitionOwnerInstanceID(l.cfg.InstanceID, l.cfg.PartitionID)
-	}
-
-	return l.cfg.InstanceID
-}
-
 func (l *PartitionInstanceLifecycler) createPartitionAndRegisterOwner(ctx context.Context) error {
 	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
 		now := time.Now()
@@ -294,7 +281,7 @@ func (l *PartitionInstanceLifecycler) createPartitionAndRegisterOwner(ctx contex
 		}
 
 		// Ensure the instance is added as partition owner.
-		if ring.AddOrUpdateOwner(l.partitionOwnerID(), OwnerActive, l.cfg.PartitionID, now) {
+		if ring.AddOrUpdateOwner(l.cfg.InstanceID, OwnerActive, l.cfg.PartitionID, now) {
 			changed = true
 		}
 
@@ -342,7 +329,7 @@ func (l *PartitionInstanceLifecycler) waitPartitionAndRegisterOwner(ctx context.
 
 	// Ensure the instance is added as partition owner.
 	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
-		return ring.AddOrUpdateOwner(l.partitionOwnerID(), OwnerActive, l.cfg.PartitionID, time.Now()), nil
+		return ring.AddOrUpdateOwner(l.cfg.InstanceID, OwnerActive, l.cfg.PartitionID, time.Now()), nil
 	})
 }
 
