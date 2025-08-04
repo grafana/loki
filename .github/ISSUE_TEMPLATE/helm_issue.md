@@ -8,13 +8,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report for the Loki Helm chart! Please be cautious with the sensitive information/logs while filing the issue.
+        Thanks for taking the time to fill out this bug report for the Loki Helm chart! Please be cautious with any sensitive information/logs while filing your issue.
         
-        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue tracker is for bugs specific to the Loki Helm chart.
+        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue template is for bugs specific to the Loki Helm chart.
   - type: textarea
     id: desc
     attributes:
-      label: Describe the bug a clear and concise description of what the bug is.
+      label: Describe the bug, providing a clear and concise description of what the bug is.
     validations:
       required: true
 
@@ -22,15 +22,15 @@ body:
     id: helm-version
     attributes:
       label: What's your helm version?
-      description: Enter the output of `$ helm version`
-      placeholder: Copy paste the entire output of the above 
+      description: Enter the output of `$ helm version`.
+      placeholder: Copy paste the entire output of the above.
     validations:
       required: true
   - type: input
     id: kubectl-version
     attributes:
       label: What's your kubectl version?
-      description: Enter the output of `$ kubectl version`
+      description: Enter the output of `$ kubectl version`.
     validations:
       required: true
 
@@ -47,7 +47,7 @@ body:
     id: chart-version
     attributes:
       label: What's the chart version?
-      description: Enter the version of the chart that you encountered this bug.
+      description: Enter the version of the chart where you encountered this bug.
     validations:
       required: true
 
@@ -55,7 +55,7 @@ body:
     id: deployment-mode
     attributes:
       label: What's your Loki deployment mode?
-      description: Select the deployment mode you're using
+      description: Select the deployment mode you're using.
       options:
         - Single Binary (monolithic)
         - Simple Scalable (read, write, backend components)
@@ -120,8 +120,8 @@ body:
       description: |
         Include any relevant information such as:
         - Kubernetes cluster details (version, provider)
-        - Storage backend being used (filesystem, S3, GCS, etc.)
+        - Storage backend being used (filesystem, S3, GCS, Azure, etc.)
         - Log volume or specific error messages
-        - Related components (Grafana, Promtail, etc.)
+        - Related components (Grafana, Alloy, Promtail, etc.)
     validations:
       required: false

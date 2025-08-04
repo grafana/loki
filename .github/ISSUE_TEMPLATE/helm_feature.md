@@ -10,7 +10,7 @@ body:
       value: |
         Thanks for taking the time to fill out this feature request for the Loki Helm chart!
         
-        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue tracker is for feature requests specific to the Loki Helm chart.
+        For general Loki usage questions, please use the [Grafana Community Slack](https://slack.grafana.com/) and join the `#loki` channel. This issue template is for feature requests specific to the Loki Helm chart.
 
   - type: input
     id: chart-name
@@ -25,7 +25,7 @@ body:
     id: deployment-mode
     attributes:
       label: What's your Loki deployment mode?
-      description: Select the deployment mode this feature request relates to
+      description: Select the deployment mode this feature request relates to.
       options:
         - Single Binary (monolithic)
         - Simple Scalable (read, write, backend components)
@@ -40,7 +40,7 @@ body:
     attributes:
       label: Is your feature request related to a problem ?
       description: Give a clear and concise description of what the problem is.
-      placeholder:  ex. I'm always frustrated when [...]
+      placeholder:  For example, I'm always frustrated when [...]
     validations:
       required: true
 
@@ -56,7 +56,7 @@ body:
     id: alternatives
     attributes:
       label: Describe alternatives you've considered.
-      description: A clear and concise description of any alternative solutions or features you've considered. If nothing, please enter `NONE`
+      description: A clear and concise description of any alternative solutions or features you've considered. If nothing, please enter `NONE`.
     validations:
       required: true
 
