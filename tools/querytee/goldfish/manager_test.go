@@ -2,7 +2,9 @@ package goldfish
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,6 +164,93 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	assert.Equal(t, sample.CorrelationID, result.CorrelationID)
 	assert.Equal(t, time.Duration(100)*time.Millisecond, result.PerformanceMetrics.CellAQueryTime)
 	assert.Equal(t, time.Duration(120)*time.Millisecond, result.PerformanceMetrics.CellBQueryTime)
+}
+
+func Test_CaptureResponse_withTraceID(t *testing.T) {
+	tests := []struct {
+		name     string
+		traceID  string
+		expected string
+	}{
+		{
+			name:     "captures trace ID when provided",
+			traceID:  "test-trace-123",
+			expected: "test-trace-123",
+		},
+		{
+			name:     "handles empty trace ID",
+			traceID:  "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock HTTP response
+			resp := &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader(`{"status":"success","data":{"resultType":"matrix","result":[]}}`)),
+			}
+
+			// Call CaptureResponseWithTraceID
+			data, err := CaptureResponse(resp, time.Duration(100)*time.Millisecond, tt.traceID)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, data.TraceID)
+			assert.Equal(t, 200, data.StatusCode)
+			assert.Equal(t, time.Duration(100)*time.Millisecond, data.Duration)
+		})
+	}
+}
+
+func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
+	config := Config{
+		Enabled: true,
+		SamplingConfig: SamplingConfig{
+			DefaultRate: 1.0,
+		},
+	}
+
+	storage := &mockStorage{}
+	manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant1")
+
+	cellAResp := &ResponseData{
+		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+		StatusCode:    200,
+		Duration:      100 * time.Millisecond,
+		Stats:         QueryStats{ExecTimeMs: 100, QueueTimeMs: 50, BytesProcessed: 1000, LinesProcessed: 100},
+		Hash:          "hash123",
+		Size:          150,
+		UsedNewEngine: false,
+		TraceID:       "trace-cell-a-123",
+	}
+
+	cellBResp := &ResponseData{
+		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+		StatusCode:    200,
+		Duration:      120 * time.Millisecond,
+		Stats:         QueryStats{ExecTimeMs: 120, QueueTimeMs: 60, BytesProcessed: 1000, LinesProcessed: 100},
+		Hash:          "hash123",
+		Size:          155,
+		UsedNewEngine: true,
+		TraceID:       "trace-cell-b-456",
+	}
+
+	ctx := context.Background()
+	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+
+	// Give async processing time to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify sample was stored with trace IDs
+	assert.Len(t, storage.samples, 1)
+	sample := storage.samples[0]
+	assert.Equal(t, "trace-cell-a-123", sample.CellATraceID)
+	assert.Equal(t, "trace-cell-b-456", sample.CellBTraceID)
 }
 
 func TestManager_Close(t *testing.T) {

@@ -81,7 +81,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the same request to all backends.
-	resCh := make(chan *backendResponse, len(p.backends))
+	resCh := make(chan *BackendResponse, len(p.backends))
 	go p.executeBackendRequests(r, resCh, shouldSample)
 
 	// Wait for the first response that's feasible to be sent back to the client.
@@ -99,13 +99,13 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName, detectIssuer(r)).Inc()
 }
 
-func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *backendResponse, goldfishSample bool) {
+func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *BackendResponse, goldfishSample bool) {
 	var (
 		wg                  = sync.WaitGroup{}
 		err                 error
 		body                []byte
 		expectedResponseIdx int
-		responses           = make([]*backendResponse, len(p.backends))
+		responses           = make([]*BackendResponse, len(p.backends))
 		query               = r.URL.RawQuery
 		issuer              = detectIssuer(r)
 	)
@@ -135,7 +135,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			defer wg.Done()
 			var (
 				bodyReader io.ReadCloser
-				start      = time.Now()
 				lvl        = level.Debug
 			)
 			if len(body) > 0 {
@@ -147,30 +146,21 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				return
 			}
 
-			status, body, err := backend.ForwardRequest(r, bodyReader)
-			elapsed := time.Since(start)
-
-			res := &backendResponse{
-				backend:  backend,
-				status:   status,
-				body:     body,
-				err:      err,
-				duration: elapsed,
-			}
+			res := backend.ForwardRequest(r, bodyReader)
 
 			// Log with a level based on the backend response.
 			if !res.succeeded() {
 				lvl = level.Warn
 			}
 
-			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", backend.name, "status", status, "elapsed", elapsed)
+			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", backend.name, "status", res.status, "elapsed", res.duration)
 			p.metrics.requestDuration.WithLabelValues(
 				res.backend.name,
 				r.Method,
 				p.routeName,
 				strconv.Itoa(res.statusCode()),
 				issuer,
-			).Observe(elapsed.Seconds())
+			).Observe(res.duration.Seconds())
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
@@ -219,7 +209,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 	// Process with Goldfish if enabled and sampled
 	if goldfishSample && p.goldfishManager != nil && len(responses) >= 2 {
 		// Use preferred backend as Cell A, first non-preferred as Cell B
-		var cellAResp, cellBResp *backendResponse
+		var cellAResp, cellBResp *BackendResponse
 
 		// Find preferred backend response
 		for _, resp := range responses {
@@ -250,9 +240,9 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 	}
 }
 
-func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *backendResponse) *backendResponse {
+func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResponse) *BackendResponse {
 	var (
-		responses                 = make([]*backendResponse, 0, len(p.backends))
+		responses                 = make([]*BackendResponse, 0, len(p.backends))
 		preferredResponseReceived = false
 	)
 
@@ -285,7 +275,7 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *backendResp
 	return responses[0]
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse, queryEvalTime time.Time) (*ComparisonSummary, error) {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*ComparisonSummary, error) {
 	if expectedResponse.err != nil {
 		return &ComparisonSummary{skipped: true}, nil
 	}
@@ -310,15 +300,16 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backe
 	return p.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
 }
 
-type backendResponse struct {
+type BackendResponse struct {
 	backend  *ProxyBackend
 	status   int
 	body     []byte
 	err      error
 	duration time.Duration
+	traceID  string
 }
 
-func (r *backendResponse) succeeded() bool {
+func (r *BackendResponse) succeeded() bool {
 	if r.err != nil {
 		return false
 	}
@@ -327,7 +318,7 @@ func (r *backendResponse) succeeded() bool {
 	return (r.status >= 200 && r.status < 300) || (r.status >= 400 && r.status < 500 && r.status != 429)
 }
 
-func (r *backendResponse) statusCode() int {
+func (r *BackendResponse) statusCode() int {
 	if r.err != nil || r.status <= 0 {
 		return 500
 	}
@@ -353,16 +344,16 @@ func extractTenant(r *http.Request) string {
 }
 
 // processWithGoldfish sends the query and responses to Goldfish for comparison
-func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBResp *backendResponse) {
+func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBResp *BackendResponse) {
 	// Use a detached context with timeout since this runs async
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Capture response data with actual durations
+	// Capture response data with actual durations and trace IDs
 	cellAData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellAResp.status,
 		Body:       io.NopCloser(bytes.NewReader(cellAResp.body)),
-	}, cellAResp.duration)
+	}, cellAResp.duration, cellAResp.traceID)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to capture cell A response", "err", err)
 		return
@@ -371,7 +362,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 	cellBData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellBResp.status,
 		Body:       io.NopCloser(bytes.NewReader(cellBResp.body)),
-	}, cellBResp.duration)
+	}, cellBResp.duration, cellBResp.traceID)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to capture cell B response", "err", err)
 		return

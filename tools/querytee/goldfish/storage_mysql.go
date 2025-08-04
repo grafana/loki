@@ -3,13 +3,17 @@ package goldfish
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql" // MySQL driver
+	"github.com/pressly/goose/v3"
 )
+
+//go:embed migrations/*.sql
+var embedMigrations embed.FS
 
 // MySQLStorage provides common MySQL storage implementation
 type MySQLStorage struct {
@@ -35,10 +39,10 @@ func NewMySQLStorage(dsn string, config StorageConfig) (*MySQLStorage, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Initialize schema
-	if err := initMySQLSchema(db); err != nil {
+	// Run migrations
+	if err := runMigrations(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return &MySQLStorage{
@@ -65,9 +69,10 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
+			cell_a_trace_id, cell_b_trace_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := s.db.ExecContext(ctx, query,
@@ -102,12 +107,27 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBResponseSize,
 		sample.CellAStatusCode,
 		sample.CellBStatusCode,
+		sample.CellATraceID,
+		sample.CellBTraceID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
 	)
 
 	return err
+}
+
+// GetTraceIDs retrieves trace IDs for a given correlation ID
+// TODO(twhitney): Move this to the query logic used by the UI once we consolidate the two
+func (s *MySQLStorage) GetTraceIDs(correlationID string) (cellATraceID, cellBTraceID string, err error) {
+	query := "SELECT cell_a_trace_id, cell_b_trace_id FROM sampled_queries WHERE correlation_id = ?"
+
+	err = s.db.QueryRow(query, correlationID).Scan(&cellATraceID, &cellBTraceID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to retrieve trace IDs: %w", err)
+	}
+
+	return cellATraceID, cellBTraceID, nil
 }
 
 // StoreComparisonResult stores a comparison result
@@ -151,79 +171,20 @@ func (s *MySQLStorage) GetDB() *sql.DB {
 	return s.db
 }
 
-// initMySQLSchema creates the necessary tables if they don't exist
-func initMySQLSchema(db *sql.DB) error {
-	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS sampled_queries (
-			correlation_id VARCHAR(36) PRIMARY KEY,
-			tenant_id VARCHAR(255) NOT NULL,
-			query TEXT NOT NULL,
-			query_type VARCHAR(50) NOT NULL,
-			start_time TIMESTAMP,
-			end_time TIMESTAMP,
-			step_duration BIGINT,
-
-			-- Performance statistics
-			cell_a_exec_time_ms BIGINT,
-			cell_b_exec_time_ms BIGINT,
-			cell_a_queue_time_ms BIGINT,
-			cell_b_queue_time_ms BIGINT,
-			cell_a_bytes_processed BIGINT,
-			cell_b_bytes_processed BIGINT,
-			cell_a_lines_processed BIGINT,
-			cell_b_lines_processed BIGINT,
-			cell_a_bytes_per_second BIGINT,
-			cell_b_bytes_per_second BIGINT,
-			cell_a_lines_per_second BIGINT,
-			cell_b_lines_per_second BIGINT,
-			cell_a_entries_returned BIGINT,
-			cell_b_entries_returned BIGINT,
-			cell_a_splits BIGINT,
-			cell_b_splits BIGINT,
-			cell_a_shards BIGINT,
-			cell_b_shards BIGINT,
-
-			-- Response metadata without sensitive content
-			cell_a_response_hash VARCHAR(64),
-			cell_b_response_hash VARCHAR(64),
-			cell_a_response_size BIGINT,
-			cell_b_response_size BIGINT,
-			cell_a_status_code INTEGER,
-			cell_b_status_code INTEGER,
-
-			-- Query engine version tracking
-			cell_a_used_new_engine BOOLEAN DEFAULT FALSE,
-			cell_b_used_new_engine BOOLEAN DEFAULT FALSE,
-
-			sampled_at TIMESTAMP NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-
-		`CREATE TABLE IF NOT EXISTS comparison_outcomes (
-			correlation_id VARCHAR(36) PRIMARY KEY,
-			comparison_status VARCHAR(50) NOT NULL,
-			difference_details JSON,
-			performance_metrics JSON,
-			compared_at TIMESTAMP NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (correlation_id) REFERENCES sampled_queries(correlation_id)
-		)`,
-
-		`CREATE INDEX idx_sampled_queries_tenant ON sampled_queries(tenant_id)`,
-		`CREATE INDEX idx_sampled_queries_time ON sampled_queries(sampled_at)`,
-		`CREATE INDEX idx_comparison_status ON comparison_outcomes(comparison_status)`,
+// runMigrations executes database migrations using embedded goose migrations
+func runMigrations(db *sql.DB) error {
+	// Set goose dialect to MySQL
+	if err := goose.SetDialect("mysql"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
 	}
 
-	for i, schema := range schemas {
-		if _, err := db.Exec(schema); err != nil {
-			// MySQL might return an error if index already exists, which is OK
-			if i >= 2 && strings.Contains(err.Error(), "Duplicate key name") {
-				continue
-			}
-			return fmt.Errorf("failed to execute schema statement %d: %w", i+1, err)
-		}
+	// Set embedded migration provider
+	goose.SetBaseFS(embedMigrations)
+
+	// Run migrations from embedded filesystem
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return nil
 }
-
