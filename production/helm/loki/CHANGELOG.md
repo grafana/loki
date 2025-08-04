@@ -15,6 +15,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Expose all storage configuration properties [#18509](https://github.com/grafana/loki/pull/18509)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
+- [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
+- [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 
 ## 6.34.0
 
