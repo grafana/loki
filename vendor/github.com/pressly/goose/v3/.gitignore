@@ -1,0 +1,18 @@
+.idea
+.vscode
+.DS_Store
+*.swp
+*.test
+
+# Files output by tests
+/bin
+
+# Local testing
+.envrc
+*.FAIL
+
+dist/
+release_notes.txt
+
+go.work
+go.work.sum

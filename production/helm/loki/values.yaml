@@ -75,7 +75,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.2
+    tag: 3.5.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -656,6 +656,9 @@ enterprise:
     adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
+    # -- Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed
+    rbac:
+      create: true
     # -- Additional Kubernetes environment
     env: []
     # -- Additional labels for the `tokengen` Job
@@ -867,6 +870,8 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+  # -- Toggle this to true to allow the use of hostPath volumes on OpenShift
+  sccAllowHostDirVolumePlugin: false
   # -- Specify PSP annotations
   # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
   pspAnnotations: {}
@@ -985,12 +990,16 @@ adminApi:
   # -- Update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -1331,6 +1340,7 @@ ingress:
       - /api/prom/push
       - /loki/api/v1/push
       - /otlp/v1/logs
+      - /ui
     # -- Paths that are exposed by Loki Query Frontend.
     # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
     # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
@@ -1495,6 +1505,8 @@ singleBinary:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1624,6 +1636,8 @@ write:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1736,6 +1750,8 @@ read:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1848,6 +1864,8 @@ backend:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -1902,6 +1920,7 @@ ingester:
     tag: null
   # -- Command to execute instead of defined in Docker image
   command: null
+  labels: {}
   priorityClassName: null
   # -- Labels for ingester pods
   podLabels: {}
@@ -2244,19 +2263,6 @@ querier:
   tolerations: []
   # -- DNSConfig for querier pods
   dnsConfig: {}
-  persistence:
-    # -- Enable creating PVCs for the querier cache
-    enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
-    # -- Annotations for querier PVCs
-    annotations: {}
   # -- Adds the appProtocol field to the querier service. This allows querier to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2495,6 +2501,8 @@ indexGateway:
     storageClass: null
     # -- Annotations for index gateway PVCs
     annotations: {}
+    # -- Labels for index gateway PVCs
+    labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2586,8 +2594,6 @@ compactor:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for compactor PVCs
-    annotations: {}
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
@@ -2599,6 +2605,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for compactor PVCs
+        annotations: {}
+        # -- Labels for compactor PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2688,6 +2698,8 @@ bloomGateway:
     enabled: false
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
+    # -- Labels for bloom gateway PVCs
+    labels: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
@@ -2785,8 +2797,6 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Annotations for bloom-planner PVCs
-    annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
     claims:
@@ -2799,6 +2809,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for bloom-planner PVCs
+        annotations: {}
+        # -- Labels for bloom planner PVCs
+        labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2986,8 +3000,6 @@ patternIngester:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for pattern ingester PVCs
-    annotations: {}
     # -- List of the pattern ingester PVCs
     # @notationType -- list
     claims:
@@ -2999,6 +3011,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for pattern ingester PVCs
+        annotations: {}
+        # -- Labels for pattern ingester PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -3099,6 +3115,8 @@ ruler:
     storageClass: null
     # -- Annotations for ruler PVCs
     annotations: {}
+    # -- Labels for ruler PVCs
+    labels: {}
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
@@ -3745,6 +3763,8 @@ sidecar:
   readinessProbe: {}
   # -- Liveness probe definition. Probe is disabled on the sidecar by default.
   livenessProbe: {}
+  # -- Startup probe definition. Probe is disabled on the sidecar by default.
+  startupProbe: {}
   rules:
     # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.
     enabled: true
