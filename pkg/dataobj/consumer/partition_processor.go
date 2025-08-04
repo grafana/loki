@@ -195,6 +195,8 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
+	p.metrics.flushesTotal.Inc()
+
 	stats, err := p.builder.Flush(flushBuffer)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
