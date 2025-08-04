@@ -148,11 +148,11 @@ func indexFromInstanceSuffix(instance string) int {
 		}
 	}
 	if digitsSuffixLen == 0 {
-		return math.MaxInt64
+		return math.MaxInt
 	}
 	index, err := strconv.Atoi(instance[len(instance)-digitsSuffixLen:])
 	if err != nil {
-		return math.MaxInt64 // Shouldn't happen, we already made sure that the suffix is a number.
+		return math.MaxInt // Shouldn't happen, we already made sure that the suffix is a number.
 	}
 	return index
 }

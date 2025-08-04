@@ -13,8 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [CHANGE] Add `tpl()` support for `pattern_ingester`, `ingester_client` and `compactor_grpc_client` components. [#16759](https://github.com/grafana/loki/pull/16759)
 - [CHANGE] Common Config : Use grpc for contacting the compactor in distributed deployment, rather than http. The compactor_grpc_address parameter replaces the compactor_address in the default commonConfig section of values.yaml. If the compactor_address parameter is set, the compactor_grpc_address must be set to an empty string. Careful, the loki.compactorAddress helper now returns the address of the compactor in grpc format rather than http. [#17454](https://github.com/grafana/loki/pull/17454)
-- [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
+- [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 - [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 
