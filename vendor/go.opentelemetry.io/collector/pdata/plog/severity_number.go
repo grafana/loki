@@ -5,6 +5,7 @@ package plog // import "go.opentelemetry.io/collector/pdata/plog"
 
 import (
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // SeverityNumber represents severity number of a log record.
@@ -93,4 +94,9 @@ func (sn SeverityNumber) String() string {
 		return "Fatal4"
 	}
 	return ""
+}
+
+// MarshalJSONStream converts trace id into a hex string enclosed in quotes.
+func (sn SeverityNumber) marshalJSONStream(dest *json.Stream) {
+	dest.WriteInt32(int32(sn))
 }

@@ -2639,10 +2639,10 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of workers to run for concurrent processing of jobs. Setting it to 0
-  # will run a worker per available CPU core.
-  # CLI flag: -compactor.worker.num-workers
-  [num_workers: <int> | default = 0]
+  # Number of sub-workers to run for concurrent processing of jobs. Setting it
+  # to 0 will run a subworker per available CPU core.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 0]
 
 jobs_config:
   deletion:
@@ -5926,7 +5926,7 @@ grpc_tls_config:
 
 # Comma separated list of headers to exclude from tracing spans. Only used if
 # server.trace-request-headers is true. The following headers are always
-# excluded: Authorization, Cookie, X-Csrf-Token.
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
 # CLI flag: -server.trace-request-headers-exclude-list
 [trace_request_exclude_headers_list: <string> | default = ""]
 
@@ -5967,6 +5967,11 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
 ```
 
 ### storage_config

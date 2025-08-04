@@ -132,7 +132,11 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp) {
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
-			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
+			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.ReadCloser, error) {
+				if existing != nil {
+					defer existing.Close()
+				}
+
 				m.buf.Reset()
 				if existing != nil {
 					level.Debug(m.logger).Log("msg", "found existing metastore, updating", "path", metastorePath)
@@ -185,7 +189,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 				}
 
 				encodingDuration.ObserveDuration()
-				return m.buf, nil
+				return io.NopCloser(m.buf), nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)

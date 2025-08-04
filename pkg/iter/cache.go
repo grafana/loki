@@ -98,9 +98,6 @@ func (it *cachedIterator) Err() error { return it.iterErr }
 
 func (it *cachedIterator) Close() error {
 	it.Reset()
-	if it.wrapped != nil {
-		it.wrapped.Close()
-	}
 	return it.closeErr
 }
 
@@ -197,8 +194,5 @@ func (it *cachedSampleIterator) Err() error { return it.iterErr }
 
 func (it *cachedSampleIterator) Close() error {
 	it.Reset()
-	if it.wrapped != nil {
-		it.wrapped.Close()
-	}
 	return it.closeErr
 }

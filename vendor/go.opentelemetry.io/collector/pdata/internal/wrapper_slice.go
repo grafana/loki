@@ -5,6 +5,7 @@ package internal // import "go.opentelemetry.io/collector/pdata/internal"
 
 import (
 	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 type Slice struct {
@@ -49,4 +50,25 @@ func FillTestSlice(tv Slice) {
 		state := StateMutable
 		FillTestValue(NewValue(&(*tv.orig)[i], &state))
 	}
+}
+
+// MarshalJSONStreamSlice marshals all properties from the current struct to the destination stream.
+func MarshalJSONStreamSlice(ms Slice, dest *json.Stream) {
+	dest.WriteArrayStart()
+	if len(*ms.orig) > 0 {
+		MarshalJSONStreamValue(NewValue(&(*ms.orig)[0], ms.state), dest)
+	}
+	for i := 1; i < len(*ms.orig); i++ {
+		dest.WriteMore()
+		MarshalJSONStreamValue(NewValue(&(*ms.orig)[i], ms.state), dest)
+	}
+	dest.WriteArrayEnd()
+}
+
+func UnmarshalJSONIterSlice(ms Slice, iter *json.Iterator) {
+	iter.ReadArrayCB(func(iter *json.Iterator) bool {
+		*ms.orig = append(*ms.orig, otlpcommon.AnyValue{})
+		UnmarshalJSONIterValue(NewValue(&(*ms.orig)[len(*ms.orig)-1], ms.state), iter)
+		return true
+	})
 }
