@@ -17,7 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Common Config : Use grpc for contacting the compactor in distributed deployment, rather than http. The compactor_grpc_address parameter replaces the compactor_address in the default commonConfig section of values.yaml. If the compactor_address parameter is set, the compactor_grpc_address must be set to an empty string. Careful, the loki.compactorAddress helper now returns the address of the compactor in grpc format rather than http. [#17454](https://github.com/grafana/loki/pull/17454)
 - [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
-- [FEATURE] Added support to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
+- [FEATURE] Add readiness and liveness probes for the all memcached components. [#18525](https://github.com/grafana/loki/pull/18525)
 
 ## 6.34.0
 
