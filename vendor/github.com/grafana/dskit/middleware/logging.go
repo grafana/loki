@@ -30,11 +30,9 @@ type Log struct {
 }
 
 var AlwaysExcludedHeaders = map[string]bool{
-	"Cookie":         true,
-	"X-Csrf-Token":   true,
-	"Authorization":  true,
-	"X-Grafana-Id":   true,
-	"X-Access-Token": true,
+	"Cookie":        true,
+	"X-Csrf-Token":  true,
+	"Authorization": true,
 }
 
 func NewLogMiddleware(log log.Logger, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {

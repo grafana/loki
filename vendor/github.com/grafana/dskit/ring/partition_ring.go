@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	shardUtil "github.com/grafana/dskit/ring/shard"
@@ -355,31 +354,6 @@ func (r *PartitionRing) PartitionOwnerIDsCopy(partitionID int32) []string {
 	return slices.Clone(ids)
 }
 
-// MultiPartitionOwnerIDs returns the ownerIDs of the given partitionID removing the suffix added to support ownership of multiple partitions.
-// The slice returned will try to use the provided buf, and it can be modified (it will modify the buf if it was used).
-func (r *PartitionRing) MultiPartitionOwnerIDs(partitionID int32, buf []string) []string {
-	ids := r.ownersByPartition[partitionID]
-	if len(ids) == 0 {
-		return nil
-	}
-
-	if cap(buf) < len(ids) {
-		buf = make([]string, len(ids))
-	} else {
-		buf = buf[:len(ids)]
-	}
-
-	for i, ownerID := range ids {
-		if p := strings.LastIndexByte(ownerID, '/'); p != -1 {
-			buf[i] = ownerID[:p]
-		} else {
-			// This isn't expected here: all owner IDs should have a suffix when multiple partitions can be owned.
-			buf[i] = ownerID
-		}
-	}
-	return buf
-}
-
 func (r *PartitionRing) String() string {
 	buf := bytes.Buffer{}
 	for pid, pd := range r.desc.Partitions {
@@ -509,8 +483,4 @@ func (r *ActivePartitionBatchRing) Get(key uint32, _ Operation, bufInstances []I
 		MaxUnavailableZones:  0,
 		ZoneAwarenessEnabled: false,
 	}, nil
-}
-
-func multiPartitionOwnerInstanceID(instanceID string, partitionID int32) string {
-	return instanceID + "/" + strconv.Itoa(int(partitionID))
 }
