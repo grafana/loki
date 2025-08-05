@@ -4,9 +4,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useFeatureFlags } from "@/contexts/use-feature-flags";
 
 interface MetricComparison {
   label: string;
@@ -117,6 +118,7 @@ function MetricRow({ metric }: { metric: MetricComparison }) {
 
 export function QueryDiffView({ query }: { query: SampledQuery }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { features } = useFeatureFlags();
   
   const performanceMetrics: MetricComparison[] = [
     {
@@ -253,7 +255,16 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
           <CardContent className="pt-4 space-y-6">
             {/* Response Status */}
             <div className="space-y-3">
-              <h4 className="text-sm font-medium">Response Status</h4>
+              <div className="grid grid-cols-7 gap-4">
+                <h4 className="col-span-2 text-sm font-medium">Response Status</h4>
+                <div className="col-span-2 text-right text-sm font-medium">
+                  Cell A{features.goldfish.cellANamespace && ` (${features.goldfish.cellANamespace})`}
+                </div>
+                <div className="col-span-1"></div>
+                <div className="col-span-2 text-left text-sm font-medium">
+                  Cell B{features.goldfish.cellBNamespace && ` (${features.goldfish.cellBNamespace})`}
+                </div>
+              </div>
               <div className="grid grid-cols-7 gap-4">
                 <div className="col-span-2 text-sm text-muted-foreground">HTTP Status</div>
                 <div className="col-span-2 text-right">
@@ -300,14 +311,102 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
 
             <Separator />
 
+            {/* Trace IDs */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Trace IDs</h4>
+              <div className="grid grid-cols-7 gap-4">
+                <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  <span>Trace ID</span>
+                </div>
+                <div className="col-span-2 text-right">
+                  {query.cellATraceID ? (
+                    query.cellATraceLink ? (
+                      <a 
+                        href={query.cellATraceLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {query.cellATraceID}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {query.cellATraceID}
+                      </span>
+                    )
+                  ) : (
+                    <span className="font-mono text-xs">N/A</span>
+                  )}
+                </div>
+                <div className="col-span-1"></div>
+                <div className="col-span-2 text-left">
+                  {query.cellBTraceID ? (
+                    query.cellBTraceLink ? (
+                      <a 
+                        href={query.cellBTraceLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {query.cellBTraceID}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {query.cellBTraceID}
+                      </span>
+                    )
+                  ) : (
+                    <span className="font-mono text-xs">N/A</span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Logs Links - only show if we have logs links */}
+              {(query.cellALogsLink || query.cellBLogsLink) && (
+                <div className="grid grid-cols-7 gap-4">
+                  <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    <span>Logs (by TraceID)</span>
+                  </div>
+                  <div className="col-span-2 text-right">
+                    {query.cellALogsLink ? (
+                      <a 
+                        href={query.cellALogsLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {query.cellATraceID}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">-</span>
+                    )}
+                  </div>
+                  <div className="col-span-1"></div>
+                  <div className="col-span-2 text-left">
+                    {query.cellBLogsLink ? (
+                      <a 
+                        href={query.cellBLogsLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {query.cellBTraceID}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">-</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
             {/* Performance Metrics */}
             <div className="space-y-1">
-              <div className="grid grid-cols-7 gap-4 pb-2">
-                <div className="col-span-2 text-sm font-medium">Metric</div>
-                <div className="col-span-2 text-right text-sm font-medium">Cell A</div>
-                <div className="col-span-1"></div>
-                <div className="col-span-2 text-left text-sm font-medium">Cell B</div>
-              </div>
+              <h4 className="text-sm font-medium">Performance Metrics</h4>
               {performanceMetrics.map((metric, i) => (
                 <MetricRow key={i} metric={metric} />
               ))}

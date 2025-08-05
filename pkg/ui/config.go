@@ -14,13 +14,18 @@ import (
 )
 
 type GoldfishConfig struct {
-	Enable           bool   `yaml:"enable"`            // Whether to enable the Goldfish query comparison feature.
-	CloudSQLUser     string `yaml:"cloudsql_user"`     // CloudSQL username
-	CloudSQLHost     string `yaml:"cloudsql_host"`     // CloudSQL host
-	CloudSQLPort     int    `yaml:"cloudsql_port"`     // CloudSQL port
-	CloudSQLDatabase string `yaml:"cloudsql_database"` // CloudSQL database name
-	MaxConnections   int    `yaml:"max_connections"`   // Maximum number of database connections
-	MaxIdleTime      int    `yaml:"max_idle_time"`     // Maximum idle time for connections in seconds
+	Enable              bool   `yaml:"enable"`                // Whether to enable the Goldfish query comparison feature.
+	CloudSQLUser        string `yaml:"cloudsql_user"`         // CloudSQL username
+	CloudSQLHost        string `yaml:"cloudsql_host"`         // CloudSQL host
+	CloudSQLPort        int    `yaml:"cloudsql_port"`         // CloudSQL port
+	CloudSQLDatabase    string `yaml:"cloudsql_database"`     // CloudSQL database name
+	MaxConnections      int    `yaml:"max_connections"`       // Maximum number of database connections
+	MaxIdleTime         int    `yaml:"max_idle_time"`         // Maximum idle time for connections in seconds
+	GrafanaURL          string `yaml:"grafana_url"`           // Base URL of Grafana instance for explore links
+	TracesDatasourceUID string `yaml:"traces_datasource_uid"` // UID of the traces datasource in Grafana
+	LogsDatasourceUID   string `yaml:"logs_datasource_uid"`   // UID of the Loki datasource in Grafana
+	CellANamespace      string `yaml:"cell_a_namespace"`      // Namespace for Cell A logs
+	CellBNamespace      string `yaml:"cell_b_namespace"`      // Namespace for Cell B logs
 }
 
 type Config struct {
