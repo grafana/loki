@@ -4,9 +4,12 @@
 package data // import "go.opentelemetry.io/collector/pdata/internal/data"
 
 import (
+	"encoding/hex"
 	"errors"
 
 	"github.com/gogo/protobuf/proto"
+
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 const spanIDSize = 8
@@ -63,17 +66,13 @@ func (sid *SpanID) Unmarshal(data []byte) error {
 	return nil
 }
 
-// MarshalJSON converts SpanID into a hex string enclosed in quotes.
-func (sid SpanID) MarshalJSON() ([]byte, error) {
-	if sid.IsEmpty() {
-		return []byte(`""`), nil
-	}
-	return marshalJSON(sid[:])
+// MarshalJSONStream converts SpanID into a hex string.
+func (sid SpanID) MarshalJSONStream(dest *json.Stream) {
+	dest.WriteString(hex.EncodeToString(sid[:]))
 }
 
-// UnmarshalJSON decodes SpanID from hex string, possibly enclosed in quotes.
-// Called by Protobuf JSON deserialization.
-func (sid *SpanID) UnmarshalJSON(data []byte) error {
+// UnmarshalJSONIter decodes SpanID from hex string.
+func (sid *SpanID) UnmarshalJSONIter(iter *json.Iterator) {
 	*sid = [spanIDSize]byte{}
-	return unmarshalJSON(sid[:], data)
+	unmarshalJSON(sid[:], iter)
 }

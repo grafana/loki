@@ -367,36 +367,31 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generatio
 	return w.Close()
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
+	// We use rc for our callback instead of passing storageReader directly, since
+	// passing a concrete type directly will always be detected as non-nil, due the
+	// way Go converts concrete types to interfaces.
+	var rc io.ReadCloser
+
 	var generation int64
-	var missing bool
 
-	// Get the current object
 	storageReader, err := b.get(ctx, name)
-	if err != nil {
-		if !errors.Is(err, storage.ErrObjectNotExist) {
-			return err
-		}
-		missing = true
-	}
-
-	// redefine the callback reader so a nil originalContent (with concrete type but no value)
-	// doesn't pass nil-checks in the callback
-	var reader io.Reader
-	// If object exists, ensure we close the reader when done
-	if !missing {
+	if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
+		return err
+	} else if storageReader != nil {
+		rc = storageReader
 		generation = storageReader.Attrs.Generation
-		reader = storageReader
-		defer storageReader.Close()
 	}
 
-	newContent, err := f(reader)
+	newContent, err := f(rc)
 	if err != nil {
 		return err
+	} else if newContent != nil {
+		defer newContent.Close()
 	}
 
 	// Upload with the previous generation, or mustNotExist for new objects
-	return b.upload(ctx, name, newContent, generation, missing)
+	return b.upload(ctx, name, newContent, generation, storageReader == nil)
 }
 
 // Delete removes the object with the given name.

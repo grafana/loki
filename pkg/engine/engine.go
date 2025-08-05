@@ -11,6 +11,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/executor"
@@ -24,6 +28,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/engine")
 
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
@@ -73,7 +79,24 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 //  2. Create a physical plan from the logical plan using information from the catalog.
 //  3. Evaluate the physical plan with the executor.
 func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
-	start := time.Now()
+	ctx, span := tracer.Start(ctx, "QueryEngine.Execute", trace.WithAttributes(
+		attribute.String("type", string(logql.GetRangeType(params))),
+		attribute.String("query", params.QueryString()),
+		attribute.Stringer("start", params.Start()),
+		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("step", params.Step()),
+		attribute.Stringer("length", params.End().Sub(params.Start())),
+		attribute.StringSlice("shards", params.Shards()),
+	))
+	defer span.End()
+
+	var (
+		startTime = time.Now()
+
+		durLogicalPlanning  time.Duration
+		durPhysicalPlanning time.Duration
+		durExecution        time.Duration
+	)
 
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
@@ -81,86 +104,127 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 
-	t := time.Now() // start stopwatch for logical planning
-	logicalPlan, err := logical.BuildPlan(params)
+	logicalPlan, err := func() (*logical.Plan, error) {
+		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
+		defer span.End()
+
+		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
+		logicalPlan, err := logical.BuildPlan(params)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to create logical plan")
+			return nil, ErrNotSupported
+		}
+
+		durLogicalPlanning = timer.ObserveDuration()
+		level.Info(logger).Log(
+			"msg", "finished logical planning",
+			"plan", logicalPlan.String(),
+			"duration", durLogicalPlanning.Seconds(),
+		)
+		span.SetStatus(codes.Ok, "")
+		return logicalPlan, nil
+	}()
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		return logqlmodel.Result{}, ErrNotSupported
-	}
-	e.metrics.logicalPlanning.Observe(time.Since(t).Seconds())
-	durLogicalPlanning := time.Since(t)
-
-	level.Info(logger).Log(
-		"msg", "finished logical planning",
-		"plan", logicalPlan.String(),
-		"duration", durLogicalPlanning.Seconds(),
-	)
-
-	t = time.Now() // start stopwatch for physical planning
-	catalogueType := physical.CatalogueTypeDirect
-	if e.opts.CataloguePath != "" {
-		catalogueType = physical.CatalogueTypeIndex
-	}
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
-	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
-	plan, err := planner.Build(logicalPlan)
-	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		return logqlmodel.Result{}, ErrNotSupported
-	}
-	plan, err = planner.Optimize(plan)
-	if err != nil {
-		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		return logqlmodel.Result{}, ErrNotSupported
-	}
-	e.metrics.physicalPlanning.Observe(time.Since(t).Seconds())
-	durPhysicalPlanning := time.Since(t)
-
-	level.Info(logger).Log(
-		"msg", "finished physical planning",
-		"plan", physical.PrintAsTree(plan),
-		"duration", durLogicalPlanning.Seconds(),
-	)
-
-	level.Info(logger).Log(
-		"msg", "start executing query with new engine",
-	)
-
-	t = time.Now() // start stopwatch for execution
-	cfg := executor.Config{
-		BatchSize:                int64(e.opts.BatchSize),
-		Bucket:                   e.bucket,
-		DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
-	}
-	pipeline := executor.Run(ctx, cfg, plan, logger)
-	defer pipeline.Close()
-
-	var builder ResultBuilder
-	switch params.GetExpression().(type) {
-	case syntax.LogSelectorExpr:
-		builder = newStreamsResultBuilder()
-	case syntax.SampleExpr:
-		// assume instant query since logical planning would fail for range queries.
-		builder = newVectorResultBuilder()
-	default:
-		// should never happen as we already check the expression type in the logical planner
-		panic(fmt.Sprintf("failed to execute. Invalid exprression type (%T)", params.GetExpression()))
-	}
-
-	if err := collectResult(ctx, pipeline, builder); err != nil {
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, err
 	}
 
-	durExecution := time.Since(t)
-	durFull := time.Since(start)
+	physicalPlan, err := func() (*physical.Plan, error) {
+		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.physicalPlan")
+		defer span.End()
 
-	e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
-	e.metrics.execution.Observe(durFull.Seconds())
+		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
+		catalogueType := physical.CatalogueTypeDirect
+		if e.opts.CataloguePath != "" {
+			catalogueType = physical.CatalogueTypeIndex
+		}
+		catalog := physical.NewMetastoreCatalog(ctx, e.metastore, catalogueType)
+		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
+		plan, err := planner.Build(logicalPlan)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to create physical plan")
+			return nil, ErrNotSupported
+		}
+
+		plan, err = planner.Optimize(plan)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to optimize physical plan")
+			return nil, ErrNotSupported
+		}
+
+		durPhysicalPlanning = timer.ObserveDuration()
+		level.Info(logger).Log(
+			"msg", "finished physical planning",
+			"plan", physical.PrintAsTree(plan),
+			"duration", durPhysicalPlanning.Seconds(),
+		)
+		span.SetStatus(codes.Ok, "")
+		return plan, nil
+	}()
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to create physical plan")
+		return logqlmodel.Result{}, err
+	}
+
+	builder, err := func() (ResultBuilder, error) {
+		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.Process")
+		defer span.End()
+
+		level.Info(logger).Log("msg", "start executing query with new engine")
+
+		timer := prometheus.NewTimer(e.metrics.execution)
+
+		cfg := executor.Config{
+			BatchSize:                int64(e.opts.BatchSize),
+			Bucket:                   e.bucket,
+			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
+		}
+		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
+		defer pipeline.Close()
+
+		var builder ResultBuilder
+		switch params.GetExpression().(type) {
+		case syntax.LogSelectorExpr:
+			builder = newStreamsResultBuilder()
+		case syntax.SampleExpr:
+			// assume instant query since logical planning would fail for range queries.
+			builder = newVectorResultBuilder()
+		default:
+			// should never happen as we already check the expression type in the logical planner
+			panic(fmt.Sprintf("failed to execute. Invalid exprression type (%T)", params.GetExpression()))
+		}
+
+		if err := collectResult(ctx, pipeline, builder); err != nil {
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "failed to build results")
+			return nil, err
+		}
+
+		durExecution = timer.ObserveDuration()
+		e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
+		span.SetStatus(codes.Ok, "")
+		return builder, nil
+	}()
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to build results")
+		return logqlmodel.Result{}, err
+	}
+
+	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
@@ -173,6 +237,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	)
 
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	span.SetStatus(codes.Ok, "")
 	return builder.Build(stats, metadataCtx), nil
 }
 

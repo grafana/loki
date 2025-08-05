@@ -5069,7 +5069,7 @@ type BackendCustomMetric struct {
 	MaxUtilization float64 `json:"maxUtilization,omitempty"`
 	// Name: Name of a custom utilization signal. The name must be 1-64 characters
 	// long and match the regular expression a-z ([-_.a-z0-9]*[a-z0-9])? which
-	// means the first character must be a lowercase letter, and all following
+	// means that the first character must be a lowercase letter, and all following
 	// characters must be a dash, period, underscore, lowercase letter, or digit,
 	// except the last character, which cannot be a dash, period, or underscore.
 	// For usage guidelines, see Custom Metrics balancing mode. This field can only
@@ -5342,18 +5342,23 @@ type BackendService struct {
 	// MAGLEV: used as a drop in replacement for the ring hash load balancer.
 	// Maglev is not as stable as ring hash but has faster table lookup build times
 	// and host selection times. For more information about Maglev, see
-	// https://ai.google/research/pubs/pub44824 This field is applicable to either:
-	// - A regional backend service with the service_protocol set to HTTP, HTTPS,
-	// HTTP2 or H2C, and load_balancing_scheme set to INTERNAL_MANAGED. - A global
-	// backend service with the load_balancing_scheme set to INTERNAL_SELF_MANAGED,
-	// INTERNAL_MANAGED, or EXTERNAL_MANAGED. If sessionAffinity is not
-	// configured—that is, if session affinity remains at the default value of
-	// NONE—then the default value for localityLbPolicy is ROUND_ROBIN. If
-	// session affinity is set to a value other than NONE, then the default value
-	// for localityLbPolicy is MAGLEV. Only ROUND_ROBIN and RING_HASH are supported
-	// when the backend service is referenced by a URL map that is bound to target
-	// gRPC proxy that has validateForProxyless field set to true. localityLbPolicy
-	// cannot be specified with haPolicy.
+	// https://ai.google/research/pubs/pub44824 - WEIGHTED_ROUND_ROBIN:
+	// Per-endpoint Weighted Round Robin Load Balancing using weights computed from
+	// Backend reported Custom Metrics. If set, the Backend Service responses are
+	// expected to contain non-standard HTTP response header field
+	// Endpoint-Load-Metrics. The reported metrics to use for computing the weights
+	// are specified via the customMetrics field. This field is applicable to
+	// either: - A regional backend service with the service_protocol set to HTTP,
+	// HTTPS, HTTP2 or H2C, and load_balancing_scheme set to INTERNAL_MANAGED. - A
+	// global backend service with the load_balancing_scheme set to
+	// INTERNAL_SELF_MANAGED, INTERNAL_MANAGED, or EXTERNAL_MANAGED. If
+	// sessionAffinity is not configured—that is, if session affinity remains at
+	// the default value of NONE—then the default value for localityLbPolicy is
+	// ROUND_ROBIN. If session affinity is set to a value other than NONE, then the
+	// default value for localityLbPolicy is MAGLEV. Only ROUND_ROBIN and RING_HASH
+	// are supported when the backend service is referenced by a URL map that is
+	// bound to target gRPC proxy that has validateForProxyless field set to true.
+	// localityLbPolicy cannot be specified with haPolicy.
 	//
 	// Possible values:
 	//   "INVALID_LB_POLICY"
@@ -5387,8 +5392,8 @@ type BackendService struct {
 	//   "WEIGHTED_ROUND_ROBIN" - Per-endpoint weighted round-robin Load Balancing
 	// using weights computed from Backend reported Custom Metrics. If set, the
 	// Backend Service responses are expected to contain non-standard HTTP response
-	// header field X-Endpoint-Load-Metrics. The reported metrics to use for
-	// computing the weights are specified via the backends[].customMetrics fields.
+	// header field Endpoint-Load-Metrics. The reported metrics to use for
+	// computing the weights are specified via the customMetrics fields.
 	LocalityLbPolicy string `json:"localityLbPolicy,omitempty"`
 	// LogConfig: This field denotes the logging options for the load balancer
 	// traffic served by this backend service. If logging is enabled, logs will be
@@ -6018,7 +6023,7 @@ type BackendServiceCustomMetric struct {
 	DryRun bool `json:"dryRun,omitempty"`
 	// Name: Name of a custom utilization signal. The name must be 1-64 characters
 	// long and match the regular expression a-z ([-_.a-z0-9]*[a-z0-9])? which
-	// means the first character must be a lowercase letter, and all following
+	// means that the first character must be a lowercase letter, and all following
 	// characters must be a dash, period, underscore, lowercase letter, or digit,
 	// except the last character, which cannot be a dash, period, or underscore.
 	// For usage guidelines, see Custom Metrics balancing mode. This field can only
@@ -6754,8 +6759,8 @@ type BackendServiceLocalityLoadBalancingPolicyConfigPolicy struct {
 	//   "WEIGHTED_ROUND_ROBIN" - Per-endpoint weighted round-robin Load Balancing
 	// using weights computed from Backend reported Custom Metrics. If set, the
 	// Backend Service responses are expected to contain non-standard HTTP response
-	// header field X-Endpoint-Load-Metrics. The reported metrics to use for
-	// computing the weights are specified via the backends[].customMetrics fields.
+	// header field Endpoint-Load-Metrics. The reported metrics to use for
+	// computing the weights are specified via the customMetrics fields.
 	Name string `json:"name,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
@@ -46075,7 +46080,9 @@ type SecurityPolicyRuleRedirectOptions struct {
 	// Target: Target for the redirect action. This is required if the type is
 	// EXTERNAL_302 and cannot be specified for GOOGLE_RECAPTCHA.
 	Target string `json:"target,omitempty"`
-	// Type: Type of the redirect action.
+	// Type: Type of the redirect action. Possible values are: - GOOGLE_RECAPTCHA:
+	// redirect to reCAPTCHA for manual challenge assessment. - EXTERNAL_302:
+	// redirect to a different URL via a 302 response.
 	//
 	// Possible values:
 	//   "EXTERNAL_302"
@@ -46303,7 +46310,7 @@ type ServiceAttachment struct {
 	// connection limit. A given service attachment can manage connections at
 	// either the project or network level. Therefore, both the accept and reject
 	// lists for a given service attachment must contain either only projects or
-	// only networks.
+	// only networks or only endpoints.
 	ConsumerAcceptLists []*ServiceAttachmentConsumerProjectLimit `json:"consumerAcceptLists,omitempty"`
 	// ConsumerRejectLists: Specifies a list of projects or networks that are not
 	// allowed to connect to this service attachment. The project can be specified
@@ -46340,6 +46347,8 @@ type ServiceAttachment struct {
 	// Kind: [Output Only] Type of the resource. Always compute#serviceAttachment
 	// for service attachments.
 	Kind string `json:"kind,omitempty"`
+	// Metadata: Metadata of the service attachment.
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Name: Name of the resource. Provided by the client when the resource is
 	// created. The name must be 1-63 characters long, and comply with RFC1035.
 	// Specifically, the name must be 1-63 characters long and match the regular
@@ -46613,7 +46622,8 @@ func (s ServiceAttachmentConnectedEndpoint) MarshalJSON() ([]byte, error) {
 }
 
 type ServiceAttachmentConsumerProjectLimit struct {
-	// ConnectionLimit: The value of the limit to set.
+	// ConnectionLimit: The value of the limit to set. For endpoint_url, the limit
+	// should be no more than 1.
 	ConnectionLimit int64 `json:"connectionLimit,omitempty"`
 	// NetworkUrl: The network URL for the network to set the limit for.
 	NetworkUrl string `json:"networkUrl,omitempty"`
@@ -49275,15 +49285,15 @@ type StoragePool struct {
 	// pool disks' exclusive use.
 	//   "UNSPECIFIED"
 	PerformanceProvisioningType string `json:"performanceProvisioningType,omitempty"`
-	// PoolProvisionedCapacityGb: Size, in GiB, of the storage pool. For more
+	// PoolProvisionedCapacityGb: Size of the storage pool in GiB. For more
 	// information about the size limits, see
 	// https://cloud.google.com/compute/docs/disks/storage-pools.
 	PoolProvisionedCapacityGb int64 `json:"poolProvisionedCapacityGb,omitempty,string"`
 	// PoolProvisionedIops: Provisioned IOPS of the storage pool. Only relevant if
 	// the storage pool type is hyperdisk-balanced.
 	PoolProvisionedIops int64 `json:"poolProvisionedIops,omitempty,string"`
-	// PoolProvisionedThroughput: Provisioned throughput of the storage pool. Only
-	// relevant if the storage pool type is hyperdisk-balanced or
+	// PoolProvisionedThroughput: Provisioned throughput of the storage pool in
+	// MiB/s. Only relevant if the storage pool type is hyperdisk-balanced or
 	// hyperdisk-throughput.
 	PoolProvisionedThroughput int64 `json:"poolProvisionedThroughput,omitempty,string"`
 	// ResourceStatus: [Output Only] Status information for the storage pool
@@ -49873,7 +49883,7 @@ type StoragePoolResourceStatus struct {
 	// in RFC3339 text format.
 	LastResizeTimestamp string `json:"lastResizeTimestamp,omitempty"`
 	// MaxTotalProvisionedDiskCapacityGb: [Output Only] Maximum allowed aggregate
-	// disk size in gigabytes.
+	// disk size in GiB.
 	MaxTotalProvisionedDiskCapacityGb int64 `json:"maxTotalProvisionedDiskCapacityGb,omitempty,string"`
 	// PoolUsedCapacityBytes: [Output Only] Space used by data stored in disks
 	// within the storage pool (in bytes). This will reflect the total number of
@@ -49886,20 +49896,20 @@ type StoragePoolResourceStatus struct {
 	// https://cloud.google.com/compute/docs/disks/storage-pools.
 	PoolUsedIops int64 `json:"poolUsedIops,omitempty,string"`
 	// PoolUsedThroughput: [Output Only] Sum of all the disks' provisioned
-	// throughput in MB/s.
+	// throughput in MiB/s.
 	PoolUsedThroughput int64 `json:"poolUsedThroughput,omitempty,string"`
 	// PoolUserWrittenBytes: [Output Only] Amount of data written into the pool,
 	// before it is compacted.
 	PoolUserWrittenBytes int64 `json:"poolUserWrittenBytes,omitempty,string"`
-	// TotalProvisionedDiskCapacityGb: [Output Only] Sum of all the capacity
-	// provisioned in disks in this storage pool. A disk's provisioned capacity is
-	// the same as its total capacity.
+	// TotalProvisionedDiskCapacityGb: [Output Only] Sum of all the disks'
+	// provisioned capacity (in GiB) in this storage pool. A disk's provisioned
+	// capacity is the same as its total capacity.
 	TotalProvisionedDiskCapacityGb int64 `json:"totalProvisionedDiskCapacityGb,omitempty,string"`
 	// TotalProvisionedDiskIops: [Output Only] Sum of all the disks' provisioned
 	// IOPS.
 	TotalProvisionedDiskIops int64 `json:"totalProvisionedDiskIops,omitempty,string"`
 	// TotalProvisionedDiskThroughput: [Output Only] Sum of all the disks'
-	// provisioned throughput in MB/s, minus some amount that is allowed per disk
+	// provisioned throughput in MiB/s, minus some amount that is allowed per disk
 	// that is not counted towards pool's throughput capacity.
 	TotalProvisionedDiskThroughput int64 `json:"totalProvisionedDiskThroughput,omitempty,string"`
 	// ForceSendFields is a list of field names (e.g. "DiskCount") to
@@ -55891,6 +55901,8 @@ type UpcomingMaintenance struct {
 	// relocation.
 	//   "MAINTENANCE_REASON_UNKNOWN" - Unknown maintenance reason. Do not use this
 	// value.
+	//   "PLANNED_NETWORK_UPDATE" - Maintenance due to planned network update.
+	//   "PLANNED_UPDATE" - Maintenance due to planned update to the instance.
 	MaintenanceReasons []string `json:"maintenanceReasons,omitempty"`
 	// Possible values:
 	//   "ONGOING" - There is ongoing maintenance on this VM.
@@ -55900,6 +55912,8 @@ type UpcomingMaintenance struct {
 	// Type: Defines the type of maintenance.
 	//
 	// Possible values:
+	//   "MULTIPLE" - Multiple maintenance types in one window. This is only
+	// intended to be used for groups.
 	//   "SCHEDULED" - Scheduled maintenance (e.g. maintenance after uptime
 	// guarantee is complete).
 	//   "UNKNOWN_TYPE" - No type specified. Do not use this value.

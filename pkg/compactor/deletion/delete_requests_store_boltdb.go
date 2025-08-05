@@ -550,7 +550,7 @@ func splitUserIDAndRequestID(rangeValue string) (userID, requestID, seqID string
 
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func generateCacheGenNumber() []byte {

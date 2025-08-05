@@ -231,7 +231,7 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
-		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 		// Trim _extracted suffix if the extracted field was a duplicate field
 		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
 		jsonPath = append(jsonPath, partStr)

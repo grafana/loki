@@ -223,9 +223,6 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 type Producer struct {
 	*kgo.Client
 
-	closeOnce *sync.Once
-	closed    chan struct{}
-
 	// Keep track of Kafka records size (bytes) currently in-flight in the Kafka client.
 	// This counter is used to implement a limit on the max buffered bytes.
 	bufferedBytes *atomic.Int64
@@ -234,7 +231,6 @@ type Producer struct {
 	maxBufferedBytes int64
 
 	// Custom metrics.
-	bufferedProduceBytes      prometheus.Summary
 	bufferedProduceBytesLimit prometheus.Gauge
 	produceRequestsTotal      prometheus.Counter
 	produceFailuresTotal      *prometheus.CounterVec
@@ -249,21 +245,10 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer := &Producer{
 		Client:           client,
-		closeOnce:        &sync.Once{},
-		closed:           make(chan struct{}),
 		bufferedBytes:    atomic.NewInt64(0),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
-		bufferedProduceBytes: promauto.With(wrappedRegisterer).NewSummary(
-			prometheus.SummaryOpts{
-				Namespace:  "kafka_client",
-				Name:       "buffered_produce_bytes",
-				Help:       "The buffered produce records in bytes. Quantile buckets keep track of buffered records size over the last 60s.",
-				Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 1: 0.001},
-				MaxAge:     time.Minute,
-				AgeBuckets: 6,
-			}),
 		bufferedProduceBytesLimit: promauto.With(wrappedRegisterer).NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: "kafka_client",
@@ -284,33 +269,11 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer.bufferedProduceBytesLimit.Set(float64(maxBufferedBytes))
 
-	go producer.updateMetricsLoop()
-
 	return producer
 }
 
 func (c *Producer) Close() {
-	c.closeOnce.Do(func() {
-		close(c.closed)
-	})
-
 	c.Client.Close()
-}
-
-func (c *Producer) updateMetricsLoop() {
-	// We observe buffered produce bytes and at regular intervals, to have a good
-	// approximation of the peak value reached over the observation period.
-	ticker := time.NewTicker(250 * time.Millisecond)
-
-	for {
-		select {
-		case <-ticker.C:
-			c.bufferedProduceBytes.Observe(float64(c.Client.BufferedProduceBytes()))
-
-		case <-c.closed:
-			return
-		}
-	}
 }
 
 // ProduceSync produces records to Kafka and returns once all records have been successfully committed,

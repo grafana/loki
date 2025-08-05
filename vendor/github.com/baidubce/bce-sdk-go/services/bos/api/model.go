@@ -333,9 +333,12 @@ type CallbackResult struct {
 }
 
 type PutObjectResult struct {
-	Callback      CallbackResult `json:"callback"`
-	ContentCrc32  string         `json:"-"`
-	ContentCrc32c string         `json:"-"`
+	Callback             CallbackResult `json:"callback"`
+	ContentCrc32         string         `json:"-"`
+	ContentCrc32c        string         `json:"-"`
+	StorageClass         string         `json:"-"`
+	VersionId            string         `json:"-"`
+	ServerSideEncryption string         `json:"-"`
 }
 
 // CopyObjectResult defines the result json structure for the copy object api.
@@ -585,6 +588,7 @@ type CompleteMultipartUploadResult struct {
 	ETag          string `json:"eTag"`
 	ContentCrc32  string `json:"-"`
 	ContentCrc32c string `json:"-"`
+	VersionId     string `json:"-"`
 }
 
 // ListPartsArgs defines the input optional arguments of listing parts information.
@@ -755,4 +759,28 @@ type BosShareResBody struct {
 
 type BucketVersioningArgs struct {
 	Status string `json:"status"`
+}
+
+type InventoryDestination struct {
+	TargetBucket string `json:"targetBucket"`
+	TargetPrefix string `json:"targetPrefix,omitempty"`
+	Format       string `json:"format"`
+}
+
+type BucketInventoryRule struct {
+	Id                string               `json:"id"`
+	Status            string               `json:"status"`
+	Resource          []string             `json:"resource"`
+	Schedule          string               `json:"schedule"`
+	Destination       InventoryDestination `json:"destination"`
+	MonthlyDate       int                  `json:"monthlyDate,omitempty"`
+	IncObjectVersions string               `json:"includedObjectVersions,omitempty"`
+}
+
+type PutBucketInventoryArgs struct {
+	Rule BucketInventoryRule
+}
+
+type ListBucketInventoryResult struct {
+	RuleList []BucketInventoryRule `json:"inventoryRuleList"`
 }

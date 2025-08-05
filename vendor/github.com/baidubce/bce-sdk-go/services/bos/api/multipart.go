@@ -427,16 +427,17 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
-	headers := resp.Headers()
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
+	getOptions := []GetOption{
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_VERSION_ID, &result.VersionId),
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-		if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != val {
-			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, val)
-			return result, bce.NewBceClientError(errMsg)
-		}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+	if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != result.ContentCrc32c {
+		errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, result.ContentCrc32c)
+		return result, bce.NewBceClientError(errMsg)
 	}
 	return result, nil
 }

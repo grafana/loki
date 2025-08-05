@@ -2897,3 +2897,19 @@ func (c *Client) PutBucketVersioning(bucket string, putBucketVersioningArgs *api
 func (c *Client) GetBucketVersioning(bucket string, options ...api.Option) (*api.BucketVersioningArgs, error) {
 	return api.GetBucketVersioning(c, bucket, c.BosContext, options...)
 }
+
+func (c *Client) PutBucketInventory(bucket string, args *api.PutBucketInventoryArgs, options ...api.Option) error {
+	return api.PutBucketInventory(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketInventory(bucket, id string, options ...api.Option) (*api.PutBucketInventoryArgs, error) {
+	return api.GetBucketInventory(c, bucket, id, c.BosContext, options...)
+}
+
+func (c *Client) ListBucketInventory(bucket string, options ...api.Option) (*api.ListBucketInventoryResult, error) {
+	return api.ListBucketInventory(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketInventory(bucket, id string, options ...api.Option) error {
+	return api.DeleteBucketInventory(c, bucket, id, c.BosContext, options...)
+}

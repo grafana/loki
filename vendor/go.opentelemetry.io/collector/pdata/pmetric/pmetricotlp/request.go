@@ -4,15 +4,15 @@
 package pmetricotlp // import "go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
 import (
-	"bytes"
-
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectormetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
 
-var jsonUnmarshaler = &pmetric.JSONUnmarshaler{}
+var (
+	jsonMarshaler   = &pmetric.JSONMarshaler{}
+	jsonUnmarshaler = &pmetric.JSONUnmarshaler{}
+)
 
 // ExportRequest represents the request for gRPC/HTTP client/server.
 // It's a wrapper for pmetric.Metrics data.
@@ -52,11 +52,7 @@ func (ms ExportRequest) UnmarshalProto(data []byte) error {
 
 // MarshalJSON marshals ExportRequest into JSON bytes.
 func (ms ExportRequest) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	if err := json.Marshal(&buf, ms.orig); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return jsonMarshaler.MarshalMetrics(pmetric.Metrics(internal.NewMetrics(ms.orig, nil)))
 }
 
 // UnmarshalJSON unmarshalls ExportRequest from JSON bytes.

@@ -26,6 +26,7 @@ type streamsView struct {
 	idColumn      *streams.Column
 	searchColumns []*streams.Column // stream ID + labels
 	batchSize     int
+	pageCacheSize int
 
 	initialized  bool
 	streams      arrow.Table
@@ -45,6 +46,9 @@ type streamsViewOptions struct {
 
 	// Maximum number of stream records to read at once. Defaults to 128.
 	BatchSize int
+
+	// The size of the page cache to use for reading sections.
+	CacheSize int
 }
 
 // newStreamsView creates a new view of the given streams section. Only the
@@ -149,8 +153,9 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	readerOptions := streams.ReaderOptions{
-		Columns:   v.searchColumns,
-		Allocator: memory.DefaultAllocator,
+		Columns:       v.searchColumns,
+		Allocator:     memory.DefaultAllocator,
+		PageCacheSize: v.pageCacheSize,
 	}
 
 	var scalarIDs []scalar.Scalar

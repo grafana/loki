@@ -441,6 +441,6 @@ func validateForTest(conf Config) error {
 	return nil
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	panic("unimplemented: BOS.GetAndReplace")
 }

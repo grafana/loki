@@ -59,7 +59,7 @@ func (b *SSEBucketClient) Upload(ctx context.Context, name string, r io.Reader) 
 	return b.bucket.Upload(ctx, name, r)
 }
 
-func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+func (b *SSEBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.ReadCloser) (io.ReadCloser, error)) error {
 	return b.bucket.GetAndReplace(ctx, name, fn)
 }
 

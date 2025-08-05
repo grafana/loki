@@ -16,6 +16,7 @@ const (
 	NodeTypeLimit
 	NodeTypeRangeAggreation
 	NodeTypeVectorAggregation
+	NodeTypeMerge
 )
 
 func (t NodeType) String() string {
@@ -24,6 +25,8 @@ func (t NodeType) String() string {
 		return "DataObjScan"
 	case NodeTypeSortMerge:
 		return "SortMerge"
+	case NodeTypeMerge:
+		return "Merge"
 	case NodeTypeProjection:
 		return "Projection"
 	case NodeTypeFilter:
@@ -60,6 +63,7 @@ type Node interface {
 }
 
 var _ Node = (*DataObjScan)(nil)
+var _ Node = (*Merge)(nil)
 var _ Node = (*SortMerge)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
@@ -67,6 +71,7 @@ var _ Node = (*Filter)(nil)
 var _ Node = (*RangeAggregation)(nil)
 
 func (*DataObjScan) isNode()       {}
+func (*Merge) isNode()             {}
 func (*SortMerge) isNode()         {}
 func (*Projection) isNode()        {}
 func (*Limit) isNode()             {}

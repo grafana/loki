@@ -320,4 +320,147 @@ func TestOptimizer(t *testing.T) {
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
 	})
+
+	t.Run("predicate column projection pushdown with existing projections", func(t *testing.T) {
+		// Predicate columns should be projected when there are existing projections (metric query)
+		partitionBy := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+		}
+
+		filterPredicates := []Expression{
+			&BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				Right: NewLiteral("error"),
+				Op:    types.BinaryOpEq,
+			},
+			&BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: NewLiteral(".*exception.*"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}
+
+		plan := &Plan{}
+		{
+			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+			filter := plan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			rangeAgg := plan.addNode(&RangeAggregation{
+				id:          "range1",
+				Operation:   types.RangeAggregationTypeCount,
+				PartitionBy: partitionBy,
+			})
+
+			_ = plan.addEdge(Edge{Parent: rangeAgg, Child: filter})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			expectedProjections := []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+			}
+
+			scan1 := expectedPlan.addNode(&DataObjScan{
+				id:          "scan1",
+				Projections: expectedProjections,
+			})
+			scan2 := expectedPlan.addNode(&DataObjScan{
+				id:          "scan2",
+				Projections: expectedProjections,
+			})
+			filter := expectedPlan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			rangeAgg := expectedPlan.addNode(&RangeAggregation{
+				id:          "range1",
+				Operation:   types.RangeAggregationTypeCount,
+				PartitionBy: partitionBy,
+			})
+
+			_ = expectedPlan.addEdge(Edge{Parent: rangeAgg, Child: filter})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("predicate column projection pushdown without existing projections", func(t *testing.T) {
+		// Predicate columns should NOT be projected when there are no existing projections (log query)
+		filterPredicates := []Expression{
+			&BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				Right: NewLiteral("error"),
+				Op:    types.BinaryOpEq,
+			},
+			&BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				Right: NewLiteral(".*exception.*"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}
+
+		plan := &Plan{}
+		{
+			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+			filter := plan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			limit := plan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = plan.addEdge(Edge{Parent: limit, Child: filter})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2"})
+			filter := expectedPlan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			limit := expectedPlan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = expectedPlan.addEdge(Edge{Parent: limit, Child: filter})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
 }

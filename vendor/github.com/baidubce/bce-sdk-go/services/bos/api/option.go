@@ -23,7 +23,8 @@ type (
 		Type  optionType
 	}
 	// Set various options of HTTP request
-	Option func(params map[string]optionValue) error
+	Option    func(params map[string]optionValue) error
+	GetOption func(params map[string]*string) error
 )
 
 // An option to set Cache-Control header
@@ -122,7 +123,7 @@ func ContentCrc32(crc32 uint32) Option {
 
 // An option to set X-Bce-Content-Crc32c header
 func ContentCrc32c(crc32c uint32) Option {
-	return setHeader(http.BCE_CONTENT_CRC32, strconv.FormatUint(uint64(crc32c), 10))
+	return setHeader(http.BCE_CONTENT_CRC32C, strconv.FormatUint(uint64(crc32c), 10))
 }
 
 // An option to set X-Bce-Content-Crc32c-Flag header
@@ -130,7 +131,7 @@ func ContentCrc32cFlag(crc32cFlag bool) Option {
 	if !crc32cFlag {
 		return nil
 	}
-	return setHeader(http.BCE_CONTENT_CRC32, strconv.FormatBool(crc32cFlag))
+	return setHeader(http.BCE_CONTENT_CRC32C_FLAG, strconv.FormatBool(crc32cFlag))
 }
 
 // An option to set X-Bce-Meta-* header
@@ -350,6 +351,35 @@ func handleOptions(request *BosRequest, options []Option) error {
 	}
 	if aclMethods > 1 {
 		return bce.NewBceClientError("BOS only support one acl setting method at the same time")
+	}
+	return nil
+}
+
+func getHeader(key string, value *string) GetOption {
+	return func(params map[string]*string) error {
+		if value == nil {
+			return nil
+		}
+		params[key] = value
+		return nil
+	}
+}
+
+func handleGetOptions(response *BosResponse, options []GetOption) error {
+	params := make(map[string]*string)
+	for _, option := range options {
+		if option != nil {
+			if err := option(params); err != nil {
+				return err
+			}
+		}
+	}
+
+	headers := response.Headers()
+	for k, v := range params {
+		if val, ok := headers[toHttpHeaderKey(k)]; ok && v != nil {
+			*v = val
+		}
 	}
 	return nil
 }

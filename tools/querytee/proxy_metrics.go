@@ -19,6 +19,10 @@ type ProxyMetrics struct {
 	responsesTotal         *prometheus.CounterVec
 	responsesComparedTotal *prometheus.CounterVec
 	missingMetrics         *prometheus.HistogramVec
+
+	// Sampling metrics
+	queriesSampled    *prometheus.CounterVec
+	samplingDecisions *prometheus.CounterVec
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -45,6 +49,18 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Help:      "Number of missing metrics (series) in a vector response.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
 		}, []string{"backend", "route", "status_code", "issuer"}),
+
+		queriesSampled: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "queries_sampled_total",
+			Help:      "Total number of queries that were sampled and sent to Kafka.",
+		}, []string{"tenant", "route"}),
+
+		samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "sampling_decisions_total",
+			Help:      "Total number of sampling decisions made.",
+		}, []string{"tenant", "route", "decision"}),
 	}
 
 	return m

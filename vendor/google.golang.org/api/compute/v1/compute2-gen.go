@@ -18050,7 +18050,7 @@ func (c *GlobalOrganizationOperationsDeleteCall) Do(opts ...googleapi.CallOption
 
 type GlobalOrganizationOperationsGetCall struct {
 	s            *Service
-	operationid  string
+	operation    string
 	urlParams_   gensupport.URLParams
 	ifNoneMatch_ string
 	ctx_         context.Context
@@ -18060,15 +18060,16 @@ type GlobalOrganizationOperationsGetCall struct {
 // Get: Retrieves the specified Operations resource. Gets a list of operations
 // by making a `list()` request.
 //
-//   - operation: Name of the Operations resource to return, or its unique
-//     numeric identifier.
-func (r *GlobalOrganizationOperationsService) Get(operationid string) *GlobalOrganizationOperationsGetCall {
+//   - operation: Name of the Operations resource to return. Parent is derived
+//     from this field.
+func (r *GlobalOrganizationOperationsService) Get(operation string) *GlobalOrganizationOperationsGetCall {
 	c := &GlobalOrganizationOperationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.operationid = operationid
+	c.operation = operation
 	return c
 }
 
 // ParentId sets the optional parameter "parentId": Parent ID for this request.
+// Not used. Parent is derived from resource_id.
 func (c *GlobalOrganizationOperationsGetCall) ParentId(parentId string) *GlobalOrganizationOperationsGetCall {
 	c.urlParams_.Set("parentId", parentId)
 	return c
@@ -18120,7 +18121,7 @@ func (c *GlobalOrganizationOperationsGetCall) doRequest(alt string) (*http.Respo
 	}
 	req.Header = reqHeaders
 	googleapi.Expand(req.URL, map[string]string{
-		"operation": c.operationid,
+		"operation": c.operation,
 	})
 	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "compute.globalOrganizationOperations.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)

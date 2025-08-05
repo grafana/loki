@@ -70,6 +70,15 @@ const (
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 
+	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
+	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
+	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+
+	INVENTORY_FILE_FORMAT_CSV = "CSV"
+
+	INVENTORY_OBJECT_VERSIONS_ALL     = "All"
+	INVENTORY_OBJECT_VERSIONS_CURRENT = "Current"
+
 	// BOS Client error message format
 	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )

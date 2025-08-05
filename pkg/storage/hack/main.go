@@ -143,7 +143,7 @@ const charset = "abcdefghijklmnopqrstuvwxyz" +
 func randStringWithCharset(length int, charset string) string {
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset)-1)] //#nosec G404 -- Generation of test data does not require CSPRNG, this is not meant to be secret.
+		b[i] = charset[rand.Intn(len(charset)-1)] //#nosec G404 -- Generation of test data does not require CSPRNG, this is not meant to be secret. -- nosemgrep: math-random-used
 	}
 	return string(b)
 }

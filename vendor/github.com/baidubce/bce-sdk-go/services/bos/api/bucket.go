@@ -1626,3 +1626,144 @@ func GetBucketVersioning(cli bce.Client, bucket string, ctx *BosContext,
 	}
 	return result, nil
 }
+
+// PutBucketInventory - put the inventory config for the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - args: inventory configuration
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func PutBucketInventory(cli bce.Client, bucket string, args *PutBucketInventoryArgs,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.PUT)
+	req.SetParam("inventory", "")
+	req.SetParam("id", args.Rule.Id)
+	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	reqByte, _ := json.Marshal(args.Rule)
+	body, err := bce.NewBodyFromString(string(reqByte))
+	if err != nil {
+		return err
+	}
+	req.SetBody(body)
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+	return nil
+}
+
+// GetBucketInventory - get the inventory config of the given bucket/id
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - id: inventory configuration id
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - result: the bucket inventory config result
+//   - error: nil if success otherwise the specific error
+func GetBucketInventory(cli bce.Client, bucket, id string, ctx *BosContext,
+	options ...Option) (*PutBucketInventoryArgs, error) {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("inventory", "")
+	req.SetParam("id", id)
+	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	result := &PutBucketInventoryArgs{}
+	if err := resp.ParseJsonBody(&result.Rule); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// ListBucketInventory - list all inventory configs of the given bucket
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - result: the bucket inventory config result
+//   - error: nil if success otherwise the specific error
+func ListBucketInventory(cli bce.Client, bucket string, ctx *BosContext,
+	options ...Option) (*ListBucketInventoryResult, error) {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.GET)
+	req.SetParam("inventory", "")
+	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	result := &ListBucketInventoryResult{}
+	if err := resp.ParseJsonBody(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteBucketInventory - delete the inventory config of the given bucket/id
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - id: inventory configuration id
+//   - ctx: the context to control the request
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func DeleteBucketInventory(cli bce.Client, bucket, id string,
+	ctx *BosContext, options ...Option) error {
+	req := &BosRequest{}
+	req.SetUri(getBucketUri(bucket))
+	req.SetMethod(http.DELETE)
+	req.SetParam("inventory", "")
+	req.SetParam("id", id)
+	req.SetBucket(bucket)
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return err
+	}
+	if resp.IsFail() {
+		return resp.ServiceError()
+	}
+	return nil
+}
