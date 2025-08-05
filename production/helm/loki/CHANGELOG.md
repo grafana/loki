@@ -19,6 +19,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
 - [FEATURE] Add readiness and liveness probes for the all memcached components. [#18525](https://github.com/grafana/loki/pull/18525)
+- [ENHANCEMENT] Refactor loki health probes so `.Values.loki.livenessProbe` and `.Values.loki.startupProbe` can be unset with `{}` [#18575](https://github.com/grafana/loki/pull/18575)
+
 
 ## 6.34.0
 
