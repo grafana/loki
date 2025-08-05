@@ -76,6 +76,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Goldfish.CloudSQLDatabase, "ui.goldfish.cloudsql-database", "goldfish", "CloudSQL database name for Goldfish.")
 	f.IntVar(&cfg.Goldfish.MaxConnections, "ui.goldfish.max-connections", 10, "Maximum number of database connections for Goldfish.")
 	f.IntVar(&cfg.Goldfish.MaxIdleTime, "ui.goldfish.max-idle-time", 300, "Maximum idle time for database connections in seconds.")
+	f.StringVar(&cfg.Goldfish.GrafanaURL, "ui.goldfish.grafana-url", "", "Base URL of Grafana instance for explore links.")
+	f.StringVar(&cfg.Goldfish.TracesDatasourceUID, "ui.goldfish.traces-datasource-uid", "", "UID of the traces datasource in Grafana.")
+	f.StringVar(&cfg.Goldfish.LogsDatasourceUID, "ui.goldfish.logs-datasource-uid", "", "UID of the Loki datasource in Grafana.")
+	f.StringVar(&cfg.Goldfish.CellANamespace, "ui.goldfish.cell-a-namespace", "", "Namespace for Cell A logs.")
+	f.StringVar(&cfg.Goldfish.CellBNamespace, "ui.goldfish.cell-b-namespace", "", "Namespace for Cell B logs.")
 }
 
 func (cfg Config) Validate() error {
