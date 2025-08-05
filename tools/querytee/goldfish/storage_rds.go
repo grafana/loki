@@ -33,4 +33,3 @@ func NewRDSStorage(config StorageConfig, password string) (*RDSStorage, error) {
 		MySQLStorage: mysqlStorage,
 	}, nil
 }
-

@@ -155,8 +155,10 @@ loki:
       {{- toYaml . | nindent 2}}
     {{- end}}
 
+    {{- with .Values.loki.pattern_ingester }}
     pattern_ingester:
-      enabled: {{ .Values.loki.pattern_ingester.enabled }}
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     memberlist:
     {{- if .Values.loki.memberlistConfig }}
@@ -176,6 +178,11 @@ loki:
 
     {{- with .Values.loki.ingester }}
     ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -304,6 +311,11 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.compactor_grpc_client }}
+    compactor_grpc_client:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
     {{- with .Values.loki.analytics }}
     analytics:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -394,7 +406,9 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    compactor_address: '{{ include "loki.compactorAddress" . }}'
+    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.
+    # If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.
+    compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
@@ -535,6 +549,8 @@ loki:
       up_to: 3
   # --  Optional compactor configuration
   compactor: {}
+  # --  Optional compactor grpc client configuration
+  compactor_grpc_client: {}
   # --  Optional pattern ingester configuration
   pattern_ingester:
     enabled: false
@@ -553,6 +569,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional ingester client configuration
+  ingester_client: {}
   # --  Optional block builder configuration
   block_builder: {}
   # --  Optional index gateway configuration
@@ -654,6 +672,9 @@ enterprise:
     adminTokenSecret: null
     # -- Additional CLI arguments for the `tokengen` target
     extraArgs: []
+    # -- Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed
+    rbac:
+      create: true
     # -- Additional Kubernetes environment
     env: []
     # -- Additional labels for the `tokengen` Job
@@ -3270,6 +3291,12 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- The SecurityContext for memcached containers
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    allowPrivilegeEscalation: false
   # -- Readiness probe for memcached pods (probe port defaults to container port)
   readinessProbe:
     tcpSocket:
@@ -3278,12 +3305,15 @@ memcached:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-  # -- The SecurityContext for memcached containers
-  containerSecurityContext:
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: [ALL]
-    allowPrivilegeEscalation: false
+  # -- Liveness probe for memcached pods
+  livenessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
 memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
@@ -3310,6 +3340,25 @@ memcachedExporter:
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
   extraArgs: {}
+  # -- Liveness probe for memcached exporter
+  livenessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe for memcached exporter
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true

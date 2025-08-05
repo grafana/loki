@@ -8,9 +8,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
+	loki_tracing "github.com/grafana/loki/v3/pkg/tracing"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/tools/querytee"
 )
@@ -19,6 +21,7 @@ type Config struct {
 	ServerMetricsPort int
 	LogLevel          log.Level
 	ProxyConfig       querytee.ProxyConfig
+	Tracing           loki_tracing.Config
 }
 
 func main() {
@@ -27,11 +30,28 @@ func main() {
 	flag.IntVar(&cfg.ServerMetricsPort, "server.metrics-port", 9900, "The port where metrics are exposed.")
 	cfg.LogLevel.RegisterFlags(flag.CommandLine)
 	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
+	cfg.Tracing.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
 	}, prometheus.DefaultRegisterer, false)
+
+	// Initialize tracing
+	if cfg.Tracing.Enabled {
+		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+		}
+
+		defer func() {
+			if trace != nil {
+				if err := trace.Close(); err != nil {
+					level.Error(util_log.Logger).Log("msg", "error closing tracing", "err", err)
+				}
+			}
+		}()
+	}
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()

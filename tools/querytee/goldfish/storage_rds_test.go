@@ -79,4 +79,3 @@ func TestRDSStorage_SharedFunctionality(t *testing.T) {
 
 	mock.ExpectClose()
 }
-
