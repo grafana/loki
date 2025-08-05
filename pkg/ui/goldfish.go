@@ -23,33 +23,33 @@ const (
 // This is the UI/API representation of goldfish.QuerySample with several important differences:
 //
 // 1. Time formatting: All time fields use RFC3339 strings instead of time.Time
-//    - The frontend expects RFC3339 formatted strings for display
-//    - Database columns store timestamps that are scanned into time.Time then formatted
+//   - The frontend expects RFC3339 formatted strings for display
+//   - Database columns store timestamps that are scanned into time.Time then formatted
 //
 // 2. Nullable fields: Uses pointers (*int64, *string) for nullable database columns
-//    - The database schema allows NULLs for metrics that might not be available
-//    - Go's zero values would be ambiguous (is 0 a real value or NULL?)
+//   - The database schema allows NULLs for metrics that might not be available
+//   - Go's zero values would be ambiguous (is 0 a real value or NULL?)
 //
 // 3. Flattened structure: QueryStats fields are flattened into individual columns
-//    - Makes the API response simpler for frontend consumption
-//    - Matches the database schema which stores stats as individual columns
+//   - Makes the API response simpler for frontend consumption
+//   - Matches the database schema which stores stats as individual columns
 //
 // 4. Database tags: Includes `db:` tags for direct sqlx scanning from queries
-//    - The storage layer returns goldfish.QuerySample for internal use
-//    - The UI layer queries the database directly for performance
+//   - The storage layer returns goldfish.QuerySample for internal use
+//   - The UI layer queries the database directly for performance
 //
 // 5. UI-specific fields: Includes trace/logs links generated from configuration
-//    - These are computed based on Grafana configuration, not stored
+//   - These are computed based on Grafana configuration, not stored
 type SampledQuery struct {
 	// Core query identification
 	CorrelationID string `json:"correlationId" db:"correlation_id"`
 	TenantID      string `json:"tenantId" db:"tenant_id"`
 	Query         string `json:"query" db:"query"`
 	QueryType     string `json:"queryType" db:"query_type"`
-	
+
 	// Time range fields - stored as RFC3339 strings for API compatibility
-	StartTime    string `json:"startTime" db:"start_time"`      // RFC3339 formatted
-	EndTime      string `json:"endTime" db:"end_time"`          // RFC3339 formatted
+	StartTime    string `json:"startTime" db:"start_time"`       // RFC3339 formatted
+	EndTime      string `json:"endTime" db:"end_time"`           // RFC3339 formatted
 	StepDuration *int64 `json:"stepDuration" db:"step_duration"` // Step in milliseconds, nullable
 
 	// Performance statistics - flattened from QueryStats for API simplicity
@@ -244,7 +244,6 @@ func strPtr(s string) *string {
 	}
 	return &s
 }
-
 
 // ErrGoldfishDisabled is returned when goldfish feature is disabled
 var ErrGoldfishDisabled = sql.ErrNoRows

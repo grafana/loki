@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 func TestSampledQueryJSONMarshaling(t *testing.T) {
