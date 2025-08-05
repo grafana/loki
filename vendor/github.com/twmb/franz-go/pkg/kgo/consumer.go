@@ -147,9 +147,9 @@ func (o Offset) Relative(n int64) Offset {
 	return o
 }
 
-// WithEpoch copies 'o' and returns an offset with the given epoch.  to use the
-// given epoch. This epoch is used for truncation detection; the default of -1
-// implies no truncation detection.
+// WithEpoch copies 'o' and returns an offset with the given epoch. This epoch
+// is used for truncation detection; the default of -1 implies no truncation
+// detection.
 func (o Offset) WithEpoch(e int32) Offset {
 	o.afterMilli = false
 	if e < 0 {
@@ -727,8 +727,20 @@ func (c *consumer) purgeTopics(topics []string) {
 
 	// The difference for groups is we need to lock the group and there is
 	// a slight type difference in g.using vs d.using.
+	//
+	// assignPartitions removes the topics from 'tps', which removes them
+	// from FUTURE metadata requests meaning they will not be repopulated
+	// in the future. Any loaded tps is fine; metadata updates the topic
+	// pointers underneath -- metadata does not re-store the tps itself
+	// with any new topics that we just purged (except in the case of regex,
+	// which is impossible to permanently purge anyway).
+	//
+	// We are guarded from adding back to 'using' via the consumer mu;
+	// this cannot run concurrent with findNewAssignments. Thus, we first
+	// purge tps, then clear using, and once the lock releases, findNewAssignments
+	// will use the now-purged tps and will not add back to using.
 	if c.g != nil {
-		c.g.mu.Lock()
+		c.g.mu.Lock() // required when updating using
 		defer c.g.mu.Unlock()
 		c.assignPartitions(purgeAssignments, assignPurgeMatching, c.g.tps, fmt.Sprintf("purge of %v requested", topics))
 		for _, topic := range topics {
@@ -742,6 +754,7 @@ func (c *consumer) purgeTopics(topics []string) {
 			delete(c.d.using, topic)
 			delete(c.d.reSeen, topic)
 			delete(c.d.m, topic)
+			delete(c.d.ps, topic)
 		}
 	}
 }
@@ -1095,6 +1108,18 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 	}
 
 	c.cl.cfg.logger.Log(LogLevelDebug, "assign requires loading offsets")
+
+	// We could have a prior handleListOrEpochResults finishing concurrent
+	// with a new assignment. We need to guard below, because list/epoch
+	// results can set offsets for loaded cursors.
+	//
+	// Example: I was just cooperatively assigned p1o10e3, and I issued an
+	// epoch request to validate data loss. I was then assigned p2o4e-1:
+	// there is no epoch to validate, so we immediately begin consuming
+	// at the offset. The epoch request returns and tries also using the
+	// cursor concurrently. We need to guard it.
+	session.listOrEpochMu.Lock()
+	defer session.listOrEpochMu.Unlock()
 
 	topics := tps.load()
 	for topic, partitions := range assignments {
@@ -1473,6 +1498,9 @@ type consumerSession struct {
 	workersCond *sync.Cond
 	workers     int
 
+	// listOrEpochMu largely guards the below. It is a sub-mutex of the
+	// consumer mutex to guard one concurrent data access (see below in
+	// assignPartitions).
 	listOrEpochMu           sync.Mutex
 	listOrEpochLoadsWaiting listOrEpochLoads
 	listOrEpochMetaCh       chan struct{} // non-nil if Loads is non-nil, signalled on meta update
@@ -1541,9 +1569,9 @@ func (s *consumerSession) manageFetchConcurrency() {
 			var found bool
 			for i, want := range wantFetch {
 				if want == cancel {
-					_ = append(wantFetch[i:], wantFetch[i+1:]...)
-					wantFetch = wantFetch[:len(wantFetch)-1]
+					wantFetch = append(wantFetch[:i], wantFetch[i+1:]...)
 					found = true
+					break
 				}
 			}
 			// If we did not find the channel, then we have already
@@ -2285,7 +2313,7 @@ func (*Client) loadEpochsForBrokerLoad(ctx context.Context, broker *broker, load
 			offset := loadPart.at
 			var err error
 			if rPartition.EndOffset < offset {
-				err = &ErrDataLoss{topic, partition, offset, rPartition.EndOffset}
+				err = &ErrDataLoss{topic, partition, offset, loadPart.epoch, rPartition.EndOffset, rPartition.LeaderEpoch}
 				offset = rPartition.EndOffset
 			}
 

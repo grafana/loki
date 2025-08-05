@@ -1,7 +1,9 @@
 package kgo
 
 import (
+	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -49,6 +51,36 @@ func (a *amtps) clone() map[string][]int32 {
 		dup[t] = append(dup[t], ps...)
 	}
 	return dup
+}
+
+func mapi32sDeepEq(l, r map[string][]int32) bool {
+	if len(l) != len(r) {
+		return false
+	}
+	if l == nil && r != nil {
+		return false
+	}
+	if r == nil && l != nil {
+		return false
+	}
+	var dupls, duprs []int32
+	for k, lvs := range l {
+		rvs, ok := r[k]
+		if !ok {
+			return false
+		}
+		if len(lvs) != len(rvs) {
+			return false
+		}
+		dupls = append(dupls[:0], lvs...)
+		duprs = append(duprs[:0], rvs...)
+		slices.Sort(dupls)
+		slices.Sort(duprs)
+		if !slices.Equal(dupls, duprs) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *amtps) store(m map[string][]int32) { a.v.Store(m) }
@@ -479,8 +511,13 @@ type topicPartitionsData struct {
 	partitions         []*topicPartition // partition num => partition
 	writablePartitions []*topicPartition // subset of above
 	topic              string
+	id                 [16]byte
 	when               int64
 }
+
+type topicID [16]byte
+
+func (t topicID) String() string { return hex.EncodeToString(t[:]) }
 
 // topicPartition contains all information from Kafka for a topic's partition,
 // as well as what a client is producing to it or info about consuming from it.
