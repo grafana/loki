@@ -32,6 +32,16 @@ readinessProbe:
 {{- end }}
 
 {{/*
+bloom gateway liveness probe
+*/}}
+{{- define "loki.bloomGateway.livenessProbe" }}
+{{- with .Values.bloomGateway.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 bloom gateway priority class name
 */}}
 {{- define "loki.bloomGatewayPriorityClassName" }}

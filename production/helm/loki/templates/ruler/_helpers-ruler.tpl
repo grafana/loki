@@ -45,3 +45,23 @@ ruler priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+ruler readiness probe
+*/}}
+{{- define "loki.ruler.readinessProbe" }}
+{{- with .Values.ruler.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+ruler liveness probe
+*/}}
+{{- define "loki.ruler.livenessProbe" }}
+{{- with .Values.ruler.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

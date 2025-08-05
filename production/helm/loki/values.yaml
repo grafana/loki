@@ -1238,6 +1238,7 @@ gateway:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  livenessProbe: {}
   nginxConfig:
     # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
     schema: http
@@ -1494,6 +1495,10 @@ singleBinary:
   extraVolumes: []
   # -- Resource requests and limits for the single binary
   resources: {}
+  # -- readiness probe settings for single binary pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for single binary pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for single binary pods.
@@ -1616,6 +1621,10 @@ write:
   extraVolumeClaimTemplates: []
   # -- Resource requests and limits for the write
   resources: {}
+  # -- readiness probe settings for write pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for write pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
@@ -1734,6 +1743,8 @@ read:
   extraVolumes: []
   # -- Resource requests and limits for the read
   resources: {}
+  # -- readiness probe settings for read pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
   # -- liveness probe settings for read pods. If empty, applies no livenessProbe
   livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
@@ -1844,6 +1855,10 @@ backend:
   extraVolumes: []
   # -- Resource requests and limits for the backend
   resources: {}
+  # -- readiness probe settings for backend pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for backend pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
@@ -2156,6 +2171,10 @@ distributor:
   extraVolumes: []
   # -- Resource requests and limits for the distributor
   resources: {}
+  # -- readiness probe settings for distributor pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for distributor pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the distributor pods
   extraContainers: []
   # -- Grace period to allow the distributor to shutdown before it is killed
@@ -2252,6 +2271,10 @@ querier:
   extraVolumes: []
   # -- Resource requests and limits for the querier
   resources: {}
+  # -- readiness probe settings for querier pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for querier pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the querier pods
   extraContainers: []
   # -- Init containers to add to the querier pods
@@ -2357,6 +2380,10 @@ queryFrontend:
   extraVolumes: []
   # -- Resource requests and limits for the query-frontend
   resources: {}
+  # -- readiness probe settings for query-frontend pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for query-frontend pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the query-frontend pods
   extraContainers: []
   # -- Grace period to allow the query-frontend to shutdown before it is killed
@@ -2422,6 +2449,10 @@ queryScheduler:
   extraVolumes: []
   # -- Resource requests and limits for the query-scheduler
   resources: {}
+  # -- readiness probe settings for query-scheduler pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for query-scheduler pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the query-scheduler pods
   extraContainers: []
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
@@ -2486,6 +2517,10 @@ indexGateway:
   extraVolumes: []
   # -- Resource requests and limits for the index-gateway
   resources: {}
+  # -- readiness probe settings for index-gateway pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for index-gateway pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the index-gateway pods
   extraContainers: []
   # -- Init containers to add to the index-gateway pods
@@ -2919,6 +2954,10 @@ bloomBuilder:
   extraVolumes: []
   # -- Resource requests and limits for the bloom-builder
   resources: {}
+  # -- readiness probe settings for bloom-builder pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for bloom-builder pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the bloom-builder pods
   extraContainers: []
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
@@ -3100,6 +3139,10 @@ ruler:
   extraVolumes: []
   # -- Resource requests and limits for the ruler
   resources: {}
+  # -- readiness probe settings for ruler pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for ruler pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the ruler pods
   extraContainers: []
   # -- Init containers to add to the ruler pods
@@ -3252,6 +3295,10 @@ overridesExporter:
   extraVolumes: []
   # -- Resource requests and limits for the overrides-exporter
   resources: {}
+  # -- readiness probe settings for overrides-exporter pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for overrides-exporter pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the overrides-exporter pods
   extraContainers: []
   # -- Init containers to add to the overrides-exporter pods
@@ -4039,6 +4086,10 @@ tableManager:
   extraVolumes: []
   # -- Resource requests and limits for the table-manager
   resources: {}
+  # -- readiness probe settings for table-manager pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for table-manager pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Containers to add to the table-manager pods
   extraContainers: []
   # -- Grace period to allow the table-manager to shutdown before it is killed

@@ -30,3 +30,23 @@ overrides-exporter priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+overridesExporter readiness probe
+*/}}
+{{- define "loki.overridesExporter.readinessProbe" }}
+{{- with .Values.overridesExporter.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+overridesExporter liveness probe
+*/}}
+{{- define "loki.overridesExporter.livenessProbe" }}
+{{- with .Values.overridesExporter.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

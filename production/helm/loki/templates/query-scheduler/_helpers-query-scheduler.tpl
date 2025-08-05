@@ -38,3 +38,23 @@ query-scheduler priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+queryScheduler readiness probe
+*/}}
+{{- define "loki.queryScheduler.readinessProbe" }}
+{{- with .Values.queryScheduler.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+queryScheduler liveness probe
+*/}}
+{{- define "loki.queryScheduler.livenessProbe" }}
+{{- with .Values.queryScheduler.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
