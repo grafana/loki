@@ -175,6 +175,16 @@ ui:
     # CLI flag: -ui.goldfish.max-idle-time
     [max_idle_time: <int> | default = 300]
 
+    [grafana_url: <string> | default = ""]
+
+    [traces_datasource_uid: <string> | default = ""]
+
+    [logs_datasource_uid: <string> | default = ""]
+
+    [cell_a_namespace: <string> | default = ""]
+
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA

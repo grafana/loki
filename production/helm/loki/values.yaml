@@ -62,6 +62,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -529,6 +531,11 @@ loki:
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
+    # -- Storage for the ruler. If defining rules in `ruler.directories`, this must be configured to use local storage as shown below.
+    # storage:
+    #   type: local
+    #   local:
+    #     directory: /etc/loki/rules
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
@@ -3136,7 +3143,7 @@ ruler:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
-  # -- Directories containing rules files
+  # -- Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.
   directories: {}
   # tenant_foo:
   #   rules1.txt: |
