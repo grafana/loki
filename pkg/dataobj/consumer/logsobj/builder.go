@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,6 +62,11 @@ type BuilderConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// MaxAge configures the maximum age of a builder before it is flushed.
+	// This ensures that objects are built at least once per MaxAge if
+	// TargetObjectSize is not reached.
+	MaxAge time.Duration `yaml:"max_age"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -75,6 +81,8 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of log section stripes to merge into a section at once. Must be greater than 1.")
+	f.DurationVar(&cfg.MaxAge, prefix+"max-age", 60*time.Minute, "The maximum age of a builder before it is flushed. This ensures that objects are built at least once per max-age if target-builder-memory-limit is not reached. 0 means disabled.")
+
 }
 
 // Validate validates the BuilderConfig.
@@ -124,7 +132,11 @@ type Builder struct {
 	streams *streams.Builder
 	logs    *logs.Builder
 
-	state builderState
+	state                           builderState
+	firstAppendedAt, lastAppendedAt time.Time
+
+	// Used in tests.
+	clock quartz.Clock
 }
 
 type builderState int
@@ -166,6 +178,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 			BufferSize:       int(cfg.BufferSize),
 			StripeMergeLimit: cfg.SectionStripeMergeLimit,
 		}),
+		clock: quartz.NewReal(),
 	}, nil
 }
 
@@ -185,13 +198,15 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		return err
 	}
 
+	now := b.clock.Now()
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
 	// Since this check only happens after the first call to Append,
 	// b.currentSizeEstimate will always be updated to reflect the size following
 	// the previous append.
-	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
+	additionalEstimate := labelsEstimate(ls) + streamSizeEstimate(stream)
+	if b.isFull(additionalEstimate, now) {
 		return ErrBuilderFull
 	}
 
@@ -223,8 +238,31 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
-	b.state = builderStateDirty
+	if b.state == builderStateEmpty {
+		b.state = builderStateDirty
+		b.firstAppendedAt = now
+	}
+	b.lastAppendedAt = now
 	return nil
+}
+
+// isFull returns true if the builder is full. The builder is full when either
+// the estimated size exceeds the target object size, or the max age is
+// exceeded.
+//
+// TODO(grobinson): Should rename this to shouldFlush, but then we should
+// also change the signal from ErrBuilderFull to something else.
+func (b *Builder) isFull(additionalEstimate int, now time.Time) bool {
+	if b.state == builderStateDirty {
+		if b.currentSizeEstimate+additionalEstimate > int(b.cfg.TargetObjectSize) {
+			return true
+		}
+		// This check is disabled when MaxAge is zero.
+		if b.cfg.MaxAge > 0 && now.Sub(b.firstAppendedAt) > b.cfg.MaxAge {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
@@ -389,6 +427,8 @@ func (b *Builder) Reset() {
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
+	b.firstAppendedAt = time.Time{}
+	b.lastAppendedAt = time.Time{}
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All

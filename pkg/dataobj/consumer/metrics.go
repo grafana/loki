@@ -19,6 +19,7 @@ type partitionOffsetMetrics struct {
 	// Request counters
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
+	flushesTotal prometheus.Counter
 
 	latestDelay     prometheus.Gauge     // Latest delta between record timestamp and current time
 	processingDelay prometheus.Histogram // Processing delay histogram
@@ -44,6 +45,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_appends_total",
 			Help: "Total number of appends",
+		}),
+		flushesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flushes_total",
+			Help: "Total number of flushes",
 		}),
 		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
@@ -87,6 +92,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 
 		p.commitsTotal,
 		p.appendsTotal,
+		p.flushesTotal,
 
 		p.latestDelay,
 		p.processingDelay,
