@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -21,7 +22,7 @@ import (
 type Manager struct {
 	config  Config
 	sampler *Sampler
-	storage Storage
+	storage goldfish.Storage
 	logger  log.Logger
 	metrics *metrics
 }
@@ -36,7 +37,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, storage Storage, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, storage goldfish.Storage, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -112,7 +113,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		endTime = time.Now()
 	}
 
-	sample := &QuerySample{
+	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           extractTenant(req),
 		Query:              req.URL.Query().Get("query"),
@@ -161,7 +162,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	// Log comparison results with stats
 	logLevel := level.Info
-	if result.ComparisonStatus != ComparisonStatusMatch {
+	if result.ComparisonStatus != goldfish.ComparisonStatusMatch {
 		logLevel = level.Warn
 	}
 
@@ -249,7 +250,7 @@ type ResponseData struct {
 	Body          []byte
 	StatusCode    int
 	Duration      time.Duration
-	Stats         QueryStats
+	Stats         goldfish.QueryStats
 	Hash          string
 	Size          int64
 	UsedNewEngine bool
@@ -267,7 +268,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID string
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Extract statistics if this is a successful response
-	var stats QueryStats
+	var stats goldfish.QueryStats
 	var hash string
 	var size int64
 	var usedNewEngine bool
