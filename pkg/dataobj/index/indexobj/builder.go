@@ -2,11 +2,11 @@
 package indexobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -329,27 +329,24 @@ func (b *Builder) estimatedSize() int {
 	return size
 }
 
-type FlushStats struct {
-	MinTimestamp time.Time
-	MaxTimestamp time.Time
+// TimeRange returns the time range of the data in the builder.
+func (b *Builder) TimeRange() (minTime, maxTime time.Time) {
+	return b.streams.TimeRange()
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
+// [Builder.Reset] is called after a successful Flush to discard any pending
+// data and allow new data to be appended.
+func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
-		return FlushStats{}, ErrBuilderEmpty
+		return nil, nil, ErrBuilderEmpty
 	}
 
 	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
-
-	// Appending sections resets them, so we need to load the time range before
-	// appending.
-	minTime, maxTime := b.streams.TimeRange()
 
 	// Flush sections one more time in case they have data.
 	var flushErrors []error
@@ -360,34 +357,20 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	sz, err := b.builder.Flush(output)
+	obj, closer, err := b.builder.Flush()
 	if err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(sz))
-
-	var (
-		// We don't know if output was empty before calling Flush, so we only start
-		// reading from where we know writing began.
-
-		objReader = bytes.NewReader(output.Bytes()[output.Len()-int(sz):])
-		objLength = sz
-	)
-	obj, err := dataobj.FromReaderAt(objReader, objLength)
-	if err != nil {
-		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("failed to create readable object: %w", err)
-	}
-
+	b.metrics.builtSize.Observe(float64(obj.Size()))
 	err = b.observeObject(context.Background(), obj)
 
 	b.Reset()
-	return FlushStats{MinTimestamp: minTime, MaxTimestamp: maxTime}, err
+	return obj, closer, err
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
