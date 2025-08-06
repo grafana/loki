@@ -7034,7 +7034,6 @@ null
     "userAssignedId": null
   },
   "filesystem": {
-    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
