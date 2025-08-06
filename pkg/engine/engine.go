@@ -235,7 +235,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
-		"dataobj_strategy", e.metastore.ResolveStrategy(tenants),
+		"index_resolution_strategy", e.metastore.ResolveStrategy(tenants),
 	)
 
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
