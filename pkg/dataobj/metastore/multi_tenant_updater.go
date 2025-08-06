@@ -216,7 +216,7 @@ func (m *MultiTenantUpdater) readFromExisting(ctx context.Context, object *datao
 
 	// Read streams from existing metastore object and write them to the builder for the new object
 	buf := make([]streams.Stream, 100)
-	pbuf := make([]indexpointers.IndexPointer, 100)
+	// pbuf := make([]indexpointers.IndexPointer, 100)
 
 	for _, section := range object.Sections() {
 		if !streams.CheckSection(section) && !indexpointers.CheckSection(section) {
@@ -246,30 +246,30 @@ func (m *MultiTenantUpdater) readFromExisting(ctx context.Context, object *datao
 					}
 				}
 			}
-
-			return StorageFormatTypeV1, nil
 		// New standard approach for metastore top-level objects.
 		case indexpointers.CheckSection(section):
-			sec, err := indexpointers.Open(ctx, section)
-			if err != nil {
-				return StorageFormatTypeV2, errors.Wrap(err, "opening section")
-			}
-			indexPointersReader.Reset(sec)
-			for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
-				if err != nil && err != io.EOF {
-					return StorageFormatTypeV2, errors.Wrap(err, "reading index pointers")
-				}
-				for _, indexPointer := range pbuf[:n] {
-					err = m.builder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
-					if err != nil {
-						return StorageFormatTypeV2, errors.Wrap(err, "appending index pointers")
-					}
-				}
-			}
+			return StorageFormatTypeV2, errors.New("unsupported storage format")
+			// sec, err := indexpointers.Open(ctx, section)
+			// if err != nil {
+			// 	return StorageFormatTypeV2, errors.Wrap(err, "opening section")
+			// }
+			// indexPointersReader.Reset(sec)
+			// for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
+			// 	if err != nil && err != io.EOF {
+			// 		return StorageFormatTypeV2, errors.Wrap(err, "reading index pointers")
+			// 	}
+			// 	for _, indexPointer := range pbuf[:n] {
+			// 		err = m.builder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+			// 		if err != nil {
+			// 			return StorageFormatTypeV2, errors.Wrap(err, "appending index pointers")
+			// 		}
+			// 	}
+			// }
 
-			return StorageFormatTypeV2, nil
+			// return StorageFormatTypeV2, nil
 		}
 	}
+	return StorageFormatTypeV1, nil
 
-	return m.cfg.StorageFormat, nil
+	// return m.cfg.StorageFormat, nil
 }
