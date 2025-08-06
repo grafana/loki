@@ -6407,9 +6407,9 @@
                "h": 1,
                "w": 24,
                "x": 0,
-               "y": 37
+               "y": 38
             },
-            "id": 114,
+            "id": 117,
             "panels": [
                {
                   "aliasColors": { },
@@ -6430,7 +6430,7 @@
                      "x": 0,
                      "y": 10
                   },
-                  "id": 115,
+                  "id": 118,
                   "interval": "",
                   "legend": {
                      "alignAsTable": true,
@@ -6460,19 +6460,19 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
+                        "expr": "histogram_quantile(.99, sum(rate(loki_tsdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
                         "intervalFactor": 1,
                         "legendFormat": ".99-{{operation}}",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(.9, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
+                        "expr": "histogram_quantile(.9, sum(rate(loki_tsdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
                         "hide": false,
                         "legendFormat": ".9-{{operation}}",
                         "refId": "B"
                      },
                      {
-                        "expr": "histogram_quantile(.5, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
+                        "expr": "histogram_quantile(.5, sum(rate(loki_tsdb_shipper_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (operation, le))",
                         "hide": false,
                         "legendFormat": ".5-{{operation}}",
                         "refId": "C"
@@ -6533,7 +6533,7 @@
                      "x": 0,
                      "y": 18
                   },
-                  "id": 116,
+                  "id": 119,
                   "interval": "",
                   "legend": {
                      "alignAsTable": true,
@@ -6563,7 +6563,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_boltdb_shipper_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (status_code, operation)",
+                        "expr": "sum(rate(loki_tsdb_shipper_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (status_code, operation)",
                         "intervalFactor": 1,
                         "legendFormat": "{{status_code}}-{{operation}}",
                         "refId": "A"
@@ -6612,7 +6612,7 @@
                }
             ],
             "targets": [ ],
-            "title": "BoltDB Shipper",
+            "title": "TSDB Shipper",
             "type": "row"
          }
       ],
