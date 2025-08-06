@@ -20,6 +20,16 @@ const (
 	ResolveStrategyTypeIndex
 )
 
+func (r ResolveStrategyType) String() string {
+	switch r {
+	case ResolveStrategyTypeDirect:
+		return "direct"
+	case ResolveStrategyTypeIndex:
+		return "index"
+	}
+	return "unknown"
+}
+
 type Metastore interface {
 	// ResolveStrategy returns the type of metastore resolver to use.
 	// This is used to determine which strategy to use for resolving log data objects.
