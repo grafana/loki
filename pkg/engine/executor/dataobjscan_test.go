@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bytes"
 	"math"
 	"testing"
 	"time"
@@ -357,13 +356,8 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 		require.NoError(t, builder.Append(stream))
 	}
 
-	var buf bytes.Buffer
-	_, err = builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	r := bytes.NewReader(buf.Bytes())
-
-	obj, err := dataobj.FromReaderAt(r, r.Size())
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 	return obj
 }
