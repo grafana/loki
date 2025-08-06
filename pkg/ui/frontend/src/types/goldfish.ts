@@ -35,6 +35,18 @@ export interface SampledQuery {
   cellAStatusCode: number | null;
   cellBStatusCode: number | null;
   
+  // Trace IDs
+  cellATraceID: string | null;
+  cellBTraceID: string | null;
+  
+  // Trace ID explore links (only included when explore config is available)
+  cellATraceLink?: string | null;
+  cellBTraceLink?: string | null;
+  
+  // Logs explore links (only included when logs config is available)
+  cellALogsLink?: string | null;
+  cellBLogsLink?: string | null;
+  
   sampledAt: string;
   createdAt: string;
   comparisonStatus: string;

@@ -119,18 +119,6 @@ Cluster label for rules and alerts.
 {{- end }}
 {{- end }}
 
-{{/* Create a default storage config that uses filesystem storage
-This is required for CI, but Loki will not be queryable with this default
-applied, thus it is encouraged that users override this.
-*/}}
-{{- define "loki.storageConfig" -}}
-{{- if .Values.loki.storageConfig -}}
-{{- .Values.loki.storageConfig | toYaml | nindent 4 -}}
-{{- else }}
-{{- .Values.loki.defaultStorageConfig | toYaml | nindent 4 }}
-{{- end}}
-{{- end}}
-
 {{/*
 Create chart name and version as used by the chart label.
 */}}
@@ -220,8 +208,7 @@ Generated storage config for loki common config
 {{- if .Values.loki.storage.use_thanos_objstore -}}
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
-{{- else }}
-{{- if .Values.minio.enabled -}}
+{{- else if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: chunks
@@ -229,101 +216,11 @@ s3:
   access_key_id: {{ $.Values.minio.rootUser }}
   s3forcepathstyle: true
   insecure: true
-{{- else if eq .Values.loki.storage.type "s3" -}}
-{{- with .Values.loki.storage.s3 }}
-s3:
-  {{- with .s3 }}
-  s3: {{ . }}
-  {{- end }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  {{- with .secretAccessKey }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .accessKeyId }}
-  access_key_id: {{ . }}
-  {{- end }}
-  {{- with .signatureVersion }}
-  signature_version: {{ . }}
-  {{- end }}
-  s3forcepathstyle: {{ .s3ForcePathStyle }}
-  insecure: {{ .insecure }}
-  {{- with .disable_dualstack }}
-  disable_dualstack: {{ . }}
-  {{- end }}
-  {{- with .http_config}}
-  http_config:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-  {{- with .backoff_config}}
-  backoff_config:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-  {{- with .sse }}
-  sse:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-{{- end -}}
-
-{{- else if eq .Values.loki.storage.type "gcs" -}}
-{{- with .Values.loki.storage.gcs }}
-gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
-  chunk_buffer_size: {{ .chunkBufferSize }}
-  request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2 }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "azure" -}}
-{{- with .Values.loki.storage.azure }}
-azure:
-  account_name: {{ .accountName }}
-  {{- with .accountKey }}
-  account_key: {{ . }}
-  {{- end }}
-  {{- with .connectionString }}
-  connection_string: {{ . }}
-  {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
-  use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
-  {{- with .userAssignedId }}
-  user_assigned_id: {{ . }}
-  {{- end }}
-  {{- with .requestTimeout }}
-  request_timeout: {{ . }}
-  {{- end }}
-  {{- with .endpointSuffix }}
-  endpoint_suffix: {{ . }}
-  {{- end }}
-  {{- with .chunkDelimiter }}
-  chunk_delimiter: {{ . }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
-{{- with .Values.loki.storage.alibabacloud }}
-alibabacloud:
-  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
-  endpoint: {{ .endpoint }}
-  access_key_id: {{ .accessKeyId }}
-  secret_access_key: {{ .secretAccessKey }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "swift" -}}
-{{- with .Values.loki.storage.swift }}
-swift:
-{{ toYaml . | indent 2 }}
-{{- end -}}
-{{- else -}}
-{{- with .Values.loki.storage.filesystem }}
+{{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
+{{- else if .Values.loki.storage.filesystem }}
 filesystem:
-  chunks_directory: {{ .chunks_directory }}
-  rules_directory: {{ .rules_directory }}
-{{- end -}}
-{{- end -}}
+  {{- toYaml .Values.loki.storage.filesystem | nindent 2 }}
 {{- end -}}
 {{- end -}}
 
@@ -335,100 +232,155 @@ Storage config for ruler
 type: "s3"
 s3:
   bucketnames: ruler
-{{- else if eq .Values.loki.storage.type "s3" -}}
-{{- with .Values.loki.storage.s3 }}
-type: "s3"
-s3:
-  {{- with .s3 }}
-  s3: {{ . }}
-  {{- end }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
-  {{- with .secretAccessKey }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .accessKeyId }}
-  access_key_id: {{ . }}
-  {{- end }}
-  s3forcepathstyle: {{ .s3ForcePathStyle }}
-  insecure: {{ .insecure }}
-  {{- with .http_config }}
-  http_config: {{ toYaml . | nindent 6 }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "gcs" -}}
-{{- with .Values.loki.storage.gcs }}
-type: "gcs"
-gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
-  chunk_buffer_size: {{ .chunkBufferSize }}
-  request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2 }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "azure" -}}
-{{- with .Values.loki.storage.azure }}
-type: "azure"
-azure:
-  account_name: {{ .accountName }}
-  {{- with .accountKey }}
-  account_key: {{ . }}
-  {{- end }}
-  {{- with .connectionString }}
-  connection_string: {{ . }}
-  {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
-  use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
-  {{- with .userAssignedId }}
-  user_assigned_id: {{ . }}
-  {{- end }}
-  {{- with .requestTimeout }}
-  request_timeout: {{ . }}
-  {{- end }}
-  {{- with .endpointSuffix }}
-  endpoint_suffix: {{ . }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "swift" -}}
-{{- with .Values.loki.storage.swift }}
-swift:
-  {{- with .auth_version }}
-  auth_version: {{ . }}
-  {{- end }}
-  auth_url: {{ .auth_url }}
-  {{- with .internal }}
-  internal: {{ . }}
-  {{- end }}
-  username: {{ .username }}
-  user_domain_name: {{ .user_domain_name }}
-  {{- with .user_domain_id }}
-  user_domain_id: {{ . }}
-  {{- end }}
-  {{- with .user_id }}
-  user_id: {{ . }}
-  {{- end }}
-  password: {{ .password }}
-  {{- with .domain_id }}
-  domain_id: {{ . }}
-  {{- end }}
-  domain_name: {{ .domain_name }}
-  project_id: {{ .project_id }}
-  project_name: {{ .project_name }}
-  project_domain_id: {{ .project_domain_id }}
-  project_domain_name: {{ .project_domain_name }}
-  region_name: {{ .region_name }}
-  container_name: {{ .container_name }}
-  max_retries: {{ .max_retries | default 3 }}
-  connect_timeout: {{ .connect_timeout | default "10s" }}
-  request_timeout: {{ .request_timeout | default "5s" }}
-{{- end -}}
+{{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
+type: {{ .Values.loki.storage.object_store.type | quote }}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
 {{- else }}
 type: "local"
+{{- end }}
+{{- end -}}
+
+
+{{/*
+Storage config
+*/}}
+{{- define "loki.lokiStorageConfig" -}}
+{{- $bucketName := .bucketName }}
+{{- if eq .ctx.Values.loki.storage.type "s3" -}}
+s3:
+{{- include "loki.lokiStorageConfig.s3" (dict "ctx" .ctx.Values.loki.storage.s3 "bucketName" $bucketName) | nindent 2 }}
+{{- else if eq .ctx.Values.loki.storage.type "gcs" -}}
+gcs:
+{{- include "loki.lokiStorageConfig.gcs" (dict "ctx" .ctx.Values.loki.storage.gcs "bucketName" $bucketName) | nindent 2 }}
+{{- else if eq .ctx.Values.loki.storage.type "azure" -}}
+azure:
+{{- include "loki.lokiStorageConfig.azure" (dict "ctx" .ctx.Values.loki.storage.azure "bucketName" $bucketName) | nindent 2 }}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "alibabacloud" -}}
+{{- with .ctx.ctx.Values.loki.storage.alibabacloud }}
+alibabacloud:
+  {{- toYaml (mergeOverwrite dict
+    (dict
+      "bucket" $bucketName
+      "access_key_id" .secretAccessKey
+      "secret_access_key" .secretAccessKey
+    )
+    (omit . "bucket" "accessKeyId" "secretAccessKey")
+  ) | nindent 2 }}
+{{- end -}}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "swift" -}}
+{{- with .ctx.Values.loki.storage.swift }}
+swift:
+  container_name: {{ $bucketName }}
+{{- toYaml (omit . "container_name") | nindent 2 }}
+{{- end -}}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "bos" -}}
+{{- with .ctx.Values.loki.storage.bos }}
+bos:
+  bucket_name: {{ $bucketName }}
+{{- toYaml (omit . "bucketName") | nindent 2 }}
+{{- end -}}
+{{- else if eq .ctx.ctx.Values.loki.storage.type "cos" -}}
+{{- with .ctx.Values.loki.storage.cos }}
+cos:
+  bucketnames: {{ $bucketName }}
+{{- toYaml (omit . "bucketnames") | nindent 2 }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Storage config S3
+*/}}
+{{- define "loki.lokiStorageConfig.s3" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite
+(dict
+  "bucketnames" $bucketName
+  "s3forcepathstyle" .s3ForcePathStyle
+)
+(omit . "bucketnames" "s3ForcePathStyle" "s3" "endpoint" "region" "secretAccessKey" "accessKeyId" "signatureVersion" "disable_dualstack" "http_config" "backoff_config" "sse")
+| toYaml | nindent 0 }}
+{{- with .endpoint }}
+endpoint: {{ . }}
+{{- end }}
+{{- with .region }}
+region: {{ . }}
+{{- end}}
+{{- with .secretAccessKey }}
+secret_access_key: {{ . }}
+{{- end }}
+{{- with .accessKeyId }}
+access_key_id: {{ . }}
+{{- end }}
+{{- with .signatureVersion }}
+signature_version: {{ . }}
+{{- end }}
+{{- with .disable_dualstack }}
+disable_dualstack: {{ . }}
+{{- end }}
+{{- with .http_config }}
+http_config:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- with .backoff_config }}
+backoff_config:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- with .sse }}
+sse:
+{{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Storage config GCS
+*/}}
+{{- define "loki.lokiStorageConfig.gcs" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite (dict
+  "bucket_name" $bucketName
+  "chunk_buffer_size" .chunkBufferSize
+  "request_timeout" .requestTimeout
+  "enable_http2" .enableHttp2
+) (omit . "bucket_name" "chunkBufferSize" "requestTimeout" "enableHttp2") | toYaml | nindent 0 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Storage config Azure
+*/}}
+{{- define "loki.lokiStorageConfig.azure" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx }}
+{{- mergeOverwrite
+(dict
+  "container_name" $bucketName
+  "account_name" .accountName
+  "use_managed_identity" .useManagedIdentity
+  "use_federated_token" .useFederatedToken
+)
+(omit . "accountName" "useManagedIdentity" "useFederatedToken" "accountKey" "connectionString" "userAssignedId" "requestTimeout" "endpointSuffix" "chunkDelimiter") | toYaml | nindent 0 }}
+{{- with .accountKey }}
+account_key: {{ . }}
+{{- end }}
+{{- with .connectionString }}
+connection_string: {{ . }}
+{{- end }}
+{{- with .userAssignedId }}
+user_assigned_id: {{ . }}
+{{- end }}
+{{- with .requestTimeout }}
+request_timeout: {{ . }}
+{{- end }}
+{{- with .endpointSuffix }}
+endpoint_suffix: {{ . }}
+{{- end }}
+{{- with .chunkDelimiter }}
+chunk_delimiter: {{ . }}
+{{- end }}
 {{- end -}}
 {{- end -}}
 
@@ -719,7 +671,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") (eq .Values.loki.storage.type "alibabacloud") -}}
+{{- has .Values.loki.storage.type (list "s3" "gcs" "azure" "swift" "alibabacloud" "cos" "bos") }}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -1170,7 +1122,7 @@ enableServiceLinks: false
 {{- else if $isDistributed -}}
 {{- $compactorAddress = include "loki.compactorFullname" . -}}
 {{- end -}}
-{{- printf "http://%s:%s" $compactorAddress (.Values.loki.server.http_listen_port | toString) }}
+{{- printf "%s.%s.svc.%s:%s" $compactorAddress .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) }}
 {{- end }}
 
 {{/* Determine query-scheduler address */}}

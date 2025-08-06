@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 const (
@@ -162,8 +163,22 @@ func (s *Service) clusterSelfHandler() http.Handler {
 
 func (s *Service) featuresHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		goldfishFeature := map[string]any{
+			"enabled": s.cfg.Goldfish.Enable,
+		}
+
+		// Only include namespaces if goldfish is enabled and they are configured
+		if s.cfg.Goldfish.Enable {
+			if s.cfg.Goldfish.CellANamespace != "" {
+				goldfishFeature["cellANamespace"] = s.cfg.Goldfish.CellANamespace
+			}
+			if s.cfg.Goldfish.CellBNamespace != "" {
+				goldfishFeature["cellBNamespace"] = s.cfg.Goldfish.CellBNamespace
+			}
+		}
+
 		features := map[string]any{
-			"goldfish": s.cfg.Goldfish.Enable,
+			"goldfish": goldfishFeature,
 		}
 		w.Header().Set("Content-Type", contentTypeJSON)
 		if err := json.NewEncoder(w).Encode(features); err != nil {
@@ -215,18 +230,18 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		}
 
 		if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
-			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
-				pageSize = ps
+			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+				pageSize = min(ps, 1000)
 			}
 		}
 
-		var outcome string
+		outcome := goldfish.OutcomeAll // default value
 		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
 			switch strings.ToLower(outcomeStr) {
-			case "all", "match", "mismatch", "error":
+			case goldfish.OutcomeAll, goldfish.OutcomeMatch, goldfish.OutcomeMismatch, goldfish.OutcomeError:
 				outcome = outcomeStr
 			default:
-				outcome = "all"
+				outcome = goldfish.OutcomeAll
 			}
 		}
 
