@@ -220,7 +220,10 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
+type: {{ .Values.loki.storage.object_store.type | quote }}
+{{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
+{{- else if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
