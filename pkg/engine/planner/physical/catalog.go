@@ -8,8 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -54,15 +52,13 @@ type Catalog interface {
 type MetastoreCatalog struct {
 	ctx       context.Context
 	metastore metastore.Metastore
-	logger    log.Logger
 }
 
 // NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
-func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore, logger log.Logger) *MetastoreCatalog {
+func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *MetastoreCatalog {
 	return &MetastoreCatalog{
 		ctx:       ctx,
 		metastore: ms,
-		logger:    logger,
 	}
 }
 
@@ -82,8 +78,6 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicat
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
-	level.Debug(c.logger).Log("msg", "resolving data objects", "strategy", c.metastore.ResolveStrategy(tenants), "tenants", tenants)
 
 	switch c.metastore.ResolveStrategy(tenants) {
 	case metastore.ResolveStrategyTypeDirect:

@@ -254,15 +254,11 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		storePaths = append(storePaths, path)
 	}
 
-	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
-
 	// List objects from all stores concurrently
 	paths, err := m.listObjectsFromStores(ctx, storePaths, prefix, start, end)
 	if err != nil {
 		return nil, err
 	}
-
-	level.Debug(m.logger).Log("msg", "got data object paths", "storePaths", strings.Join(storePaths, ","), "dataobj paths", strings.Join(paths, ","))
 
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
@@ -716,7 +712,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, prefix s
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("getting metastore object: %w, path: %s", err, path)
+		return nil, err,
 	}
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
