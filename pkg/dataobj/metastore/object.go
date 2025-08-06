@@ -712,7 +712,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, prefix s
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
-		return nil, err,
+		return nil, err
 	}
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
