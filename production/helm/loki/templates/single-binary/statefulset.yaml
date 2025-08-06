@@ -109,10 +109,8 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          {{- with .Values.loki.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+          {{- include "loki.singleBinary.readinessProbe" . | nindent 10 }}
+          {{- include "loki.singleBinary.livenessProbe" . | nindent 10 }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp

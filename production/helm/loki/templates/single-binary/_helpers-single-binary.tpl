@@ -23,6 +23,26 @@ priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
 
+{{/*
+singleBinary readiness probe
+*/}}
+{{- define "loki.singleBinary.readinessProbe" }}
+{{- with .Values.singleBinary.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+singleBinary liveness probe
+*/}}
+{{- define "loki.singleBinary.livenessProbe" }}
+{{- with .Values.singleBinary.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{/* singleBinary replicas calculation */}}
 {{- define "loki.singleBinaryReplicas" -}}
 {{- $replicas := 1 }}

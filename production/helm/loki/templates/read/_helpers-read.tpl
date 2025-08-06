@@ -30,3 +30,23 @@ read priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+read readiness probe
+*/}}
+{{- define "loki.read.readinessProbe" }}
+{{- with .Values.read.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+read liveness probe
+*/}}
+{{- define "loki.read.livenessProbe" }}
+{{- with .Values.read.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

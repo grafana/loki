@@ -30,3 +30,23 @@ bloom-builder priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+bloomBuilder readiness probe
+*/}}
+{{- define "loki.bloomBuilder.readinessProbe" }}
+{{- with .Values.bloomBuilder.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+bloomBuilder liveness probe
+*/}}
+{{- define "loki.bloomBuilder.livenessProbe" }}
+{{- with .Values.bloomBuilder.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

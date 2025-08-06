@@ -38,3 +38,23 @@ index-gateway priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+indexGateway readiness probe
+*/}}
+{{- define "loki.indexGateway.readinessProbe" }}
+{{- with .Values.indexGateway.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+indexGateway liveness probe
+*/}}
+{{- define "loki.indexGateway.livenessProbe" }}
+{{- with .Values.indexGateway.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

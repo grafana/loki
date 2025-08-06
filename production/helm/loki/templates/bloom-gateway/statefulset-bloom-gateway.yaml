@@ -96,6 +96,7 @@ spec:
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.bloomGateway.readinessProbe" . | nindent 10 }}
+          {{- include "loki.bloomGateway.livenessProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp

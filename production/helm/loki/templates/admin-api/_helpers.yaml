@@ -22,3 +22,23 @@ adminApi selector labels
 app.kubernetes.io/component: admin-api
 target: admin-api
 {{- end }}
+
+{{/*
+adminApi readiness probe
+*/}}
+{{- define "loki.adminApi.readinessProbe" }}
+{{- with .Values.adminApi.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+adminApi liveness probe
+*/}}
+{{- define "loki.adminApi.livenessProbe" }}
+{{- with .Values.adminApi.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

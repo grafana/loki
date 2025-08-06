@@ -365,6 +365,7 @@ This is the generated reference for the Loki Helm Chart values.
     "tag": null
   },
   "initContainers": [],
+  "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
@@ -382,6 +383,7 @@ This is the generated reference for the Loki Helm Chart values.
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 3,
   "resources": {},
   "selectorLabels": {},
@@ -569,6 +571,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for backend pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
@@ -684,6 +695,15 @@ true
 			<td>The name of the PriorityClass for backend pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for backend pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -817,11 +837,13 @@ null
     "repository": null,
     "tag": null
   },
+  "livenessProbe": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -1042,6 +1064,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for bloom-builder pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -1083,6 +1114,15 @@ null
 			<td>The name of the PriorityClass for bloom-builder pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for bloom-builder pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3230,12 +3270,14 @@ null
     "repository": null,
     "tag": null
   },
+  "livenessProbe": {},
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -3458,6 +3500,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for distributor pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.maxSurge</td>
 			<td>int</td>
 			<td>Max Surge for distributor pods</td>
@@ -3508,6 +3559,15 @@ null
 			<td>The name of the PriorityClass for distributor pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for distributor pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4873,6 +4933,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.livenessProbe</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.clientMaxBodySize</td>
 			<td>string</td>
 			<td>Allows customizing the `client_max_body_size` directive</td>
@@ -5328,6 +5397,7 @@ null
   },
   "initContainers": [],
   "joinMemberlist": true,
+  "livenessProbe": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
@@ -5344,6 +5414,7 @@ null
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -5487,6 +5558,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for index-gateway pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -5591,6 +5671,15 @@ null
 			<td>The name of the PriorityClass for index-gateway pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for index-gateway pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8556,11 +8645,13 @@ false
     "tag": null
   },
   "initContainers": [],
+  "livenessProbe": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -8710,6 +8801,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>overridesExporter.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for overrides-exporter pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>overridesExporter.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -8751,6 +8851,15 @@ null
 			<td>The name of the PriorityClass for overrides-exporter pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for overrides-exporter pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9300,12 +9409,14 @@ null
     "tag": null
   },
   "initContainers": [],
+  "livenessProbe": {},
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -9556,6 +9667,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for querier pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.maxSurge</td>
 			<td>int</td>
 			<td>Max Surge for querier pods</td>
@@ -9606,6 +9726,15 @@ null
 			<td>The name of the PriorityClass for querier pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for querier pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9721,11 +9850,13 @@ Defaults to allow skew no more then 1 node
     "repository": null,
     "tag": null
   },
+  "livenessProbe": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -9947,6 +10078,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for query-frontend pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -9988,6 +10128,15 @@ null
 			<td>The name of the PriorityClass for query-frontend pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for query-frontend pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10089,11 +10238,13 @@ null
     "repository": null,
     "tag": null
   },
+  "livenessProbe": {},
   "maxUnavailable": 1,
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -10216,6 +10367,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for query-scheduler pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler.maxUnavailable</td>
 			<td>int</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -10257,6 +10417,15 @@ null
 			<td>The name of the PriorityClass for query-scheduler pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for query-scheduler pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10425,6 +10594,7 @@ false
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 3,
   "resources": {},
   "selectorLabels": {},
@@ -10741,6 +10911,15 @@ null
 			<td>The name of the PriorityClass for read pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for read pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11264,6 +11443,7 @@ null
     "tag": null
   },
   "initContainers": [],
+  "livenessProbe": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
@@ -11276,6 +11456,7 @@ null
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "replicas": 0,
   "resources": {},
   "serviceAnnotations": {},
@@ -11444,6 +11625,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ruler pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -11530,6 +11720,15 @@ null
 			<td>The name of the PriorityClass for ruler pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ruler pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12037,6 +12236,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for single binary pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
@@ -12132,6 +12340,15 @@ null
 			<td>The name of the PriorityClass for single binary pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for single binary pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12242,10 +12459,12 @@ null
     "repository": null,
     "tag": null
   },
+  "livenessProbe": {},
   "nodeSelector": {},
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
+  "readinessProbe": {},
   "resources": {},
   "retention_deletes_enabled": false,
   "retention_period": 0,
@@ -12386,6 +12605,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>tableManager.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for table-manager pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>tableManager.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for table-manager pods</td>
@@ -12418,6 +12646,15 @@ null
 			<td>The name of the PriorityClass for table-manager pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for table-manager pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12839,6 +13076,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for write pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
@@ -12954,6 +13200,15 @@ true
 			<td>The name of the PriorityClass for write pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for write pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

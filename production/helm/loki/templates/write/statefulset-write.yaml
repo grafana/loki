@@ -108,10 +108,8 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          {{- with .Values.loki.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+          {{- include "loki.write.readinessProbe" . | nindent 10 }}
+          {{- include "loki.write.livenessProbe" . | nindent 10 }}
           {{- if .Values.write.lifecycle }}
           lifecycle:
             {{- toYaml .Values.write.lifecycle | nindent 12 }}
