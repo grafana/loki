@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [BUGFIX] Fix incorrect context references in storage configuration templates for alibabacloud, swift, bos, and cos storage types.
+  
 ## 6.35.0
 
 - [CHANGE] Add `tpl()` support for `pattern_ingester`, `ingester_client` and `compactor_grpc_client` components. [#16759](https://github.com/grafana/loki/pull/16759)
