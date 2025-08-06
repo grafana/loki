@@ -251,6 +251,8 @@ func (b *MultiTenantBuilder) observeObject(ctx context.Context, obj *dataobj.Obj
 
 	errs = append(errs, b.metrics.dataobj.Observe(obj))
 
+	tenantSections := make(map[string]int)
+
 	for _, sec := range obj.Sections() {
 		switch {
 		case streams.CheckSection(sec):
@@ -260,6 +262,8 @@ func (b *MultiTenantBuilder) observeObject(ctx context.Context, obj *dataobj.Obj
 				continue
 			}
 			errs = append(errs, b.metrics.streams.Observe(ctx, streamSection))
+			tenantID := streamSection.TenantID()
+			tenantSections[tenantID]++
 
 		case logs.CheckSection(sec):
 			logsSection, err := logs.Open(context.Background(), sec)
@@ -268,7 +272,13 @@ func (b *MultiTenantBuilder) observeObject(ctx context.Context, obj *dataobj.Obj
 				continue
 			}
 			errs = append(errs, b.metrics.logs.Observe(ctx, logsSection))
+			tenantID := logsSection.TenantID()
+			tenantSections[tenantID]++
 		}
+	}
+
+	for _, n := range tenantSections {
+		b.metrics.tenantSections.Observe(float64(n))
 	}
 
 	return errors.Join(errs...)

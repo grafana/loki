@@ -25,6 +25,8 @@ type builderMetrics struct {
 
 	sizeEstimate prometheus.Gauge
 	builtSize    prometheus.Histogram
+
+	tenantSections prometheus.Histogram
 }
 
 // newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
@@ -103,6 +105,18 @@ func newBuilderMetrics() *builderMetrics {
 
 			Help: "Total number of flush failures.",
 		}),
+
+		tenantSections: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "dataobj",
+			Name:      "tenant_sections",
+			Help:      "The number of sections per tenant per data object.",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 	}
 }
 
@@ -130,6 +144,8 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
 
+	errs = append(errs, reg.Register(m.tenantSections))
+
 	return errors.Join(errs...)
 }
 
@@ -148,4 +164,6 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
+
+	reg.Unregister(m.tenantSections)
 }
