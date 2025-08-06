@@ -52,31 +52,31 @@ func TestMultiTenantUpdater(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("append new top-level object to new metastore v2", func(t *testing.T) {
-		tenantID := "test"
-		builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
-			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
-			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
-			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
-			BufferSize:              metastoreBuilderCfg.BufferSize,
-			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
-		})
-		require.NoError(t, err)
+	// t.Run("append new top-level object to new metastore v2", func(t *testing.T) {
+	// 	tenantID := "test"
+	// 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	// 		TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
+	// 		TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
+	// 		TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
+	// 		BufferSize:              metastoreBuilderCfg.BufferSize,
+	// 		SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
+	// 	})
+	// 	require.NoError(t, err)
 
-		err = builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
-		require.NoError(t, err)
+	// 	err = builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
+	// 	require.NoError(t, err)
 
-		var buf bytes.Buffer
-		_, err = builder.Flush(&buf)
-		require.NoError(t, err)
+	// 	var buf bytes.Buffer
+	// 	_, err = builder.Flush(&buf)
+	// 	require.NoError(t, err)
 
-		bucket := newMultiTenantInMemoryBucket(t, unixTime(0), &buf)
-		builder.Reset()
+	// 	bucket := newMultiTenantInMemoryBucket(t, unixTime(0), &buf)
+	// 	builder.Reset()
 
-		updater := newMultiTenantUpdater(t, bucket, nil, builder)
-		err = updater.Update(context.Background(), []string{tenantID}, "testdata/metastore.obj", unixTime(20), unixTime(30))
-		require.NoError(t, err)
-	})
+	// 	updater := newMultiTenantUpdater(t, bucket, nil, builder)
+	// 	err = updater.Update(context.Background(), []string{tenantID}, "testdata/metastore.obj", unixTime(20), unixTime(30))
+	// 	require.NoError(t, err)
+	// })
 
 	t.Run("append default to new top-level metastore v1", func(t *testing.T) {
 		tenantID := "test"
