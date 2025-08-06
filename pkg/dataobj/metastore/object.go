@@ -262,6 +262,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, err
 	}
 
+	level.Debug(m.logger).Log("msg", "got data object paths", "storePaths", strings.Join(storePaths, ","), "dataobj paths", strings.Join(paths, ","))
+
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
 	pointerPredicate := pointers.TimeRangeRowPredicate{
