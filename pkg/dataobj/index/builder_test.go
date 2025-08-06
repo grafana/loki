@@ -54,11 +54,15 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(nil)
-	_, err = candidate.Flush(buf)
+	obj, closer, err := candidate.Flush()
 	require.NoError(t, err)
+	defer closer.Close()
 
-	err = bucket.Upload(context.Background(), path, buf)
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	defer reader.Close()
+
+	err = bucket.Upload(t.Context(), path, reader)
 	require.NoError(t, err)
 }
 
