@@ -174,7 +174,7 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	}
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, storePaths, prefix, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 	level.Debug(logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, storePaths, prefix, start, end)
 	level.Debug(logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(paths, ","), "err", err)
 	if err != nil {
 		return nil, nil, nil, err
@@ -257,7 +257,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromStores(ctx, storePaths, prefix, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +338,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	}
 
 	// List objects from all stores concurrently
-	return m.listObjectsFromStores(ctx, storePaths, start, end)
+	return m.listObjectsFromStores(ctx, storePaths, prefix, start, end)
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
@@ -474,14 +474,14 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 }
 
 // listObjectsFromStores concurrently lists objects from multiple metastore files
-func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths []string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths []string, prefix string, start, end time.Time) ([]string, error) {
 	objects := make([][]string, len(storePaths))
 	g, ctx := errgroup.WithContext(ctx)
 
 	for i, path := range storePaths {
 		g.Go(func() error {
 			var err error
-			objects[i], err = m.listObjects(ctx, path, start, end)
+			objects[i], err = m.listObjects(ctx, path, prefix, start, end)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
 			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
@@ -712,7 +712,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 	streams[key] = append(streams[key], newLabels)
 }
 
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjects(ctx context.Context, path string, prefix string, start, end time.Time) ([]string, error) {
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
@@ -745,7 +745,11 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 		End:   end.UTC(),
 	}
 	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
-		objectPaths = append(objectPaths, indexPointer.Path)
+		path := indexPointer.Path
+		if prefix != "" {
+			path = fmt.Sprintf("%s/%s", prefix, path)
+		}
+		objectPaths = append(objectPaths, path)
 	})
 	if err != nil {
 		return nil, err

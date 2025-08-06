@@ -217,9 +217,10 @@ func TestDataObjectsPathsV1(t *testing.T) {
 	tests := []struct {
 		name   string
 		format StorageFormatType
+		prefix string
 	}{
 		{name: "read from v1", format: StorageFormatTypeV1},
-		{name: "read from v2", format: StorageFormatTypeV2},
+		{name: "read from v2", format: StorageFormatTypeV2, prefix: "index/v0"},
 	}
 
 	for _, tt := range tests {
@@ -231,6 +232,9 @@ func TestDataObjectsPathsV1(t *testing.T) {
 			m := NewUpdater(Config{
 				Updater: UpdaterConfig{
 					StorageFormat: tt.format,
+				},
+				Storage: StorageConfig{
+					IndexStoragePrefix: tt.prefix,
 				},
 			}, bucket, tenantID, log.NewNopLogger())
 
