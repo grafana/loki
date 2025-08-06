@@ -42,15 +42,18 @@
 
 {{- if and (eq (include "loki.isUsingObjectStorage" . ) "true") (not .Values.minio.enabled) }}
 {{- $bucketNames := .Values.loki.storage.bucketNames -}}
+{{- if not $bucketNames }}
+{{- fail "at least one bucket name must be specified" }}
+{{- end }}
 {{- if not (hasKey $bucketNames "chunks") }}
-{{- fail "Please define loki.storage.bucketName.chunks" }}
+{{- fail "Please define loki.storage.bucketNames.chunks" }}
 {{- end }}
 
 {{- if not (hasKey $bucketNames "ruler") }}
-{{- fail "Please define loki.storage.bucketName.ruler" }}
+{{- fail "Please define loki.storage.bucketNames.ruler" }}
 {{- end }}
 
 {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled (not (hasKey $bucketNames "admin")) }}
-{{- fail "Please define loki.storage.bucketName.admin" }}
+{{- fail "Please define loki.storage.bucketNames.admin" }}
 {{- end }}
 {{- end }}
