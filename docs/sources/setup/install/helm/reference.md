@@ -6672,7 +6672,7 @@ See values.yaml
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
-  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
+  "compactor_grpc_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -6680,9 +6680,27 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.commonConfig.compactor_grpc_address</td>
+			<td>string</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td><pre lang="json">
+"{{ include \"loki.compactorAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.compactor</td>
 			<td>object</td>
 			<td>Optional compactor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.compactor_grpc_client</td>
+			<td>object</td>
+			<td>Optional compactor grpc client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6828,6 +6846,15 @@ null
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester_client</td>
+			<td>object</td>
+			<td>Optional ingester client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -7027,7 +7054,6 @@ null
     "userAssignedId": null
   },
   "filesystem": {
-    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -7512,6 +7538,23 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -7610,6 +7653,42 @@ true
 			<td></td>
 			<td><pre lang="json">
 "v0.15.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -11291,7 +11370,7 @@ null
 		<tr>
 			<td>ruler.directories</td>
 			<td>object</td>
-			<td>Directories containing rules files</td>
+			<td>Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.</td>
 			<td><pre lang="json">
 {}
 </pre>

@@ -3,6 +3,7 @@ package goldfish
 import (
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -10,86 +11,86 @@ func TestComparator_CompareResponses(t *testing.T) {
 	testTolerance := 0.1 // 10% tolerance for tests
 	tests := []struct {
 		name           string
-		sample         *QuerySample
-		expectedStatus ComparisonStatus
+		sample         *goldfish.QuerySample
+		expectedStatus goldfish.ComparisonStatus
 		expectedDiffs  []string
 	}{
 		{
 			name: "different status codes",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:   "test-1",
 				CellAStatusCode: 200,
 				CellBStatusCode: 500,
 			},
-			expectedStatus: ComparisonStatusMismatch,
+			expectedStatus: goldfish.ComparisonStatusMismatch,
 			expectedDiffs:  []string{"status_code"},
 		},
 		{
 			name: "both non-200 status codes match",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:   "test-2",
 				CellAStatusCode: 404,
 				CellBStatusCode: 404,
 			},
-			expectedStatus: ComparisonStatusMatch,
+			expectedStatus: goldfish.ComparisonStatusMatch,
 		},
 		{
 			name: "matching responses with same hash",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:     "test-3",
 				QueryType:         "query_range",
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
 				CellAResponseHash: "abc123",
 				CellBResponseHash: "abc123",
-				CellAStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
-				CellBStats:        QueryStats{ExecTimeMs: 105, BytesProcessed: 1000},
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 105, BytesProcessed: 1000},
 			},
-			expectedStatus: ComparisonStatusMatch,
+			expectedStatus: goldfish.ComparisonStatusMatch,
 		},
 		{
 			name: "different response hashes",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:     "test-4",
 				QueryType:         "query_range",
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
 				CellAResponseHash: "abc123",
 				CellBResponseHash: "def456",
-				CellAStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
-				CellBStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000},
 			},
-			expectedStatus: ComparisonStatusMismatch,
+			expectedStatus: goldfish.ComparisonStatusMismatch,
 			expectedDiffs:  []string{"content_hash"},
 		},
 		{
 			name: "different content (different hash)",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:     "test-5",
 				QueryType:         "query_range",
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
 				CellAResponseHash: "abc123",
 				CellBResponseHash: "def456", // Different hash = different content
-				CellAStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-				CellBStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 2000, LinesProcessed: 50}, // Different bytes processed makes sense with different content
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 2000, LinesProcessed: 50}, // Different bytes processed makes sense with different content
 			},
-			expectedStatus: ComparisonStatusMismatch,
+			expectedStatus: goldfish.ComparisonStatusMismatch,
 			expectedDiffs:  []string{"content_hash"},
 		},
 		{
 			name: "execution time variance within tolerance",
-			sample: &QuerySample{
+			sample: &goldfish.QuerySample{
 				CorrelationID:     "test-6",
 				QueryType:         "query_range",
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
 				CellAResponseHash: "abc123",
 				CellBResponseHash: "abc123",
-				CellAStats:        QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-				CellBStats:        QueryStats{ExecTimeMs: 105, BytesProcessed: 1000, LinesProcessed: 50}, // 5% difference, within tolerance
+				CellAStats:        goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+				CellBStats:        goldfish.QueryStats{ExecTimeMs: 105, BytesProcessed: 1000, LinesProcessed: 50}, // 5% difference, within tolerance
 			},
-			expectedStatus: ComparisonStatusMatch,
+			expectedStatus: goldfish.ComparisonStatusMatch,
 		},
 	}
 
@@ -110,34 +111,34 @@ func TestComparator_CompareResponses(t *testing.T) {
 func TestCompareQueryStats(t *testing.T) {
 	tests := []struct {
 		name        string
-		statsA      QueryStats
-		statsB      QueryStats
+		statsA      goldfish.QueryStats
+		statsB      goldfish.QueryStats
 		expectMatch bool
 		expectDiffs []string
 	}{
 		{
 			name:        "identical stats",
-			statsA:      QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-			statsB:      QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+			statsA:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+			statsB:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
 			expectMatch: true,
 		},
 		{
 			name:        "execution time within tolerance",
-			statsA:      QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-			statsB:      QueryStats{ExecTimeMs: 105, BytesProcessed: 1000, LinesProcessed: 50}, // 5% difference
+			statsA:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+			statsB:      goldfish.QueryStats{ExecTimeMs: 105, BytesProcessed: 1000, LinesProcessed: 50}, // 5% difference
 			expectMatch: true,
 		},
 		{
 			name:        "execution time outside tolerance",
-			statsA:      QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-			statsB:      QueryStats{ExecTimeMs: 120, BytesProcessed: 1000, LinesProcessed: 50}, // 20% difference
+			statsA:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+			statsB:      goldfish.QueryStats{ExecTimeMs: 120, BytesProcessed: 1000, LinesProcessed: 50}, // 20% difference
 			expectMatch: false,
 			expectDiffs: []string{"exec_time_variance"},
 		},
 		{
 			name:        "different bytes processed",
-			statsA:      QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
-			statsB:      QueryStats{ExecTimeMs: 100, BytesProcessed: 2000, LinesProcessed: 50},
+			statsA:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 1000, LinesProcessed: 50},
+			statsB:      goldfish.QueryStats{ExecTimeMs: 100, BytesProcessed: 2000, LinesProcessed: 50},
 			expectMatch: false,
 			expectDiffs: []string{"bytes_processed"},
 		},
@@ -145,7 +146,7 @@ func TestCompareQueryStats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := &ComparisonResult{DifferenceDetails: make(map[string]any)}
+			result := &goldfish.ComparisonResult{DifferenceDetails: make(map[string]any)}
 			testTolerance := 0.1 // 10% tolerance for tests
 			compareQueryStats(tt.statsA, tt.statsB, result, testTolerance)
 
@@ -173,31 +174,31 @@ func TestCompareResponses_StatusCodes(t *testing.T) {
 		name           string
 		cellAStatus    int
 		cellBStatus    int
-		expectedStatus ComparisonStatus
+		expectedStatus goldfish.ComparisonStatus
 	}{
 		{
 			name:           "both success",
 			cellAStatus:    200,
 			cellBStatus:    200,
-			expectedStatus: ComparisonStatusMatch, // Will depend on hash comparison
+			expectedStatus: goldfish.ComparisonStatusMatch, // Will depend on hash comparison
 		},
 		{
 			name:           "different status codes",
 			cellAStatus:    200,
 			cellBStatus:    500,
-			expectedStatus: ComparisonStatusMismatch,
+			expectedStatus: goldfish.ComparisonStatusMismatch,
 		},
 		{
 			name:           "both errors",
 			cellAStatus:    404,
 			cellBStatus:    404,
-			expectedStatus: ComparisonStatusMatch,
+			expectedStatus: goldfish.ComparisonStatusMatch,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sample := &QuerySample{
+			sample := &goldfish.QuerySample{
 				CorrelationID:     "test",
 				CellAStatusCode:   tt.cellAStatus,
 				CellBStatusCode:   tt.cellBStatus,
@@ -210,7 +211,7 @@ func TestCompareResponses_StatusCodes(t *testing.T) {
 
 			if tt.cellAStatus == 200 && tt.cellBStatus == 200 {
 				// For 200 status codes, result depends on hash comparison
-				assert.Equal(t, ComparisonStatusMatch, result.ComparisonStatus)
+				assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus)
 			} else {
 				assert.Equal(t, tt.expectedStatus, result.ComparisonStatus)
 			}
@@ -265,17 +266,17 @@ func TestCompareResponses_ConfigurableTolerance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sample := &QuerySample{
+			sample := &goldfish.QuerySample{
 				CorrelationID:     "test-tolerance",
 				CellAStatusCode:   200,
 				CellBStatusCode:   200,
 				CellAResponseHash: "same-hash",
 				CellBResponseHash: "same-hash",
-				CellAStats: QueryStats{
+				CellAStats: goldfish.QueryStats{
 					ExecTimeMs:     tt.cellAExecTime,
 					BytesProcessed: 1000,
 				},
-				CellBStats: QueryStats{
+				CellBStats: goldfish.QueryStats{
 					ExecTimeMs:     tt.cellBExecTime,
 					BytesProcessed: 1000,
 				},
@@ -284,7 +285,7 @@ func TestCompareResponses_ConfigurableTolerance(t *testing.T) {
 			result := CompareResponses(sample, tt.tolerance)
 
 			// The comparison should always be a match (same hash)
-			assert.Equal(t, ComparisonStatusMatch, result.ComparisonStatus)
+			assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus)
 
 			// Check if execution time variance was detected based on tolerance
 			if tt.expectVariance {

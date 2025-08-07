@@ -175,6 +175,26 @@ ui:
     # CLI flag: -ui.goldfish.max-idle-time
     [max_idle_time: <int> | default = 300]
 
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -5926,7 +5946,7 @@ grpc_tls_config:
 
 # Comma separated list of headers to exclude from tracing spans. Only used if
 # server.trace-request-headers is true. The following headers are always
-# excluded: Authorization, Cookie, X-Csrf-Token.
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
 # CLI flag: -server.trace-request-headers-exclude-list
 [trace_request_exclude_headers_list: <string> | default = ""]
 

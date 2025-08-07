@@ -204,9 +204,6 @@ github.com/Code-Hex/go-generics-cache/policy/lfu
 github.com/Code-Hex/go-generics-cache/policy/lru
 github.com/Code-Hex/go-generics-cache/policy/mru
 github.com/Code-Hex/go-generics-cache/policy/simple
-# github.com/DATA-DOG/go-sqlmock v1.5.2
-## explicit; go 1.15
-github.com/DATA-DOG/go-sqlmock
 # github.com/DataDog/sketches-go v1.4.7
 ## explicit; go 1.18
 github.com/DataDog/sketches-go/ddsketch
@@ -298,7 +295,7 @@ github.com/NYTimes/gziphandler
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
-# github.com/alecthomas/chroma/v2 v2.19.0
+# github.com/alecthomas/chroma/v2 v2.20.0
 ## explicit; go 1.22
 github.com/alecthomas/chroma/v2
 github.com/alecthomas/chroma/v2/formatters
@@ -1116,7 +1113,7 @@ github.com/grafana/ckit/shard
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20250723143816-ff33c5829b96
+# github.com/grafana/dskit v0.0.0-20250804145444-6ac601c94195
 ## explicit; go 1.23.0
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/cancellation
@@ -1256,8 +1253,8 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.2
 ## explicit; go 1.19
 github.com/hashicorp/serf/coordinate
-# github.com/heroku/x v0.5.0
-## explicit; go 1.21.0
+# github.com/heroku/x v0.5.1
+## explicit; go 1.23.0
 github.com/heroku/x/logplex/encoding
 # github.com/huandu/xstrings v1.5.0
 ## explicit; go 1.12
@@ -2418,7 +2415,7 @@ golang.org/x/tools/internal/versions
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.244.0
+# google.golang.org/api v0.246.0
 ## explicit; go 1.23.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
