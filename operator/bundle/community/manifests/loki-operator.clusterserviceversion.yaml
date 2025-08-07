@@ -19,20 +19,22 @@ metadata:
                   {
                     "alert": "HighPercentageError",
                     "annotations": {
-                      "summary": "High request latency"
+                      "description": "Application {{ $labels.job }} in namespace example-namespace has an error rate above 5% for more than 10 minutes.",
+                      "summary": "High error rate detected"
                     },
-                    "expr": "sum(rate({app=\"foo\", env=\"production\"} |= \"error\" [5m])) by (job)\n  /\nsum(rate({app=\"foo\", env=\"production\"}[5m])) by (job)\n  \u003e 0.05\n",
+                    "expr": "sum(rate({app=\"foo\", env=\"production\", kubernetes_namespace_name=\"example-namespace\"} |= \"error\" [5m])) by (job)\n  /\nsum(rate({app=\"foo\", env=\"production\", kubernetes_namespace_name=\"example-namespace\"}[5m])) by (job)\n  \u003e 0.05\n",
                     "for": "10m",
                     "labels": {
-                      "severity": "page"
+                      "severity": "warning"
                     }
                   },
                   {
                     "alert": "HttpCredentialsLeaked",
                     "annotations": {
-                      "message": "{{ $labels.job }} is leaking http basic auth credentials."
+                      "description": "Application {{ $labels.job }} in pod {{ $labels.pod }} is leaking HTTP basic auth credentials in logs.",
+                      "summary": "HTTP credentials leaked in logs"
                     },
-                    "expr": "sum by (cluster, job, pod) (count_over_time({namespace=\"prod\"} |~ \"http(s?)://(\\\\w+):(\\\\w+)@\" [5m]) \u003e 0)",
+                    "expr": "sum by (cluster, job, pod) (count_over_time({kubernetes_namespace_name=\"example-namespace\"} |~ \"http(s?)://(\\\\w+):(\\\\w+)@\" [5m]) \u003e 0)",
                     "for": "10m",
                     "labels": {
                       "severity": "critical"
@@ -41,7 +43,7 @@ metadata:
                 ]
               }
             ],
-            "tenantID": "test-tenant"
+            "tenantID": "application"
           }
         },
         {
@@ -150,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-06-11T13:21:34Z"
+    createdAt: "2025-07-31T09:49:48Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
