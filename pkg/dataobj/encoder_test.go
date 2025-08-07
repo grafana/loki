@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 func Test_encoder_typeRefs(t *testing.T) {
@@ -79,7 +80,7 @@ func Test_encoder_typeRefs(t *testing.T) {
 		},
 	}
 
-	enc := newEncoder()
+	enc := newEncoder(scratch.NewMemory())
 
 	// Test are run sequentially so we can check the behaviour of streaming types
 	// in.

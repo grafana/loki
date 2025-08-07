@@ -221,6 +221,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 			m.metrics.incMetastoreWrites(statusFailure)
 			m.backoff.Wait()
 		}
+
 		// Reset at the end too so we don't leave our memory hanging around between calls.
 		m.metastoreBuilder.Reset()
 	}
