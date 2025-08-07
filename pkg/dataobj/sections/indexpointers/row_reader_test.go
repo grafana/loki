@@ -1,7 +1,6 @@
 package indexpointers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -37,16 +36,12 @@ func buildIndexPointersDecoder(t *testing.T, pageSize int) *Section {
 		s.Append(d.Path, d.StartTs, d.EndTs)
 	}
 
-	var buf bytes.Buffer
-
 	builder := dataobj.NewBuilder()
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

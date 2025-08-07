@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -452,13 +453,13 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	}
 
 	// Create endpoint with goldfish manager
-	goldfishConfig := goldfish.Config{
+	goldfishConfig := querytee_goldfish.Config{
 		Enabled: true,
-		SamplingConfig: goldfish.SamplingConfig{
+		SamplingConfig: querytee_goldfish.SamplingConfig{
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	goldfishManager, err := goldfish.NewManager(goldfishConfig, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
@@ -514,6 +515,16 @@ func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfi
 func (m *mockGoldfishStorage) StoreComparisonResult(_ context.Context, result *goldfish.ComparisonResult) error {
 	m.results = append(m.results, *result)
 	return nil
+}
+
+func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ string) (*goldfish.APIResponse, error) {
+	// This is only used for UI, not needed in proxy tests
+	return &goldfish.APIResponse{
+		Queries:  []goldfish.QuerySample{},
+		Total:    0,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
 }
 
 func (m *mockGoldfishStorage) Close() error {

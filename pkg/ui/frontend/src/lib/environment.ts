@@ -8,6 +8,8 @@ export interface Environment {
   isDev: boolean;
   mockFeatures: boolean;
   enableGoldfish?: boolean;
+  goldfishCellANamespace?: string;
+  goldfishCellBNamespace?: string;
 }
 
 /**
@@ -21,6 +23,8 @@ export function getEnvironment(): Environment {
     isDev: import.meta.env.DEV || false,
     mockFeatures: import.meta.env.VITE_MOCK_FEATURES === 'true',
     enableGoldfish: import.meta.env.VITE_ENABLE_GOLDFISH === 'true',
+    goldfishCellANamespace: import.meta.env.VITE_GOLDFISH_CELL_A_NAMESPACE,
+    goldfishCellBNamespace: import.meta.env.VITE_GOLDFISH_CELL_B_NAMESPACE,
   };
 }
 
@@ -37,12 +41,16 @@ export function shouldUseMockFeatures(): boolean {
  * Get development overrides for feature flags
  * This replaces the direct import.meta.env access in getDevOverrides
  */
-export function getDevEnvironmentOverrides(): { goldfish?: boolean } {
+export function getDevEnvironmentOverrides(): { goldfish?: { enabled: boolean; cellANamespace?: string; cellBNamespace?: string } } {
   const env = getEnvironment();
-  const overrides: { goldfish?: boolean } = {};
+  const overrides: { goldfish?: { enabled: boolean; cellANamespace?: string; cellBNamespace?: string } } = {};
   
   if (env.isDev && env.enableGoldfish) {
-    overrides.goldfish = true;
+    overrides.goldfish = { 
+      enabled: true,
+      cellANamespace: env.goldfishCellANamespace,
+      cellBNamespace: env.goldfishCellBNamespace,
+    };
   }
   
   return overrides;

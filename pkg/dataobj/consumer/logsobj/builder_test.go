@@ -1,7 +1,6 @@
 package logsobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -29,9 +27,6 @@ var testBuilderConfig = BuilderConfig{
 }
 
 func TestBuilder(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-	dirtyBuf := bytes.NewBuffer([]byte("dirty"))
-
 	testStreams := []logproto.Stream{
 		{
 			Labels: `{cluster="test",app="foo"}`,
@@ -83,34 +78,10 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range testStreams {
 			require.NoError(t, builder.Append(entry))
 		}
-		_, err = builder.Flush(buf)
+		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
-	})
+		defer closer.Close()
 
-	t.Run("Read", func(t *testing.T) {
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		require.NoError(t, err)
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
-	})
-
-	t.Run("BuildWithDirtyBuffer", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
-		require.NoError(t, err)
-
-		for _, entry := range testStreams {
-			require.NoError(t, builder.Append(entry))
-		}
-
-		_, err = builder.Flush(dirtyBuf)
-		require.NoError(t, err)
-
-		require.Equal(t, buf.Len(), dirtyBuf.Len()-5)
-	})
-
-	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
-		require.NoError(t, err)
 		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
 		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
 	})
