@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.4](https://github.com/grafana/loki/compare/v3.5.3...v3.5.4) (2025-08-07)
+
+
+### Bug Fixes
+
+* **docs:** added instructions for how to upgrade zone-aware ingesters… ([#18663](https://github.com/grafana/loki/issues/18663)) ([e0de7da](https://github.com/grafana/loki/commit/e0de7dac098f66bb71000f591f4fb5bf4f5b81bf))
+
 ## [3.5.3](https://github.com/grafana/loki/compare/v3.5.2...v3.5.3) (2025-07-16)
 
 
