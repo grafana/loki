@@ -790,6 +790,44 @@ func forEachStream(ctx context.Context, tenant string, object *dataobj.Object, p
 	return nil
 }
 
+func forEachStreamWithSection(ctx context.Context, tenant string, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream, int), checkTenant bool) error {
+	var reader streams.RowReader
+	defer reader.Close()
+
+	buf := make([]streams.Stream, 1024)
+
+	for sectionIdx, section := range object.Sections().Filter(streams.CheckSection) {
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+		if checkTenant && sec.TenantID() != tenant {
+			continue
+		}
+
+		reader.Reset(sec)
+		if predicate != nil {
+			err := reader.SetPredicate(predicate)
+			if err != nil {
+				return err
+			}
+		}
+		for {
+			num, err := reader.Read(ctx, buf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			if num == 0 && errors.Is(err, io.EOF) {
+				break
+			}
+			for _, stream := range buf[:num] {
+				f(stream, sectionIdx)
+			}
+		}
+	}
+	return nil
+}
+
 func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
 	var reader pointers.RowReader
 	defer reader.Close()

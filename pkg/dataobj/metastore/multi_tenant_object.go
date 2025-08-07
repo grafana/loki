@@ -20,8 +20,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -170,7 +168,20 @@ func (m *MultiTenantObjectMetastore) StreamIDs(ctx context.Context, start, end t
 		}
 	}
 
-	return paths, streamIDs, sections, nil
+	cnt := 0
+	maxes := make([]int, len(sections))
+	for i, section := range sections {
+		cnt += len(section)
+		for _, sectionIdx := range section {
+			if sectionIdx > maxes[i] {
+				maxes[i] = sectionIdx
+			}
+		}
+	}
+
+	level.Debug(m.logger).Log("msg", "resolved unique sections", "paths", len(paths), "total_sections", cnt)
+
+	return paths, streamIDs, maxes, nil
 }
 
 func (m *MultiTenantObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
@@ -253,17 +264,17 @@ func (m *MultiTenantObjectMetastore) listObjects(ctx context.Context, tenant str
 		return nil, err
 	}
 
-	// Then we iterate over index objects based on the new format.
-	predicate := indexpointers.TimeRangeRowPredicate{
-		Start: start.UTC(),
-		End:   end.UTC(),
-	}
-	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
-		objectPaths = append(objectPaths, indexPointer.Path)
-	})
-	if err != nil {
-		return nil, err
-	}
+	/* 	// Then we iterate over index objects based on the new format.
+	   	predicate := indexpointers.TimeRangeRowPredicate{
+	   		Start: start.UTC(),
+	   		End:   end.UTC(),
+	   	}
+	   	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
+	   		objectPaths = append(objectPaths, indexPointer.Path)
+	   	})
+	   	if err != nil {
+	   		return nil, err
+	   	} */
 
 	return objectPaths, nil
 }
@@ -325,9 +336,9 @@ func (m *MultiTenantObjectMetastore) listStreamsFromObjects(ctx context.Context,
 	return streamsSlice, nil
 }
 
-func (m *MultiTenantObjectMetastore) listStreamIDsFromObjects(ctx context.Context, tenant string, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
+func (m *MultiTenantObjectMetastore) listStreamIDsFromObjects(ctx context.Context, tenant string, paths []string, predicate streams.RowPredicate) ([][]int64, [][]int, error) {
 	streamIDs := make([][]int64, len(paths))
-	sections := make([]int, len(paths))
+	sections := make([][]int, len(paths))
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
@@ -339,11 +350,12 @@ func (m *MultiTenantObjectMetastore) listStreamIDsFromObjects(ctx context.Contex
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
 
-			sections[idx] = object.Sections().Count(logs.CheckSection)
+			sections[idx] = make([]int, 0, 1)
 			streamIDs[idx] = make([]int64, 0, 8)
 
-			return forEachStream(ctx, tenant, object, predicate, func(stream streams.Stream) {
+			return forEachStreamWithSection(ctx, tenant, object, predicate, func(stream streams.Stream, sectionIdx int) {
 				streamIDs[idx] = append(streamIDs[idx], stream.ID)
+				sections[idx] = slices.Compact(append(sections[idx], sectionIdx))
 			}, true)
 		})
 	}

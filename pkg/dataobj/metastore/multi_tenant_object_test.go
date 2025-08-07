@@ -73,7 +73,7 @@ func TestMultiTenantStreamIDs(t *testing.T) {
 			require.Len(t, streamIDs, 1)
 			require.Len(t, sections, 1)
 			require.Equal(t, []int64{1}, streamIDs[0])
-			require.Equal(t, 1, sections[0])
+			require.Equal(t, 0, sections[0])
 		})
 	})
 }
