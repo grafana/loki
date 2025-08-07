@@ -124,6 +124,10 @@ func (m *MultiTenantObjectMetastore) Streams(ctx context.Context, start, end tim
 }
 
 func (m *MultiTenantObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
+	return nil, nil, nil, errors.New("not implemented for this querier")
+}
+
+func (m *MultiTenantObjectMetastore) StreamIDsWithSections(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, [][]int, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -153,7 +157,7 @@ func (m *MultiTenantObjectMetastore) StreamIDs(ctx context.Context, start, end t
 	}
 
 	if len(streamIDs) == 0 {
-		return []string{}, [][]int64{}, []int{}, nil
+		return []string{}, [][]int64{}, [][]int{}, nil
 	}
 
 	// Remove objects that do not contain any matching streams
@@ -169,19 +173,13 @@ func (m *MultiTenantObjectMetastore) StreamIDs(ctx context.Context, start, end t
 	}
 
 	cnt := 0
-	maxes := make([]int, len(sections))
-	for i, section := range sections {
+	for _, section := range sections {
 		cnt += len(section)
-		for _, sectionIdx := range section {
-			if sectionIdx > maxes[i] {
-				maxes[i] = sectionIdx
-			}
-		}
 	}
 
 	level.Debug(m.logger).Log("msg", "resolved unique sections", "paths", len(paths), "total_sections", cnt)
 
-	return paths, streamIDs, maxes, nil
+	return paths, streamIDs, sections, nil
 }
 
 func (m *MultiTenantObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
@@ -350,12 +348,14 @@ func (m *MultiTenantObjectMetastore) listStreamIDsFromObjects(ctx context.Contex
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
 
-			sections[idx] = make([]int, 0, 1)
+			sections[idx] = make([]int, 0)
 			streamIDs[idx] = make([]int64, 0, 8)
 
 			return forEachStreamWithSection(ctx, tenant, object, predicate, func(stream streams.Stream, sectionIdx int) {
 				streamIDs[idx] = append(streamIDs[idx], stream.ID)
-				sections[idx] = slices.Compact(append(sections[idx], sectionIdx))
+				sections[idx] = append(sections[idx], sectionIdx)
+				slices.Sort(sections[idx])
+				sections[idx] = slices.Compact(sections[idx])
 			}, true)
 		})
 	}

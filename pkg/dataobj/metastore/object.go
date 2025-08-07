@@ -166,6 +166,10 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
+func (m *ObjectMetastore) StreamIDsWithSections(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, [][]int, error) {
+	return nil, nil, nil, errors.New("not implemented for this querier")
+}
+
 func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

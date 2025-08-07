@@ -30,12 +30,15 @@ func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataO
 func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
-	sections := make([]int, 0, len(c.streamsByObject))
+	sections := make([][]int, 0, len(c.streamsByObject))
 
 	for o, s := range c.streamsByObject {
 		paths = append(paths, o)
 		streams = append(streams, s.streamIDs)
-		sections = append(sections, s.sections)
+		sections = append(sections, make([]int, s.sections))
+		for i := 0; i < s.sections; i++ {
+			sections[len(sections)-1][i] = i
+		}
 	}
 
 	// The function needs to return objects and their streamIDs and sections in predictable order

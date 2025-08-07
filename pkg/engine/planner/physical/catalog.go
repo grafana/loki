@@ -98,28 +98,26 @@ func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, 
 		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
-	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
+	paths, streamIDs, sectionIndices, err := c.metastore.StreamIDsWithSections(c.ctx, from, through, matchers...)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
 
-	return filterForShard(shard, paths, streamIDs, numSections)
+	return filterForShard(shard, paths, streamIDs, sectionIndices)
 }
 
-func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {
+func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, sectionIndices [][]int) ([]DataObjLocation, [][]int64, [][]int, error) {
 	locations := make([]DataObjLocation, 0, len(paths))
 	streams := make([][]int64, 0, len(paths))
 	sections := make([][]int, 0, len(paths))
 
-	var count int
 	for i := range paths {
-		sec := make([]int, 0, numSections[i])
+		sec := make([]int, 0, len(sectionIndices[i]))
 
-		for j := range numSections[i] {
-			if count%int(shard.Of) == int(shard.Shard) {
+		for _, j := range sectionIndices[i] {
+			if j%int(shard.Of) == int(shard.Shard) {
 				sec = append(sec, j)
 			}
-			count++
 		}
 
 		if len(sec) > 0 {
