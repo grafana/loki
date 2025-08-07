@@ -771,8 +771,23 @@ http {
 
   # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
   proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
-  proxy_set_header Upgrade $http_upgrade;
-  proxy_set_header Connection "upgrade";
+
+  # Conditional WebSocket headers - only for tail endpoints that need them
+  map $request_uri $websocket_upgrade {
+    ~*/api/prom/tail$     $http_upgrade;
+    ~*/loki/api/v1/tail$  $http_upgrade;
+    default               "";
+  }
+  
+  map $request_uri $websocket_connection {
+    ~*/api/prom/tail$     "upgrade";
+    ~*/loki/api/v1/tail$  "upgrade";
+    default               "";
+  }
+  
+  # Apply WebSocket headers conditionally (empty values are ignored by nginx)
+  proxy_set_header Upgrade $websocket_upgrade;
+  proxy_set_header Connection $websocket_connection;
 
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
