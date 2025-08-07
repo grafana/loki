@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -96,16 +97,24 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		logsSection    *logs.Section
 	)
 
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
-		if streamsSection != nil {
-			return errorPipeline(fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-		}
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return errorPipeline(fmt.Errorf("getting tenant ID: %w", err))
+	}
 
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
 		var err error
-		streamsSection, err = streams.Open(ctx, sec)
+		section, err := streams.Open(ctx, sec)
 		if err != nil {
 			return errorPipeline(fmt.Errorf("opening streams section %q: %w", sec.Type, err))
 		}
+		if section.TenantID() != tenantID {
+			continue
+		}
+		if streamsSection != nil {
+			return errorPipeline(fmt.Errorf("multiple streams sections for tenant %q found in data object %q", tenantID, node.Location))
+		}
+		streamsSection = section
 	}
 	if streamsSection == nil {
 		return errorPipeline(fmt.Errorf("streams section not found in data object %q", node.Location))
