@@ -1623,7 +1623,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
 	if err != nil {
-		si.err = fmt.Errorf("symbolizer lookup:", err)
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
 		return 0, nil, labels.EmptyLabels(), false
 	}
 	return ts, si.buf[:lineSize], lbls, true
