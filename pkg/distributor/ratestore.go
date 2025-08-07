@@ -36,6 +36,8 @@ type RateStoreConfig struct {
 	MaxParallelism           int           `yaml:"max_request_parallelism"`
 	StreamRateUpdateInterval time.Duration `yaml:"stream_rate_update_interval"`
 	IngesterReqTimeout       time.Duration `yaml:"ingester_request_timeout"`
+	RateKeepAlive            time.Duration `yaml:"rate_keep_alive"`
+	Standalone               bool          `yaml:"standalone" doc:"hidden"`
 	Debug                    bool          `yaml:"debug"`
 }
 
@@ -43,6 +45,8 @@ func (cfg *RateStoreConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.Flag
 	fs.IntVar(&cfg.MaxParallelism, prefix+".max-request-parallelism", 200, "The max number of concurrent requests to make to ingester stream apis")
 	fs.DurationVar(&cfg.StreamRateUpdateInterval, prefix+".stream-rate-update-interval", time.Second, "The interval on which distributors will update current stream rates from ingesters")
 	fs.DurationVar(&cfg.IngesterReqTimeout, prefix+".ingester-request-timeout", 500*time.Millisecond, "Timeout for communication between distributors and any given ingester when updating rates")
+	fs.DurationVar(&cfg.RateKeepAlive, prefix+".rate-keep-alive", 10*time.Minute, "The duration for which a rate is kept alive")
+	fs.BoolVar(&cfg.Standalone, prefix+".standalone", false, "If enabled, the rate store will be standalone")
 	fs.BoolVar(&cfg.Debug, prefix+".debug", false, "If enabled, detailed logs and spans will be emitted.")
 }
 
@@ -58,7 +62,7 @@ type expiringRate struct {
 	pushes    float64
 }
 
-type rateStore struct {
+type RateStoreService struct {
 	services.Service
 
 	ring            ring.ReadRing
@@ -75,15 +79,15 @@ type rateStore struct {
 	debug bool
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
-	s := &rateStore{
+func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *RateStoreService { //nolint
+	s := &RateStoreService{
 		ring:            r,
 		clientPool:      cf,
 		maxParallelism:  cfg.MaxParallelism,
 		ingesterTimeout: cfg.IngesterReqTimeout,
-		rateKeepAlive:   10 * time.Minute,
+		rateKeepAlive:   cfg.RateKeepAlive,
 		limits:          l,
-		metrics:         newRateStoreMetrics(registerer),
+		metrics:         newRateStoreMetrics(registerer, cfg.Standalone),
 		rates:           make(map[string]map[uint64]expiringRate),
 		debug:           cfg.Debug,
 	}
@@ -96,7 +100,7 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l 
 	return s
 }
 
-func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
+func (s *RateStoreService) instrumentedUpdateAllRates(ctx context.Context) error {
 	if !s.anyShardingEnabled() {
 		return nil
 	}
@@ -104,7 +108,7 @@ func (s *rateStore) instrumentedUpdateAllRates(ctx context.Context) error {
 	return instrument.CollectedRequest(ctx, "GetAllStreamRates", s.metrics.refreshDuration, instrument.ErrorCode, s.updateAllRates)
 }
 
-func (s *rateStore) updateAllRates(ctx context.Context) error {
+func (s *RateStoreService) updateAllRates(ctx context.Context) error {
 	clients, err := s.getClients(ctx)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting ingester clients", "err", err)
@@ -131,7 +135,7 @@ type rateStats struct {
 	expiredCount int64
 }
 
-func (s *rateStore) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
+func (s *RateStoreService) updateRates(ctx context.Context, updated map[string]map[uint64]expiringRate) rateStats {
 	streamCnt := 0
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
@@ -173,7 +177,7 @@ func weightedMovingAverageF(next, last float64) float64 {
 	return (smoothingFactor * next) + ((1 - smoothingFactor) * last)
 }
 
-func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
+func (s *RateStoreService) cleanupExpired(updated map[string]map[uint64]expiringRate) rateStats {
 	var rs rateStats
 
 	for tID, tenant := range s.rates {
@@ -205,7 +209,7 @@ func (s *rateStore) cleanupExpired(updated map[string]map[uint64]expiringRate) r
 	return rs
 }
 
-func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map[string]map[uint64]expiringRate) bool {
+func (s *RateStoreService) wasUpdated(tenantID string, streamID uint64, lastUpdated map[string]map[uint64]expiringRate) bool {
 	if _, ok := lastUpdated[tenantID]; !ok {
 		return false
 	}
@@ -217,7 +221,7 @@ func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map
 	return true
 }
 
-func (s *rateStore) anyShardingEnabled() bool {
+func (s *RateStoreService) anyShardingEnabled() bool {
 	limits := s.limits.AllByUserID()
 	if limits == nil {
 		// There aren't any tenant limits, check the default
@@ -233,7 +237,7 @@ func (s *rateStore) anyShardingEnabled() bool {
 	return false
 }
 
-func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
+func (s *RateStoreService) aggregateByShard(ctx context.Context, streamRates map[string]map[uint64]*logproto.StreamRate) map[string]map[uint64]expiringRate {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("started to aggregate by shard")
@@ -262,7 +266,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 	return rates
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
+func (s *RateStoreService) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("started to get rates from ingesters")
@@ -285,7 +289,7 @@ func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[
 	return s.ratesPerStream(responses, len(clients))
 }
 
-func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan ingesterClient, responses chan *logproto.StreamRatesResponse) {
+func (s *RateStoreService) getRatesFromIngesters(ctx context.Context, clients chan ingesterClient, responses chan *logproto.StreamRatesResponse) {
 	for c := range clients {
 		func() {
 			if s.debug {
@@ -308,7 +312,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
+func (s *RateStoreService) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
 	var maxRate int64
 	streamRates := map[string]map[uint64]*logproto.StreamRate{}
 	for i := 0; i < totalResponses; i++ {
@@ -339,7 +343,7 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 	return streamRates
 }
 
-func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
+func (s *RateStoreService) getClients(ctx context.Context) ([]ingesterClient, error) {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("ratestore started getting clients")
@@ -365,7 +369,7 @@ func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {
 	return clients, nil
 }
 
-func (s *rateStore) RateFor(tenant string, streamHash uint64) (int64, float64) {
+func (s *RateStoreService) RateFor(tenant string, streamHash uint64) (int64, float64) {
 	s.rateLock.RLock()
 	defer s.rateLock.RUnlock()
 
