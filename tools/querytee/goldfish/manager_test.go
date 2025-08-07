@@ -32,7 +32,7 @@ func (m *mockStorage) StoreComparisonResult(_ context.Context, result *goldfish.
 	return nil
 }
 
-func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ string) (*goldfish.APIResponse, error) {
+func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ goldfish.QueryFilter) (*goldfish.APIResponse, error) {
 	// This is only used for UI, not needed in manager tests
 	return &goldfish.APIResponse{
 		Queries:  []goldfish.QuerySample{},
@@ -272,4 +272,132 @@ func TestManager_Close(t *testing.T) {
 	err = manager.Close()
 	assert.NoError(t, err)
 	assert.True(t, storage.closed)
+}
+
+func TestProcessQueryPairCapturesUser(t *testing.T) {
+	tests := []struct {
+		name         string
+		queryTags    string
+		expectedUser string
+	}{
+		{
+			name:         "captures user from query tags",
+			queryTags:    "Source=grafana,user=test.user",
+			expectedUser: "test.user",
+		},
+		{
+			name:         "defaults to unknown when no user",
+			queryTags:    "Source=grafana,dashboard_id=123",
+			expectedUser: "unknown",
+		},
+		{
+			name:         "defaults to unknown when no tags",
+			queryTags:    "",
+			expectedUser: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := Config{
+				Enabled: true,
+				SamplingConfig: SamplingConfig{
+					DefaultRate: 1.0,
+				},
+			}
+
+			storage := &mockStorage{}
+			manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+
+			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
+			req.Header.Set("X-Scope-OrgID", "tenant1")
+			if tt.queryTags != "" {
+				req.Header.Set("X-Query-Tags", tt.queryTags)
+			}
+
+			cellAResp := &ResponseData{
+				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				StatusCode:    200,
+				Duration:      100 * time.Millisecond,
+				Stats:         goldfish.QueryStats{ExecTimeMs: 100},
+				Hash:          "hash123",
+				Size:          150,
+				UsedNewEngine: false,
+			}
+
+			cellBResp := &ResponseData{
+				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				StatusCode:    200,
+				Duration:      120 * time.Millisecond,
+				Stats:         goldfish.QueryStats{ExecTimeMs: 120},
+				Hash:          "hash123",
+				Size:          155,
+				UsedNewEngine: false,
+			}
+
+			ctx := context.Background()
+			manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+
+			// Give async processing time to complete
+			time.Sleep(100 * time.Millisecond)
+
+			// Verify sample was stored with correct user
+			require.Len(t, storage.samples, 1)
+			sample := storage.samples[0]
+			assert.Equal(t, tt.expectedUser, sample.User, "User field should be captured from X-Query-Tags header")
+		})
+	}
+}
+
+func TestExtractUserFromQueryTags(t *testing.T) {
+	tests := []struct {
+		name         string
+		queryTags    string
+		expectedUser string
+	}{
+		{
+			name:         "header with user",
+			queryTags:    "Source=grafana,user=john.doe",
+			expectedUser: "john.doe",
+		},
+		{
+			name:         "header without user",
+			queryTags:    "Source=grafana,dashboard_id=123",
+			expectedUser: "unknown",
+		},
+		{
+			name:         "empty header",
+			queryTags:    "",
+			expectedUser: "unknown",
+		},
+		{
+			name:         "header with user in different position",
+			queryTags:    "dashboard_id=123,user=jane.smith,panel_id=456",
+			expectedUser: "jane.smith",
+		},
+		{
+			name:         "header with user containing special characters",
+			queryTags:    "Source=grafana,user=john.doe@example.com",
+			expectedUser: "john.doe@example.com",
+		},
+		{
+			name:         "header with malformed user tag (spaces around equals)",
+			queryTags:    "Source=grafana,user = test.user",
+			expectedUser: "unknown", // httpreq.TagsToKeyValues ignores malformed tags
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			if tt.queryTags != "" {
+				req.Header.Set("X-Query-Tags", tt.queryTags)
+			}
+
+			logger := log.NewNopLogger()
+			got := extractUserFromQueryTags(req, logger)
+			assert.Equal(t, tt.expectedUser, got)
+		})
+	}
 }

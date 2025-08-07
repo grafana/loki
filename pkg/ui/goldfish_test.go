@@ -20,13 +20,16 @@ import (
 
 // mockStorage implements the goldfish.Storage interface for testing
 type mockStorage struct {
-	queries  []goldfish.QuerySample
-	total    int
-	err      error
-	closed   bool
-	outcome  string
-	page     int
-	pageSize int
+	queries       []goldfish.QuerySample
+	total         int
+	err           error
+	closed        bool
+	outcome       string
+	tenant        string
+	user          string
+	usedNewEngine *bool
+	page          int
+	pageSize      int
 }
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample) error {
@@ -37,25 +40,69 @@ func (m *mockStorage) StoreComparisonResult(_ context.Context, _ *goldfish.Compa
 	return nil
 }
 
-func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, outcome string) (*goldfish.APIResponse, error) {
+func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, filter goldfish.QueryFilter) (*goldfish.APIResponse, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 
 	m.page = page
 	m.pageSize = pageSize
-	m.outcome = outcome
+	m.outcome = filter.Outcome
+	m.tenant = filter.Tenant
+	m.user = filter.User
+	m.usedNewEngine = filter.UsedNewEngine
 
 	// Filter queries based on outcome
 	filtered := m.queries
-	if outcome != goldfish.OutcomeAll && outcome != "" {
+	if filter.Outcome != goldfish.OutcomeAll && filter.Outcome != "" {
 		filtered = []goldfish.QuerySample{}
 		for _, q := range m.queries {
 			status := determineStatus(q)
-			if status == outcome {
+			if status == filter.Outcome {
 				filtered = append(filtered, q)
 			}
 		}
+	}
+
+	// Filter by tenant if specified
+	if filter.Tenant != "" {
+		tenantFiltered := []goldfish.QuerySample{}
+		for _, q := range filtered {
+			if q.TenantID == filter.Tenant {
+				tenantFiltered = append(tenantFiltered, q)
+			}
+		}
+		filtered = tenantFiltered
+	}
+
+	// Filter by user if specified
+	if filter.User != "" {
+		userFiltered := []goldfish.QuerySample{}
+		for _, q := range filtered {
+			if q.User == filter.User {
+				userFiltered = append(userFiltered, q)
+			}
+		}
+		filtered = userFiltered
+	}
+
+	// Filter by new engine if specified
+	if filter.UsedNewEngine != nil {
+		engineFiltered := []goldfish.QuerySample{}
+		for _, q := range filtered {
+			if *filter.UsedNewEngine {
+				// Include if either cell used new engine
+				if q.CellAUsedNewEngine || q.CellBUsedNewEngine {
+					engineFiltered = append(engineFiltered, q)
+				}
+			} else {
+				// Include only if neither cell used new engine
+				if !q.CellAUsedNewEngine && !q.CellBUsedNewEngine {
+					engineFiltered = append(engineFiltered, q)
+				}
+			}
+		}
+		filtered = engineFiltered
 	}
 
 	// Apply pagination
@@ -607,7 +654,7 @@ func TestGoldfishConfig_LogsExploreSettings(t *testing.T) {
 		}
 
 		// Get sampled queries
-		response, err := service.GetSampledQueries(1, 10, "all")
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
 
 		// Assert no error and configuration is accepted
 		require.NoError(t, err)
@@ -842,7 +889,7 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 			goldfishStorage: storage,
 		}
 
-		response, err := service.GetSampledQueries(1, 10, "all")
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config
@@ -866,7 +913,7 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 			goldfishStorage: storage,
 		}
 
-		response, err := service.GetSampledQueries(1, 10, "all")
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config
@@ -875,5 +922,191 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 		// But trace IDs should still be present
 		assert.NotNil(t, response.Queries[0].CellATraceID)
 		assert.NotNil(t, response.Queries[0].CellBTraceID)
+	})
+}
+
+
+func TestGoldfishQueriesHandler_FiltersByTenant(t *testing.T) {
+	// Create queries from multiple tenants
+	queries := []goldfish.QuerySample{
+		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("2", "tenant-b", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("3", "tenant-c", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
+		createTestQuerySample("5", "tenant-a", 200, 200, "hash3", "hash3"),
+	}
+
+	storage := &mockStorage{
+		queries: queries,
+		total:   5,
+	}
+
+	service := &Service{
+		cfg: Config{
+			Goldfish: GoldfishConfig{
+				Enable: true,
+			},
+		},
+		logger:          log.NewNopLogger(),
+		goldfishStorage: storage,
+	}
+
+	handler := service.goldfishQueriesHandler()
+
+	// Test filtering by tenant-b
+	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?tenant=tenant-b", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var response GoldfishAPIResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	// Should only return queries from tenant-b
+	assert.Len(t, response.Queries, 2)
+	for _, query := range response.Queries {
+		assert.Equal(t, "tenant-b", query.TenantID, "Expected only tenant-b queries")
+	}
+	assert.Equal(t, 2, response.Total)
+}
+
+func TestGoldfishQueriesHandler_FiltersByUser(t *testing.T) {
+	// Create queries from multiple users
+	queries := []goldfish.QuerySample{
+		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("2", "tenant-a", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
+		createTestQuerySample("5", "tenant-c", 200, 200, "hash3", "hash3"),
+	}
+	// Update users for the queries
+	queries[0].User = "alice"
+	queries[1].User = "bob"
+	queries[2].User = "alice"
+	queries[3].User = "charlie"
+	queries[4].User = "alice"
+
+	storage := &mockStorage{
+		queries: queries,
+		total:   5,
+	}
+
+	service := &Service{
+		cfg: Config{
+			Goldfish: GoldfishConfig{
+				Enable: true,
+			},
+		},
+		logger:          log.NewNopLogger(),
+		goldfishStorage: storage,
+	}
+
+	handler := service.goldfishQueriesHandler()
+
+	// Test filtering by user alice
+	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?user=alice", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var response GoldfishAPIResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	// Should only return queries from alice
+	assert.Len(t, response.Queries, 3)
+	for _, query := range response.Queries {
+		assert.Equal(t, "alice", query.User, "Expected only alice's queries")
+	}
+	assert.Equal(t, 3, response.Total)
+}
+
+func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
+	// Create queries with different engine usage
+	queries := []goldfish.QuerySample{
+		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("2", "tenant-a", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"),
+		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
+		createTestQuerySample("5", "tenant-c", 200, 200, "hash3", "hash3"),
+	}
+	// Set new engine usage
+	queries[0].CellAUsedNewEngine = true  // query 1 used new engine in cell A
+	queries[0].CellBUsedNewEngine = false
+	queries[1].CellAUsedNewEngine = false  // query 2 didn't use new engine
+	queries[1].CellBUsedNewEngine = false
+	queries[2].CellAUsedNewEngine = false  // query 3 used new engine in cell B
+	queries[2].CellBUsedNewEngine = true
+	queries[3].CellAUsedNewEngine = true   // query 4 used new engine in both cells
+	queries[3].CellBUsedNewEngine = true
+	queries[4].CellAUsedNewEngine = false  // query 5 didn't use new engine
+	queries[4].CellBUsedNewEngine = false
+
+	storage := &mockStorage{
+		queries: queries,
+		total:   5,
+	}
+
+	service := &Service{
+		cfg: Config{
+			Goldfish: GoldfishConfig{
+				Enable: true,
+			},
+		},
+		logger:          log.NewNopLogger(),
+		goldfishStorage: storage,
+	}
+
+	handler := service.goldfishQueriesHandler()
+
+	t.Run("filter new engine true", func(t *testing.T) {
+		// Test filtering by newEngine=true (queries that used new engine in at least one cell)
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=true", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var response GoldfishAPIResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Should return queries 1, 3, and 4 (used new engine in at least one cell)
+		assert.Len(t, response.Queries, 3)
+		assert.Equal(t, 3, response.Total)
+		
+		// Verify all returned queries used new engine in at least one cell
+		for _, query := range response.Queries {
+			assert.True(t, query.CellAUsedNewEngine || query.CellBUsedNewEngine, 
+				"Expected queries that used new engine in at least one cell")
+		}
+	})
+
+	t.Run("filter new engine false", func(t *testing.T) {
+		// Test filtering by newEngine=false (queries that didn't use new engine in any cell)
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=false", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var response GoldfishAPIResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Should return queries 2 and 5 (didn't use new engine in any cell)
+		assert.Len(t, response.Queries, 2)
+		assert.Equal(t, 2, response.Total)
+		
+		// Verify all returned queries didn't use new engine in any cell
+		for _, query := range response.Queries {
+			assert.False(t, query.CellAUsedNewEngine, 
+				"Expected queries that didn't use new engine in cell A")
+			assert.False(t, query.CellBUsedNewEngine, 
+				"Expected queries that didn't use new engine in cell B")
+		}
 	})
 }

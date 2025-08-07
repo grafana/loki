@@ -44,6 +44,7 @@ type SampledQuery struct {
 	// Core query identification
 	CorrelationID string `json:"correlationId" db:"correlation_id"`
 	TenantID      string `json:"tenantId" db:"tenant_id"`
+	User          string `json:"user" db:"user"`
 	Query         string `json:"query" db:"query"`
 	QueryType     string `json:"queryType" db:"query_type"`
 
@@ -85,6 +86,10 @@ type SampledQuery struct {
 	CellATraceID *string `json:"cellATraceID" db:"cell_a_trace_id"`
 	CellBTraceID *string `json:"cellBTraceID" db:"cell_b_trace_id"`
 
+	// Query engine version tracking
+	CellAUsedNewEngine bool `json:"cellAUsedNewEngine" db:"cell_a_used_new_engine"`
+	CellBUsedNewEngine bool `json:"cellBUsedNewEngine" db:"cell_b_used_new_engine"`
+
 	// Timestamps - time.Time for database scanning, formatted in JSON marshaling
 	SampledAt time.Time `json:"sampledAt" db:"sampled_at"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
@@ -118,7 +123,7 @@ type GoldfishAPIResponse struct {
 }
 
 // GetSampledQueries retrieves sampled queries from the database with pagination and outcome filtering
-func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*GoldfishAPIResponse, error) {
+func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFilter) (*GoldfishAPIResponse, error) {
 	if !s.cfg.Goldfish.Enable {
 		return nil, ErrGoldfishDisabled
 	}
@@ -128,7 +133,7 @@ func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*Goldfi
 	}
 
 	// Call the storage layer which returns QuerySample
-	resp, err := s.goldfishStorage.GetSampledQueries(context.Background(), page, pageSize, outcome)
+	resp, err := s.goldfishStorage.GetSampledQueries(context.Background(), page, pageSize, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +146,7 @@ func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*Goldfi
 			// Core identification fields
 			CorrelationID: q.CorrelationID,
 			TenantID:      q.TenantID,
+			User:          q.User,
 			Query:         q.Query,
 			QueryType:     q.QueryType,
 
@@ -182,6 +188,8 @@ func (s *Service) GetSampledQueries(page, pageSize int, outcome string) (*Goldfi
 			CellBStatusCode:   intPtr(q.CellBStatusCode),
 			CellATraceID:      strPtr(q.CellATraceID),
 			CellBTraceID:      strPtr(q.CellBTraceID),
+			CellAUsedNewEngine: q.CellAUsedNewEngine,
+			CellBUsedNewEngine: q.CellBUsedNewEngine,
 		}
 
 		// Determine comparison status based on response codes and hashes

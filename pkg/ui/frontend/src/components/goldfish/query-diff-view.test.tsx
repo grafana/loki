@@ -29,6 +29,7 @@ describe('QueryDiffView - Trace ID Display', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -155,6 +156,7 @@ describe('QueryDiffView - Trace ID Links', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -280,6 +282,7 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -367,6 +370,7 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -510,5 +514,127 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
     expect(screen.queryByText(/Cell A \(/)).not.toBeInTheDocument();
     // Cell B should have namespace
     expect(screen.getByText('Cell B (loki-ops-003)')).toBeInTheDocument();
+  });
+});
+
+describe('QueryDiffView - New Engine Badge Display', () => {
+  beforeEach(() => {
+    mockUseFeatureFlags.mockReturnValue({
+      features: {
+        goldfish: {
+          enabled: true,
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  const baseQuery: SampledQuery = {
+    correlationId: 'test-correlation-1',
+    tenantId: 'test-tenant',
+    user: 'test.user@example.com',
+    query: 'sum(rate(http_requests_total[5m]))',
+    queryType: 'instant',
+    startTime: '2024-01-01T00:00:00Z',
+    endTime: '2024-01-01T01:00:00Z',
+    stepDuration: null,
+    cellAExecTimeMs: 100,
+    cellBExecTimeMs: 120,
+    cellAQueueTimeMs: 5,
+    cellBQueueTimeMs: 6,
+    cellABytesProcessed: 1000,
+    cellBBytesProcessed: 1100,
+    cellALinesProcessed: 50,
+    cellBLinesProcessed: 55,
+    cellABytesPerSecond: 1000,
+    cellBBytesPerSecond: 1100,
+    cellALinesPerSecond: 50,
+    cellBLinesPerSecond: 55,
+    cellAEntriesReturned: 10,
+    cellBEntriesReturned: 10,
+    cellASplits: 1,
+    cellBSplits: 1,
+    cellAShards: 2,
+    cellBShards: 2,
+    cellAResponseHash: 'hash-a',
+    cellBResponseHash: 'hash-a',
+    cellAResponseSize: 500,
+    cellBResponseSize: 550,
+    cellAStatusCode: 200,
+    cellBStatusCode: 200,
+    cellATraceID: null,
+    cellBTraceID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
+    sampledAt: '2024-01-01T00:00:00Z',
+    createdAt: '2024-01-01T00:00:00Z',
+    comparisonStatus: 'match',
+  };
+
+  it('displays new engine badge when either cell used new engine', () => {
+    // Test case 1: Both cells using new engine
+    const bothNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: true,
+    };
+    const { rerender } = render(<QueryDiffView query={bothNewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 2: Only cell A using new engine
+    const onlyANewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: false,
+    };
+    rerender(<QueryDiffView query={onlyANewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 3: Only cell B using new engine
+    const onlyBNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: true,
+    };
+    rerender(<QueryDiffView query={onlyBNewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 4: Neither cell using new engine
+    const neitherNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
+    };
+    rerender(<QueryDiffView query={neitherNewEngine} />);
+    expect(screen.queryByText('New Engine')).not.toBeInTheDocument();
+  });
+
+  it('displays engine details for each cell in expanded view', async () => {
+    const user = userEvent.setup();
+    const queryWithEngineInfo: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: false,
+    };
+
+    const { container } = render(<QueryDiffView query={queryWithEngineInfo} />);
+
+    // Expand the collapsible content to see the engine details
+    const trigger = container.querySelector('[type="button"]');
+    if (trigger) await user.click(trigger);
+
+    // Find the query engine section and verify both cells show their engine status
+    expect(screen.getByText('Query Engine')).toBeInTheDocument();
+    
+    // Look for the engine status text in the expanded view
+    // Cell A should show "New Engine"
+    const engineSections = screen.getAllByText(/Engine/);
+    const textContent = container.textContent || '';
+    
+    // Verify that we can see indications of new engine for Cell A
+    expect(textContent).toContain('New Engine');
+    // Verify that we can see indications of legacy engine for Cell B
+    expect(textContent).toContain('Legacy Engine');
   });
 });
