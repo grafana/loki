@@ -13,7 +13,23 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-- [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
+## 6.35.1
+
+- [BUGFIX] Removing deprecated admin_api_directory to avoid config crash. [#18731](https://github.com/grafana/loki/pull/18731)
+- [BUGFIX] Fix incorrect context references in storage configuration templates for alibabacloud, swift, bos, and cos storage types. [#18740](https://github.com/grafana/loki/pull/18740)
+- [BUGFIX] only validate the ruler key exists under loki.storage.bucketNames when an object storage bucket is being used [#18665](https://github.com/grafana/loki/pull/18665)
+
+## 6.35.0
+
+- [CHANGE] Add `tpl()` support for `pattern_ingester`, `ingester_client` and `compactor_grpc_client` components. [#16759](https://github.com/grafana/loki/pull/16759)
+- [CHANGE] Common Config : Use grpc for contacting the compactor in distributed deployment, rather than http. The compactor_grpc_address parameter replaces the compactor_address in the default commonConfig section of values.yaml. If the compactor_address parameter is set, the compactor_grpc_address must be set to an empty string. Careful, the loki.compactorAddress helper now returns the address of the compactor in grpc format rather than http. [#17454](https://github.com/grafana/loki/pull/17454)
+- [FEATURE] Expose all storage configuration properties [#18509](https://github.com/grafana/loki/pull/18509)
+- [FEATURE] Added a Helm Chart value to disable the rbac resource creation for the tokengen job. [#15882](https://github.com/grafana/loki/pull/15882)
+- [FEATURE] Add readiness and liveness probes for the all memcached components. [#18525](https://github.com/grafana/loki/pull/18525)
+- [FEATURE] Add missing revisionHistoryLimit. [#18638](https://github.com/grafana/loki/pull/18638)
+- [ENHANCEMENT] Refactor loki health probes so `.Values.loki.livenessProbe` and `.Values.loki.startupProbe` can be unset with `{}` [#18575](https://github.com/grafana/loki/pull/18575)
+- [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
+- [BUGFIX] Add comments, clarifying ruler setup. [#18607](https://github.com/grafana/loki/pull/18607)
 
 ## 6.34.0
 
@@ -28,12 +44,15 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
 - [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
+
 ## 6.33.0
 
 - [FEATURE] Allow passing tenant password hash instead of password. [#17049](https://github.com/grafana/loki/pull/17049)
+- [FEATURE] Added support for chunk-cache-l2 [#17556](https://github.com/grafana/loki/pull/17556)
 - [ENHANCEMENT] Add possibility to configure location snippet in nginx config [#18105](https://github.com/grafana/loki/pull/18105)
 - [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
 - [ENHANCEMENT] Add FOLDER_ANNOTATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
+- [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
 - [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 - [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
 - [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)

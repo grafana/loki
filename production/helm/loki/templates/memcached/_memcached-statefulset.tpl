@@ -5,7 +5,7 @@ Params:
   memcacheConfig = cache config
   valuesSection = name of the section in values.yaml
   component = name of the component
-valuesSection and component are specified separately because helm prefers camelcase for naming convetion and k8s components are named with snake case.
+valuesSection and component are specified separately because helm prefers camelcase for naming convention and k8s components are named with snake case.
 */}}
 {{- define "loki.memcached.statefulSet" -}}
 {{ with $.memcacheConfig }}
@@ -32,7 +32,6 @@ spec:
   updateStrategy:
     {{- toYaml .statefulStrategy | nindent 4 }}
   serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}
-
   template:
     metadata:
       labels:
@@ -52,7 +51,6 @@ spec:
         {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-
     spec:
       serviceAccountName: {{ template "loki.serviceAccountName" $.ctx }}
       {{- if .priorityClassName }}
@@ -125,10 +123,6 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
-          {{- with $.ctx.Values.memcached.readinessProbe }}
-          readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
@@ -138,6 +132,14 @@ spec:
           {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
+          {{- end }}
+          {{- with $.ctx.Values.memcached.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcached.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
@@ -159,6 +161,14 @@ spec:
             {{- toYaml $.ctx.Values.memcachedExporter.resources | nindent 12 }}
           securityContext:
             {{- toYaml $.ctx.Values.memcachedExporter.containerSecurityContext | nindent 12 }}
+          {{- with $.ctx.Values.memcachedExporter.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcachedExporter.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .extraVolumeMounts }}
           volumeMounts:
             {{- toYaml .extraVolumeMounts | nindent 12 }}

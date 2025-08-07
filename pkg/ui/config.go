@@ -14,13 +14,18 @@ import (
 )
 
 type GoldfishConfig struct {
-	Enable           bool   `yaml:"enable"`            // Whether to enable the Goldfish query comparison feature.
-	CloudSQLUser     string `yaml:"cloudsql_user"`     // CloudSQL username
-	CloudSQLHost     string `yaml:"cloudsql_host"`     // CloudSQL host
-	CloudSQLPort     int    `yaml:"cloudsql_port"`     // CloudSQL port
-	CloudSQLDatabase string `yaml:"cloudsql_database"` // CloudSQL database name
-	MaxConnections   int    `yaml:"max_connections"`   // Maximum number of database connections
-	MaxIdleTime      int    `yaml:"max_idle_time"`     // Maximum idle time for connections in seconds
+	Enable              bool   `yaml:"enable"`                // Whether to enable the Goldfish query comparison feature.
+	CloudSQLUser        string `yaml:"cloudsql_user"`         // CloudSQL username
+	CloudSQLHost        string `yaml:"cloudsql_host"`         // CloudSQL host
+	CloudSQLPort        int    `yaml:"cloudsql_port"`         // CloudSQL port
+	CloudSQLDatabase    string `yaml:"cloudsql_database"`     // CloudSQL database name
+	MaxConnections      int    `yaml:"max_connections"`       // Maximum number of database connections
+	MaxIdleTime         int    `yaml:"max_idle_time"`         // Maximum idle time for connections in seconds
+	GrafanaURL          string `yaml:"grafana_url"`           // Base URL of Grafana instance for explore links
+	TracesDatasourceUID string `yaml:"traces_datasource_uid"` // UID of the traces datasource in Grafana
+	LogsDatasourceUID   string `yaml:"logs_datasource_uid"`   // UID of the Loki datasource in Grafana
+	CellANamespace      string `yaml:"cell_a_namespace"`      // Namespace for Cell A logs
+	CellBNamespace      string `yaml:"cell_b_namespace"`      // Namespace for Cell B logs
 }
 
 type Config struct {
@@ -71,6 +76,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Goldfish.CloudSQLDatabase, "ui.goldfish.cloudsql-database", "goldfish", "CloudSQL database name for Goldfish.")
 	f.IntVar(&cfg.Goldfish.MaxConnections, "ui.goldfish.max-connections", 10, "Maximum number of database connections for Goldfish.")
 	f.IntVar(&cfg.Goldfish.MaxIdleTime, "ui.goldfish.max-idle-time", 300, "Maximum idle time for database connections in seconds.")
+	f.StringVar(&cfg.Goldfish.GrafanaURL, "ui.goldfish.grafana-url", "", "Base URL of Grafana instance for explore links.")
+	f.StringVar(&cfg.Goldfish.TracesDatasourceUID, "ui.goldfish.traces-datasource-uid", "", "UID of the traces datasource in Grafana.")
+	f.StringVar(&cfg.Goldfish.LogsDatasourceUID, "ui.goldfish.logs-datasource-uid", "", "UID of the Loki datasource in Grafana.")
+	f.StringVar(&cfg.Goldfish.CellANamespace, "ui.goldfish.cell-a-namespace", "", "Namespace for Cell A logs.")
+	f.StringVar(&cfg.Goldfish.CellBNamespace, "ui.goldfish.cell-b-namespace", "", "Namespace for Cell B logs.")
 }
 
 func (cfg Config) Validate() error {

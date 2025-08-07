@@ -41,7 +41,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^4.0.0",
     "lodash": "^4.17.21",
-    "lucide-react": "^0.534.0",
+    "lucide-react": "^0.536.0",
     "next-themes": "^0.4.4",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.0.0",
@@ -58,6 +58,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@swc/core": "^1.13.3",
     "@swc/jest": "^0.2.39",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.0",

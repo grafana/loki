@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"slices"
@@ -77,17 +76,16 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	err := b.builder.Append(stream)
 	require.NoError(b.t, err)
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
+	require.NoError(b.t, err)
+	defer closer.Close()
+
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	path, err := b.uploader.Upload(context.Background(), buf)
+	err = b.meta.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
-
-	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
-	require.NoError(b.t, err)
-
-	b.builder.Reset()
 }
 
 func TestStreamIDs(t *testing.T) {
@@ -274,21 +272,23 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := builder.Flush(buf)
+	minTime, maxTime := builder.TimeRange()
+
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
 
 	bucket := objstore.NewInMemBucket()
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	path, err := uploader.Upload(context.Background(), buf)
+	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
 	metastoreUpdater := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
 
-	err = metastoreUpdater.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	err = metastoreUpdater.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(t, err)
 
 	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())

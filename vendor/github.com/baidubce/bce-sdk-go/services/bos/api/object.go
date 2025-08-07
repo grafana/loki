@@ -148,21 +148,29 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 		return "", nil, resp.ServiceError()
 	}
 	defer func() { resp.Body().Close() }()
-	headers := resp.Headers()
+
+	//get header
 	jsonBody := &PutObjectResult{}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		jsonBody.ContentCrc32 = val
+	getOptions := []GetOption{
+		getHeader(http.BCE_VERSION_ID, &jsonBody.VersionId),
+		getHeader(http.BCE_STORAGE_CLASS, &jsonBody.StorageClass),
+		getHeader(http.BCE_CONTENT_CRC32, &jsonBody.ContentCrc32),
+		getHeader(http.BCE_CONTENT_CRC32C, &jsonBody.ContentCrc32c),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &jsonBody.ServerSideEncryption),
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		jsonBody.ContentCrc32c = val
-		if args != nil && args.ContentCrc32cFlag && body.Writer() != nil {
-			localCrc32c := strconv.FormatUint(uint64(body.Crc32()), 10)
-			if localCrc32c != val {
-				errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, localCrc32c, val)
-				return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, bce.NewBceClientError(errMsg)
-			}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return "", nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+
+	// end-to-end check crc32c
+	if args != nil && args.ContentCrc32cFlag && body.Writer() != nil {
+		localCrc32c := strconv.FormatUint(uint64(body.Crc32()), 10)
+		if localCrc32c != jsonBody.ContentCrc32c {
+			errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, localCrc32c, jsonBody.ContentCrc32c)
+			return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, bce.NewBceClientError(errMsg)
 		}
 	}
+
 	if NeedReturnCallback {
 		if err := resp.ParseJsonBody(jsonBody); err != nil {
 			return "", nil, err

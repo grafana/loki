@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"os"
@@ -560,16 +559,17 @@ func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
 }
 
 func (b *testDataBuilder) flush() {
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
+	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := b.uploader.Upload(context.Background(), buf)
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	err = b.meta.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
