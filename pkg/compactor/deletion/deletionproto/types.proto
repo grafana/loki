@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package deletionproto;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto";
+
+message DeleteRequest {
+  string requestID = 1 [(gogoproto.jsontag) = "request_id"];
+  int64 startTime = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "start_time"
+  ];
+  int64 endTime = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "end_time"
+  ];
+  string query = 4 [(gogoproto.jsontag) = "query"];
+  string status = 5 [
+    (gogoproto.customtype) = "DeleteRequestStatus",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "status"
+  ];
+  int64 createdAt = 6 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "created_at"
+  ];
+  string userID = 7 [(gogoproto.jsontag) = "user_id"];
+  int64 sequenceNum = 8 [(gogoproto.jsontag) = "-"];
+}
+
