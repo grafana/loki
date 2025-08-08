@@ -11,6 +11,8 @@ query-scheduler common labels
 {{- define "loki.querySchedulerLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: query-scheduler
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
