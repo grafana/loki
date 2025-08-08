@@ -23,6 +23,15 @@ func Test_sectionScratchStore(t *testing.T) {
 			return store
 		})
 	})
+
+	t.Run("impl=observableScratchStore", func(t *testing.T) {
+		testScratchStore(t, func() sectionScratchStore {
+			return newObservableScratchStore(
+				newBuilderMetrics(),
+				newMemoryScratchStore(),
+			)
+		})
+	})
 }
 
 func testScratchStore(t *testing.T, makeStore func() sectionScratchStore) {

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -311,4 +312,92 @@ func (store *diskScratchStore) Remove(handle sectionHandle) error {
 	delete(store.metadataFiles, handle)
 
 	return nil
+}
+
+type observableScratchStore struct {
+	metrics *builderMetrics
+	inner   sectionScratchStore
+
+	handles map[sectionHandle]sectionInfo
+}
+
+func newObservableScratchStore(metrics *builderMetrics, inner sectionScratchStore) *observableScratchStore {
+	return &observableScratchStore{
+		inner:   inner,
+		metrics: metrics,
+		handles: make(map[sectionHandle]sectionInfo),
+	}
+}
+
+func (store *observableScratchStore) Put(typ SectionType, data, metadata []byte) sectionHandle {
+	start := time.Now()
+	result := store.inner.Put(typ, data, metadata)
+	duration := time.Since(start)
+
+	store.handles[result] = sectionInfo{
+		Type:         typ,
+		DataSize:     len(data),
+		MetadataSize: len(metadata),
+	}
+
+	store.metrics.scratchStoreSections.Add(1)
+	store.metrics.scratchStoreBytes.WithLabelValues("data").Add(float64(len(data)))
+	store.metrics.scratchStoreBytes.WithLabelValues("metadata").Add(float64(len(metadata)))
+	store.metrics.scratchStoreRequestsSeconds.WithLabelValues("Put", "success").Observe(duration.Seconds())
+	return result
+}
+
+func (store *observableScratchStore) Info(handle sectionHandle) (sectionInfo, error) {
+	start := time.Now()
+	info, err := store.inner.Info(handle)
+	duration := time.Since(start)
+
+	store.metrics.scratchStoreRequestsSeconds.WithLabelValues("Info", errorToResult(err)).Observe(duration.Seconds())
+
+	return info, err
+}
+
+func errorToResult(err error) string {
+	if err == nil {
+		return "success"
+	}
+	return "failure"
+}
+
+func (store *observableScratchStore) ReadData(handle sectionHandle) (io.ReadSeekCloser, error) {
+	start := time.Now()
+	reader, err := store.inner.ReadData(handle)
+	duration := time.Since(start)
+
+	store.metrics.scratchStoreRequestsSeconds.WithLabelValues("ReadData", errorToResult(err)).Observe(duration.Seconds())
+
+	return reader, err
+}
+
+func (store *observableScratchStore) ReadMetadata(handle sectionHandle) (io.ReadSeekCloser, error) {
+	start := time.Now()
+	reader, err := store.inner.ReadMetadata(handle)
+	duration := time.Since(start)
+
+	store.metrics.scratchStoreRequestsSeconds.WithLabelValues("ReadMetadata", errorToResult(err)).Observe(duration.Seconds())
+
+	return reader, err
+}
+
+func (store *observableScratchStore) Remove(handle sectionHandle) error {
+	start := time.Now()
+	err := store.inner.Remove(handle)
+	duration := time.Since(start)
+
+	if info, ok := store.handles[handle]; ok {
+		store.metrics.scratchStoreSections.Sub(1)
+		store.metrics.scratchStoreBytes.WithLabelValues("data").Sub(float64(info.DataSize))
+		store.metrics.scratchStoreBytes.WithLabelValues("metadata").Sub(float64(info.MetadataSize))
+
+		delete(store.handles, handle)
+	}
+
+	store.metrics.scratchStoreRequestsSeconds.WithLabelValues("Remove", errorToResult(err)).Observe(duration.Seconds())
+
+	return err
 }

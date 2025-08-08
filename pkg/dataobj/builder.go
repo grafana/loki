@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // A Builder builds data objects from a set of incoming log data. Log data is
@@ -14,6 +15,7 @@ import (
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronizing calls.
 type Builder struct {
+	metrics *builderMetrics
 	encoder *encoder
 }
 
@@ -47,7 +49,13 @@ func NewBuilder(logger log.Logger, sectionScratchPath string) (*Builder, error) 
 		return nil, fmt.Errorf("failed to create section scratch store: %w", err)
 	}
 
-	return &Builder{encoder: newEncoder(sectionScratchStore)}, nil
+	metrics := newBuilderMetrics()
+	sectionScratchStore = newObservableScratchStore(metrics, sectionScratchStore)
+
+	return &Builder{
+		metrics: metrics,
+		encoder: newEncoder(sectionScratchStore),
+	}, nil
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.
@@ -113,4 +121,17 @@ func (b *Builder) Flush() (*Object, io.Closer, error) {
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
 	b.encoder.Reset()
+}
+
+// RegisterMetrics registers metrics about builder to report to reg.
+//
+// If multiple Builders are running in the same process, reg must contain
+// additional labels to differentiate between them.
+func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
+	return b.metrics.Register(reg)
+}
+
+// UnregisterMetrics unregisters metrics about builder from reg.
+func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
+	b.metrics.Unregister(reg)
 }

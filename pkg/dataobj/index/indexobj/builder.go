@@ -440,10 +440,14 @@ func (b *Builder) Reset() {
 // If multiple Builders for the same tenant are running in the same process,
 // reg must contain additional labels to differentiate between them.
 func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
+	var errs []error
+	errs = append(errs, b.builder.RegisterMetrics(reg))
+	errs = append(errs, b.metrics.Register(reg))
+	return errors.Join(errs...)
 }
 
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
+	b.builder.UnregisterMetrics(reg)
 	b.metrics.Unregister(reg)
 }
