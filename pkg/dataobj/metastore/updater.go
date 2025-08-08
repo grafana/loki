@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 const (
@@ -58,6 +59,7 @@ type Updater struct {
 	tenantID         string
 	metrics          *metastoreMetrics
 	bucket           objstore.Bucket
+	scratchStore     scratch.Store
 	logger           log.Logger
 	backoff          *backoff.Backoff
 	buf              *bytes.Buffer
@@ -65,15 +67,16 @@ type Updater struct {
 	builderOnce sync.Once
 }
 
-func NewUpdater(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *Updater {
+func NewUpdater(cfg Config, bucket objstore.Bucket, scratchStore scratch.Store, tenantID string, logger log.Logger) *Updater {
 	metrics := newMetastoreMetrics()
 
 	return &Updater{
-		cfg:      cfg,
-		bucket:   bucket,
-		metrics:  metrics,
-		logger:   logger,
-		tenantID: tenantID,
+		cfg:          cfg,
+		bucket:       bucket,
+		scratchStore: scratchStore,
+		metrics:      metrics,
+		logger:       logger,
+		tenantID:     tenantID,
 		backoff: backoff.New(context.TODO(), backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -93,7 +96,7 @@ func (m *Updater) UnregisterMetrics(reg prometheus.Registerer) {
 func (m *Updater) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg)
+		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg, m.scratchStore)
 		if err != nil {
 			initErr = err
 			return
@@ -107,7 +110,7 @@ func (m *Updater) initBuilder() error {
 			BufferSize:              metastoreBuilderCfg.BufferSize,
 			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
 			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
-		})
+		}, m.scratchStore)
 		if err != nil {
 			initErr = err
 			return

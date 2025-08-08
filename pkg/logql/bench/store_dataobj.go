@@ -79,18 +79,18 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(metastore.Config{}, bucket, tenantID, logger)
+	meta := metastore.NewUpdater(metastore.Config{}, bucket, nil, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastore := metastore.NewUpdater(metastore.Config{}, indexWriterBucket, tenantID, logger)
+	indexMetastore := metastore.NewUpdater(metastore.Config{}, indexWriterBucket, nil, tenantID, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -216,7 +216,7 @@ func (s *DataObjStore) buildIndex() error {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create index builder: %w", err)
 	}

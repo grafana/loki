@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 type partitionProcessor struct {
@@ -36,10 +37,11 @@ type partitionProcessor struct {
 	metastoreUpdater *metastore.Updater
 
 	// Builder initialization
-	builderOnce sync.Once
-	builderCfg  logsobj.BuilderConfig
-	bucket      objstore.Bucket
-	bufPool     *sync.Pool
+	builderOnce  sync.Once
+	builderCfg   logsobj.BuilderConfig
+	bucket       objstore.Bucket
+	bufPool      *sync.Pool
+	scratchStore scratch.Store
 
 	// Idle stream handling
 	idleFlushTimeout time.Duration
@@ -70,6 +72,7 @@ func newPartitionProcessor(
 	uploaderCfg uploader.Config,
 	metastoreCfg metastore.Config,
 	bucket objstore.Bucket,
+	scratchStore scratch.Store,
 	tenantID string,
 	virtualShard int32,
 	topic string,
@@ -102,7 +105,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(metastoreCfg, bucket, tenantID, logger)
+	metastoreUpdater := metastore.NewUpdater(metastoreCfg, bucket, scratchStore, tenantID, logger)
 	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
@@ -119,6 +122,7 @@ func newPartitionProcessor(
 		reg:                  reg,
 		builderCfg:           builderCfg,
 		bucket:               bucket,
+		scratchStore:         scratchStore,
 		tenantID:             []byte(tenantID),
 		metrics:              metrics,
 		uploader:             uploader,
@@ -186,7 +190,7 @@ func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
 		// Dataobj builder
-		builder, err := logsobj.NewBuilder(p.builderCfg)
+		builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
 		if err != nil {
 			initErr = err
 			return

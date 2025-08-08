@@ -26,8 +26,14 @@ type Builder struct {
 //
 // NewBuilder returns an error if sectionScratchPath specifies an invalid path
 // on disk.
-func NewBuilder() *Builder {
-	return &Builder{encoder: newEncoder(scratch.NewMemory())}
+func NewBuilder(scratchStore scratch.Store) *Builder {
+	if scratchStore == nil {
+		scratchStore = scratch.NewMemory()
+	}
+
+	return &Builder{
+		encoder: newEncoder(scratchStore),
+	}
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.

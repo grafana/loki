@@ -2205,6 +2205,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.Cfg.DataObj.Metastore,
 		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
+		t.scratchStore,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		t.partitionRing,
 		prometheus.DefaultRegisterer,
@@ -2231,6 +2232,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 		util_log.Logger,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		store,
+		t.scratchStore,
 		prometheus.DefaultRegisterer,
 	)
 
