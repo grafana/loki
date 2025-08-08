@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
@@ -92,7 +93,7 @@ func (m *mockSeries) Chunks() []retention.Chunk {
 func TestDeletionManifestBuilder(t *testing.T) {
 	tests := []struct {
 		name           string
-		deleteRequests []DeleteRequest
+		deleteRequests []deletionproto.DeleteRequest
 		series         []struct {
 			tableName string
 			series    *mockSeries
@@ -103,7 +104,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 	}{
 		{
 			name: "single user with single segment",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    user1,
 					RequestID: req1,
@@ -126,7 +127,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 			},
 			expectedManifest: manifest{
-				Requests: []DeleteRequest{
+				Requests: []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -144,7 +145,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -164,7 +165,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 		},
 		{
 			name: "single user with multiple segments due to chunks count",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    user1,
 					RequestID: req1,
@@ -187,7 +188,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 			},
 			expectedManifest: manifest{
-				Requests: []DeleteRequest{
+				Requests: []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -205,7 +206,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -226,7 +227,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -246,7 +247,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 		},
 		{
 			name: "single user with multiple segments due to multiple tables having chunks to delete",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    user1,
 					RequestID: req1,
@@ -277,7 +278,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 			},
 			expectedManifest: manifest{
-				Requests: []DeleteRequest{
+				Requests: []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -295,7 +296,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -316,7 +317,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table2,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -336,7 +337,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 		},
 		{
 			name: "multiple users with multiple segments",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    user1,
 					RequestID: req1,
@@ -374,7 +375,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 			},
 			expectedManifest: manifest{
-				Requests: []DeleteRequest{
+				Requests: []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -399,7 +400,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -420,7 +421,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -441,7 +442,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user2,
 									RequestID: req2,
@@ -462,7 +463,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user2,
 									RequestID: req2,
@@ -482,7 +483,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests covering same chunks",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					UserID:    user1,
 					RequestID: req1,
@@ -512,7 +513,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 				},
 			},
 			expectedManifest: manifest{
-				Requests: []DeleteRequest{
+				Requests: []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -537,7 +538,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 					TableName: table1,
 					ChunksGroups: []ChunksGroup{
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -551,7 +552,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 							},
 						},
 						{
-							Requests: []DeleteRequest{
+							Requests: []deletionproto.DeleteRequest{
 								{
 									UserID:    user1,
 									RequestID: req1,
@@ -589,9 +590,12 @@ func TestDeletionManifestBuilder(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create delete request batch
-			batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-			for _, req := range tc.deleteRequests {
-				batch.addDeleteRequest(&req)
+			metrics := newDeleteRequestsManagerMetrics(nil)
+			batch := newDeleteRequestBatch(metrics)
+			for i := range tc.deleteRequests {
+				req, err := newDeleteRequest(tc.deleteRequests[i], metrics.deletedLinesTotal)
+				require.NoError(t, err)
+				batch.addDeleteRequest(req)
 			}
 
 			// Create builder
@@ -620,7 +624,7 @@ func TestDeletionManifestBuilder(t *testing.T) {
 
 			var manifest manifest
 			require.NoError(t, json.Unmarshal(manifestJSON, &manifest))
-			slices.SortFunc(manifest.Requests, func(a, b DeleteRequest) int {
+			slices.SortFunc(manifest.Requests, func(a, b deletionproto.DeleteRequest) int {
 				return strings.Compare(a.RequestID, b.RequestID)
 			})
 
@@ -663,12 +667,14 @@ func TestDeletionManifestBuilder_Errors(t *testing.T) {
 
 	// Create delete request batch
 	batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-	batch.addDeleteRequest(&DeleteRequest{
-		UserID:    user1,
-		RequestID: req1,
-		Query:     lblFooBar,
-		StartTime: 0,
-		EndTime:   100,
+	batch.addDeleteRequest(&deleteRequest{
+		DeleteRequest: deletionproto.DeleteRequest{
+			UserID:    user1,
+			RequestID: req1,
+			Query:     lblFooBar,
+			StartTime: 0,
+			EndTime:   100,
+		},
 	})
 
 	// Create builder
@@ -696,12 +702,14 @@ func TestCleanupInvalidManifest(t *testing.T) {
 
 	// Create delete request batch
 	batch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-	batch.addDeleteRequest(&DeleteRequest{
-		UserID:    user1,
-		RequestID: req1,
-		Query:     lblFooBar,
-		StartTime: 0,
-		EndTime:   100,
+	batch.addDeleteRequest(&deleteRequest{
+		DeleteRequest: deletionproto.DeleteRequest{
+			UserID:    user1,
+			RequestID: req1,
+			Query:     lblFooBar,
+			StartTime: 0,
+			EndTime:   100,
+		},
 	})
 
 	// ensure that storageHasValidManifest returns false since we have not built any manifests yet

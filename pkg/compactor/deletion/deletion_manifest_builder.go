@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -29,8 +30,8 @@ const (
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 type ChunksGroup struct {
-	Requests []DeleteRequest     `json:"requests"`
-	Chunks   map[string][]string `json:"chunks"` // mapping of series labels to a list of ChunkIDs
+	Requests []deletionproto.DeleteRequest `json:"requests"`
+	Chunks   map[string][]string           `json:"chunks"` // mapping of series labels to a list of ChunkIDs
 }
 
 // segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
@@ -51,10 +52,10 @@ type segment struct {
 //
 // Once all the segments are processed, Requests and DuplicateRequests in the manifest could be marked as processed.
 type manifest struct {
-	Requests          []DeleteRequest `json:"requests"`
-	DuplicateRequests []DeleteRequest `json:"duplicate_requests"`
-	SegmentsCount     int             `json:"segments_count"`
-	ChunksCount       int             `json:"chunks_count"`
+	Requests          []deletionproto.DeleteRequest `json:"requests"`
+	DuplicateRequests []deletionproto.DeleteRequest `json:"duplicate_requests"`
+	SegmentsCount     int                           `json:"segments_count"`
+	ChunksCount       int                           `json:"chunks_count"`
 }
 
 // deletionManifestBuilder helps with building the manifest for listing out which chunks to process for a batch of delete requests.
@@ -68,7 +69,7 @@ type deletionManifestBuilder struct {
 	currentUserID             string
 	currentTableName          string
 
-	allUserRequests    []*DeleteRequest
+	allUserRequests    []*deleteRequest
 	deletionInterval   model.Interval
 	creationTime       time.Time
 	segmentsCount      int
@@ -183,16 +184,16 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 
 		if _, ok := d.currentSegment[chunksGroupIdentifier]; !ok {
 			// Iterate through d.allUserRequests and find which bits are turned on in chunksGroupIdentifier
-			var deleteRequests []DeleteRequest
+			var deleteRequests []deletionproto.DeleteRequest
 			for i := range d.allUserRequests {
 				if chunksGroupIdentifier&(1<<i) != 0 { // Check if the i-th bit is turned on
-					deleteRequest := d.allUserRequests[i]
-					deleteRequests = append(deleteRequests, DeleteRequest{
-						RequestID: deleteRequest.RequestID,
-						Query:     deleteRequest.Query,
-						StartTime: deleteRequest.StartTime,
-						EndTime:   deleteRequest.EndTime,
-						UserID:    deleteRequest.UserID,
+					request := d.allUserRequests[i]
+					deleteRequests = append(deleteRequests, deletionproto.DeleteRequest{
+						RequestID: request.RequestID,
+						Query:     request.Query,
+						StartTime: request.StartTime,
+						EndTime:   request.EndTime,
+						UserID:    request.UserID,
 					})
 				}
 			}
@@ -223,10 +224,10 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		"total_requests", d.deleteRequestBatch.requestCount(),
 	)
 
-	var requests []DeleteRequest
+	var requests []deletionproto.DeleteRequest
 	for userID := range d.deleteRequestBatch.deleteRequestsToProcess {
 		for i := range d.deleteRequestBatch.deleteRequestsToProcess[userID].requests {
-			requests = append(requests, *d.deleteRequestBatch.deleteRequestsToProcess[userID].requests[i])
+			requests = append(requests, d.deleteRequestBatch.deleteRequestsToProcess[userID].requests[i].DeleteRequest)
 		}
 	}
 

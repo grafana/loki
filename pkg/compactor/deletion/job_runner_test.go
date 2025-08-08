@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -103,13 +104,13 @@ func TestJobRunner_Run(t *testing.T) {
 
 	for _, tc := range []struct {
 		name           string
-		deleteRequests []DeleteRequest
+		deleteRequests []deletionproto.DeleteRequest
 		expectedResult *storageUpdates
 		expectError    bool
 	}{
 		{
 			name: "delete request without line filter should fail",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-5",
 					Query:     lblFoo.String(),
@@ -121,7 +122,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request not matching any data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-1",
 					Query:     `{foo="different"} |= "test"`,
@@ -133,7 +134,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "single delete request deleting some data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-2",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -154,7 +155,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "multiple delete requests deleting data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-3",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -181,7 +182,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request with time range outside chunk time range",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-6",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -193,7 +194,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request with structured metadata filter",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-7",
 					Query:     lblFoo.String() + ` | foo="bar"`,
@@ -214,7 +215,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request with line and structured metadata filters",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` | foo="bar" |= "test"`,
@@ -235,7 +236,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -249,7 +250,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "old chunk to be de-indexed when new chunk wont belong to the current table",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -268,11 +269,6 @@ func TestJobRunner_Run(t *testing.T) {
 				chunks: map[string]storage_chunk.Chunk{
 					chunkKey(chk): chk,
 				},
-			}
-
-			// Ensure Metrics is set for each DeleteRequest
-			for i := range tc.deleteRequests {
-				tc.deleteRequests[i].TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deletedLinesTotal
 			}
 
 			// Create job runner
@@ -357,7 +353,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 		chunks: chunksMap,
 	}
 
-	deleteRequests := []DeleteRequest{
+	deleteRequests := []deletionproto.DeleteRequest{
 		{
 			// partially delete the first chunk
 			RequestID: "test-request-0",
@@ -417,11 +413,6 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 		ChunksToDeIndex: []string{
 			chunkKey(overlappingChunk), // chunk de-indexed by test-request-2
 		},
-	}
-
-	// Ensure Metrics is set for each DeleteRequest
-	for i := range deleteRequests {
-		deleteRequests[i].TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deleteRequestsProcessedTotal
 	}
 
 	// Create job runner with chunk processing concurrency of 2

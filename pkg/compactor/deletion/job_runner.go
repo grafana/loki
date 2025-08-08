@@ -94,15 +94,16 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		return nil, err
 	}
 
+	var deleteRequests []*deleteRequest
 	for i := range deletionJob.DeleteRequests {
-		req := &deletionJob.DeleteRequests[i]
-		if err := req.SetQuery(req.Query); err != nil {
+		req, err := newDeleteRequest(deletionJob.DeleteRequests[i], jr.metrics.deletedLinesTotal)
+		if err != nil {
 			return nil, err
 		}
 		if !req.logSelectorExpr.HasFilter() {
 			return nil, errors.New("deletion query does not contain filter")
 		}
-		req.TotalLinesDeletedMetric = jr.metrics.deletedLinesTotal
+		deleteRequests = append(deleteRequests, req)
 	}
 
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
@@ -126,7 +127,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 
 		// Build a chain of filters to apply on the chunk to remove data requested for deletion.
 		var filterFuncs []filter.Func
-		for _, req := range deletionJob.DeleteRequests {
+		for _, req := range deleteRequests {
 			filterFunc, err := req.FilterFunction(chks[0].Metric)
 			if err != nil {
 				return err

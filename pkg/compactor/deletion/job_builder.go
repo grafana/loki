@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"path"
 	"strconv"
 	"sync"
@@ -41,10 +42,10 @@ type StorageUpdatesIterator interface {
 }
 
 type deletionJob struct {
-	TableName      string          `json:"table_name"`
-	UserID         string          `json:"user_id"`
-	ChunkIDs       []string        `json:"chunk_ids"`
-	DeleteRequests []DeleteRequest `json:"delete_requests"`
+	TableName      string                        `json:"table_name"`
+	UserID         string                        `json:"user_id"`
+	ChunkIDs       []string                      `json:"chunk_ids"`
+	DeleteRequests []deletionproto.DeleteRequest `json:"delete_requests"`
 }
 
 type jobDetails struct {
@@ -58,7 +59,7 @@ type manifestJobs struct {
 }
 
 type ApplyStorageUpdatesFunc func(ctx context.Context, iterator StorageUpdatesIterator) error
-type markRequestsAsProcessedFunc func(requests []DeleteRequest)
+type markRequestsAsProcessedFunc func(requests []deletionproto.DeleteRequest)
 
 type JobBuilder struct {
 	deletionManifestStoreClient client.ObjectClient
