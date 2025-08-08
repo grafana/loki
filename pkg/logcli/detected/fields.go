@@ -3,7 +3,6 @@ package detected
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"slices"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ type FieldsQuery struct {
 }
 
 // DoQuery executes the query and prints out the results
-func (q *FieldsQuery) Do(c client.Client, outputMode string) {
+func (q *FieldsQuery) Do(c client.Client, outputMode string) error {
 	var resp *loghttp.DetectedFieldsResponse
 	var err error
 
@@ -42,14 +41,14 @@ func (q *FieldsQuery) Do(c client.Client, outputMode string) {
 		q.Quiet,
 	)
 	if err != nil {
-		log.Fatalf("Error doing request: %+v", err)
+		return fmt.Errorf("error doing request: %w", err)
 	}
 
 	switch outputMode {
 	case "raw":
 		out, err := json.Marshal(resp)
 		if err != nil {
-			log.Fatalf("Error marshalling response: %+v", err)
+			return fmt.Errorf("error marshalling response: %w", err)
 		}
 		fmt.Println(string(out))
 	default:
@@ -69,4 +68,5 @@ func (q *FieldsQuery) Do(c client.Client, outputMode string) {
 		slices.Sort(output)
 		fmt.Println(strings.Join(output, "\n"))
 	}
+	return nil
 }

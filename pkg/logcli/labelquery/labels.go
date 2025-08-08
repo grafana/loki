@@ -2,7 +2,6 @@ package labelquery
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
@@ -18,16 +17,19 @@ type LabelQuery struct {
 }
 
 // DoLabels prints out label results
-func (q *LabelQuery) DoLabels(c client.Client) {
-	values := q.ListLabels(c)
-
+func (q *LabelQuery) DoLabels(c client.Client) error {
+	values, err := q.ListLabels(c)
+	if err != nil {
+		return err
+	}
 	for _, value := range values {
 		fmt.Println(value)
 	}
+	return nil
 }
 
 // ListLabels returns an array of label strings
-func (q *LabelQuery) ListLabels(c client.Client) []string {
+func (q *LabelQuery) ListLabels(c client.Client) ([]string, error) {
 	var labelResponse *loghttp.LabelResponse
 	var err error
 	if len(q.LabelName) > 0 {
@@ -36,7 +38,7 @@ func (q *LabelQuery) ListLabels(c client.Client) []string {
 		labelResponse, err = c.ListLabelNames(q.Quiet, q.Start, q.End)
 	}
 	if err != nil {
-		log.Fatalf("Error doing request: %+v", err)
+		return nil, err
 	}
-	return labelResponse.Data
+	return labelResponse.Data, nil
 }
