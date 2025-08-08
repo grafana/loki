@@ -59,6 +59,14 @@ type BuilderConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// SectionScratchPath is a path on disk where completed sections are
+	// temporarily stored while the full object is still being constructed. This
+	// reduces peak memory usage of a builder to only the number of in-progress
+	// sections, rather than all encoded and in-progress sections.
+	//
+	// When specified, SectionScratchPath must be a valid directory path.
+	SectionScratchPath string `yaml:"section_scratch_path"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -73,6 +81,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
+	f.StringVar(&cfg.SectionScratchPath, prefix+"section-scratch-path", "", "The path to a scratch directory for temporary files used for accumulating pending sections waiting for object flush. If unspecified, pending sections will be kept in memory.")
 }
 
 // Validate validates the BuilderConfig.
