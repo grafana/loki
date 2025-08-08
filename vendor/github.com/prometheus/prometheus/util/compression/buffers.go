@@ -75,11 +75,11 @@ func (b *concurrentEBuffer) zstdEncBuf() *zstd.Encoder {
 
 // TODO(bwplotka): We could use pool, but putting it back into the pool needs to be
 // on the caller side, so no pool for now.
-func (*concurrentEBuffer) get() []byte {
+func (b *concurrentEBuffer) get() []byte {
 	return nil
 }
 
-func (*concurrentEBuffer) set([]byte) {}
+func (b *concurrentEBuffer) set([]byte) {}
 
 type DecodeBuffer interface {
 	zstdDecBuf() *zstd.Decoder
@@ -135,8 +135,8 @@ func (b *concurrentDBuffer) zstdDecBuf() *zstd.Decoder {
 	return b.r
 }
 
-func (*concurrentDBuffer) get() []byte {
+func (b *concurrentDBuffer) get() []byte {
 	return nil
 }
 
-func (*concurrentDBuffer) set([]byte) {}
+func (b *concurrentDBuffer) set([]byte) {}
