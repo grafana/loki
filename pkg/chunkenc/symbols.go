@@ -118,14 +118,17 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.La
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized, err := labelNamer.Build(name)
-			if err != nil {
-				return labels.EmptyLabels(), err
+			// If we have a match for the symbol name, normalize it. Otherwise keep "" as the name.
+			if name != "" {
+				normalized, err := labelNamer.Build(name)
+				if err != nil {
+					return labels.EmptyLabels(), err
+				}
+				s.mtx.Lock()
+				s.normalizedNames[symbol.Name] = normalized
+				s.mtx.Unlock()
+				name = normalized
 			}
-			s.mtx.Lock()
-			s.normalizedNames[symbol.Name] = normalized
-			s.mtx.Unlock()
-			name = normalized
 		}
 
 		buf.Add(name, s.lookup(symbol.Value))
