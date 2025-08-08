@@ -35,7 +35,7 @@ var testBuilderConfig = indexobj.BuilderConfig{
 }
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
-	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	candidate, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:    128 * 1024,
 		TargetObjectSize:  4 * 1024 * 1024,
 		TargetSectionSize: 2 * 1024 * 1024,

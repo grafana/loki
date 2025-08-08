@@ -144,7 +144,8 @@ func buildStreamsSection(t *testing.T, streamLabels []labels.Labels) *streams.Se
 		_ = streamsBuilder.Record(stream, time.Now().UTC(), 0)
 	}
 
-	objBuilder := dataobj.NewBuilder()
+	objBuilder, err := dataobj.NewBuilder(nil, "")
+	require.NoError(t, err, "failed to create dataobj builder")
 	require.NoError(t, objBuilder.Append(streamsBuilder), "failed to append streams section")
 
 	obj, closer, err := objBuilder.Flush()

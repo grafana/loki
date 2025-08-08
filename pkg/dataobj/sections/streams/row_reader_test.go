@@ -88,7 +88,8 @@ func buildStreamsSection(t *testing.T, pageSize int) *streams.Section {
 		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}
 
-	builder := dataobj.NewBuilder()
+	builder, err := dataobj.NewBuilder(nil, "")
+	require.NoError(t, err)
 	require.NoError(t, builder.Append(s))
 
 	obj, closer, err := builder.Flush()

@@ -27,9 +27,9 @@ func TestBuilder(t *testing.T) {
 		ib.Append(p.path, p.start, p.end)
 	}
 
-	b := dataobj.NewBuilder()
-	err := b.Append(ib)
+	b, err := dataobj.NewBuilder(nil, "")
 	require.NoError(t, err)
+	require.NoError(t, b.Append(ib))
 
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)

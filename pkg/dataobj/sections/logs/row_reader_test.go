@@ -49,9 +49,9 @@ func buildSection(t *testing.T) *Section {
 		Line:      []byte("test2"),
 	})
 
-	b := dataobj.NewBuilder()
-	err := b.Append(logsBuilder)
+	b, err := dataobj.NewBuilder(nil, "")
 	require.NoError(t, err)
+	require.NoError(t, b.Append(logsBuilder))
 
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)

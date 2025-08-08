@@ -3,6 +3,8 @@ package dataobj
 import (
 	"fmt"
 	"io"
+
+	"github.com/go-kit/log"
 )
 
 // A Builder builds data objects from a set of incoming log data. Log data is
@@ -17,8 +19,35 @@ type Builder struct {
 
 // A Builder accumulates data from a set of in-progress sections. A Builder can
 // be flushed into a data object by calling [Builder.Flush].
-func NewBuilder() *Builder {
-	return &Builder{encoder: newEncoder(newMemoryScratchStore())}
+//
+// If provided, completed sections will be written to sectionScratchPath to
+// reduce the peak memory usage of a builder to the peak memory usage of
+// in-progress sections.
+//
+// NewBuilder returns an error if sectionScratchPath specifies an invalid path
+// on disk.
+func NewBuilder(logger log.Logger, sectionScratchPath string) (*Builder, error) {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
+	var (
+		sectionScratchStore sectionScratchStore
+		err                 error
+	)
+	if len(sectionScratchPath) == 0 {
+		sectionScratchStore = newMemoryScratchStore()
+	} else {
+		sectionScratchStore, err = newDiskScratchStore(logger, sectionScratchPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create section scratch store: %w", err)
+	}
+
+	return &Builder{encoder: newEncoder(sectionScratchStore)}, nil
 }
 
 // Append flushes a [SectionBuilder], buffering its data and metadata into b.

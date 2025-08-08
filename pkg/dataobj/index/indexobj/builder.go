@@ -9,6 +9,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -138,7 +139,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig) (*Builder, error) {
+func NewBuilder(logger log.Logger, cfg BuilderConfig) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -151,13 +152,18 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 	metrics := newBuilderMetrics()
 	metrics.ObserveConfig(cfg)
 
+	objBuilder, err := dataobj.NewBuilder(logger, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create object builder: %w", err)
+	}
+
 	return &Builder{
 		cfg:     cfg,
 		metrics: metrics,
 
 		labelCache: labelCache,
 
-		builder:       dataobj.NewBuilder(),
+		builder:       objBuilder,
 		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
 		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
 		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),

@@ -25,7 +25,7 @@ import (
 func TestUpdater(t *testing.T) {
 	t.Run("append new top-level object to deprecated metastore v1", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := logsobj.NewBuilder(metastoreBuilderCfg)
+		builder, err := logsobj.NewBuilder(nil, metastoreBuilderCfg)
 		require.NoError(t, err)
 
 		ls := labels.New(
@@ -54,7 +54,7 @@ func TestUpdater(t *testing.T) {
 
 	t.Run("append new top-level object to new metastore v2", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		builder, err := indexobj.NewBuilder(nil, indexobj.BuilderConfig{
 			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
 			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
 			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
@@ -80,7 +80,7 @@ func TestUpdater(t *testing.T) {
 
 	t.Run("append default to new top-level metastore v1", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		builder, err := indexobj.NewBuilder(nil, indexobj.BuilderConfig{
 			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
 			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
 			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,

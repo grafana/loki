@@ -523,7 +523,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:    1024 * 1024,      // 1MB
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
