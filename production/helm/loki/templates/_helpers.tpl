@@ -21,7 +21,7 @@ Allow the release namespace to be overridden for multi-namespace deployments in 
   {{- if .Values.namespaceOverride -}}
     {{- .Values.namespaceOverride -}}
   {{- else -}}
-    {{- include "loki.namespace" . -}}
+    {{- .Release.Namespace -}}
   {{- end -}}
 {{- end -}}
 
