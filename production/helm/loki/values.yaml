@@ -471,7 +471,6 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
-      admin_api_directory: /var/loki/admin
 
     # Loki now supports using thanos storage clients for connecting to object storage backend.
     # This will become the default way to configure storage in a future releases.

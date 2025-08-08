@@ -1,7 +1,6 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -41,8 +40,12 @@ func (c *Calculator) Reset() {
 	clear(c.indexStreamIDLookup)
 }
 
-func (c *Calculator) Flush(buffer *bytes.Buffer) (indexobj.FlushStats, error) {
-	return c.indexobjBuilder.Flush(buffer)
+func (c *Calculator) TimeRange() (minTime, maxTime time.Time) {
+	return c.indexobjBuilder.TimeRange()
+}
+
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
+	return c.indexobjBuilder.Flush()
 }
 
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
