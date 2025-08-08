@@ -156,7 +156,7 @@ func marshalSampleJSON(s promql.Sample, stream *jsoniter.Stream) {
 	stream.WriteObjectEnd()
 }
 
-// unsafeMarshalFPointJSON writes `[ts, "1.234"]`.
+// marshalFPointJSON writes `[ts, "1.234"]`.
 func unsafeMarshalFPointJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	p := *((*promql.FPoint)(ptr))
 	marshalFPointJSON(p, stream)
@@ -170,7 +170,7 @@ func marshalFPointJSON(p promql.FPoint, stream *jsoniter.Stream) {
 	stream.WriteArrayEnd()
 }
 
-// unsafeMarshalHPointJSON writes `[ts, { < histogram, see jsonutil.MarshalHistogram > } ]`.
+// marshalHPointJSON writes `[ts, { < histogram, see jsonutil.MarshalHistogram > } ]`.
 func unsafeMarshalHPointJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	p := *((*promql.HPoint)(ptr))
 	marshalHPointJSON(p, stream)

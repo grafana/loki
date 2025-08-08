@@ -149,8 +149,12 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 		return nil, fmt.Errorf("error creating HTTP client: %w", err)
 	}
 
+	validationScheme, err := config.ToValidationScheme(cfg.MetricNameValidationScheme)
+	if err != nil {
+		return nil, fmt.Errorf("invalid metric name validation scheme: %w", err)
+	}
 	var escapingScheme model.EscapingScheme
-	escapingScheme, err = config.ToEscapingScheme(cfg.MetricNameEscapingScheme, cfg.MetricNameValidationScheme)
+	escapingScheme, err = config.ToEscapingScheme(cfg.MetricNameEscapingScheme, validationScheme)
 	if err != nil {
 		return nil, fmt.Errorf("invalid metric name escaping scheme, %w", err)
 	}
@@ -168,7 +172,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 		logger:               logger,
 		metrics:              metrics,
 		httpOpts:             options.HTTPClientOptions,
-		validationScheme:     cfg.MetricNameValidationScheme,
+		validationScheme:     validationScheme,
 		escapingScheme:       escapingScheme,
 	}
 	sp.newLoop = func(opts scrapeLoopOptions) loop {
@@ -321,7 +325,11 @@ func (sp *scrapePool) reload(cfg *config.ScrapeConfig) error {
 	sp.config = cfg
 	oldClient := sp.client
 	sp.client = client
-	sp.validationScheme = cfg.MetricNameValidationScheme
+	validationScheme, err := config.ToValidationScheme(cfg.MetricNameValidationScheme)
+	if err != nil {
+		return fmt.Errorf("invalid metric name validation scheme: %w", err)
+	}
+	sp.validationScheme = validationScheme
 	var escapingScheme model.EscapingScheme
 	escapingScheme, err = model.ToEscapingScheme(cfg.MetricNameEscapingScheme)
 	if err != nil {
