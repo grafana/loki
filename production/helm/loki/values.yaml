@@ -2927,7 +2927,7 @@ bloomBuilder:
   # -- Resource requests and limits for the bloom-builder
   resources: {}
   # -- Init containers to add to the bloom-builder pods
-  initContainers: [ ]
+  initContainers: []
   # -- Containers to add to the bloom-builder pods
   extraContainers: []
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
