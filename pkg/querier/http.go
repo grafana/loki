@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -61,13 +62,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, mCfg metastore.StorageConfig, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
+		engineV2: engine.New(cfg.Engine, mCfg, store, limits, reg, logger),
 		logger:   logger,
 	}
 }

@@ -95,7 +95,7 @@ func TestUpdater(t *testing.T) {
 		err = updater.Update(context.Background(), "testdata/metastore.obj", unixTime(0), unixTime(30))
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), metastorePath(tenantID, unixTime(0)))
+		reader, err := bucket.Get(context.Background(), metastorePath(tenantID, unixTime(0), ""))
 		require.NoError(t, err)
 
 		object, err := io.ReadAll(reader)
@@ -139,7 +139,7 @@ func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, obj *dat
 
 	var (
 		bucket = objstore.NewInMemBucket()
-		path   = metastorePath(tenantID, window)
+		path   = metastorePath(tenantID, window, "")
 	)
 
 	if obj != nil && obj.Size() > 0 {

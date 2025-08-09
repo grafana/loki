@@ -168,9 +168,6 @@ type EngineOpts struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
-	// CataloguePath is the path to the catalogue in the object store.
-	CataloguePath string `yaml:"-" doc:"hidden" category:"experimental"`
-
 	// DataobjScanPageCacheSize determines how many bytes of future page data
 	// should be downloaded before it's immediately needed. Used to reduce the
 	// number of roundtrips to object storage. Setting to zero disables
@@ -187,7 +184,6 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
-	f.StringVar(&opts.CataloguePath, prefix+"catalogue-path", "", "The path to the catalogue in the object store.")
 	f.Var(&opts.DataobjScanPageCacheSize, prefix+"dataobjscan-page-cache-size", "Experimental: Maximum total size of future pages for DataObjScan to download before they are needed, for roundtrip reduction to object storage. Setting to zero disables downloading future pages. Only used in the next generation query engine.")
 
 	// Log executing query by default

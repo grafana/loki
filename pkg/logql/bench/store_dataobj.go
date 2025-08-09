@@ -85,12 +85,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, logger)
+	meta := metastore.NewUpdater(metastore.Config{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastore := metastore.NewUpdater(metastore.UpdaterConfig{}, indexWriterBucket, tenantID, logger)
+	indexMetastore := metastore.NewUpdater(metastore.Config{}, indexWriterBucket, tenantID, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -126,7 +126,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(metastore.StorageConfig{}, s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -91,11 +92,14 @@ func TestIndexBuilder(t *testing.T) {
 				BufferSize:              4 * 1024 * 1024,
 				SectionStripeMergeLimit: 2,
 			},
-			EventsPerIndex:     3,
-			IndexStoragePrefix: indexPrefix,
-			EnabledTenantIDs:   []string{tenant},
+			EventsPerIndex: 3,
 		},
-		metastore.Config{},
+		metastore.Config{
+			Storage: metastore.StorageConfig{
+				IndexStoragePrefix: indexPrefix,
+				EnabledTenantIDs:   flagext.StringSliceCSV{tenant},
+			},
+		},
 		kafka.Config{},
 		log.NewNopLogger(),
 		"instance-id",

@@ -1145,21 +1145,22 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-index-builder.storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0/"]
-
-    # Experimental: A list of tenant IDs to enable index building for. If empty,
-    # all tenants will be enabled.
-    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
-    [enabled_tenant_ids: <string> | default = ""]
-
   metastore:
     updater:
       # The format to use for the metastore top-level index objects.
       # CLI flag: -dataobj-metastore.storage-format
       [storage_format: <string> | default = "v1"]
+
+    storage:
+      # Experimental: A prefix to use for storing indexes in object storage.
+      # Used to separate the metastore & index files during initial testing.
+      # CLI flag: -dataobj-metastore.index-storage-prefix
+      [index_storage_prefix: <string> | default = "index/v0/"]
+
+      # Experimental: A list of tenant IDs to enable index building for. If
+      # empty, all tenants will be enabled.
+      # CLI flag: -dataobj-metastore.enabled-tenant-ids
+      [enabled_tenant_ids: <string> | default = ""]
 
   querier:
     # Enable the dataobj querier.

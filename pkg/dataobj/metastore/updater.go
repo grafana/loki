@@ -52,7 +52,7 @@ var metastoreBuilderCfg = logsobj.BuilderConfig{
 }
 
 type Updater struct {
-	cfg              UpdaterConfig
+	cfg              Config
 	builder          *indexobj.Builder // New index pointer based builder.
 	metastoreBuilder *logsobj.Builder  // Deprecated streams based builder.
 	tenantID         string
@@ -65,7 +65,7 @@ type Updater struct {
 	builderOnce sync.Once
 }
 
-func NewUpdater(cfg UpdaterConfig, bucket objstore.Bucket, tenantID string, logger log.Logger) *Updater {
+func NewUpdater(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *Updater {
 	metrics := newMetastoreMetrics()
 
 	return &Updater{
@@ -130,7 +130,8 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp) {
+	prefix := storagePrefixFor(m.cfg.Storage, m.tenantID)
+	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp, prefix) {
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.ReadCloser, error) {
@@ -151,7 +152,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 
 				m.metastoreBuilder.Reset()
 				m.builder.Reset()
-				ty := m.cfg.StorageFormat
+				ty := m.cfg.Updater.StorageFormat
 
 				if m.buf.Len() > 0 {
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
@@ -339,5 +340,5 @@ func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		}
 	}
 
-	return m.cfg.StorageFormat, nil
+	return m.cfg.Updater.StorageFormat, nil
 }
