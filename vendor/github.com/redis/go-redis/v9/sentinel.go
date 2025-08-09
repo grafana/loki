@@ -12,9 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/rand"
+	"github.com/redis/go-redis/v9/internal/util"
 )
 
 //------------------------------------------------------------------------------
@@ -60,7 +62,24 @@ type FailoverOptions struct {
 	Protocol int
 	Username string
 	Password string
-	DB       int
+	// CredentialsProvider allows the username and password to be updated
+	// before reconnecting. It should return the current username and password.
+	CredentialsProvider func() (username string, password string)
+
+	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
+	// done to maintain API compatibility. In the future,
+	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
+	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
+	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+	DB                           int
 
 	MaxRetries      int
 	MinRetryBackoff time.Duration
@@ -107,10 +126,13 @@ func (opt *FailoverOptions) clientOptions() *Options {
 		Dialer:    opt.Dialer,
 		OnConnect: opt.OnConnect,
 
-		DB:       opt.DB,
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
+		DB:                           opt.DB,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
 
 		MaxRetries:      opt.MaxRetries,
 		MinRetryBackoff: opt.MinRetryBackoff,
@@ -187,9 +209,12 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 		Dialer:    opt.Dialer,
 		OnConnect: opt.OnConnect,
 
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
 
 		MaxRedirects: opt.MaxRetries,
 
@@ -247,6 +272,7 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 //     URL attributes (scheme, host, userinfo, resp.), query parameters using these
 //     names will be treated as unknown parameters
 //   - unknown parameter names will result in an error
+//   - use "skip_verify=true" to ignore TLS certificate validation
 //
 // Example:
 //
@@ -352,6 +378,10 @@ func setupFailoverConnParams(u *url.URL, o *FailoverOptions) (*FailoverOptions, 
 		}
 
 		o.SentinelAddrs = append(o.SentinelAddrs, net.JoinHostPort(h, p))
+	}
+
+	if o.TLSConfig != nil && q.has("skip_verify") {
+		o.TLSConfig.InsecureSkipVerify = q.bool("skip_verify")
 	}
 
 	// any parameters left?
@@ -627,10 +657,10 @@ type sentinelFailover struct {
 	onFailover func(ctx context.Context, addr string)
 	onUpdate   func(ctx context.Context)
 
-	mu          sync.RWMutex
-	_masterAddr string
-	sentinel    *SentinelClient
-	pubsub      *PubSub
+	mu         sync.RWMutex
+	masterAddr string
+	sentinel   *SentinelClient
+	pubsub     *PubSub
 }
 
 func (c *sentinelFailover) Close() error {
@@ -758,7 +788,20 @@ func (c *sentinelFailover) MasterAddr(ctx context.Context) (string, error) {
 	for err := range errCh {
 		errs = append(errs, err)
 	}
-	return "", fmt.Errorf("redis: all sentinels specified in configuration are unreachable: %w", errors.Join(errs...))
+	return "", fmt.Errorf("redis: all sentinels specified in configuration are unreachable: %s", joinErrors(errs))
+}
+
+func joinErrors(errs []error) string {
+	if len(errs) == 1 {
+		return errs[0].Error()
+	}
+
+	b := []byte(errs[0].Error())
+	for _, err := range errs[1:] {
+		b = append(b, '\n')
+		b = append(b, err.Error()...)
+	}
+	return util.BytesToString(b)
 }
 
 func (c *sentinelFailover) replicaAddrs(ctx context.Context, useDisconnected bool) ([]string, error) {
@@ -878,7 +921,7 @@ func parseReplicaAddrs(addrs []map[string]string, keepDisconnected bool) []strin
 
 func (c *sentinelFailover) trySwitchMaster(ctx context.Context, addr string) {
 	c.mu.RLock()
-	currentAddr := c._masterAddr //nolint:ifshort
+	currentAddr := c.masterAddr //nolint:ifshort
 	c.mu.RUnlock()
 
 	if addr == currentAddr {
@@ -888,10 +931,10 @@ func (c *sentinelFailover) trySwitchMaster(ctx context.Context, addr string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if addr == c._masterAddr {
+	if addr == c.masterAddr {
 		return
 	}
-	c._masterAddr = addr
+	c.masterAddr = addr
 
 	internal.Logger.Printf(ctx, "sentinel: new master=%q addr=%q",
 		c.opt.MasterName, addr)
