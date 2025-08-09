@@ -107,6 +107,8 @@ func (s *dataobjScan) initStreams() error {
 	s.streams = newStreamsView(s.opts.StreamsSection, &streamsViewOptions{
 		StreamIDs:    s.opts.StreamIDs,
 		LabelColumns: columnsToRead,
+		BatchSize:    int(s.opts.BatchSize),
+		CacheSize:    s.opts.CacheSize,
 	})
 
 	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)

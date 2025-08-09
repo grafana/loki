@@ -578,7 +578,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	var ingestionBlockedError error
 
-	func() {
+	err = func() error {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("start to validate request")
 		defer sp.AddEvent("finished to validate request")
@@ -649,7 +649,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				normalizedBuilder := labels.NewBuilder(structuredMetadata)
 
 				for _, lbl := range entry.StructuredMetadata {
-					normalized = labelNamer.Build(lbl.Name)
+					normalized, err = labelNamer.Build(lbl.Name)
+					if err != nil {
+						return err
+					}
 					if normalized != lbl.Name {
 						// Swap the name with the normalized one.
 						normalizedBuilder.Del(lbl.Name)
@@ -715,7 +718,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			maybeShardStreams(stream, lbs, pushSize)
 		}
+		return nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	var validationErr error
 	if validationErrors.Err() != nil {

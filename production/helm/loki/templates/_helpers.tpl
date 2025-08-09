@@ -228,12 +228,15 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
+type: {{ .Values.loki.storage.object_store.type | quote }}
+{{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
+{{- else if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
-type: {{ .Values.loki.storage.object_store.type | quote }}
+type: {{ .Values.loki.storage.type | quote }}
 {{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
 {{- else }}
 type: "local"
@@ -255,8 +258,8 @@ gcs:
 {{- else if eq .ctx.Values.loki.storage.type "azure" -}}
 azure:
 {{- include "loki.lokiStorageConfig.azure" (dict "ctx" .ctx.Values.loki.storage.azure "bucketName" $bucketName) | nindent 2 }}
-{{- else if eq .ctx.ctx.Values.loki.storage.type "alibabacloud" -}}
-{{- with .ctx.ctx.Values.loki.storage.alibabacloud }}
+{{- else if eq .ctx.Values.loki.storage.type "alibabacloud" -}}
+{{- with .ctx.Values.loki.storage.alibabacloud }}
 alibabacloud:
   {{- toYaml (mergeOverwrite dict
     (dict
@@ -267,19 +270,19 @@ alibabacloud:
     (omit . "bucket" "accessKeyId" "secretAccessKey")
   ) | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.ctx.Values.loki.storage.type "swift" -}}
+{{- else if eq .ctx.Values.loki.storage.type "swift" -}}
 {{- with .ctx.Values.loki.storage.swift }}
 swift:
   container_name: {{ $bucketName }}
 {{- toYaml (omit . "container_name") | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.ctx.Values.loki.storage.type "bos" -}}
+{{- else if eq .ctx.Values.loki.storage.type "bos" -}}
 {{- with .ctx.Values.loki.storage.bos }}
 bos:
   bucket_name: {{ $bucketName }}
 {{- toYaml (omit . "bucketName") | nindent 2 }}
 {{- end -}}
-{{- else if eq .ctx.ctx.Values.loki.storage.type "cos" -}}
+{{- else if eq .ctx.Values.loki.storage.type "cos" -}}
 {{- with .ctx.Values.loki.storage.cos }}
 cos:
   bucketnames: {{ $bucketName }}

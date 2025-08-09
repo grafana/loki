@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	stderrors "errors"
 	"io"
 	"strconv"
 	"sync"
@@ -171,16 +172,19 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 					return nil, errors.Wrap(err, "appending to metastore builder")
 				}
 
-				m.buf.Reset()
+				var (
+					obj    *dataobj.Object
+					closer io.Closer
+				)
 
 				switch ty {
 				case StorageFormatTypeV1:
-					_, err = m.metastoreBuilder.Flush(m.buf)
+					obj, closer, err = m.metastoreBuilder.Flush()
 					if err != nil {
 						return nil, errors.Wrap(err, "flushing metastore builder")
 					}
 				case StorageFormatTypeV2:
-					_, err = m.builder.Flush(m.buf)
+					obj, closer, err = m.builder.Flush()
 					if err != nil {
 						return nil, errors.Wrap(err, "flushing metastore builder")
 					}
@@ -188,8 +192,24 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 					return nil, errors.New("unknown metastore top-level object type")
 				}
 
+				reader, err := obj.Reader(ctx)
+				if err != nil {
+					_ = closer.Close()
+					return nil, err
+				}
+
 				encodingDuration.ObserveDuration()
-				return io.NopCloser(m.buf), nil
+				return &wrappedReadCloser{
+					rc: reader,
+					OnClose: func() error {
+						// We must close our object reader before closing the object
+						// itself.
+						var errs []error
+						errs = append(errs, reader.Close())
+						errs = append(errs, closer.Close())
+						return stderrors.Join(errs...)
+					},
+				}, nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)
@@ -204,6 +224,24 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 		m.metastoreBuilder.Reset()
 	}
 	return err
+}
+
+// wrappedReadCloser wraps an io.ReadCloser and calls OnClose when Close is
+// called. wrappedReadCloser will not close rc on Close is OnClose is defined.
+type wrappedReadCloser struct {
+	rc      io.ReadCloser
+	OnClose func() error
+}
+
+func (w *wrappedReadCloser) Read(p []byte) (int, error) {
+	return w.rc.Read(p)
+}
+
+func (w *wrappedReadCloser) Close() error {
+	if w.OnClose != nil {
+		return w.OnClose()
+	}
+	return w.rc.Close()
 }
 
 func (m *Updater) append(ty StorageFormatType, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {

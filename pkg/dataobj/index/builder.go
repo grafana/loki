@@ -76,9 +76,8 @@ type Builder struct {
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
 	// Builder initialization
-	builderCfg  indexobj.BuilderConfig
-	bucket      objstore.Bucket
-	flushBuffer *bytes.Buffer
+	builderCfg indexobj.BuilderConfig
+	bucket     objstore.Bucket
 
 	// Metrics
 	metrics *indexBuilderMetrics
@@ -137,9 +136,6 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	// Allocate a single buffer
-	flushBuffer := bytes.NewBuffer(make([]byte, int(float64(cfg.BuilderConfig.TargetObjectSize)*1.2)))
-
 	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
 	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
 	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
@@ -151,7 +147,6 @@ func NewIndexBuilder(
 		client:            eventConsumerClient,
 		logger:            logger,
 		bucket:            bucket,
-		flushBuffer:       flushBuffer,
 		downloadedObjects: downloadedObjects,
 		downloadQueue:     downloadQueue,
 		metrics:           metrics,
@@ -308,37 +303,59 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return processingErrors.Err()
 	}
 
-	p.flushBuffer.Reset()
-	stats, err := p.calculator.Flush(p.flushBuffer)
+	minTime, maxTime := p.calculator.TimeRange()
+	obj, closer, err := p.calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
 	}
+	defer closer.Close()
 
-	size := p.flushBuffer.Len()
+	key, err := ObjectKey(p.ctx, events[0].Tenant, obj)
+	if err != nil {
+		return fmt.Errorf("failed to generate object key: %w", err)
+	}
 
-	key := ObjectKey(events[0].Tenant, p.flushBuffer)
-	if err := indexStorageBucket.Upload(p.ctx, key, p.flushBuffer); err != nil {
+	reader, err := obj.Reader(p.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read object: %w", err)
+	}
+	defer reader.Close()
+
+	if err := indexStorageBucket.Upload(p.ctx, key, reader); err != nil {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
 	metastoreUpdater := metastore.NewUpdater(p.mCfg.Updater, indexStorageBucket, events[0].Tenant, p.logger)
-	if stats.MinTimestamp.IsZero() || stats.MaxTimestamp.IsZero() {
+	if minTime.IsZero() || maxTime.IsZero() {
 		return errors.New("failed to get min/max timestamps")
 	}
-	if err := metastoreUpdater.Update(p.ctx, key, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
+	if err := metastoreUpdater.Update(p.ctx, key, minTime, maxTime); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
-	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", size, "duration", time.Since(start))
+	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", obj.Size(), "duration", time.Since(start))
 	return nil
 }
 
 // ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
-func ObjectKey(tenantID string, object *bytes.Buffer) string {
-	sum := sha256.Sum224(object.Bytes())
+func ObjectKey(ctx context.Context, tenantID string, object *dataobj.Object) (string, error) {
+	h := sha256.New224()
+
+	reader, err := object.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	if _, err := io.Copy(h, reader); err != nil {
+		return "", err
+	}
+
+	var sumBytes [sha256.Size224]byte
+	sum := h.Sum(sumBytes[:])
 	sumStr := hex.EncodeToString(sum[:])
 
-	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:])
+	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:]), nil
 }
 
 func (p *Builder) commitRecords(record *kgo.Record) error {
