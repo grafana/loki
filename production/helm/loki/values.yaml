@@ -2490,7 +2490,7 @@ indexGateway:
   # -- Annotations for index-gateway service
   serviceAnnotations: {}
   # -- Service type for index-gateway service
-  serviceType: {}
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
