@@ -35,9 +35,10 @@ edit:
 	@if [ -f "Session.vim" ]; then gvim -S & else gvim -p Makefile go.mod builder.json & fi
 
 editor:
-	gofmt -l -s -w *.go
+	# gofmt -l -s -w *.go
 	go test -c -o /dev/null
 	go build -o /dev/null -v generator*.go
+	go build -o /dev/null -v genasm.go
 
 generate: download
 	mkdir -p $(DIR) || true

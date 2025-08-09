@@ -325,6 +325,7 @@ func (p *ConnPool) waitTurn(ctx context.Context) error {
 
 	start := time.Now()
 	timer := timers.Get().(*time.Timer)
+	defer timers.Put(timer)
 	timer.Reset(p.cfg.PoolTimeout)
 
 	select {
@@ -332,7 +333,6 @@ func (p *ConnPool) waitTurn(ctx context.Context) error {
 		if !timer.Stop() {
 			<-timer.C
 		}
-		timers.Put(timer)
 		return ctx.Err()
 	case p.queue <- struct{}{}:
 		p.waitDurationNs.Add(time.Since(start).Nanoseconds())
@@ -340,10 +340,8 @@ func (p *ConnPool) waitTurn(ctx context.Context) error {
 		if !timer.Stop() {
 			<-timer.C
 		}
-		timers.Put(timer)
 		return nil
 	case <-timer.C:
-		timers.Put(timer)
 		atomic.AddUint32(&p.stats.Timeouts, 1)
 		return ErrPoolTimeout
 	}
