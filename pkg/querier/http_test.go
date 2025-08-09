@@ -768,3 +768,76 @@ func TestPatternsHandlerDisabled(t *testing.T) {
 		})
 	}
 }
+
+func TestPatternsHandlerTimeRangeValidation(t *testing.T) {
+	limitsConfig := defaultLimitsTestConfig()
+	limitsConfig.MaxQueryLength = model.Duration(1 * time.Hour)
+	limits, err := validation.NewOverrides(limitsConfig, nil)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	now := time.Now()
+
+	tests := []struct {
+		name          string
+		start, end    time.Time
+		expectedError bool
+	}{
+		{
+			name:          "valid time range within limit",
+			start:         now.Add(-30 * time.Minute),
+			end:           now,
+			expectedError: false,
+		},
+		{
+			name:          "time range exceeds limit",
+			start:         now.Add(-2 * time.Hour),
+			end:           now,
+			expectedError: true,
+		},
+		{
+			name:          "exact limit should pass",
+			start:         now.Add(-1 * time.Hour),
+			end:           now,
+			expectedError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			querier := newQuerierMock()
+			if !tc.expectedError {
+				querier.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
+					Series: []*logproto.PatternSeries{},
+				}, nil)
+			}
+
+			conf := mockQuerierConfig()
+			api := &QuerierAPI{
+				cfg:      conf,
+				querier:  querier,
+				limits:   limits,
+				engineV1: nil,
+				logger:   log.NewNopLogger(),
+			}
+
+			req := &logproto.QueryPatternsRequest{
+				Query: `{service_name="test-service"}`,
+				Start: tc.start,
+				End:   tc.end,
+				Step:  time.Minute.Milliseconds(),
+			}
+
+			_, err := api.PatternsHandler(ctx, req)
+
+			if tc.expectedError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "the query time range exceeds the limit")
+			} else {
+				require.NoError(t, err)
+			}
+
+			querier.AssertExpectations(t)
+		})
+	}
+}
