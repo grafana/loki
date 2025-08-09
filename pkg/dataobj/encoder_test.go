@@ -79,7 +79,7 @@ func Test_encoder_typeRefs(t *testing.T) {
 		},
 	}
 
-	enc := newEncoder()
+	enc := newEncoder(newMemoryScratchStore())
 
 	// Test are run sequentially so we can check the behaviour of streaming types
 	// in.

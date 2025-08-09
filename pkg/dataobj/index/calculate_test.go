@@ -32,7 +32,7 @@ var testCalculatorConfig = indexobj.BuilderConfig{
 func createTestLogObject(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
 		TargetSectionSize:       1 << 21,
@@ -100,7 +100,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 
 func TestCalculator_Calculate(t *testing.T) {
 	t.Run("successful calculation", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig)
+		indexBuilder, err := indexobj.NewBuilder(nil, testCalculatorConfig)
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)

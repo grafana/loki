@@ -343,7 +343,7 @@ NULL,NULL`
 func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	t.Helper()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:          8_000,
 		TargetObjectSize:        math.MaxInt,
 		TargetSectionSize:       32_000,

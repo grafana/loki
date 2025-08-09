@@ -43,7 +43,8 @@ func buildPointersDecoder(t *testing.T, pageSize int) *Section {
 		}
 	}
 
-	builder := dataobj.NewBuilder()
+	builder, err := dataobj.NewBuilder(nil, "")
+	require.NoError(t, err)
 	require.NoError(t, builder.Append(s))
 
 	obj, closer, err := builder.Flush()

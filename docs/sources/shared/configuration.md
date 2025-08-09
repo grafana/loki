@@ -1108,6 +1108,12 @@ dataobj:
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
+      # The path to a scratch directory for temporary files used for
+      # accumulating pending sections waiting for object flush. If unspecified,
+      # pending sections will be kept in memory.
+      # CLI flag: -dataobj-consumer.section-scratch-path
+      [section_scratch_path: <string> | default = ""]
+
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
@@ -1140,6 +1146,12 @@ dataobj:
     # greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
+
+    # The path to a scratch directory for temporary files used for accumulating
+    # pending sections waiting for object flush. If unspecified, pending
+    # sections will be kept in memory.
+    # CLI flag: -dataobj-index-builder.section-scratch-path
+    [section_scratch_path: <string> | default = ""]
 
     # Experimental: The number of events to batch before building an index
     # CLI flag: -dataobj-index-builder.events-per-index

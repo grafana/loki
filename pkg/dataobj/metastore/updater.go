@@ -93,7 +93,7 @@ func (m *Updater) UnregisterMetrics(reg prometheus.Registerer) {
 func (m *Updater) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg)
+		metastoreBuilder, err := logsobj.NewBuilder(nil, metastoreBuilderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -101,7 +101,7 @@ func (m *Updater) initBuilder() error {
 		m.buf = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
 		m.metastoreBuilder = metastoreBuilder
 
-		indexBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		indexBuilder, err := indexobj.NewBuilder(nil, indexobj.BuilderConfig{
 			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
 			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
 			BufferSize:              metastoreBuilderCfg.BufferSize,
@@ -220,6 +220,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 			m.metrics.incMetastoreWrites(statusFailure)
 			m.backoff.Wait()
 		}
+
 		// Reset at the end too so we don't leave our memory hanging around between calls.
 		m.metastoreBuilder.Reset()
 	}

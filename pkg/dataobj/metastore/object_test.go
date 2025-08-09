@@ -247,7 +247,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(nil, indexobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -356,7 +356,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,      // 1MB
 		TargetObjectSize:        10 * 1024 * 1024, // 10MB
 		TargetSectionSize:       1024 * 1024,      // 1MB

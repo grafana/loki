@@ -83,7 +83,10 @@ func Test(t *testing.T) {
 }
 
 func buildObject(lt *logs.Builder) (*dataobj.Object, io.Closer, error) {
-	builder := dataobj.NewBuilder()
+	builder, err := dataobj.NewBuilder(nil, "")
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := builder.Append(lt); err != nil {
 		return nil, nil, err
 	}

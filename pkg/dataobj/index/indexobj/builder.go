@@ -9,6 +9,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,6 +59,14 @@ type BuilderConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// SectionScratchPath is a path on disk where completed sections are
+	// temporarily stored while the full object is still being constructed. This
+	// reduces peak memory usage of a builder to only the number of in-progress
+	// sections, rather than all encoded and in-progress sections.
+	//
+	// When specified, SectionScratchPath must be a valid directory path.
+	SectionScratchPath string `yaml:"section_scratch_path"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -72,6 +81,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
+	f.StringVar(&cfg.SectionScratchPath, prefix+"section-scratch-path", "", "The path to a scratch directory for temporary files used for accumulating pending sections waiting for object flush. If unspecified, pending sections will be kept in memory.")
 }
 
 // Validate validates the BuilderConfig.
@@ -138,7 +148,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig) (*Builder, error) {
+func NewBuilder(logger log.Logger, cfg BuilderConfig) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -151,13 +161,18 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 	metrics := newBuilderMetrics()
 	metrics.ObserveConfig(cfg)
 
+	objBuilder, err := dataobj.NewBuilder(logger, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create object builder: %w", err)
+	}
+
 	return &Builder{
 		cfg:     cfg,
 		metrics: metrics,
 
 		labelCache: labelCache,
 
-		builder:       dataobj.NewBuilder(),
+		builder:       objBuilder,
 		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
 		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
 		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),
@@ -425,10 +440,14 @@ func (b *Builder) Reset() {
 // If multiple Builders for the same tenant are running in the same process,
 // reg must contain additional labels to differentiate between them.
 func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
+	var errs []error
+	errs = append(errs, b.builder.RegisterMetrics(reg))
+	errs = append(errs, b.metrics.Register(reg))
+	return errors.Join(errs...)
 }
 
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
+	b.builder.UnregisterMetrics(reg)
 	b.metrics.Unregister(reg)
 }

@@ -180,7 +180,7 @@ func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
 		// Dataobj builder
-		builder, err := logsobj.NewBuilder(p.builderCfg)
+		builder, err := logsobj.NewBuilder(p.logger, p.builderCfg)
 		if err != nil {
 			initErr = err
 			return

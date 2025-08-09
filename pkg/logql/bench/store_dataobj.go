@@ -72,7 +72,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		return nil, fmt.Errorf("failed to create bucket: %w", err)
 	}
 
-	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(nil, logsobj.BuilderConfig{
 		TargetPageSize:    2 * 1024 * 1024,   // 2MB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
@@ -209,7 +209,7 @@ func (s *DataObjStore) buildIndex() error {
 		return nil
 	}
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(nil, indexobj.BuilderConfig{
 		TargetPageSize:    128 * 1024,        // 128KB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB

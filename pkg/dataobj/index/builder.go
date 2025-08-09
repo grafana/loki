@@ -126,7 +126,7 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig)
+	builder, err := indexobj.NewBuilder(logger, cfg.BuilderConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}

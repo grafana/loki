@@ -79,7 +79,10 @@ func copyLabels(in labels.Labels) labels.Labels {
 }
 
 func buildObject(st *streams.Builder) (*dataobj.Object, io.Closer, error) {
-	builder := dataobj.NewBuilder()
+	builder, err := dataobj.NewBuilder(nil, "")
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := builder.Append(st); err != nil {
 		return nil, nil, err
 	}
