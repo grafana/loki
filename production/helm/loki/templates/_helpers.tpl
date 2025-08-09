@@ -775,15 +775,15 @@ http {
   proxy_set_header Connection "upgrade";
 
   server {
-    {{- if (.Values.gateway.nginxConfig.ssl) }}
-    listen             8080 ssl;
+    {{- if .Values.gateway.nginxConfig.ssl }}
+    listen             {{ .Values.gateway.containerPort }} ssl;
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
-    listen             [::]:8080 ssl;
+    listen             [::]:{{ .Values.gateway.containerPort }} ssl;
     {{- end }}
     {{- else }}
-    listen             8080;
+    listen             {{ .Values.gateway.containerPort }};
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
-    listen             [::]:8080;
+    listen             [::]:{{ .Values.gateway.containerPort }};
     {{- end }}
     {{- end }}
 
