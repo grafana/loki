@@ -1,0 +1,15647 @@
+// Code generated for linux/amd64 by 'genasm', DO NOT EDIT.
+
+#include "textflag.h"
+
+TEXT ·Ya64l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xa64l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yabort(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xabort(SB)
+	RET
+
+TEXT ·Yabs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xabs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yaccept(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xaccept(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yaccept4(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xaccept4(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yaccess(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xaccess(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yacct(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacct(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacos(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacos(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacosf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacosf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacosh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacosh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacoshf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacoshf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacoshl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacoshl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yacosl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xacosl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yaddmntent(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xaddmntent(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yadjtime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xadjtime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yadjtimex(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xadjtimex(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yalarm(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xalarm(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yalloca(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xalloca(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yalphasort(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xalphasort(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yarch_prctl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xarch_prctl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yasctime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasctime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasctime_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xasctime_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yasin(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasin(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasinf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasinf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasinh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasinh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasinhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasinhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasinhl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasinhl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasinl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xasinl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yasprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xasprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yat_quick_exit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xat_quick_exit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatan(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatan(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatan2(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xatan2(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yatan2f(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xatan2f(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yatan2l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xatan2l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yatanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatanh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatanh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatanhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatanhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatanhl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatanhl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatanl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatanl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatexit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatexit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatof(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatof(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatoi(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatoi(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatol(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatol(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yatoll(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xatoll(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ybacktrace(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xbacktrace(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ybacktrace_symbols_fd(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xbacktrace_symbols_fd(SB)
+	RET
+
+TEXT ·Ybasename(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xbasename(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ybcmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xbcmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ybcopy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xbcopy(SB)
+	RET
+
+TEXT ·Ybind(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xbind(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ybind_textdomain_codeset(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xbind_textdomain_codeset(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ybindtextdomain(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xbindtextdomain(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ybrk(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xbrk(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ybsearch(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xbsearch(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ybtowc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xbtowc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ybzero(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xbzero(SB)
+	RET
+
+TEXT ·Yc16rtomb(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xc16rtomb(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yc32rtomb(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xc32rtomb(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycabs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcabs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycabsf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcabsf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycabsl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcabsl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycacos(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcacos(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycacosf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcacosf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycacosh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcacosh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycacoshf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcacoshf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycacoshl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcacoshl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycacosl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcacosl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycalloc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcalloc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycapget(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcapget(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycapset(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcapset(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycarg(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcarg(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycargf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcargf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycargl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcargl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycasin(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcasin(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycasinf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcasinf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycasinh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcasinh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycasinhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcasinhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycasinhl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcasinhl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycasinl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcasinl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycatan(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcatan(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycatanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcatanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycatanh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcatanh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycatanhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcatanhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycatanhl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcatanhl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycatanl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcatanl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycatclose(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcatclose(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycatgets(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xcatgets(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ycatopen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcatopen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycbrt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcbrt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycbrtf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcbrtf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycbrtl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcbrtl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yccos(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xccos(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yccosf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xccosf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yccosh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xccosh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yccoshf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xccoshf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yccoshl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xccoshl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yccosl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xccosl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yceil(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xceil(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yceilf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xceilf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yceill(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xceill(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycexp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcexp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycexpf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcexpf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycexpl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcexpl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycfgetispeed(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcfgetispeed(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycfgetospeed(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcfgetospeed(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycfmakeraw(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcfmakeraw(SB)
+	RET
+
+TEXT ·Ycfsetispeed(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcfsetispeed(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycfsetospeed(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcfsetospeed(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycfsetspeed(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcfsetspeed(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ychdir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xchdir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ychmod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xchmod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ychown(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xchown(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ychroot(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xchroot(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycimag(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcimag(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycimagf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcimagf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycimagl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcimagl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclearenv(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xclearenv(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yclearerr(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xclearerr(SB)
+	RET
+
+TEXT ·Yclearerr_unlocked(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xclearerr_unlocked(SB)
+	RET
+
+TEXT ·Yclock(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xclock(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yclock_adjtime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclock_adjtime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclock_getcpuclockid(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclock_getcpuclockid(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclock_getres(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclock_getres(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclock_gettime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclock_gettime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclock_nanosleep(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xclock_nanosleep(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yclock_settime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclock_settime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yclog(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclog(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yclogf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xclogf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yclogl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xclogl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yclose(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xclose(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yclosedir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xclosedir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycloselog(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xcloselog(SB)
+	RET
+
+TEXT ·Yconfstr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xconfstr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yconj(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xconj(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yconjf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xconjf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yconjl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xconjl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yconnect(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xconnect(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycopy_file_range(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xcopy_file_range(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ycopysign(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcopysign(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycopysignf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcopysignf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycopysignl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcopysignl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycos(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcos(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycosf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcosf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycosh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcosh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycoshf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcoshf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycoshl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcoshl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycosl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcosl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycpow(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xcpow(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ycpowf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcpowf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycpowl(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xcpowl(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ycproj(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcproj(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycprojf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcprojf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycprojl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcprojl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycreal(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcreal(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycrealf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcrealf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycreall(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcreall(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycreat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcreat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycrypt(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcrypt(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycrypt_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xcrypt_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsin(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsin(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsinf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcsinf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycsinh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsinh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsinhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcsinhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycsinhl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsinhl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsinl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsinl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsqrt(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsqrt(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ycsqrtf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcsqrtf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ycsqrtl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xcsqrtl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yctan(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xctan(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yctanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xctanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yctanh(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xctanh(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yctanhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xctanhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yctanhl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xctanhl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yctanl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xctanl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yctermid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xctermid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yctime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xctime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yctime_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xctime_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ycuserid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xcuserid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ydcgettext(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xdcgettext(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ydcngettext(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xdcngettext(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ydelete_module(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdelete_module(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydgettext(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdgettext(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydifftime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdifftime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydirfd(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xdirfd(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ydirname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xdirname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ydiv(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdiv(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydlclose(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xdlclose(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ydlerror(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xdlerror(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ydlopen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdlopen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydlsym(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdlsym(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydn_comp(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xdn_comp(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ydn_expand(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xdn_expand(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ydn_skipname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdn_skipname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydngettext(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xdngettext(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ydprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xdprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ydrand48(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xdrand48(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ydrem(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdrem(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydremf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdremf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydup(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xdup(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ydup2(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xdup2(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ydup3(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xdup3(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yduplocale(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xduplocale(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yeaccess(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xeaccess(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yecvt(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xecvt(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yencrypt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xencrypt(SB)
+	RET
+
+TEXT ·Yendgrent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendgrent(SB)
+	RET
+
+TEXT ·Yendhostent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendhostent(SB)
+	RET
+
+TEXT ·Yendmntent(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xendmntent(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yendnetent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendnetent(SB)
+	RET
+
+TEXT ·Yendprotoent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendprotoent(SB)
+	RET
+
+TEXT ·Yendpwent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendpwent(SB)
+	RET
+
+TEXT ·Yendservent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendservent(SB)
+	RET
+
+TEXT ·Yendspent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendspent(SB)
+	RET
+
+TEXT ·Yendusershell(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendusershell(SB)
+	RET
+
+TEXT ·Yendutent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendutent(SB)
+	RET
+
+TEXT ·Yendutxent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xendutxent(SB)
+	RET
+
+TEXT ·Yepoll_create(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xepoll_create(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yepoll_create1(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xepoll_create1(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yepoll_ctl(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xepoll_ctl(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yepoll_pwait(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xepoll_pwait(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yepoll_wait(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xepoll_wait(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yerand48(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerand48(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerfc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerfc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerfcf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerfcf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerfcl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerfcl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerff(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerff(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerfl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xerfl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yerr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xerr(SB)
+	RET
+
+TEXT ·Yerrx(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xerrx(SB)
+	RET
+
+TEXT ·Yether_aton(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xether_aton(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yether_aton_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xether_aton_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yether_hostton(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xether_hostton(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yether_line(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xether_line(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yether_ntoa(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xether_ntoa(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yether_ntoa_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xether_ntoa_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yether_ntohost(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xether_ntohost(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yeuidaccess(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xeuidaccess(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yeventfd(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xeventfd(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yeventfd_read(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xeventfd_read(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yeventfd_write(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xeventfd_write(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yexecl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xexecl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yexecle(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xexecle(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yexeclp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xexeclp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yexecv(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xexecv(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yexecve(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xexecve(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yexecvp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xexecvp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yexecvpe(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xexecvpe(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yexit(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexit(SB)
+	RET
+
+TEXT ·Yexp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp10(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp10(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp10f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp10f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp10l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp10l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp2(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp2(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp2f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp2f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexp2l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexp2l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexpf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexpf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexpl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexpl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexplicit_bzero(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xexplicit_bzero(SB)
+	RET
+
+TEXT ·Yexpm1(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexpm1(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexpm1f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexpm1f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yexpm1l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xexpm1l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfabs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfabs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfabsf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfabsf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfabsl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfabsl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfaccessat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfaccessat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfallocate(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfallocate(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfanotify_init(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfanotify_init(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfanotify_mark(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xfanotify_mark(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yfchdir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfchdir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfchmod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfchmod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfchmodat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfchmodat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfchown(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfchown(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfchownat(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xfchownat(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yfclose(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfclose(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfcntl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfcntl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfcntl64(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfcntl64(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfcvt(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfcvt(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfdatasync(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfdatasync(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfdim(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfdim(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfdimf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfdimf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfdiml(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfdiml(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfdopen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfdopen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfdopendir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfdopendir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfeclearexcept(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfeclearexcept(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfegetenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfegetenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfegetround(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xfegetround(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yfeof(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfeof(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfeof_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfeof_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yferaiseexcept(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xferaiseexcept(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yferror(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xferror(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yferror_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xferror_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfesetenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfesetenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfetestexcept(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfetestexcept(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfexecve(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfexecve(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfflush(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfflush(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfflush_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfflush_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yffs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xffs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yffsl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xffsl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yffsll(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xffsll(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetc_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetc_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetgrent(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetgrent(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetln(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfgetln(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfgetpos(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfgetpos(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfgetpwent(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetpwent(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgets(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfgets(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfgets_unlocked(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfgets_unlocked(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfgetwc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetwc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetwc_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfgetwc_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfgetws(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfgetws(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfgetws_unlocked(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfgetws_unlocked(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfgetxattr(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfgetxattr(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfileno(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfileno(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfileno_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfileno_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfinite(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfinite(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfinitef(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfinitef(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yflistxattr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xflistxattr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yflock(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xflock(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yflockfile(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xflockfile(SB)
+	RET
+
+TEXT ·Yfloor(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfloor(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfloorf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfloorf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfloorl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfloorl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfma(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfma(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfmal(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfmal(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfmax(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmax(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmaxf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmaxf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmaxl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmaxl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmemopen(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfmemopen(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfmin(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmin(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfminf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfminf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfminl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfminl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmodf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmodf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmodl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfmodl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfmtmsg(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xfmtmsg(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Yfnmatch(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfnmatch(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfopen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfopen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfopen64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfopen64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfopencookie(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xfopencookie(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Yfork(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xfork(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yfpathconf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfpathconf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfpurge(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfpurge(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfputc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputc_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputc_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputs_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputs_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputwc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputwc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputwc_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputwc_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputws(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputws(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfputws_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfputws_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfread(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfread(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfread_unlocked(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfread_unlocked(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfree(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfree(SB)
+	RET
+
+TEXT ·Yfreeaddrinfo(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfreeaddrinfo(SB)
+	RET
+
+TEXT ·Yfreeifaddrs(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfreeifaddrs(SB)
+	RET
+
+TEXT ·Yfreelocale(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfreelocale(SB)
+	RET
+
+TEXT ·Yfremovexattr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfremovexattr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfreopen(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfreopen(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfrexp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfrexp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfrexpf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfrexpf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfrexpl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfrexpl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfseek(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfseek(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfseeko(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfseeko(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfsetpos(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfsetpos(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfsetxattr(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xfsetxattr(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yfstat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfstat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfstat64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfstat64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfstatat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfstatat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfstatfs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfstatfs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfstatvfs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfstatvfs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfsync(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfsync(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yftell(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xftell(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yftello(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xftello(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yftime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xftime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yftok(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xftok(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yftruncate(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xftruncate(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yftruncate64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xftruncate64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yftrylockfile(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xftrylockfile(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfts64_close(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfts64_close(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfts64_open(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfts64_open(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfts64_read(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfts64_read(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfts_close(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfts_close(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yfts_open(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfts_open(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfts_read(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfts_read(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yftw(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xftw(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfunlockfile(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xfunlockfile(SB)
+	RET
+
+TEXT ·Yfutimens(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfutimens(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfutimes(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfutimes(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfutimesat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfutimesat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfwide(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xfwide(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yfwprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfwprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yfwrite(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfwrite(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfwrite_unlocked(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xfwrite_unlocked(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yfwscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xfwscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygai_strerror(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgai_strerror(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygcvt(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgcvt(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yget_avphys_pages(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xget_avphys_pages(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yget_current_dir_name(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xget_current_dir_name(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yget_nprocs(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xget_nprocs(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yget_nprocs_conf(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xget_nprocs_conf(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yget_phys_pages(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xget_phys_pages(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetaddrinfo(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xgetaddrinfo(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ygetauxval(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetauxval(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetc_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetc_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetchar(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetchar(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetchar_unlocked(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetchar_unlocked(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetcwd(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetcwd(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetdate(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetdate(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetdelim(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xgetdelim(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ygetdents(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetdents(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetdomainname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetdomainname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetdtablesize(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetdtablesize(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetegid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetegid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetentropy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetentropy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygeteuid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgeteuid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetgid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetgid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetgrent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetgrent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetgrgid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetgrgid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetgrgid_r(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetgrgid_r(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetgrnam(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetgrnam(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetgrnam_r(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetgrnam_r(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetgrouplist(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xgetgrouplist(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ygetgroups(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetgroups(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygethostbyaddr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgethostbyaddr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygethostbyaddr_r(SB),$80-80
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	MOVQ p7+56(FP), AX
+	MOVQ AX, 56(SP)
+	MOVQ p8+64(FP), AX
+	MOVQ AX, 64(SP)
+	CALL ·Xgethostbyaddr_r(SB)
+	MOVQ 72(SP), AX
+	MOVQ AX, ret+72(FP)
+	RET
+
+TEXT ·Ygethostbyname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgethostbyname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygethostbyname2(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgethostbyname2(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygethostbyname2_r(SB),$72-72
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	MOVQ p7+56(FP), AX
+	MOVQ AX, 56(SP)
+	CALL ·Xgethostbyname2_r(SB)
+	MOVQ 64(SP), AX
+	MOVQ AX, ret+64(FP)
+	RET
+
+TEXT ·Ygethostbyname_r(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xgethostbyname_r(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ygethostent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgethostent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygethostid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgethostid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygethostname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgethostname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetifaddrs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetifaddrs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetitimer(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetitimer(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetline(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetline(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetloadavg(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetloadavg(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetlogin(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetlogin(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetlogin_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetlogin_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetmntent(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetmntent(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetmntent_r(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xgetmntent_r(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ygetnameinfo(SB),$72-72
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	MOVQ p7+56(FP), AX
+	MOVQ AX, 56(SP)
+	CALL ·Xgetnameinfo(SB)
+	MOVQ 64(SP), AX
+	MOVQ AX, ret+64(FP)
+	RET
+
+TEXT ·Ygetnetbyaddr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetnetbyaddr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetnetbyname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetnetbyname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetnetent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetnetent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetopt(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetopt(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetopt_long(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetopt_long(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetopt_long_only(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetopt_long_only(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetpagesize(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetpagesize(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetpass(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetpass(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetpeername(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetpeername(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetpgid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetpgid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetpgrp(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetpgrp(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetpid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetpid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetppid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetppid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetpriority(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetpriority(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetprotobyname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetprotobyname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetprotobynumber(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetprotobynumber(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetprotoent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetprotoent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetpwent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetpwent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetpwnam(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetpwnam(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetpwnam_r(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetpwnam_r(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetpwuid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetpwuid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetpwuid_r(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetpwuid_r(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetrandom(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetrandom(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetresgid(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetresgid(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetresuid(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetresuid(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetrlimit(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetrlimit(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetrlimit64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetrlimit64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetrusage(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetrusage(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygets(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgets(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetservbyname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgetservbyname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetservbyname_r(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xgetservbyname_r(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ygetservent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetservent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetsid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetsid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetsockname(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetsockname(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygetsockopt(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xgetsockopt(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ygetspent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetspent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetsubopt(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xgetsubopt(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ygettext(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgettext(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygettimeofday(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgettimeofday(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygetuid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetuid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetusershell(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetusershell(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetutent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetutent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetutid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetutid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetutline(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetutline(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetutxent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetutxent(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetutxid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetutxid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetutxline(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetutxline(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetw(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetw(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetwc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetwc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetwc_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgetwc_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygetwchar(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetwchar(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetwchar_unlocked(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xgetwchar_unlocked(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ygetxattr(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xgetxattr(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yglob(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xglob(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yglobfree(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xglobfree(SB)
+	RET
+
+TEXT ·Ygmtime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgmtime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ygmtime_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xgmtime_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ygrantpt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xgrantpt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yhasmntopt(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xhasmntopt(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yhcreate(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xhcreate(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yhdestroy(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xhdestroy(SB)
+	RET
+
+TEXT ·Yherror(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xherror(SB)
+	RET
+
+TEXT ·Yhsearch(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xhsearch(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yhstrerror(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xhstrerror(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yhtonl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xhtonl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yhtons(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xhtons(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yhypot(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xhypot(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yhypotf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xhypotf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yhypotl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xhypotl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiconv(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xiconv(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yiconv_close(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiconv_close(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiconv_open(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiconv_open(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yif_freenameindex(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xif_freenameindex(SB)
+	RET
+
+TEXT ·Yif_indextoname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xif_indextoname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yif_nameindex(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xif_nameindex(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yif_nametoindex(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xif_nametoindex(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yilogb(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xilogb(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yilogbf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xilogbf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yilogbl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xilogbl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yimaxabs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Ximaxabs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yimaxdiv(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Ximaxdiv(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yindex(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xindex(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yinet_addr(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinet_addr(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinet_aton(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xinet_aton(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yinet_lnaof(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinet_lnaof(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinet_makeaddr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xinet_makeaddr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yinet_netof(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinet_netof(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinet_network(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinet_network(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinet_ntoa(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinet_ntoa(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinet_ntop(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xinet_ntop(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yinet_pton(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xinet_pton(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yinit_module(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xinit_module(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yinitstate(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xinitstate(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yinitstate_r(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xinitstate_r(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yinotify_add_watch(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xinotify_add_watch(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yinotify_init(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xinotify_init(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yinotify_init1(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xinotify_init1(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yinotify_rm_watch(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xinotify_rm_watch(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yinsque(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xinsque(SB)
+	RET
+
+TEXT ·Yioctl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xioctl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yioperm(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xioperm(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yiopl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiopl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisalnum(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisalnum(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisalnum_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisalnum_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisalpha(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisalpha(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisalpha_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisalpha_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisascii(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisascii(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisastream(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisastream(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisatty(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisatty(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisblank(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisblank(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisblank_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisblank_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiscntrl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiscntrl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiscntrl_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiscntrl_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisdigit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisdigit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisdigit_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisdigit_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisgraph(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisgraph(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisgraph_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisgraph_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yislower(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xislower(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yislower_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xislower_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisnan(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisnan(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisnanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisnanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisnanl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisnanl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisprint(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisprint(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisprint_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisprint_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yispunct(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xispunct(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yispunct_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xispunct_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yissetugid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xissetugid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yisspace(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisspace(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisspace_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisspace_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisupper(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisupper(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisupper_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisupper_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswalnum(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswalnum(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswalnum_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswalnum_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswalpha(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswalpha(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswalpha_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswalpha_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswblank(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswblank(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswblank_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswblank_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswcntrl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswcntrl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswcntrl_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswcntrl_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswctype(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswctype(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswctype_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xiswctype_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yiswdigit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswdigit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswdigit_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswdigit_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswgraph(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswgraph(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswgraph_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswgraph_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswlower(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswlower(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswlower_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswlower_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswprint(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswprint(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswprint_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswprint_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswpunct(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswpunct(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswpunct_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswpunct_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswspace(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswspace(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswspace_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswspace_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswupper(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswupper(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswupper_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswupper_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yiswxdigit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xiswxdigit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yiswxdigit_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xiswxdigit_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yisxdigit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xisxdigit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yisxdigit_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xisxdigit_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yj0(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xj0(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yj0f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xj0f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yj1(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xj1(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yj1f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xj1f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yjn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xjn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yjnf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xjnf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yjrand48(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xjrand48(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ykill(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xkill(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ykillpg(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xkillpg(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yklogctl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xklogctl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yl64a(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xl64a(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylabs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlabs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylchmod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlchmod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylchown(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xlchown(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ylckpwdf(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xlckpwdf(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ylcong48(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlcong48(SB)
+	RET
+
+TEXT ·Yldexp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xldexp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yldexpf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xldexpf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yldexpl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xldexpl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yldiv(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xldiv(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ylfind(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xlfind(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ylgamma(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlgamma(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylgamma_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlgamma_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylgammaf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlgammaf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylgammaf_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlgammaf_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylgammal(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlgammal(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylgammal_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlgammal_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylgetxattr(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xlgetxattr(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ylink(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlink(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylinkat(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xlinkat(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ylisten(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlisten(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylistxattr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xlistxattr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yllabs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllabs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylldiv(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlldiv(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yllistxattr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xllistxattr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yllrint(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllrint(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yllrintf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllrintf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yllrintl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllrintl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yllround(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllround(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yllroundf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllroundf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yllroundl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xllroundl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylocaleconv(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xlocaleconv(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ylocaltime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlocaltime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylocaltime_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlocaltime_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylockf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xlockf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ylog(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog10(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog10(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog10f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog10f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog10l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog10l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog1p(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog1p(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog1pf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog1pf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog1pl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog1pl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog2(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog2(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog2f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog2f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylog2l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlog2l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogb(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogb(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogbf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogbf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogbl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogbl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogin_tty(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogin_tty(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylogl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlogl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylongjmp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlongjmp(SB)
+	RET
+
+TEXT ·Ylrand48(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xlrand48(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ylremovexattr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlremovexattr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylrint(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlrint(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylrintf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlrintf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylrintl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlrintl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylround(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlround(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylroundf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlroundf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylroundl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xlroundl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ylsearch(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xlsearch(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ylseek(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xlseek(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ylseek64(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xlseek64(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ylsetxattr(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xlsetxattr(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ylstat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlstat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylstat64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlstat64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ylutimes(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xlutimes(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymadvise(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmadvise(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymalloc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmalloc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymalloc_usable_size(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmalloc_usable_size(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymblen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmblen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymbrlen(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmbrlen(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymbrtoc16(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmbrtoc16(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymbrtoc32(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmbrtoc32(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymbrtowc(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmbrtowc(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymbsinit(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmbsinit(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymbsnrtowcs(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xmbsnrtowcs(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ymbsrtowcs(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmbsrtowcs(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymbstowcs(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmbstowcs(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymbtowc(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmbtowc(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemccpy(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmemccpy(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymemchr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemchr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemcmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemcmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemcpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemcpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemfd_create(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmemfd_create(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymemmem(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmemmem(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymemmove(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemmove(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymempcpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmempcpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemrchr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemrchr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymemset(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmemset(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymincore(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmincore(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymkdir(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmkdir(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymkdirat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmkdirat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymkdtemp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmkdtemp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymkfifo(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmkfifo(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymkfifoat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmkfifoat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymknod(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmknod(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymknodat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmknodat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymkostemp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmkostemp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymkostemps(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmkostemps(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymkstemp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmkstemp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymkstemp64(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmkstemp64(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymkstemps(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmkstemps(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymkstemps64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmkstemps64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymktemp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmktemp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymktime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmktime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymlock(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmlock(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymlock2(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmlock2(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymlockall(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xmlockall(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ymmap(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xmmap(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ymmap64(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xmmap64(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ymodf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmodf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymodff(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmodff(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymodfl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmodfl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymount(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xmount(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ymprotect(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmprotect(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymrand48(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xmrand48(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ymremap(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xmremap(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ymsgctl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmsgctl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymsgget(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmsgget(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymsgrcv(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xmsgrcv(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ymsgsnd(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xmsgsnd(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ymsync(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xmsync(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ymunlock(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmunlock(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ymunlockall(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xmunlockall(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ymunmap(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xmunmap(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yname_to_handle_at(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xname_to_handle_at(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ynan(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnan(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ynanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ynanl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnanl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ynanosleep(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnanosleep(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynewlocale(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xnewlocale(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ynextafter(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnextafter(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynextafterf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnextafterf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynextafterl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnextafterl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynexttoward(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnexttoward(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynexttowardf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnexttowardf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynexttowardl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnexttowardl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynftw(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xnftw(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yngettext(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xngettext(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ynice(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnice(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ynl_langinfo(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnl_langinfo(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ynl_langinfo_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xnl_langinfo_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ynrand48(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xnrand48(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yns_get16(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xns_get16(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yns_get32(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xns_get32(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yns_initparse(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xns_initparse(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yns_name_uncompress(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xns_name_uncompress(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yns_parserr(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xns_parserr(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yns_put16(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xns_put16(SB)
+	RET
+
+TEXT ·Yns_put32(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xns_put32(SB)
+	RET
+
+TEXT ·Yns_skiprr(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xns_skiprr(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yntohl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xntohl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yntohs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xntohs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yobstack_free(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xobstack_free(SB)
+	RET
+
+TEXT ·Yobstack_vprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xobstack_vprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yopen(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xopen(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yopen64(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xopen64(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yopen_by_handle_at(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xopen_by_handle_at(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yopen_memstream(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xopen_memstream(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yopen_wmemstream(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xopen_wmemstream(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yopenat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xopenat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yopendir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xopendir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yopenlog(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xopenlog(SB)
+	RET
+
+TEXT ·Yopenpty(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xopenpty(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ypathconf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpathconf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypause(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xpause(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ypclose(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpclose(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yperror(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xperror(SB)
+	RET
+
+TEXT ·Ypersonality(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpersonality(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypipe(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpipe(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypipe2(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpipe2(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypivot_root(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpivot_root(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypoll(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xpoll(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ypopen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpopen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_close(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_close(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_fadvise(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xposix_fadvise(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yposix_fallocate(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xposix_fallocate(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yposix_madvise(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xposix_madvise(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yposix_openpt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xposix_openpt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_addchdir_np(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawn_file_actions_addchdir_np(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_addclose(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawn_file_actions_addclose(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_adddup2(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xposix_spawn_file_actions_adddup2(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_addfchdir_np(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawn_file_actions_addfchdir_np(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_addopen(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xposix_spawn_file_actions_addopen(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xposix_spawn_file_actions_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yposix_spawn_file_actions_init(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xposix_spawn_file_actions_init(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xposix_spawnattr_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getflags(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getflags(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getpgroup(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getpgroup(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getschedparam(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getschedparam(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getschedpolicy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getschedpolicy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getsigdefault(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getsigdefault(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_getsigmask(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_getsigmask(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_init(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xposix_spawnattr_init(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setflags(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setflags(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setpgroup(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setpgroup(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setschedparam(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setschedparam(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setschedpolicy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setschedpolicy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setsigdefault(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setsigdefault(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yposix_spawnattr_setsigmask(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xposix_spawnattr_setsigmask(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypow(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpow(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypow10(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpow10(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypow10f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpow10f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypow10l(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpow10l(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypowf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpowf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypowl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpowl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yppoll(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xppoll(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yprctl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xprctl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypread(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xpread(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ypreadv(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xpreadv(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ypreadv2(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xpreadv2(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yprintf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xprintf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yprlimit(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xprlimit(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yprocess_vm_readv(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xprocess_vm_readv(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Yprocess_vm_writev(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xprocess_vm_writev(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ypselect(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xpselect(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ypsiginfo(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpsiginfo(SB)
+	RET
+
+TEXT ·Ypsignal(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpsignal(SB)
+	RET
+
+TEXT ·Ypthread_atfork(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xpthread_atfork(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ypthread_attr_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_attr_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_attr_getdetachstate(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_attr_getdetachstate(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_attr_init(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_attr_init(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_attr_setdetachstate(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_attr_setdetachstate(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_attr_setscope(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_attr_setscope(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_attr_setstacksize(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_attr_setstacksize(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_cleanup_pop(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_cleanup_pop(SB)
+	RET
+
+TEXT ·Ypthread_cleanup_push(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_cleanup_push(SB)
+	RET
+
+TEXT ·Ypthread_cond_broadcast(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_cond_broadcast(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_cond_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_cond_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_cond_init(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_cond_init(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_cond_signal(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_cond_signal(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_cond_timedwait(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xpthread_cond_timedwait(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ypthread_cond_wait(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_cond_wait(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_create(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xpthread_create(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ypthread_detach(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_detach(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_equal(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_equal(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_exit(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_exit(SB)
+	RET
+
+TEXT ·Ypthread_getspecific(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_getspecific(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_join(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_join(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_key_create(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_key_create(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_key_delete(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_key_delete(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutex_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutex_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutex_init(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_mutex_init(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_mutex_lock(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutex_lock(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutex_trylock(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutex_trylock(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutex_unlock(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutex_unlock(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutexattr_destroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutexattr_destroy(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutexattr_init(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpthread_mutexattr_init(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypthread_mutexattr_settype(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_mutexattr_settype(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_self(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xpthread_self(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ypthread_setcancelstate(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_setcancelstate(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_setspecific(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xpthread_setspecific(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypthread_sigmask(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xpthread_sigmask(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yptrace(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xptrace(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yptsname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xptsname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yptsname_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xptsname_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yputc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputc_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputc_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputchar(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputchar(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputchar_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputchar_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputgrent(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputgrent(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputpwent(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputpwent(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputspent(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputspent(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ypututline(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpututline(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypututxline(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xpututxline(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputw(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputw(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputwc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputwc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputwc_unlocked(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xputwc_unlocked(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yputwchar(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputwchar(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yputwchar_unlocked(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xputwchar_unlocked(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ypwrite(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xpwrite(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ypwritev(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xpwritev(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ypwritev2(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xpwritev2(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yqsort(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xqsort(SB)
+	RET
+
+TEXT ·Yqsort_r(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xqsort_r(SB)
+	RET
+
+TEXT ·Yquick_exit(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xquick_exit(SB)
+	RET
+
+TEXT ·Yquotactl(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xquotactl(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yraise(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xraise(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrand(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xrand(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yrand_r(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrand_r(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrandom(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xrandom(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yrandom_r(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xrandom_r(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yread(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xread(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yreadahead(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xreadahead(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yreaddir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xreaddir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yreaddir64(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xreaddir64(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yreaddir_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xreaddir_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yreadlink(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xreadlink(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yreadlinkat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xreadlinkat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yreadv(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xreadv(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yrealloc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xrealloc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yreallocarray(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xreallocarray(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yrealpath(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xrealpath(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yreboot(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xreboot(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrecv(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xrecv(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yrecvfrom(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xrecvfrom(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Yrecvmmsg(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xrecvmmsg(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yrecvmsg(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xrecvmsg(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yregcomp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xregcomp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yregerror(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xregerror(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yregexec(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xregexec(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yregfree(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xregfree(SB)
+	RET
+
+TEXT ·Yremainder(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xremainder(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yremainderf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xremainderf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yremainderl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xremainderl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yremap_file_pages(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xremap_file_pages(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yremove(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xremove(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yremovexattr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xremovexattr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yremque(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xremque(SB)
+	RET
+
+TEXT ·Yremquo(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xremquo(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yremquof(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xremquof(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yremquol(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xremquol(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yrename(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xrename(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yrenameat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xrenameat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yrenameat2(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xrenameat2(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yres_init(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xres_init(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yres_mkquery(SB),$88-88
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	MOVQ p7+56(FP), AX
+	MOVQ AX, 56(SP)
+	MOVQ p8+64(FP), AX
+	MOVQ AX, 64(SP)
+	MOVQ p9+72(FP), AX
+	MOVQ AX, 72(SP)
+	CALL ·Xres_mkquery(SB)
+	MOVQ 80(SP), AX
+	MOVQ AX, ret+80(FP)
+	RET
+
+TEXT ·Yres_send(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xres_send(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yrewind(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrewind(SB)
+	RET
+
+TEXT ·Yrewinddir(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrewinddir(SB)
+	RET
+
+TEXT ·Yrindex(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xrindex(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yrint(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrint(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrintf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrintf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrintl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrintl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yrmdir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xrmdir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yround(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xround(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yroundf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xroundf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yroundl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xroundl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysbrk(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsbrk(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yscalb(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalb(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalbf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalbf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalbln(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalbln(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalblnf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalblnf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalblnl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalblnl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalbn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalbn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalbnf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalbnf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscalbnl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscalbnl(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yscandir(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xscandir(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yscanf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xscanf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysched_yield(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsched_yield(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ysecure_getenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsecure_getenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yseed48(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xseed48(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yseekdir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xseekdir(SB)
+	RET
+
+TEXT ·Yselect(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xselect(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ysemctl(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsemctl(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysemget(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsemget(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysemop(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsemop(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysemtimedop(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsemtimedop(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysend(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsend(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysendfile(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsendfile(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysendmmsg(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsendmmsg(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysendmsg(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsendmsg(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysendto(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xsendto(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ysetbuf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetbuf(SB)
+	RET
+
+TEXT ·Ysetbuffer(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsetbuffer(SB)
+	RET
+
+TEXT ·Ysetdomainname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetdomainname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetenv(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsetenv(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysetfsgid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetfsgid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetfsuid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetfsuid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetgid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetgid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetgrent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetgrent(SB)
+	RET
+
+TEXT ·Ysethostent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsethostent(SB)
+	RET
+
+TEXT ·Ysethostname(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsethostname(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetitimer(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsetitimer(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysetjmp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetjmp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetkey(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetkey(SB)
+	RET
+
+TEXT ·Ysetlinebuf(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetlinebuf(SB)
+	RET
+
+TEXT ·Ysetlocale(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetlocale(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetlogmask(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetlogmask(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetmntent(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetmntent(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetnetent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetnetent(SB)
+	RET
+
+TEXT ·Ysetns(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetns(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetpgid(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetpgid(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetpgrp(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetpgrp(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ysetpriority(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsetpriority(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysetprotoent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetprotoent(SB)
+	RET
+
+TEXT ·Ysetpwent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetpwent(SB)
+	RET
+
+TEXT ·Ysetrlimit(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetrlimit(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetrlimit64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsetrlimit64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetservent(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetservent(SB)
+	RET
+
+TEXT ·Ysetsid(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetsid(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ysetsockopt(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xsetsockopt(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ysetspent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetspent(SB)
+	RET
+
+TEXT ·Ysetstate(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetstate(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysettimeofday(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsettimeofday(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysetuid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsetuid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysetusershell(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetusershell(SB)
+	RET
+
+TEXT ·Ysetutent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetutent(SB)
+	RET
+
+TEXT ·Ysetutxent(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsetutxent(SB)
+	RET
+
+TEXT ·Ysetvbuf(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsetvbuf(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysetxattr(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xsetxattr(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Yshm_open(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xshm_open(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yshm_unlink(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xshm_unlink(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yshmat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xshmat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yshmctl(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xshmctl(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yshmdt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xshmdt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yshmget(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xshmget(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yshutdown(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xshutdown(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysigaction(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigaction(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigaddset(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigaddset(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysigaltstack(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigaltstack(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysigandset(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigandset(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigdelset(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigdelset(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysigemptyset(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsigemptyset(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigfillset(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsigfillset(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigisemptyset(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsigisemptyset(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigismember(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigismember(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysignal(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsignal(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysignalfd(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsignalfd(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysignificand(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsignificand(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysignificandf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsignificandf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigorset(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigorset(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigpending(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsigpending(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigprocmask(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigprocmask(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigqueue(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigqueue(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigsuspend(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsigsuspend(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysigtimedwait(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsigtimedwait(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysigwait(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigwait(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysigwaitinfo(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsigwaitinfo(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysin(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsin(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysincos(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsincos(SB)
+	RET
+
+TEXT ·Ysincosf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsincosf(SB)
+	RET
+
+TEXT ·Ysincosl(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsincosl(SB)
+	RET
+
+TEXT ·Ysinf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsinf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysinh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsinh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysinhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsinhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysinhl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsinhl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysinl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsinl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysleep(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsleep(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysnprintf(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsnprintf(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysockatmark(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsockatmark(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysocket(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsocket(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysocketpair(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsocketpair(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysplice(SB),$64-64
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	MOVQ p6+48(FP), AX
+	MOVQ AX, 48(SP)
+	CALL ·Xsplice(SB)
+	MOVQ 56(SP), AX
+	MOVQ AX, ret+56(FP)
+	RET
+
+TEXT ·Ysprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysqrt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsqrt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysqrtf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsqrtf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysqrtl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsqrtl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysrand(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsrand(SB)
+	RET
+
+TEXT ·Ysrand48(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsrand48(SB)
+	RET
+
+TEXT ·Ysrandom(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsrandom(SB)
+	RET
+
+TEXT ·Ysscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystat64(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstat64(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystatvfs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstatvfs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystatx(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xstatx(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ystime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xstime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ystpcpy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstpcpy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystpncpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstpncpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrcasecmp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcasecmp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcasecmp_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrcasecmp_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrcasestr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcasestr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrchr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrchr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrchrnul(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrchrnul(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcmp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcmp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcoll(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcoll(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcoll_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrcoll_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrcpy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcpy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrcspn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrcspn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrdup(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xstrdup(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ystrerror(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xstrerror(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ystrerror_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrerror_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrerror_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrerror_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrfmon(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xstrfmon(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ystrfmon_l(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xstrfmon_l(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ystrftime(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xstrftime(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ystrftime_l(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xstrftime_l(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ystrlcat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrlcat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrlcpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrlcpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrlen(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xstrlen(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ystrncasecmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrncasecmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrncasecmp_l(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xstrncasecmp_l(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ystrncat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrncat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrncmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrncmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrncpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrncpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrndup(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrndup(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrnlen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrnlen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrpbrk(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrpbrk(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrptime(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrptime(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrrchr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrrchr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrsep(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrsep(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrsignal(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xstrsignal(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ystrspn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrspn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrstr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrstr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrtod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrtod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrtod_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtod_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtof(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrtof(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrtof_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtof_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtoimax(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtoimax(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtok(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrtok(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrtok_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtok_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtol(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtol(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtold(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrtold(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrtold_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtold_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtoll(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtoll(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtoul(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtoul(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtoull(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtoull(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrtoumax(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrtoumax(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrverscmp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xstrverscmp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ystrxfrm(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xstrxfrm(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ystrxfrm_l(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xstrxfrm_l(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yswab(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xswab(SB)
+	RET
+
+TEXT ·Yswapoff(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xswapoff(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yswapon(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xswapon(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yswprintf(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xswprintf(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yswscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xswscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysymlink(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsymlink(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysymlinkat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsymlinkat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ysync(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xsync(SB)
+	RET
+
+TEXT ·Ysync_file_range(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xsync_file_range(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ysyncfs(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsyncfs(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysyscall(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xsyscall(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ysysconf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsysconf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysysctlbyname(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xsysctlbyname(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ysysinfo(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsysinfo(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ysyslog(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xsyslog(SB)
+	RET
+
+TEXT ·Ysystem(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xsystem(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytan(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtan(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytanf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtanf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytanh(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtanh(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytanhf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtanhf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytanhl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtanhl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytanl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtanl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytcdrain(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtcdrain(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytcflow(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcflow(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcflush(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcflush(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcgetattr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcgetattr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcgetpgrp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtcgetpgrp(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytcgetsid(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtcgetsid(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytcgetwinsize(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcgetwinsize(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcsendbreak(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcsendbreak(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcsetattr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xtcsetattr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ytcsetpgrp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcsetpgrp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytcsetwinsize(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtcsetwinsize(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytdelete(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xtdelete(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ytdestroy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtdestroy(SB)
+	RET
+
+TEXT ·Ytee(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xtee(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ytelldir(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtelldir(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytempnam(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtempnam(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytextdomain(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtextdomain(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytfind(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xtfind(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ytgamma(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtgamma(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytgammaf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtgammaf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytgammal(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtgammal(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytime(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtime(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytimegm(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtimegm(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytimer_delete(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtimer_delete(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytimer_getoverrun(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtimer_getoverrun(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytimer_gettime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtimer_gettime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytimer_settime(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xtimer_settime(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ytimerfd_create(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtimerfd_create(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytimerfd_gettime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtimerfd_gettime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytimerfd_settime(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xtimerfd_settime(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ytimes(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtimes(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytimespec_get(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtimespec_get(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytmpfile(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xtmpfile(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Ytmpnam(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtmpnam(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytoascii(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtoascii(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytolower(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtolower(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytolower_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtolower_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytoupper(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtoupper(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytoupper_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtoupper_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytowctrans(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtowctrans(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytowctrans_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xtowctrans_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ytowlower(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtowlower(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytowlower_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtowlower_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytowupper(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtowupper(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytowupper_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtowupper_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytrunc(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtrunc(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytruncate(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtruncate(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ytruncf(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtruncf(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytruncl(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xtruncl(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ytsearch(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xtsearch(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yttyname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xttyname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yttyname_r(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xttyname_r(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ytwalk(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xtwalk(SB)
+	RET
+
+TEXT ·Ytzset(SB),$8-8
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xtzset(SB)
+	RET
+
+TEXT ·Yualarm(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xualarm(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yulckpwdf(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xulckpwdf(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yulimit(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xulimit(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yumask(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xumask(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yumount(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xumount(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yumount2(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xumount2(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yuname(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xuname(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yungetc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xungetc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yungetwc(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xungetwc(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yunlink(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xunlink(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yunlinkat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xunlinkat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yunlockpt(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xunlockpt(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yunsetenv(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xunsetenv(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yunshare(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xunshare(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yupdwtmp(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xupdwtmp(SB)
+	RET
+
+TEXT ·Yupdwtmpx(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xupdwtmpx(SB)
+	RET
+
+TEXT ·Yuselocale(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xuselocale(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yusleep(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xusleep(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yutime(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xutime(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yutimensat(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xutimensat(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yutimes(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xutimes(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yuuid_copy(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xuuid_copy(SB)
+	RET
+
+TEXT ·Yuuid_generate_random(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xuuid_generate_random(SB)
+	RET
+
+TEXT ·Yuuid_parse(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xuuid_parse(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yuuid_unparse(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xuuid_unparse(SB)
+	RET
+
+TEXT ·Yvasprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvasprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvdprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvdprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yverr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xverr(SB)
+	RET
+
+TEXT ·Yverrx(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xverrx(SB)
+	RET
+
+TEXT ·Yversionsort(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xversionsort(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yvfork(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xvfork(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yvfprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvfprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvfscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvfscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvfwprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvfwprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvfwscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvfwscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvhangup(SB),$16-16
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	CALL ·Xvhangup(SB)
+	MOVQ 8(SP), AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+TEXT ·Yvmsplice(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xvmsplice(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yvprintf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvprintf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yvscanf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvscanf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yvsnprintf(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xvsnprintf(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yvsprintf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvsprintf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvsscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvsscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvswprintf(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xvswprintf(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Yvswscanf(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xvswscanf(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Yvwarn(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvwarn(SB)
+	RET
+
+TEXT ·Yvwarnx(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvwarnx(SB)
+	RET
+
+TEXT ·Yvwprintf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvwprintf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yvwscanf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xvwscanf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywait(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwait(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywait3(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwait3(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywait4(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwait4(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywaitid(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwaitid(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywaitpid(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwaitpid(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywarn(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwarn(SB)
+	RET
+
+TEXT ·Ywarnx(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwarnx(SB)
+	RET
+
+TEXT ·Ywcpcpy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcpcpy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcpncpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcpncpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcrtomb(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcrtomb(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcscasecmp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscasecmp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcscasecmp_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcscasecmp_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcscat(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscat(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcschr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcschr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcscmp(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscmp(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcscoll(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscoll(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcscoll_l(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcscoll_l(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcscpy(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscpy(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcscspn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcscspn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsdup(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwcsdup(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywcsftime(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwcsftime(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywcsftime_l(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xwcsftime_l(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ywcslen(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwcslen(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywcsncasecmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcsncasecmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcsncasecmp_l(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwcsncasecmp_l(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywcsncat(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcsncat(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcsncmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcsncmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcsncpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcsncpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcsnlen(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcsnlen(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsnrtombs(SB),$56-56
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	MOVQ p5+40(FP), AX
+	MOVQ AX, 40(SP)
+	CALL ·Xwcsnrtombs(SB)
+	MOVQ 48(SP), AX
+	MOVQ AX, ret+48(FP)
+	RET
+
+TEXT ·Ywcspbrk(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcspbrk(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsrchr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcsrchr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsrtombs(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwcsrtombs(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywcsspn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcsspn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsstr(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcsstr(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcstod(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcstod(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcstof(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcstof(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcstoimax(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstoimax(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstok(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstok(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstol(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstol(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstold(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcstold(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcstoll(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstoll(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstombs(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstombs(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstoul(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstoul(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstoull(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstoull(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcstoumax(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcstoumax(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcswcs(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcswcs(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcswidth(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwcswidth(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcsxfrm(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwcsxfrm(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywcsxfrm_l(SB),$48-48
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	MOVQ p4+32(FP), AX
+	MOVQ AX, 32(SP)
+	CALL ·Xwcsxfrm_l(SB)
+	MOVQ 40(SP), AX
+	MOVQ AX, ret+40(FP)
+	RET
+
+TEXT ·Ywctob(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwctob(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywctomb(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwctomb(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywctrans(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwctrans(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywctrans_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwctrans_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywctype(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwctype(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywctype_l(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwctype_l(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywcwidth(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xwcwidth(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Ywmemchr(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwmemchr(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywmemcmp(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwmemcmp(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywmemcpy(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwmemcpy(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywmemmove(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwmemmove(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywmemset(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwmemset(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywprintf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwprintf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Ywrite(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwrite(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywritev(SB),$40-40
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	MOVQ p3+24(FP), AX
+	MOVQ AX, 24(SP)
+	CALL ·Xwritev(SB)
+	MOVQ 32(SP), AX
+	MOVQ AX, ret+32(FP)
+	RET
+
+TEXT ·Ywscanf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xwscanf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yy0(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xy0(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yy0f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xy0f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yy1(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xy1(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yy1f(SB),$24-24
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	CALL ·Xy1f(SB)
+	MOVQ 16(SP), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+TEXT ·Yyn(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xyn(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
+
+TEXT ·Yynf(SB),$32-32
+	MOVQ p0+0(FP), AX
+	MOVQ AX, 0(SP)
+	MOVQ p1+8(FP), AX
+	MOVQ AX, 8(SP)
+	MOVQ p2+16(FP), AX
+	MOVQ AX, 16(SP)
+	CALL ·Xynf(SB)
+	MOVQ 24(SP), AX
+	MOVQ AX, ret+24(FP)
+	RET
