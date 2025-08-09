@@ -2893,6 +2893,10 @@ rate_store:
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
 
+  # The duration for which a rate is kept alive
+  # CLI flag: -distributor.rate-store.rate-keep-alive
+  [rate_keep_alive: <duration> | default = 10m]
+
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
