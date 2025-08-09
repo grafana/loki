@@ -5,8 +5,10 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "loki.tableManagerFullname" $ }}
-  {{- with .namespace }}
-  namespace: {{ . }}
+  {{- if .namespace }}
+  namespace: {{ .namespace }}
+  {{- else }}
+  namespace: {{ include "loki.namespace" . }}
   {{- end }}
   {{- with .annotations }}
   annotations:

@@ -20,7 +20,7 @@ metadata:
     name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   annotations:
     {{- toYaml .annotations | nindent 4 }}
-  namespace: {{ $.ctx.Release.Namespace | quote }}
+  namespace: {{ include "loki.namespace" $.ctx | quote }}
 spec:
   podManagementPolicy: {{ .podManagementPolicy }}
   replicas: {{ .replicas }}
