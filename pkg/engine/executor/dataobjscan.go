@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -38,6 +39,7 @@ type dataobjScan struct {
 	logger log.Logger
 
 	initialized     bool
+	initedAt        time.Time
 	streams         *streamsView
 	streamsInjector *streamInjector
 	reader          *logs.Reader
@@ -52,12 +54,15 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.Record] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	if opts.Allocator == nil {
 		opts.Allocator = memory.DefaultAllocator
 	}
 
-	return &dataobjScan{opts: opts}
+	return &dataobjScan{
+		opts:   opts,
+		logger: logger,
+	}
 }
 
 func (s *dataobjScan) Read(ctx context.Context) error {
@@ -89,6 +94,7 @@ func (s *dataobjScan) init() error {
 	}
 
 	s.initialized = true
+	s.initedAt = time.Now().UTC()
 	return nil
 }
 
@@ -409,6 +415,13 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
+	// log reader stats before closing
+	if s.initialized {
+		if stats := s.reader.Stats(); stats != nil {
+			stats.LogSummary(s.logger, time.Since(s.initedAt))
+		}
+	}
+
 	if s.streams != nil {
 		s.streams.Close()
 	}

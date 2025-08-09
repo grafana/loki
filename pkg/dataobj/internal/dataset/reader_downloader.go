@@ -94,6 +94,8 @@ type readerDownloader struct {
 
 	readRange rowRange  // Current range being read.
 	rangeMask rowRanges // Inverse of dsetRanges: ranges to _exclude_ from download.
+
+	stats DownloadStats // Statistics about the page downloads.
 }
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
@@ -202,6 +204,11 @@ func (dl *readerDownloader) initColumnPages(ctx context.Context) error {
 	return nil
 }
 
+// DownloadStats returns the statistics about the page downloads.
+func (dl *readerDownloader) DownloadStats() DownloadStats {
+	return dl.stats
+}
+
 // downloadBatch downloads a batch of pages from the inner dataset.
 func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *readerPage) error {
 	for _, col := range dl.allColumns {
@@ -214,6 +221,18 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 	batch, err := dl.buildDownloadBatch(ctx, requestor)
 	if err != nil {
 		return err
+	}
+
+	for _, page := range batch {
+		if page.column.primary {
+			dl.stats.PrimaryColumnPages++
+			dl.stats.PrimaryColumnBytes += uint64(page.inner.PageInfo().CompressedSize)
+			dl.stats.PrimaryColumnUncompressedBytes += uint64(page.inner.PageInfo().UncompressedSize)
+		} else {
+			dl.stats.SecondaryColumnPages++
+			dl.stats.SecondaryColumnBytes += uint64(page.inner.PageInfo().CompressedSize)
+			dl.stats.SecondaryColumnUncompressedBytes += uint64(page.inner.PageInfo().UncompressedSize)
+		}
 	}
 
 	// Build the set of inner pages that will be passed to the inner Dataset for
@@ -467,6 +486,7 @@ func (dl *readerDownloader) Reset(dset Dataset, targetCacheSize int) {
 	// dl.dsetRanges isn't owned by the downloader, so we don't use
 	// sliceclear.Clear.
 	dl.dsetRanges = nil
+	dl.stats.Reset()
 }
 
 type readerColumn struct {
@@ -580,10 +600,13 @@ func (page *readerPage) PageInfo() *PageInfo {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
+	page.column.dl.stats.ReadPageCalls++
 	if page.data != nil {
+		page.column.dl.stats.PagesFoundInCache++
 		return page.data, nil
 	}
 
+	page.column.dl.stats.BatchDownloadRequests++
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}
