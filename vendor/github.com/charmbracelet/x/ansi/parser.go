@@ -150,7 +150,7 @@ func (p *Parser) StateName() string {
 // Parse parses the given dispatcher and byte buffer.
 // Deprecated: Loop over the buffer and call [Parser.Advance] instead.
 func (p *Parser) Parse(b []byte) {
-	for i := 0; i < len(b); i++ {
+	for i := range b {
 		p.Advance(b[i])
 	}
 }
@@ -245,7 +245,7 @@ func (p *Parser) parseStringCmd() {
 	if p.dataLen >= 0 {
 		datalen = p.dataLen
 	}
-	for i := 0; i < datalen; i++ {
+	for i := range datalen {
 		d := p.data[i]
 		if d < '0' || d > '9' {
 			break
