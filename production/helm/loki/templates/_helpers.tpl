@@ -293,6 +293,9 @@ Storage config S3
 )
 (omit . "bucketnames" "s3ForcePathStyle" "s3" "endpoint" "region" "secretAccessKey" "accessKeyId" "signatureVersion" "disable_dualstack" "http_config" "backoff_config" "sse")
 | toYaml | nindent 0 }}
+{{- with .s3 }}
+s3: {{ . }}
+{{- end }}
 {{- with .endpoint }}
 endpoint: {{ . }}
 {{- end }}
