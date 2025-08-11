@@ -517,7 +517,7 @@ func (m *mockGoldfishStorage) StoreComparisonResult(_ context.Context, result *g
 	return nil
 }
 
-func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ string) (*goldfish.APIResponse, error) {
+func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ goldfish.QueryFilter) (*goldfish.APIResponse, error) {
 	// This is only used for UI, not needed in proxy tests
 	return &goldfish.APIResponse{
 		Queries:  []goldfish.QuerySample{},

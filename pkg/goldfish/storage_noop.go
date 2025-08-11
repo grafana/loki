@@ -24,7 +24,7 @@ func (n *NoopStorage) StoreComparisonResult(_ context.Context, _ *ComparisonResu
 }
 
 // GetSampledQueries returns an error as goldfish is disabled
-func (n *NoopStorage) GetSampledQueries(_ context.Context, _, _ int, _ string) (*APIResponse, error) {
+func (n *NoopStorage) GetSampledQueries(_ context.Context, _, _ int, _ QueryFilter) (*APIResponse, error) {
 	return nil, errors.New("goldfish feature is disabled")
 }
 

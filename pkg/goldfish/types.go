@@ -8,6 +8,7 @@ import (
 type QuerySample struct {
 	CorrelationID string        `json:"correlationId"`
 	TenantID      string        `json:"tenantId"`
+	User          string        `json:"user"`
 	Query         string        `json:"query"`
 	QueryType     string        `json:"queryType"`
 	StartTime     time.Time     `json:"startTime"`
@@ -84,3 +85,11 @@ const (
 	OutcomeMismatch = "mismatch"
 	OutcomeError    = "error"
 )
+
+// QueryFilter contains filters for querying sampled queries
+type QueryFilter struct {
+	Outcome       string
+	Tenant        string
+	User          string
+	UsedNewEngine *bool // pointer to handle true/false/nil states
+}

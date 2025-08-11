@@ -12,9 +12,7 @@
 //	#{ns}_produce_bytes_total{node_id="#{node}",topic="#{topic}"}
 //	#{ns}_fetch_bytes_total{node_id="#{node}",topic="#{topic}"}
 //	#{ns}_buffered_produce_records_total
-//	#{ns}_buffered_produce_bytes_total
 //	#{ns}_buffered_fetch_records_total
-//	#{ns}_buffered_fetch_bytes_total
 //
 // The above metrics can be expanded considerably with options in this package,
 // allowing timings, uncompressed and compressed bytes, and different labels.
@@ -100,9 +98,7 @@ type Metrics struct {
 
 	// Buffered
 	bufferedFetchRecords   prometheus.GaugeFunc
-	bufferedFetchBytes     prometheus.GaugeFunc
 	bufferedProduceRecords prometheus.GaugeFunc
-	bufferedProduceBytes   prometheus.GaugeFunc
 
 	// Holds references to all metric collectors
 	allMetricCollectors []prometheus.Collector
@@ -359,17 +355,6 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		func() float64 { return float64(client.BufferedProduceRecords()) },
 	)
 
-	m.bufferedProduceBytes = factory.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			ConstLabels: constLabels,
-			Name:        "buffered_produce_bytes",
-			Help:        "Total number of bytes buffered within the client ready to be produced",
-		},
-		func() float64 { return float64(client.BufferedProduceBytes()) },
-	)
-
 	m.bufferedFetchRecords = factory.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace:   namespace,
@@ -379,17 +364,6 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 			Help:        "Total number of records buffered within the client ready to be consumed",
 		},
 		func() float64 { return float64(client.BufferedFetchRecords()) },
-	)
-
-	m.bufferedFetchBytes = factory.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace:   namespace,
-			Subsystem:   subsystem,
-			ConstLabels: constLabels,
-			Name:        "buffered_fetch_bytes",
-			Help:        "Total number of bytes buffered within the client ready to be consumed",
-		},
-		func() float64 { return float64(client.BufferedFetchBytes()) },
 	)
 
 	m.allMetricCollectors = append(m.allMetricCollectors,
@@ -415,9 +389,7 @@ func (m *Metrics) OnNewClient(client *kgo.Client) {
 		m.fetchBatchesTotal,
 		m.fetchRecordsTotal,
 		m.bufferedFetchRecords,
-		m.bufferedFetchBytes,
 		m.bufferedProduceRecords,
-		m.bufferedProduceBytes,
 	)
 }
 

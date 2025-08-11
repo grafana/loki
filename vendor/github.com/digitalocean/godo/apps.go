@@ -61,7 +61,7 @@ type AppsService interface {
 
 	ListBuildpacks(ctx context.Context) ([]*Buildpack, *Response, error)
 	UpgradeBuildpack(ctx context.Context, appID string, opts UpgradeBuildpackOptions) (*UpgradeBuildpackResponse, *Response, error)
-
+	GetAppHealth(ctx context.Context, appID string) (*AppHealth, *Response, error)
 	GetAppDatabaseConnectionDetails(ctx context.Context, appID string) ([]*GetDatabaseConnectionDetailsResponse, *Response, error)
 	ResetDatabasePassword(ctx context.Context, appID string, component string) (*Deployment, *Response, error)
 	ToggleDatabaseTrustedSource(
@@ -200,6 +200,24 @@ type GetAppInstancesOpts struct {
 // URN returns a URN identifier for the app
 func (a App) URN() string {
 	return ToURN("app", a.ID)
+}
+
+type appHealthRoot struct {
+	Health *AppHealth `json:"app_health"`
+}
+
+func (s *AppsServiceOp) GetAppHealth(ctx context.Context, appID string) (*AppHealth, *Response, error) {
+	path := fmt.Sprintf("%s/%s/health", appsBasePath, appID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(appHealthRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Health, resp, nil
 }
 
 // Create an app.
