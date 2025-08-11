@@ -18,11 +18,11 @@ export async function fetchSampledQueries(
     params.append("outcome", outcome);
   }
   
-  if (tenant) {
+  if (tenant && tenant !== "all") {
     params.append("tenant", tenant);
   }
   
-  if (user) {
+  if (user && user !== "all") {
     params.append("user", user);
   }
   

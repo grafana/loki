@@ -193,6 +193,40 @@ describe('goldfish-api', () => {
       // Assert: Verify URL includes all parameters
       expect(mockFetch).toHaveBeenCalledWith('/ui/api/v1/goldfish/queries?page=2&pageSize=50&outcome=match&tenant=tenant-b&user=bob&newEngine=true');
     });
+
+    it('omits tenant parameter when value is "all"', async () => {
+      // Setup: Mock absolutePath
+      mockAbsolutePath.mockReturnValue('/ui/api/v1/goldfish/queries');
+      
+      // Setup: Mock successful API response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+      });
+
+      // Act: Call with tenant set to "all"
+      await fetchSampledQueries(1, 20, OUTCOME_ALL, 'all');
+
+      // Assert: Verify URL doesn't include tenant parameter
+      expect(mockFetch).toHaveBeenCalledWith('/ui/api/v1/goldfish/queries?page=1&pageSize=20');
+    });
+
+    it('omits user parameter when value is "all"', async () => {
+      // Setup: Mock absolutePath
+      mockAbsolutePath.mockReturnValue('/ui/api/v1/goldfish/queries');
+      
+      // Setup: Mock successful API response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+      });
+
+      // Act: Call with user set to "all"
+      await fetchSampledQueries(1, 20, OUTCOME_ALL, undefined, 'all');
+
+      // Assert: Verify URL doesn't include user parameter
+      expect(mockFetch).toHaveBeenCalledWith('/ui/api/v1/goldfish/queries?page=1&pageSize=20');
+    });
   });
 
   describe('real-world nginx scenarios', () => {
