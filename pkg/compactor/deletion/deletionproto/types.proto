@@ -55,7 +55,7 @@ message ChunkIDs {
 // ChunksGroup holds a group of chunks selected by the same set of requests
 message ChunksGroup {
   repeated DeleteRequest requests = 1 [(gogoproto.nullable) = false];
-  map<string, ChunkIDs> chunks = 2 [(gogoproto.nullable) = false];  // mapping of series labels to a list of ChunkIDs
+  map<string, ChunkIDs> chunks = 2 [(gogoproto.nullable) = false]; // mapping of series labels to a list of ChunkIDs
 }
 
 // segment holds limited chunks in ChunksGroup.
@@ -99,5 +99,5 @@ message StorageUpdates {
 message StorageUpdatesCollection {
   string tableName = 1;
   string userID = 2;
-  map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false];  // labels -> storageUpdates mapping
+  map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false]; // labels -> storageUpdates mapping
 }
