@@ -1,5 +1,12 @@
 ## Main
 
+## [0.8.1](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.8.1) (2025-08-11)
+
+
+### Bug Fixes
+
+* **operator:** upgrade OPA policy syntax for v1+ ([#18795](https://github.com/grafana/loki/issues/18795)) ([610f43e](https://github.com/grafana/loki/commit/610f43eb678cdcd537b8dcc19cfd0550c092b371))
+
 ## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-03-17)
 
 
