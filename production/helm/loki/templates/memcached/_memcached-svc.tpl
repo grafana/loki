@@ -22,7 +22,7 @@ metadata:
     {{- end }}
   annotations:
     {{- toYaml .service.annotations | nindent 4 }}
-  namespace: {{ $.ctx.Release.Namespace | quote }}
+  namespace: {{ include "loki.namespace" $.ctx | quote }}
 spec:
   type: ClusterIP
   clusterIP: None

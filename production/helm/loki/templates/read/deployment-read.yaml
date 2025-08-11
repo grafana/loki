@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.readFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" $ }}
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
@@ -71,7 +71,7 @@ spec:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}
             - -legacy-read-mode=false
-            - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
+            - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ include "loki.namespace" . }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
             {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
