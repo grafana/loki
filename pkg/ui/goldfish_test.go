@@ -925,7 +925,6 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 	})
 }
 
-
 func TestGoldfishQueriesHandler_FiltersByTenant(t *testing.T) {
 	// Create queries from multiple tenants
 	queries := []goldfish.QuerySample{
@@ -1034,15 +1033,15 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 		createTestQuerySample("5", "tenant-c", 200, 200, "hash3", "hash3"),
 	}
 	// Set new engine usage
-	queries[0].CellAUsedNewEngine = true  // query 1 used new engine in cell A
+	queries[0].CellAUsedNewEngine = true // query 1 used new engine in cell A
 	queries[0].CellBUsedNewEngine = false
-	queries[1].CellAUsedNewEngine = false  // query 2 didn't use new engine
+	queries[1].CellAUsedNewEngine = false // query 2 didn't use new engine
 	queries[1].CellBUsedNewEngine = false
-	queries[2].CellAUsedNewEngine = false  // query 3 used new engine in cell B
+	queries[2].CellAUsedNewEngine = false // query 3 used new engine in cell B
 	queries[2].CellBUsedNewEngine = true
-	queries[3].CellAUsedNewEngine = true   // query 4 used new engine in both cells
+	queries[3].CellAUsedNewEngine = true // query 4 used new engine in both cells
 	queries[3].CellBUsedNewEngine = true
-	queries[4].CellAUsedNewEngine = false  // query 5 didn't use new engine
+	queries[4].CellAUsedNewEngine = false // query 5 didn't use new engine
 	queries[4].CellBUsedNewEngine = false
 
 	storage := &mockStorage{
@@ -1077,10 +1076,10 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 		// Should return queries 1, 3, and 4 (used new engine in at least one cell)
 		assert.Len(t, response.Queries, 3)
 		assert.Equal(t, 3, response.Total)
-		
+
 		// Verify all returned queries used new engine in at least one cell
 		for _, query := range response.Queries {
-			assert.True(t, query.CellAUsedNewEngine || query.CellBUsedNewEngine, 
+			assert.True(t, query.CellAUsedNewEngine || query.CellBUsedNewEngine,
 				"Expected queries that used new engine in at least one cell")
 		}
 	})
@@ -1100,12 +1099,12 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 		// Should return queries 2 and 5 (didn't use new engine in any cell)
 		assert.Len(t, response.Queries, 2)
 		assert.Equal(t, 2, response.Total)
-		
+
 		// Verify all returned queries didn't use new engine in any cell
 		for _, query := range response.Queries {
-			assert.False(t, query.CellAUsedNewEngine, 
+			assert.False(t, query.CellAUsedNewEngine,
 				"Expected queries that didn't use new engine in cell A")
-			assert.False(t, query.CellBUsedNewEngine, 
+			assert.False(t, query.CellBUsedNewEngine,
 				"Expected queries that didn't use new engine in cell B")
 		}
 	})

@@ -256,14 +256,38 @@ describe('GoldfishPage', () => {
       // Click on Match filter
       fireEvent.click(screen.getByText('Match'));
 
-      // Should show filtered results immediately, not loading state
-      expect(screen.queryByText('Loading')).not.toBeInTheDocument();
-      expect(screen.getByText('Status: match')).toBeInTheDocument();
+      // Should show filtered results (initially from client-side fallback, then from server)
+      await waitFor(() => {
+        const queryViews = screen.getAllByTestId('query-diff-view');
+        expect(queryViews).toHaveLength(1);
+        expect(screen.getByText('Status: match')).toBeInTheDocument();
+      });
       expect(screen.queryByText('Status: mismatch')).not.toBeInTheDocument();
       expect(screen.queryByText('Status: error')).not.toBeInTheDocument();
     });
 
     it('shows different filtered results when switching between filters', async () => {
+      // Mock different responses for different outcome filters
+      mockFetchSampledQueries
+        .mockResolvedValueOnce({
+          queries: mockQueries,
+          total: 3,
+          page: 1,
+          pageSize: 10,
+        })
+        .mockResolvedValueOnce({
+          queries: [mockQueries[1]], // Only mismatch query
+          total: 1,
+          page: 1,
+          pageSize: 10,
+        })
+        .mockResolvedValueOnce({
+          queries: [mockQueries[2]], // Only error query
+          total: 1,
+          page: 1,
+          pageSize: 10,
+        });
+
       renderGoldfishPage();
 
       // Wait for initial load
@@ -274,20 +298,26 @@ describe('GoldfishPage', () => {
       // Click on Mismatch filter
       fireEvent.click(screen.getByText('Mismatch'));
 
-      // Should show only mismatch results immediately
-      expect(screen.queryByText('Loading')).not.toBeInTheDocument();
+      // Should show only mismatch results
+      await waitFor(() => {
+        const queryViews = screen.getAllByTestId('query-diff-view');
+        expect(queryViews).toHaveLength(1);
+        expect(screen.getByText('Status: mismatch')).toBeInTheDocument();
+      });
       expect(screen.queryByText('Status: match')).not.toBeInTheDocument();
-      expect(screen.getByText('Status: mismatch')).toBeInTheDocument();
       expect(screen.queryByText('Status: error')).not.toBeInTheDocument();
 
       // Click on Error filter
       fireEvent.click(screen.getByText('Error'));
 
-      // Should show only error results immediately
-      expect(screen.queryByText('Loading')).not.toBeInTheDocument();
+      // Should show only error results
+      await waitFor(() => {
+        const queryViews = screen.getAllByTestId('query-diff-view');
+        expect(queryViews).toHaveLength(1);
+        expect(screen.getByText('Status: error')).toBeInTheDocument();
+      });
       expect(screen.queryByText('Status: match')).not.toBeInTheDocument();
       expect(screen.queryByText('Status: mismatch')).not.toBeInTheDocument();
-      expect(screen.getByText('Status: error')).toBeInTheDocument();
     });
   });
 
@@ -306,13 +336,18 @@ describe('GoldfishPage', () => {
       fireEvent.click(screen.getByText('Error'));
       fireEvent.click(screen.getByText('All'));
 
-      // Primary query should still only have 1 call with OUTCOME_ALL
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL);
+      // Should wait for background requests to be triggered
+      await waitFor(() => {
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+      });
+
+      // Primary query should have been called with OUTCOME_ALL first
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
       
-      // But background queries should also be called
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR);
+      // Background queries should also be called when specific filters are selected
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
     });
 
     it('fetches data with OUTCOME_ALL regardless of selected filter', async () => {
@@ -324,7 +359,7 @@ describe('GoldfishPage', () => {
       });
 
       // Verify it was called with OUTCOME_ALL
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
     });
   });
 
@@ -342,12 +377,12 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with specific outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
       });
 
       // Should have multiple calls (initial + background + prefetch)
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
     });
 
     it('triggers background server request when switching to different outcomes', async () => {
@@ -363,7 +398,7 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with mismatch outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
       });
 
       // Click on Error filter
@@ -371,13 +406,13 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with error outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
       });
 
       // Should have called with different outcomes
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
     });
 
     it('does not trigger background request when selecting All filter', async () => {
@@ -392,7 +427,7 @@ describe('GoldfishPage', () => {
       fireEvent.click(screen.getByText('Match'));
 
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
       });
 
       // Click on All filter
@@ -400,13 +435,13 @@ describe('GoldfishPage', () => {
 
       // Should not trigger additional background request for "All"
       // because we already have all data
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
       
       // Should not make additional calls for "All" outcome background query
       // (but prefetch calls may still happen)
       const allCalls = mockFetchSampledQueries.mock.calls;
       const backgroundAllCalls = allCalls.filter(call => 
-        call[0] === 1 && call[1] === 10 && call[2] === OUTCOME_ALL
+        call[0] === 1 && call[1] === 10 && call[2] === OUTCOME_ALL && call[3] === undefined && call[4] === undefined && call[5] === undefined
       );
       expect(backgroundAllCalls).toHaveLength(1); // Only the initial call
     });
@@ -482,10 +517,6 @@ describe('GoldfishPage', () => {
       // Click on Match filter
       fireEvent.click(screen.getByText('Match'));
 
-      // Initially should show client-side filtered results
-      expect(screen.getByText('Status: match')).toBeInTheDocument();
-      expect(screen.queryByText('Status: mismatch')).not.toBeInTheDocument();
-
       // Eventually should show server-filtered data
       await waitFor(() => {
         expect(screen.getByText('server filtered query')).toBeInTheDocument();
@@ -495,7 +526,7 @@ describe('GoldfishPage', () => {
       expect(screen.getByTestId('query-diff-view')).toHaveAttribute('data-correlation-id', 'server-filtered-match');
     });
 
-    it('maintains client-side filtering when server data is not available', async () => {
+    it('shows previous results when server request fails', async () => {
       // Mock server to return error for background request
       mockFetchSampledQueries
         .mockResolvedValueOnce({
@@ -516,10 +547,10 @@ describe('GoldfishPage', () => {
       // Click on Match filter
       fireEvent.click(screen.getByText('Match'));
 
-      // Should still show client-side filtered results even if server request fails
-      expect(screen.getByText('Status: match')).toBeInTheDocument();
-      expect(screen.queryByText('Status: mismatch')).not.toBeInTheDocument();
-      expect(screen.queryByText('Status: error')).not.toBeInTheDocument();
+      // Should still show the original unfiltered results since server request failed
+      await waitFor(() => {
+        expect(screen.getAllByTestId('query-diff-view')).toHaveLength(3);
+      });
     });
   });
 
@@ -534,7 +565,7 @@ describe('GoldfishPage', () => {
 
       // Should eventually prefetch next page
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
       });
     });
 
@@ -551,12 +582,12 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
       });
 
       // Should eventually prefetch next page for the match filter
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_MATCH);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_MATCH, undefined, undefined, undefined);
       });
     });
 
@@ -610,7 +641,7 @@ describe('GoldfishPage', () => {
 
       // Wait for prefetch of page 2 to complete
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
       });
 
       // Navigate to page 2
@@ -649,7 +680,7 @@ describe('GoldfishPage', () => {
 
       // Wait for page 1 to load and prefetch to complete
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
       }, { timeout: 5000 });
 
       // Should have exactly 2 calls: initial load + prefetch
@@ -669,9 +700,9 @@ describe('GoldfishPage', () => {
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
       
       // Verify the calls are what we expect
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL); // Initial load
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL); // Prefetch page 2
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL); // Prefetch page 3
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined); // Initial load
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 2
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 3
     }, 10000);
 
     it('waits for in-flight prefetch when navigating during prefetch', async () => {
@@ -728,9 +759,9 @@ describe('GoldfishPage', () => {
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
       
       // Verify the calls are what we expect
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL); // Initial load
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL); // Prefetch page 2
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL); // Prefetch page 3
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined); // Initial load
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 2
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 3
     }, 10000);
   });
 
@@ -927,12 +958,21 @@ describe('GoldfishPage', () => {
         },
       ];
 
-      mockFetchSampledQueries.mockResolvedValue({
-        queries: queriesWithEngineInfo,
-        total: 4,
-        page: 1,
-        pageSize: 10,
-      });
+      // Mock initial load (no filter)
+      mockFetchSampledQueries
+        .mockResolvedValueOnce({
+          queries: queriesWithEngineInfo,
+          total: 4,
+          page: 1,
+          pageSize: 10,
+        })
+        // Mock response when new engine filter is applied
+        .mockResolvedValueOnce({
+          queries: [queriesWithEngineInfo[0], queriesWithEngineInfo[1]], // Only new engine queries
+          total: 2,
+          page: 1,
+          pageSize: 10,
+        });
 
       render(<GoldfishPage />, {
         wrapper: ({ children }) => (
@@ -983,9 +1023,10 @@ describe('GoldfishPage', () => {
         },
       ];
 
+      // Mock response with new engine filter applied (URL param is true)
       mockFetchSampledQueries.mockResolvedValue({
-        queries: queriesWithEngineInfo,
-        total: 2,
+        queries: [queriesWithEngineInfo[0]], // Only new engine query
+        total: 1,
         page: 1,
         pageSize: 10,
       });

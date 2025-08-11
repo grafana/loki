@@ -239,7 +239,7 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		filter := goldfish.QueryFilter{
 			Outcome: goldfish.OutcomeAll, // default value
 		}
-		
+
 		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
 			switch strings.ToLower(outcomeStr) {
 			case goldfish.OutcomeAll, goldfish.OutcomeMatch, goldfish.OutcomeMismatch, goldfish.OutcomeError:
@@ -248,17 +248,17 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 				filter.Outcome = goldfish.OutcomeAll
 			}
 		}
-		
+
 		// Parse tenant filter
 		if tenant := r.URL.Query().Get("tenant"); tenant != "" {
 			filter.Tenant = tenant
 		}
-		
+
 		// Parse user filter
 		if user := r.URL.Query().Get("user"); user != "" {
 			filter.User = user
 		}
-		
+
 		// Parse new engine filter
 		if newEngine := r.URL.Query().Get("newEngine"); newEngine != "" {
 			switch newEngine {

@@ -180,14 +180,14 @@ func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFil
 			CellBShards:          &q.CellBStats.Shards,
 
 			// Response metadata - convert to nullable pointers
-			CellAResponseHash: strPtr(q.CellAResponseHash),
-			CellBResponseHash: strPtr(q.CellBResponseHash),
-			CellAResponseSize: &q.CellAResponseSize,
-			CellBResponseSize: &q.CellBResponseSize,
-			CellAStatusCode:   intPtr(q.CellAStatusCode),
-			CellBStatusCode:   intPtr(q.CellBStatusCode),
-			CellATraceID:      strPtr(q.CellATraceID),
-			CellBTraceID:      strPtr(q.CellBTraceID),
+			CellAResponseHash:  strPtr(q.CellAResponseHash),
+			CellBResponseHash:  strPtr(q.CellBResponseHash),
+			CellAResponseSize:  &q.CellAResponseSize,
+			CellBResponseSize:  &q.CellBResponseSize,
+			CellAStatusCode:    intPtr(q.CellAStatusCode),
+			CellBStatusCode:    intPtr(q.CellBStatusCode),
+			CellATraceID:       strPtr(q.CellATraceID),
+			CellBTraceID:       strPtr(q.CellBTraceID),
 			CellAUsedNewEngine: q.CellAUsedNewEngine,
 			CellBUsedNewEngine: q.CellBUsedNewEngine,
 		}
