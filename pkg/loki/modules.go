@@ -82,6 +82,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -160,6 +161,7 @@ const (
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
 	DataObjIndexBuilder      = "dataobj-index-builder"
+	ScratchStore             = "scratch-store"
 	UI                       = "ui"
 	All                      = "all"
 	Read                     = "read"
@@ -2233,6 +2235,22 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	)
 
 	return t.dataObjIndexBuilder, err
+}
+
+func (t *Loki) initScratchStore() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", "scratch-store")
+	store, err := scratch.Open(logger, t.Cfg.Common.ScratchPath)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := scratch.NewMetrics()
+	if err := metrics.Register(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+
+	t.scratchStore = scratch.ObserveStore(metrics, store)
+	return services.NewIdleService(nil, nil), nil
 }
 
 func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
