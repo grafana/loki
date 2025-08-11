@@ -3,17 +3,21 @@ package metastore
 import (
 	"flag"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 )
 
 // Config is the configuration block for the metastore settings.
 type Config struct {
 	Updater UpdaterConfig `yaml:"updater" experimental:"true"`
+	Storage StorageConfig `yaml:"storage" experimental:"true"`
 }
 
 // RegisterFlags registers the flags for the metastore settings.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Updater.RegisterFlagsWithPrefix("dataobj-metastore.", f)
+	prefix := "dataobj-metastore."
+	c.Updater.RegisterFlagsWithPrefix(prefix, f)
+	c.Storage.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // RegisterFlagsWithPrefix registers the flags for the metastore settings with a prefix.
@@ -28,6 +32,16 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+type StorageConfig struct {
+	IndexStoragePrefix string                 `yaml:"index_storage_prefix" experimental:"true"`
+	EnabledTenantIDs   flagext.StringSliceCSV `yaml:"enabled_tenant_ids" experimental:"true"`
+}
+
+func (c *StorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.IndexStoragePrefix, prefix+"index-storage-prefix", "index/v0/", "Experimental: A prefix to use for storing indexes in object storage. Used to separate the metastore & index files during initial testing.")
+	f.Var(&c.EnabledTenantIDs, prefix+"enabled-tenant-ids", "Experimental: A list of tenant IDs to enable index building for. If empty, all tenants will be enabled.")
 }
 
 // UpdaterConfig is the configuration block for the metastore updater settings.

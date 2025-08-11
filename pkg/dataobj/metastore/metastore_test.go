@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -30,8 +31,10 @@ func BenchmarkWriteMetastores(b *testing.B) {
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: bm.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: bm.format,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -80,8 +83,10 @@ func TestWriteMetastores(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: tt.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: tt.format,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -199,7 +204,7 @@ func TestIterStorePaths(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			iter := iterStorePaths(tenantID, tc.start, tc.end)
+			iter := iterStorePaths(tenantID, tc.start, tc.end, "")
 			actual := []string{}
 			for store := range iter {
 				actual = append(actual, store)
@@ -211,11 +216,13 @@ func TestIterStorePaths(t *testing.T) {
 
 func TestDataObjectsPathsV1(t *testing.T) {
 	tests := []struct {
-		name   string
-		format StorageFormatType
+		name             string
+		format           StorageFormatType
+		prefix           string
+		enabledTenantIDs []string
 	}{
 		{name: "read from v1", format: StorageFormatTypeV1},
-		{name: "read from v2", format: StorageFormatTypeV2},
+		{name: "read from v2", format: StorageFormatTypeV2, prefix: "test/v0", enabledTenantIDs: []string{"test-tenant"}},
 	}
 
 	for _, tt := range tests {
@@ -224,8 +231,14 @@ func TestDataObjectsPathsV1(t *testing.T) {
 			tenantID := "test-tenant"
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 
-			m := NewUpdater(UpdaterConfig{
-				StorageFormat: tt.format,
+			m := NewUpdater(Config{
+				Updater: UpdaterConfig{
+					StorageFormat: tt.format,
+				},
+				Storage: StorageConfig{
+					IndexStoragePrefix: tt.prefix,
+					EnabledTenantIDs:   tt.enabledTenantIDs,
+				},
 			}, bucket, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
@@ -281,47 +294,79 @@ func TestDataObjectsPathsV1(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+			ms := NewObjectMetastore(StorageConfig{
+				IndexStoragePrefix: tt.prefix,
+				EnabledTenantIDs:   tt.enabledTenantIDs,
+			}, bucket, log.NewNopLogger(), nil)
 
 			t.Run("finds objects within current window", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 2)
-				require.Contains(t, paths, "path1")
-				require.Contains(t, paths, "path2")
+				if tt.format == StorageFormatTypeV1 {
+					require.Contains(t, paths, "path1")
+					require.Contains(t, paths, "path2")
+				} else {
+					require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+				}
 			})
 
 			t.Run("finds objects across two 12h windows", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 4)
-				require.Contains(t, paths, "path1")
-				require.Contains(t, paths, "path2")
-				require.Contains(t, paths, "path3")
-				require.Contains(t, paths, "path4")
+				if tt.format == StorageFormatTypeV1 {
+					require.Contains(t, paths, "path1")
+					require.Contains(t, paths, "path2")
+					require.Contains(t, paths, "path3")
+					require.Contains(t, paths, "path4")
+				} else {
+					require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
+				}
 			})
 
 			t.Run("finds objects across three 12h windows", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 5)
-				require.Contains(t, paths, "path1")
-				require.Contains(t, paths, "path2")
-				require.Contains(t, paths, "path3")
-				require.Contains(t, paths, "path4")
-				require.Contains(t, paths, "path5")
+				if tt.format == StorageFormatTypeV1 {
+					require.Contains(t, paths, "path1")
+					require.Contains(t, paths, "path2")
+					require.Contains(t, paths, "path3")
+					require.Contains(t, paths, "path4")
+					require.Contains(t, paths, "path5")
+				} else {
+					require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
+				}
 			})
 
 			t.Run("finds all objects across all windows", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-36*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 6)
-				require.Contains(t, paths, "path1")
-				require.Contains(t, paths, "path2")
-				require.Contains(t, paths, "path3")
-				require.Contains(t, paths, "path4")
-				require.Contains(t, paths, "path5")
-				require.Contains(t, paths, "path6")
+				if tt.format == StorageFormatTypeV1 {
+					require.Contains(t, paths, "path1")
+					require.Contains(t, paths, "path2")
+					require.Contains(t, paths, "path3")
+					require.Contains(t, paths, "path4")
+					require.Contains(t, paths, "path5")
+					require.Contains(t, paths, "path6")
+				} else {
+					require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path6", tt.prefix))
+				}
 			})
 
 			t.Run("returns empty list when no objects in range", func(t *testing.T) {
@@ -335,11 +380,19 @@ func TestDataObjectsPathsV1(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 5) // Should exclude path6 which is before -30h
-				require.Contains(t, paths, "path1")
-				require.Contains(t, paths, "path2")
-				require.Contains(t, paths, "path3")
-				require.Contains(t, paths, "path4")
-				require.Contains(t, paths, "path5")
+				if tt.format == StorageFormatTypeV1 {
+					require.Contains(t, paths, "path1")
+					require.Contains(t, paths, "path2")
+					require.Contains(t, paths, "path3")
+					require.Contains(t, paths, "path4")
+					require.Contains(t, paths, "path5")
+				} else {
+					require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
+					require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
+				}
 			})
 		})
 	}
