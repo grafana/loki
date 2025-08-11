@@ -17,7 +17,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket } from "lucide-react";
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, SampledQuery } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
-import { filterQueriesByOutcome } from "@/lib/goldfish-utils";
 
 
 export default function GoldfishPage() {

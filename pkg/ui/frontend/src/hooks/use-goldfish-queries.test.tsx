@@ -130,7 +130,7 @@ describe('useGoldfishQueries', () => {
       mockFetchSampledQueries.mockResolvedValue(mockData);
 
       const { result, rerender } = renderHook(
-        ({ tenant, user, newEngine }) => 
+        ({ tenant, user, newEngine }: { tenant?: string; user?: string; newEngine?: boolean }) => 
           useGoldfishQueries(1, 20, OUTCOME_ALL, tenant, user, newEngine),
         {
           initialProps: { tenant: undefined, user: undefined, newEngine: undefined },
@@ -204,12 +204,30 @@ describe('useGoldfishQueries', () => {
             stepDuration: 15000,
             cellAExecTimeMs: 100,
             cellBExecTimeMs: 150,
+            cellAQueueTimeMs: 5,
+            cellBQueueTimeMs: 6,
+            cellABytesProcessed: 1000,
+            cellBBytesProcessed: 1100,
+            cellALinesProcessed: 50,
+            cellBLinesProcessed: 55,
+            cellABytesPerSecond: 1000,
+            cellBBytesPerSecond: 1100,
+            cellALinesPerSecond: 50,
+            cellBLinesPerSecond: 55,
+            cellAEntriesReturned: 10,
+            cellBEntriesReturned: 12,
+            cellASplits: 1,
+            cellBSplits: 1,
+            cellAShards: 2,
+            cellBShards: 2,
             cellAResponseHash: 'hash1',
             cellBResponseHash: 'hash1',
             cellAResponseSize: 1000,
             cellBResponseSize: 1000,
             cellAStatusCode: 200,
             cellBStatusCode: 200,
+            cellATraceID: 'trace1',
+            cellBTraceID: 'trace2',
             sampledAt: '2023-01-01T02:00:00Z',
             createdAt: '2023-01-01T02:00:00Z',
             comparisonStatus: 'match',

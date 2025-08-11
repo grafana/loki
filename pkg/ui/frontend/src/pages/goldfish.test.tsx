@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GoldfishPage from './goldfish';
 import * as goldfishApi from '@/lib/goldfish-api';
-import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, OutcomeFilter, SampledQuery } from '@/types/goldfish';
+import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, SampledQuery } from '@/types/goldfish';
 import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { filterQueriesByOutcome } from "@/lib/goldfish-utils";
@@ -76,6 +76,8 @@ const mockQueries = [
     cellBStatusCode: 200,
     cellATraceID: 'trace-a-1',
     cellBTraceID: 'trace-b-1',
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
   },
@@ -115,6 +117,8 @@ const mockQueries = [
     cellBStatusCode: 200,
     cellATraceID: 'trace-a-2',
     cellBTraceID: 'trace-b-2',
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
   },
@@ -154,6 +158,8 @@ const mockQueries = [
     cellBStatusCode: 500,
     cellATraceID: null,
     cellBTraceID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
   },
@@ -487,6 +493,8 @@ describe('GoldfishPage', () => {
           cellBStatusCode: 200,
           cellATraceID: 'trace-server-a',
           cellBTraceID: 'trace-server-b',
+          cellAUsedNewEngine: false,
+          cellBUsedNewEngine: false,
           sampledAt: '2024-01-01T00:00:00Z',
           createdAt: '2024-01-01T00:00:00Z',
         },
@@ -803,20 +811,14 @@ describe('GoldfishPage', () => {
       // Test user filtering functionality by creating a new component instance with selectedUser state
       // This tests the filtering logic without needing to interact with the Select component
       const GoldfishPageWithUserFilter = () => {
-        const [selectedUser, setSelectedUser] = useState('john.doe@example.com');
-        const [selectedTenant, setSelectedTenant] = useState<string>("all");
-        const [selectedOutcome, setSelectedOutcome] = useState<OutcomeFilter>(OUTCOME_ALL);
-        const [page, setPage] = useState(1);
+        const selectedUser: string = 'john.doe@example.com';
+        const selectedTenant: string = "all";
+        const selectedOutcome = OUTCOME_ALL;
+        const page = 1;
         const pageSize = 10;
         
-        const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(page, pageSize, selectedOutcome);
+        const { data } = useGoldfishQueries(page, pageSize, selectedOutcome);
         const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
-        
-        // Extract unique users from queries
-        const uniqueUsers = useMemo(() => {
-          const users = new Set(allQueries.map((q) => q.user).filter((u) => u && u !== "unknown"));
-          return Array.from(users).sort();
-        }, [allQueries]);
         
         // Apply client-side filtering based on tenant, user, and outcome
         const filteredQueries = useMemo(() => {
@@ -881,13 +883,13 @@ describe('GoldfishPage', () => {
 
       // Test "All Users" filtering functionality by directly testing the filtering logic
       const GoldfishPageWithAllUsersFilter = () => {
-        const [selectedUser, setSelectedUser] = useState('all'); // "all" means show all users
-        const [selectedTenant, setSelectedTenant] = useState<string>("all");
-        const [selectedOutcome, setSelectedOutcome] = useState<OutcomeFilter>(OUTCOME_ALL);
-        const [page, setPage] = useState(1);
+        const selectedUser = 'all'; // "all" means show all users
+        const selectedTenant = "all";
+        const selectedOutcome = OUTCOME_ALL;
+        const page = 1;
         const pageSize = 10;
         
-        const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(page, pageSize, selectedOutcome);
+        const { data } = useGoldfishQueries(page, pageSize, selectedOutcome);
         const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
         
         // Apply client-side filtering based on tenant, user, and outcome

@@ -61,6 +61,8 @@ describe('QueryDiffView - Trace ID Display', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -106,6 +108,8 @@ describe('QueryDiffView - Trace ID Display', () => {
       ...baseQuery,
       cellATraceID: 'trace-only-a',
       cellBTraceID: null,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
     };
 
     const { container } = render(<QueryDiffView query={queryWithCellATrace} />);
@@ -188,6 +192,8 @@ describe('QueryDiffView - Trace ID Links', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -245,6 +251,8 @@ describe('QueryDiffView - Trace ID Links', () => {
       ...baseQuery,
       cellATraceID: 'trace-exists',
       cellBTraceID: null,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
       cellATraceLink: 'https://grafana.example.com/explore?trace-exists',
       cellBTraceLink: null,
     };
@@ -314,6 +322,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -402,6 +412,8 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
     cellBStatusCode: 200,
     cellATraceID: 'trace-123',
     cellBTraceID: 'trace-456',
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -629,7 +641,7 @@ describe('QueryDiffView - New Engine Badge Display', () => {
     
     // Look for the engine status text in the expanded view
     // Cell A should show "New Engine"
-    const engineSections = screen.getAllByText(/Engine/);
+    screen.getAllByText(/Engine/);
     const textContent = container.textContent || '';
     
     // Verify that we can see indications of new engine for Cell A

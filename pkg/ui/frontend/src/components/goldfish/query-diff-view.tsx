@@ -224,7 +224,7 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                   <Badge variant="secondary" className="text-xs">{query.queryType}</Badge>
                   <Badge variant="outline" className="text-xs">{query.user}</Badge>
                   {(query.cellAUsedNewEngine || query.cellBUsedNewEngine) && (
-                    <Badge variant="warning" className="text-xs">
+                    <Badge variant="secondary" className="text-xs">
                       <Rocket className="h-3 w-3 mr-1" />
                       New Engine
                     </Badge>
