@@ -7,6 +7,7 @@ import (
 	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
 	github_com_prometheus_common_model "github.com/prometheus/common/model"
 	io "io"
 	math "math"
@@ -97,8 +98,512 @@ func (m *DeleteRequest) GetSequenceNum() int64 {
 	return 0
 }
 
+// DeletionManifest represents the completion state and summary of chunks which needs processing for a set of delete requests.
+// It serves two purposes:
+// 1. Acts as a marker indicating all chunks for the given delete requests have been found
+// 2. Stores a summary of data stored in segments:
+//   - Original and duplicate deletion requests
+//   - Total number of segments and chunks to be processed
+//
+// Once all the segments are processed, Requests and DuplicateRequests in the manifest should be marked as processed.
+type DeletionManifest struct {
+	Requests          []DeleteRequest `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests"`
+	DuplicateRequests []DeleteRequest `protobuf:"bytes,2,rep,name=duplicateRequests,proto3" json:"duplicateRequests"`
+	SegmentsCount     int32           `protobuf:"varint,3,opt,name=segmentsCount,proto3" json:"segmentsCount,omitempty"`
+	ChunksCount       int32           `protobuf:"varint,4,opt,name=chunksCount,proto3" json:"chunksCount,omitempty"`
+}
+
+func (m *DeletionManifest) Reset()      { *m = DeletionManifest{} }
+func (*DeletionManifest) ProtoMessage() {}
+func (*DeletionManifest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{1}
+}
+func (m *DeletionManifest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DeletionManifest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DeletionManifest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DeletionManifest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeletionManifest.Merge(m, src)
+}
+func (m *DeletionManifest) XXX_Size() int {
+	return m.Size()
+}
+func (m *DeletionManifest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeletionManifest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DeletionManifest proto.InternalMessageInfo
+
+func (m *DeletionManifest) GetRequests() []DeleteRequest {
+	if m != nil {
+		return m.Requests
+	}
+	return nil
+}
+
+func (m *DeletionManifest) GetDuplicateRequests() []DeleteRequest {
+	if m != nil {
+		return m.DuplicateRequests
+	}
+	return nil
+}
+
+func (m *DeletionManifest) GetSegmentsCount() int32 {
+	if m != nil {
+		return m.SegmentsCount
+	}
+	return 0
+}
+
+func (m *DeletionManifest) GetChunksCount() int32 {
+	if m != nil {
+		return m.ChunksCount
+	}
+	return 0
+}
+
+type ChunkIDs struct {
+	IDs []string `protobuf:"bytes,1,rep,name=IDs,proto3" json:"IDs,omitempty"`
+}
+
+func (m *ChunkIDs) Reset()      { *m = ChunkIDs{} }
+func (*ChunkIDs) ProtoMessage() {}
+func (*ChunkIDs) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{2}
+}
+func (m *ChunkIDs) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ChunkIDs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ChunkIDs.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ChunkIDs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ChunkIDs.Merge(m, src)
+}
+func (m *ChunkIDs) XXX_Size() int {
+	return m.Size()
+}
+func (m *ChunkIDs) XXX_DiscardUnknown() {
+	xxx_messageInfo_ChunkIDs.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ChunkIDs proto.InternalMessageInfo
+
+func (m *ChunkIDs) GetIDs() []string {
+	if m != nil {
+		return m.IDs
+	}
+	return nil
+}
+
+// ChunksGroup holds a group of chunks selected by the same set of requests
+type ChunksGroup struct {
+	Requests []DeleteRequest     `protobuf:"bytes,1,rep,name=requests,proto3" json:"requests"`
+	Chunks   map[string]ChunkIDs `protobuf:"bytes,2,rep,name=chunks,proto3" json:"chunks" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+}
+
+func (m *ChunksGroup) Reset()      { *m = ChunksGroup{} }
+func (*ChunksGroup) ProtoMessage() {}
+func (*ChunksGroup) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{3}
+}
+func (m *ChunksGroup) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ChunksGroup) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ChunksGroup.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ChunksGroup) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ChunksGroup.Merge(m, src)
+}
+func (m *ChunksGroup) XXX_Size() int {
+	return m.Size()
+}
+func (m *ChunksGroup) XXX_DiscardUnknown() {
+	xxx_messageInfo_ChunksGroup.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ChunksGroup proto.InternalMessageInfo
+
+func (m *ChunksGroup) GetRequests() []DeleteRequest {
+	if m != nil {
+		return m.Requests
+	}
+	return nil
+}
+
+func (m *ChunksGroup) GetChunks() map[string]ChunkIDs {
+	if m != nil {
+		return m.Chunks
+	}
+	return nil
+}
+
+// segment holds limited chunks in ChunksGroup.
+// It also helps segregate chunks belonging to different users/tables.
+type Segment struct {
+	TableName    string        `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
+	UserID       string        `protobuf:"bytes,2,opt,name=userID,proto3" json:"userID,omitempty"`
+	ChunksGroups []ChunksGroup `protobuf:"bytes,3,rep,name=chunksGroups,proto3" json:"chunksGroups"`
+	ChunksCount  int32         `protobuf:"varint,4,opt,name=chunksCount,proto3" json:"chunksCount,omitempty"`
+}
+
+func (m *Segment) Reset()      { *m = Segment{} }
+func (*Segment) ProtoMessage() {}
+func (*Segment) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{4}
+}
+func (m *Segment) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Segment) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Segment.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Segment) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Segment.Merge(m, src)
+}
+func (m *Segment) XXX_Size() int {
+	return m.Size()
+}
+func (m *Segment) XXX_DiscardUnknown() {
+	xxx_messageInfo_Segment.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Segment proto.InternalMessageInfo
+
+func (m *Segment) GetTableName() string {
+	if m != nil {
+		return m.TableName
+	}
+	return ""
+}
+
+func (m *Segment) GetUserID() string {
+	if m != nil {
+		return m.UserID
+	}
+	return ""
+}
+
+func (m *Segment) GetChunksGroups() []ChunksGroup {
+	if m != nil {
+		return m.ChunksGroups
+	}
+	return nil
+}
+
+func (m *Segment) GetChunksCount() int32 {
+	if m != nil {
+		return m.ChunksCount
+	}
+	return 0
+}
+
+type DeletionJob struct {
+	TableName      string          `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
+	UserID         string          `protobuf:"bytes,2,opt,name=userID,proto3" json:"userID,omitempty"`
+	ChunkIDs       []string        `protobuf:"bytes,3,rep,name=chunkIDs,proto3" json:"chunkIDs,omitempty"`
+	DeleteRequests []DeleteRequest `protobuf:"bytes,4,rep,name=deleteRequests,proto3" json:"deleteRequests"`
+}
+
+func (m *DeletionJob) Reset()      { *m = DeletionJob{} }
+func (*DeletionJob) ProtoMessage() {}
+func (*DeletionJob) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{5}
+}
+func (m *DeletionJob) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DeletionJob) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DeletionJob.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DeletionJob) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeletionJob.Merge(m, src)
+}
+func (m *DeletionJob) XXX_Size() int {
+	return m.Size()
+}
+func (m *DeletionJob) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeletionJob.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DeletionJob proto.InternalMessageInfo
+
+func (m *DeletionJob) GetTableName() string {
+	if m != nil {
+		return m.TableName
+	}
+	return ""
+}
+
+func (m *DeletionJob) GetUserID() string {
+	if m != nil {
+		return m.UserID
+	}
+	return ""
+}
+
+func (m *DeletionJob) GetChunkIDs() []string {
+	if m != nil {
+		return m.ChunkIDs
+	}
+	return nil
+}
+
+func (m *DeletionJob) GetDeleteRequests() []DeleteRequest {
+	if m != nil {
+		return m.DeleteRequests
+	}
+	return nil
+}
+
+type Chunk struct {
+	From        github_com_prometheus_common_model.Time `protobuf:"varint,1,opt,name=from,proto3,customtype=github.com/prometheus/common/model.Time" json:"from"`
+	Through     github_com_prometheus_common_model.Time `protobuf:"varint,2,opt,name=through,proto3,customtype=github.com/prometheus/common/model.Time" json:"through"`
+	Fingerprint uint64                                  `protobuf:"varint,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Checksum    uint32                                  `protobuf:"varint,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	KB          uint32                                  `protobuf:"varint,5,opt,name=KB,proto3" json:"KB,omitempty"`
+	Entries     uint32                                  `protobuf:"varint,6,opt,name=entries,proto3" json:"entries,omitempty"`
+}
+
+func (m *Chunk) Reset()      { *m = Chunk{} }
+func (*Chunk) ProtoMessage() {}
+func (*Chunk) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{6}
+}
+func (m *Chunk) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Chunk) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Chunk.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Chunk) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Chunk.Merge(m, src)
+}
+func (m *Chunk) XXX_Size() int {
+	return m.Size()
+}
+func (m *Chunk) XXX_DiscardUnknown() {
+	xxx_messageInfo_Chunk.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Chunk proto.InternalMessageInfo
+
+func (m *Chunk) GetFingerprint() uint64 {
+	if m != nil {
+		return m.Fingerprint
+	}
+	return 0
+}
+
+func (m *Chunk) GetChecksum() uint32 {
+	if m != nil {
+		return m.Checksum
+	}
+	return 0
+}
+
+func (m *Chunk) GetKB() uint32 {
+	if m != nil {
+		return m.KB
+	}
+	return 0
+}
+
+func (m *Chunk) GetEntries() uint32 {
+	if m != nil {
+		return m.Entries
+	}
+	return 0
+}
+
+type StorageUpdates struct {
+	ChunksToDelete  []string `protobuf:"bytes,1,rep,name=chunksToDelete,proto3" json:"chunksToDelete,omitempty"`
+	ChunksToDeIndex []string `protobuf:"bytes,2,rep,name=chunksToDeIndex,proto3" json:"chunksToDeIndex,omitempty"`
+	ChunksToIndex   []Chunk  `protobuf:"bytes,3,rep,name=chunksToIndex,proto3" json:"chunksToIndex"`
+}
+
+func (m *StorageUpdates) Reset()      { *m = StorageUpdates{} }
+func (*StorageUpdates) ProtoMessage() {}
+func (*StorageUpdates) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{7}
+}
+func (m *StorageUpdates) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *StorageUpdates) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_StorageUpdates.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *StorageUpdates) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StorageUpdates.Merge(m, src)
+}
+func (m *StorageUpdates) XXX_Size() int {
+	return m.Size()
+}
+func (m *StorageUpdates) XXX_DiscardUnknown() {
+	xxx_messageInfo_StorageUpdates.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_StorageUpdates proto.InternalMessageInfo
+
+func (m *StorageUpdates) GetChunksToDelete() []string {
+	if m != nil {
+		return m.ChunksToDelete
+	}
+	return nil
+}
+
+func (m *StorageUpdates) GetChunksToDeIndex() []string {
+	if m != nil {
+		return m.ChunksToDeIndex
+	}
+	return nil
+}
+
+func (m *StorageUpdates) GetChunksToIndex() []Chunk {
+	if m != nil {
+		return m.ChunksToIndex
+	}
+	return nil
+}
+
+// StorageUpdatesCollection collects updates to be made to the storage for a single Segment
+type StorageUpdatesCollection struct {
+	TableName      string                    `protobuf:"bytes,1,opt,name=tableName,proto3" json:"tableName,omitempty"`
+	UserID         string                    `protobuf:"bytes,2,opt,name=userID,proto3" json:"userID,omitempty"`
+	StorageUpdates map[string]StorageUpdates `protobuf:"bytes,3,rep,name=storageUpdates,proto3" json:"storageUpdates" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+}
+
+func (m *StorageUpdatesCollection) Reset()      { *m = StorageUpdatesCollection{} }
+func (*StorageUpdatesCollection) ProtoMessage() {}
+func (*StorageUpdatesCollection) Descriptor() ([]byte, []int) {
+	return fileDescriptor_8a14ac54fc425be6, []int{8}
+}
+func (m *StorageUpdatesCollection) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *StorageUpdatesCollection) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_StorageUpdatesCollection.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *StorageUpdatesCollection) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StorageUpdatesCollection.Merge(m, src)
+}
+func (m *StorageUpdatesCollection) XXX_Size() int {
+	return m.Size()
+}
+func (m *StorageUpdatesCollection) XXX_DiscardUnknown() {
+	xxx_messageInfo_StorageUpdatesCollection.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_StorageUpdatesCollection proto.InternalMessageInfo
+
+func (m *StorageUpdatesCollection) GetTableName() string {
+	if m != nil {
+		return m.TableName
+	}
+	return ""
+}
+
+func (m *StorageUpdatesCollection) GetUserID() string {
+	if m != nil {
+		return m.UserID
+	}
+	return ""
+}
+
+func (m *StorageUpdatesCollection) GetStorageUpdates() map[string]StorageUpdates {
+	if m != nil {
+		return m.StorageUpdates
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*DeleteRequest)(nil), "deletionproto.DeleteRequest")
+	proto.RegisterType((*DeletionManifest)(nil), "deletionproto.DeletionManifest")
+	proto.RegisterType((*ChunkIDs)(nil), "deletionproto.ChunkIDs")
+	proto.RegisterType((*ChunksGroup)(nil), "deletionproto.ChunksGroup")
+	proto.RegisterMapType((map[string]ChunkIDs)(nil), "deletionproto.ChunksGroup.ChunksEntry")
+	proto.RegisterType((*Segment)(nil), "deletionproto.Segment")
+	proto.RegisterType((*DeletionJob)(nil), "deletionproto.DeletionJob")
+	proto.RegisterType((*Chunk)(nil), "deletionproto.Chunk")
+	proto.RegisterType((*StorageUpdates)(nil), "deletionproto.StorageUpdates")
+	proto.RegisterType((*StorageUpdatesCollection)(nil), "deletionproto.StorageUpdatesCollection")
+	proto.RegisterMapType((map[string]StorageUpdates)(nil), "deletionproto.StorageUpdatesCollection.StorageUpdatesEntry")
 }
 
 func init() {
@@ -106,34 +611,64 @@ func init() {
 }
 
 var fileDescriptor_8a14ac54fc425be6 = []byte{
-	// 426 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x92, 0xbf, 0x6e, 0xd4, 0x40,
-	0x10, 0xc6, 0xbd, 0x1c, 0x77, 0x17, 0x6f, 0x14, 0x0a, 0x43, 0x61, 0x51, 0xec, 0x46, 0x20, 0x94,
-	0x14, 0x70, 0x8b, 0x94, 0x12, 0x45, 0x88, 0xd3, 0x35, 0x69, 0x28, 0x0c, 0x34, 0x50, 0x9c, 0x36,
-	0xf6, 0xe0, 0x58, 0xb9, 0xf5, 0x3a, 0xfb, 0x07, 0x29, 0x1d, 0x8f, 0xc0, 0x63, 0xf0, 0x28, 0x29,
-	0xaf, 0x8c, 0x28, 0x2c, 0xce, 0xd7, 0x20, 0x57, 0x79, 0x00, 0x0a, 0xb4, 0x6b, 0xc3, 0xe5, 0x3a,
-	0xa0, 0x9a, 0x4f, 0x33, 0xdf, 0xfe, 0x76, 0x66, 0x76, 0xf1, 0xf3, 0xea, 0x3c, 0x67, 0xa9, 0x14,
-	0x15, 0x4f, 0x8d, 0x54, 0x2c, 0x83, 0x05, 0x98, 0x42, 0x96, 0x7f, 0x44, 0xa5, 0xa4, 0x91, 0xcc,
-	0x5c, 0x56, 0xa0, 0x27, 0x5e, 0x47, 0x7b, 0x5b, 0xa5, 0x87, 0x0f, 0x72, 0x99, 0xcb, 0xce, 0xe5,
-	0x54, 0x67, 0x7a, 0xf4, 0x73, 0x80, 0xf7, 0x66, 0xce, 0x07, 0x09, 0x5c, 0x58, 0xd0, 0x26, 0x7a,
-	0x8a, 0x43, 0xd5, 0xc9, 0x93, 0x59, 0x8c, 0xf6, 0xd1, 0x61, 0x38, 0xbd, 0xd7, 0xd6, 0x14, 0xf7,
-	0xc9, 0x79, 0x91, 0x25, 0x1b, 0x43, 0xf4, 0x01, 0x87, 0xda, 0x70, 0x65, 0xde, 0x16, 0x02, 0xe2,
-	0x3b, 0xfb, 0xe8, 0x70, 0x30, 0x3d, 0xbe, 0xaa, 0x69, 0xf0, 0xad, 0xa6, 0x07, 0x79, 0x61, 0xce,
-	0xec, 0xe9, 0x24, 0x95, 0x82, 0x55, 0x4a, 0x0a, 0x30, 0x67, 0x60, 0xb5, 0x9b, 0x41, 0xc8, 0x92,
-	0x09, 0x99, 0xc1, 0x62, 0xe2, 0x8e, 0x39, 0xb8, 0x67, 0xcc, 0x4d, 0x21, 0x20, 0xd9, 0xf0, 0xa2,
-	0x77, 0x78, 0x0c, 0x65, 0xe6, 0xd1, 0x03, 0x8f, 0x7e, 0xf1, 0xef, 0xe8, 0x1d, 0x28, 0xb3, 0x0e,
-	0xfc, 0x9b, 0x15, 0x51, 0x3c, 0xbc, 0xb0, 0xa0, 0x2e, 0xe3, 0xbb, 0x7e, 0xba, 0xb0, 0xad, 0x69,
-	0x97, 0x48, 0xba, 0x10, 0x1d, 0xe3, 0x91, 0x36, 0xdc, 0x58, 0x1d, 0x0f, 0xbd, 0xe3, 0x49, 0x7f,
-	0xed, 0xfd, 0xad, 0x4d, 0xbd, 0xf1, 0x96, 0xb6, 0xa6, 0xbd, 0x39, 0xe9, 0xa3, 0xdb, 0x49, 0xaa,
-	0x80, 0x1b, 0xc8, 0x5e, 0x99, 0x78, 0xf4, 0xdf, 0x3b, 0xe9, 0x19, 0x73, 0x6e, 0x92, 0x0d, 0x2f,
-	0x7a, 0x8c, 0x47, 0x56, 0x83, 0x3a, 0x99, 0xc5, 0x63, 0xdf, 0xdb, 0x6e, 0x5b, 0xd3, 0xb1, 0xcb,
-	0xb8, 0x87, 0xe9, 0x4b, 0xd1, 0x01, 0xde, 0xd5, 0xae, 0xc9, 0x32, 0x85, 0xd7, 0x56, 0xc4, 0x3b,
-	0xbe, 0x87, 0x61, 0x5b, 0x53, 0xf4, 0x2c, 0xb9, 0x5d, 0x99, 0xda, 0xe5, 0x8a, 0x04, 0xd7, 0x2b,
-	0x12, 0xdc, 0xac, 0x08, 0xfa, 0xdc, 0x10, 0xf4, 0xb5, 0x21, 0xe8, 0xaa, 0x21, 0x68, 0xd9, 0x10,
-	0xf4, 0xbd, 0x21, 0xe8, 0x47, 0x43, 0x82, 0x9b, 0x86, 0xa0, 0x2f, 0x6b, 0x12, 0x2c, 0xd7, 0x24,
-	0xb8, 0x5e, 0x93, 0xe0, 0xfd, 0xcb, 0x5b, 0x53, 0xe4, 0x8a, 0x7f, 0xe4, 0x25, 0x67, 0x0b, 0x79,
-	0x5e, 0xb0, 0x4f, 0x47, 0xec, 0x6f, 0xbe, 0xe9, 0xe9, 0xc8, 0x87, 0xa3, 0x5f, 0x01, 0x00, 0x00,
-	0xff, 0xff, 0x0a, 0x61, 0x43, 0x38, 0xd5, 0x02, 0x00, 0x00,
+	// 911 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x56, 0x4d, 0x8f, 0xdb, 0x44,
+	0x18, 0xce, 0xe4, 0x3b, 0x6f, 0x48, 0x28, 0xd3, 0x0a, 0xac, 0x68, 0x71, 0x56, 0x01, 0xda, 0x3d,
+	0xd0, 0x18, 0x75, 0x2f, 0x88, 0xaa, 0x7c, 0x64, 0x8d, 0x50, 0x5a, 0x51, 0xa1, 0xd9, 0xf6, 0x02,
+	0x87, 0xc5, 0x6b, 0xcf, 0x3a, 0x56, 0x62, 0x8f, 0xeb, 0x19, 0x57, 0xec, 0x8d, 0x9f, 0xc0, 0x1f,
+	0xe0, 0x86, 0x04, 0x12, 0x7f, 0xa4, 0xc7, 0x3d, 0x56, 0x1c, 0x22, 0x36, 0x7b, 0x00, 0x45, 0x1c,
+	0xfa, 0x03, 0x90, 0x40, 0x33, 0x9e, 0x7c, 0x38, 0x6c, 0xd1, 0xee, 0xf6, 0xe4, 0x77, 0xde, 0x8f,
+	0x67, 0x9e, 0xf7, 0x63, 0x5e, 0x19, 0x3e, 0x88, 0xc7, 0xbe, 0xe5, 0xb2, 0x30, 0x76, 0x5c, 0xc1,
+	0x12, 0xcb, 0xa3, 0x13, 0x2a, 0x02, 0x16, 0x2d, 0x85, 0x38, 0x61, 0x82, 0x59, 0xe2, 0x38, 0xa6,
+	0xbc, 0xaf, 0x64, 0xdc, 0xca, 0x99, 0x3a, 0x37, 0x7c, 0xe6, 0xb3, 0xcc, 0x4b, 0x4a, 0x99, 0x53,
+	0xef, 0xef, 0x12, 0xb4, 0x6c, 0xe9, 0x47, 0x09, 0x7d, 0x92, 0x52, 0x2e, 0xf0, 0xfb, 0xd0, 0x48,
+	0x32, 0x71, 0x68, 0x1b, 0x68, 0x1b, 0xed, 0x34, 0x06, 0xed, 0xf9, 0xb4, 0x0b, 0x5a, 0x79, 0x10,
+	0x78, 0x64, 0xe5, 0x80, 0xbf, 0x81, 0x06, 0x17, 0x4e, 0x22, 0x1e, 0x05, 0x21, 0x35, 0x8a, 0xdb,
+	0x68, 0xa7, 0x34, 0xb8, 0xf7, 0x6c, 0xda, 0x2d, 0xfc, 0x36, 0xed, 0xde, 0xf2, 0x03, 0x31, 0x4a,
+	0x0f, 0xfb, 0x2e, 0x0b, 0xad, 0x38, 0x61, 0x21, 0x15, 0x23, 0x9a, 0x72, 0x99, 0x43, 0xc8, 0x22,
+	0x2b, 0x64, 0x1e, 0x9d, 0xf4, 0x65, 0x98, 0x04, 0x57, 0x18, 0x07, 0x22, 0x08, 0x29, 0x59, 0xe1,
+	0xe1, 0xc7, 0x50, 0xa3, 0x91, 0xa7, 0xa0, 0x4b, 0x0a, 0xfa, 0xee, 0xe5, 0xa1, 0xeb, 0x34, 0xf2,
+	0x32, 0xe0, 0x05, 0x16, 0xee, 0x42, 0xe5, 0x49, 0x4a, 0x93, 0x63, 0xa3, 0xac, 0xb2, 0x6b, 0xcc,
+	0xa7, 0xdd, 0x4c, 0x41, 0xb2, 0x0f, 0xbe, 0x07, 0x55, 0x2e, 0x1c, 0x91, 0x72, 0xa3, 0xa2, 0x3c,
+	0xde, 0xd3, 0xd7, 0x5e, 0xcf, 0x55, 0x6a, 0x5f, 0xb9, 0xcc, 0xa7, 0x5d, 0xed, 0x4c, 0xf4, 0x57,
+	0xd6, 0xc4, 0x4d, 0xa8, 0x23, 0xa8, 0xf7, 0x99, 0x30, 0xaa, 0x57, 0xae, 0x89, 0xc6, 0x38, 0x70,
+	0x04, 0x59, 0xe1, 0xe1, 0x77, 0xa0, 0x9a, 0x72, 0x9a, 0x0c, 0x6d, 0xa3, 0xa6, 0xb8, 0x35, 0xe7,
+	0xd3, 0x6e, 0x4d, 0x6a, 0x64, 0x63, 0xb4, 0x09, 0xdf, 0x82, 0x26, 0x97, 0x24, 0x23, 0x97, 0x3e,
+	0x4c, 0x43, 0xa3, 0xae, 0x38, 0x54, 0xe6, 0xd3, 0x2e, 0xba, 0x4d, 0xd6, 0x2d, 0xbd, 0xbf, 0x10,
+	0x5c, 0xb3, 0xf5, 0x98, 0x7c, 0xe9, 0x44, 0xc1, 0x91, 0x9c, 0x80, 0x8f, 0xa1, 0xae, 0x1b, 0xcc,
+	0x0d, 0xb4, 0x5d, 0xda, 0x69, 0xde, 0xd9, 0xea, 0xe7, 0x66, 0xa9, 0x9f, 0xab, 0xc3, 0xa0, 0x2c,
+	0x93, 0x23, 0xcb, 0x18, 0xfc, 0x15, 0xbc, 0xe1, 0xa5, 0xf1, 0x24, 0x70, 0x9d, 0xa5, 0x0f, 0x37,
+	0x8a, 0x17, 0x06, 0xfa, 0x6f, 0x30, 0x7e, 0x17, 0x5a, 0x9c, 0xfa, 0x21, 0x8d, 0x04, 0xdf, 0x63,
+	0x69, 0x24, 0xd4, 0x38, 0x54, 0x48, 0x5e, 0x89, 0xb7, 0xa1, 0xe9, 0x8e, 0xd2, 0x68, 0xac, 0x7d,
+	0xca, 0xca, 0x67, 0x5d, 0xd5, 0xdb, 0x82, 0xfa, 0x9e, 0x3c, 0x0e, 0x6d, 0x8e, 0xaf, 0x41, 0x69,
+	0x68, 0x67, 0x09, 0x36, 0x88, 0x14, 0x7b, 0x7f, 0x20, 0x68, 0x2a, 0x33, 0xff, 0x22, 0x61, 0x69,
+	0xfc, 0xca, 0x75, 0xb0, 0xa1, 0x9a, 0x5d, 0xae, 0x93, 0xbf, 0xb9, 0x11, 0xbd, 0x76, 0x97, 0x96,
+	0x3f, 0x8f, 0x44, 0x72, 0xac, 0x71, 0x74, 0x6c, 0x87, 0x2c, 0x48, 0x29, 0xa3, 0xa4, 0x3d, 0xa6,
+	0xc7, 0xd9, 0xc3, 0x24, 0x52, 0xc4, 0xb7, 0xa1, 0xf2, 0xd4, 0x99, 0xa4, 0xd9, 0xf3, 0x6b, 0xde,
+	0x79, 0xeb, 0xbc, 0x5b, 0x86, 0x36, 0x27, 0x99, 0xd7, 0x47, 0xc5, 0x0f, 0x51, 0xef, 0x67, 0x04,
+	0xb5, 0xfd, 0xac, 0x76, 0x78, 0x0b, 0x1a, 0xc2, 0x39, 0x9c, 0xd0, 0x87, 0x4e, 0x48, 0x35, 0xec,
+	0x4a, 0x81, 0xdf, 0x5c, 0x8e, 0x5b, 0x51, 0x99, 0x16, 0x13, 0x66, 0xc3, 0x6b, 0xee, 0x8a, 0x3e,
+	0x37, 0x4a, 0x2a, 0xc3, 0xce, 0xcb, 0x33, 0xd4, 0x59, 0xe5, 0xa2, 0x2e, 0xd0, 0xb1, 0x5f, 0x11,
+	0x34, 0x17, 0x03, 0x7a, 0x9f, 0x1d, 0x5e, 0x91, 0x6d, 0x07, 0xea, 0xae, 0x2e, 0x83, 0x62, 0xda,
+	0x20, 0xcb, 0x33, 0xbe, 0x0f, 0x6d, 0x6f, 0xbd, 0x8d, 0xdc, 0x28, 0x5f, 0xb8, 0xd7, 0x1b, 0x91,
+	0xbd, 0x7f, 0x10, 0x54, 0x54, 0xce, 0x78, 0x0f, 0xca, 0x47, 0x09, 0x0b, 0x15, 0xc5, 0xd2, 0xc0,
+	0xba, 0xe4, 0xf3, 0x27, 0x2a, 0x18, 0x0f, 0xa1, 0x26, 0x46, 0x09, 0x4b, 0xfd, 0x91, 0x5e, 0xad,
+	0x97, 0xc6, 0x59, 0xc4, 0xcb, 0x4a, 0x1f, 0x05, 0x91, 0x4f, 0x93, 0x38, 0x09, 0xf4, 0xfb, 0x29,
+	0x93, 0x75, 0x55, 0x56, 0x23, 0xea, 0x8e, 0x79, 0x1a, 0xaa, 0x46, 0xb4, 0xc8, 0xf2, 0x8c, 0xdb,
+	0x50, 0x7c, 0x30, 0x50, 0xcb, 0xb0, 0x45, 0x8a, 0x0f, 0x06, 0xd8, 0x90, 0x8b, 0x59, 0x24, 0x01,
+	0xe5, 0x6a, 0xbf, 0xb5, 0xc8, 0xe2, 0xd8, 0xfb, 0x09, 0x41, 0x7b, 0x5f, 0xb0, 0xc4, 0xf1, 0xe9,
+	0xe3, 0xd8, 0x73, 0x04, 0xe5, 0xf8, 0x26, 0xb4, 0xb3, 0x8e, 0x3e, 0x62, 0x59, 0x0d, 0xf5, 0x9b,
+	0xdb, 0xd0, 0xe2, 0x1d, 0x78, 0x7d, 0xa5, 0x19, 0x46, 0x1e, 0xfd, 0x4e, 0xbd, 0x9b, 0x06, 0xd9,
+	0x54, 0xe3, 0x4f, 0xa1, 0xb5, 0x50, 0x65, 0x7e, 0xd9, 0xf4, 0xdd, 0x38, 0x6f, 0xfa, 0x74, 0xa7,
+	0xf2, 0x01, 0xbd, 0x1f, 0x8b, 0x60, 0xe4, 0x69, 0xee, 0xb1, 0xc9, 0x84, 0xba, 0x32, 0xf8, 0x8a,
+	0x33, 0x16, 0x40, 0x9b, 0xe7, 0x10, 0x35, 0xab, 0xbb, 0x1b, 0xac, 0x5e, 0x76, 0xed, 0x86, 0x61,
+	0x7d, 0x15, 0x6c, 0x00, 0x77, 0xbe, 0x85, 0xeb, 0xe7, 0x38, 0x9f, 0xb3, 0x1a, 0x76, 0xf3, 0xab,
+	0xe1, 0xed, 0xff, 0xa5, 0xb2, 0xb6, 0x20, 0x06, 0xe9, 0xc9, 0xa9, 0x59, 0x78, 0x7e, 0x6a, 0x16,
+	0x5e, 0x9c, 0x9a, 0xe8, 0xfb, 0x99, 0x89, 0x7e, 0x99, 0x99, 0xe8, 0xd9, 0xcc, 0x44, 0x27, 0x33,
+	0x13, 0xfd, 0x3e, 0x33, 0xd1, 0x9f, 0x33, 0xb3, 0xf0, 0x62, 0x66, 0xa2, 0x1f, 0xce, 0xcc, 0xc2,
+	0xc9, 0x99, 0x59, 0x78, 0x7e, 0x66, 0x16, 0xbe, 0xfe, 0x64, 0x6d, 0x2c, 0xfd, 0xc4, 0x39, 0x72,
+	0x22, 0xc7, 0x9a, 0xb0, 0x71, 0x60, 0x3d, 0xdd, 0xb5, 0x2e, 0xf2, 0xfb, 0x72, 0x58, 0x55, 0x9f,
+	0xdd, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x1b, 0xfa, 0xe4, 0xf3, 0xed, 0x08, 0x00, 0x00,
 }
 
 func (this *DeleteRequest) Equal(that interface{}) bool {
@@ -181,6 +716,319 @@ func (this *DeleteRequest) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *DeletionManifest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeletionManifest)
+	if !ok {
+		that2, ok := that.(DeletionManifest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Requests) != len(that1.Requests) {
+		return false
+	}
+	for i := range this.Requests {
+		if !this.Requests[i].Equal(&that1.Requests[i]) {
+			return false
+		}
+	}
+	if len(this.DuplicateRequests) != len(that1.DuplicateRequests) {
+		return false
+	}
+	for i := range this.DuplicateRequests {
+		if !this.DuplicateRequests[i].Equal(&that1.DuplicateRequests[i]) {
+			return false
+		}
+	}
+	if this.SegmentsCount != that1.SegmentsCount {
+		return false
+	}
+	if this.ChunksCount != that1.ChunksCount {
+		return false
+	}
+	return true
+}
+func (this *ChunkIDs) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ChunkIDs)
+	if !ok {
+		that2, ok := that.(ChunkIDs)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.IDs) != len(that1.IDs) {
+		return false
+	}
+	for i := range this.IDs {
+		if this.IDs[i] != that1.IDs[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *ChunksGroup) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ChunksGroup)
+	if !ok {
+		that2, ok := that.(ChunksGroup)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Requests) != len(that1.Requests) {
+		return false
+	}
+	for i := range this.Requests {
+		if !this.Requests[i].Equal(&that1.Requests[i]) {
+			return false
+		}
+	}
+	if len(this.Chunks) != len(that1.Chunks) {
+		return false
+	}
+	for i := range this.Chunks {
+		a := this.Chunks[i]
+		b := that1.Chunks[i]
+		if !(&a).Equal(&b) {
+			return false
+		}
+	}
+	return true
+}
+func (this *Segment) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Segment)
+	if !ok {
+		that2, ok := that.(Segment)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.ChunksGroups) != len(that1.ChunksGroups) {
+		return false
+	}
+	for i := range this.ChunksGroups {
+		if !this.ChunksGroups[i].Equal(&that1.ChunksGroups[i]) {
+			return false
+		}
+	}
+	if this.ChunksCount != that1.ChunksCount {
+		return false
+	}
+	return true
+}
+func (this *DeletionJob) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeletionJob)
+	if !ok {
+		that2, ok := that.(DeletionJob)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.ChunkIDs) != len(that1.ChunkIDs) {
+		return false
+	}
+	for i := range this.ChunkIDs {
+		if this.ChunkIDs[i] != that1.ChunkIDs[i] {
+			return false
+		}
+	}
+	if len(this.DeleteRequests) != len(that1.DeleteRequests) {
+		return false
+	}
+	for i := range this.DeleteRequests {
+		if !this.DeleteRequests[i].Equal(&that1.DeleteRequests[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *Chunk) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Chunk)
+	if !ok {
+		that2, ok := that.(Chunk)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.From.Equal(that1.From) {
+		return false
+	}
+	if !this.Through.Equal(that1.Through) {
+		return false
+	}
+	if this.Fingerprint != that1.Fingerprint {
+		return false
+	}
+	if this.Checksum != that1.Checksum {
+		return false
+	}
+	if this.KB != that1.KB {
+		return false
+	}
+	if this.Entries != that1.Entries {
+		return false
+	}
+	return true
+}
+func (this *StorageUpdates) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StorageUpdates)
+	if !ok {
+		that2, ok := that.(StorageUpdates)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.ChunksToDelete) != len(that1.ChunksToDelete) {
+		return false
+	}
+	for i := range this.ChunksToDelete {
+		if this.ChunksToDelete[i] != that1.ChunksToDelete[i] {
+			return false
+		}
+	}
+	if len(this.ChunksToDeIndex) != len(that1.ChunksToDeIndex) {
+		return false
+	}
+	for i := range this.ChunksToDeIndex {
+		if this.ChunksToDeIndex[i] != that1.ChunksToDeIndex[i] {
+			return false
+		}
+	}
+	if len(this.ChunksToIndex) != len(that1.ChunksToIndex) {
+		return false
+	}
+	for i := range this.ChunksToIndex {
+		if !this.ChunksToIndex[i].Equal(&that1.ChunksToIndex[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *StorageUpdatesCollection) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StorageUpdatesCollection)
+	if !ok {
+		that2, ok := that.(StorageUpdatesCollection)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.StorageUpdates) != len(that1.StorageUpdates) {
+		return false
+	}
+	for i := range this.StorageUpdates {
+		a := this.StorageUpdates[i]
+		b := that1.StorageUpdates[i]
+		if !(&a).Equal(&b) {
+			return false
+		}
+	}
+	return true
+}
 func (this *DeleteRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -195,6 +1043,165 @@ func (this *DeleteRequest) GoString() string {
 	s = append(s, "CreatedAt: "+fmt.Sprintf("%#v", this.CreatedAt)+",\n")
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
 	s = append(s, "SequenceNum: "+fmt.Sprintf("%#v", this.SequenceNum)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DeletionManifest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&deletionproto.DeletionManifest{")
+	if this.Requests != nil {
+		vs := make([]*DeleteRequest, len(this.Requests))
+		for i := range vs {
+			vs[i] = &this.Requests[i]
+		}
+		s = append(s, "Requests: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.DuplicateRequests != nil {
+		vs := make([]*DeleteRequest, len(this.DuplicateRequests))
+		for i := range vs {
+			vs[i] = &this.DuplicateRequests[i]
+		}
+		s = append(s, "DuplicateRequests: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "SegmentsCount: "+fmt.Sprintf("%#v", this.SegmentsCount)+",\n")
+	s = append(s, "ChunksCount: "+fmt.Sprintf("%#v", this.ChunksCount)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ChunkIDs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&deletionproto.ChunkIDs{")
+	s = append(s, "IDs: "+fmt.Sprintf("%#v", this.IDs)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ChunksGroup) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&deletionproto.ChunksGroup{")
+	if this.Requests != nil {
+		vs := make([]*DeleteRequest, len(this.Requests))
+		for i := range vs {
+			vs[i] = &this.Requests[i]
+		}
+		s = append(s, "Requests: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	keysForChunks := make([]string, 0, len(this.Chunks))
+	for k, _ := range this.Chunks {
+		keysForChunks = append(keysForChunks, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForChunks)
+	mapStringForChunks := "map[string]ChunkIDs{"
+	for _, k := range keysForChunks {
+		mapStringForChunks += fmt.Sprintf("%#v: %#v,", k, this.Chunks[k])
+	}
+	mapStringForChunks += "}"
+	if this.Chunks != nil {
+		s = append(s, "Chunks: "+mapStringForChunks+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Segment) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&deletionproto.Segment{")
+	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
+	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
+	if this.ChunksGroups != nil {
+		vs := make([]*ChunksGroup, len(this.ChunksGroups))
+		for i := range vs {
+			vs[i] = &this.ChunksGroups[i]
+		}
+		s = append(s, "ChunksGroups: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "ChunksCount: "+fmt.Sprintf("%#v", this.ChunksCount)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DeletionJob) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&deletionproto.DeletionJob{")
+	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
+	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
+	s = append(s, "ChunkIDs: "+fmt.Sprintf("%#v", this.ChunkIDs)+",\n")
+	if this.DeleteRequests != nil {
+		vs := make([]*DeleteRequest, len(this.DeleteRequests))
+		for i := range vs {
+			vs[i] = &this.DeleteRequests[i]
+		}
+		s = append(s, "DeleteRequests: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Chunk) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 10)
+	s = append(s, "&deletionproto.Chunk{")
+	s = append(s, "From: "+fmt.Sprintf("%#v", this.From)+",\n")
+	s = append(s, "Through: "+fmt.Sprintf("%#v", this.Through)+",\n")
+	s = append(s, "Fingerprint: "+fmt.Sprintf("%#v", this.Fingerprint)+",\n")
+	s = append(s, "Checksum: "+fmt.Sprintf("%#v", this.Checksum)+",\n")
+	s = append(s, "KB: "+fmt.Sprintf("%#v", this.KB)+",\n")
+	s = append(s, "Entries: "+fmt.Sprintf("%#v", this.Entries)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *StorageUpdates) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&deletionproto.StorageUpdates{")
+	s = append(s, "ChunksToDelete: "+fmt.Sprintf("%#v", this.ChunksToDelete)+",\n")
+	s = append(s, "ChunksToDeIndex: "+fmt.Sprintf("%#v", this.ChunksToDeIndex)+",\n")
+	if this.ChunksToIndex != nil {
+		vs := make([]*Chunk, len(this.ChunksToIndex))
+		for i := range vs {
+			vs[i] = &this.ChunksToIndex[i]
+		}
+		s = append(s, "ChunksToIndex: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *StorageUpdatesCollection) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&deletionproto.StorageUpdatesCollection{")
+	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
+	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
+	keysForStorageUpdates := make([]string, 0, len(this.StorageUpdates))
+	for k, _ := range this.StorageUpdates {
+		keysForStorageUpdates = append(keysForStorageUpdates, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForStorageUpdates)
+	mapStringForStorageUpdates := "map[string]StorageUpdates{"
+	for _, k := range keysForStorageUpdates {
+		mapStringForStorageUpdates += fmt.Sprintf("%#v: %#v,", k, this.StorageUpdates[k])
+	}
+	mapStringForStorageUpdates += "}"
+	if this.StorageUpdates != nil {
+		s = append(s, "StorageUpdates: "+mapStringForStorageUpdates+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -277,6 +1284,445 @@ func (m *DeleteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *DeletionManifest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeletionManifest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DeletionManifest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ChunksCount != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.ChunksCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.SegmentsCount != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.SegmentsCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.DuplicateRequests) > 0 {
+		for iNdEx := len(m.DuplicateRequests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.DuplicateRequests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Requests) > 0 {
+		for iNdEx := len(m.Requests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Requests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ChunkIDs) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ChunkIDs) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ChunkIDs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.IDs) > 0 {
+		for iNdEx := len(m.IDs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.IDs[iNdEx])
+			copy(dAtA[i:], m.IDs[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.IDs[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ChunksGroup) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ChunksGroup) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ChunksGroup) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Chunks) > 0 {
+		for k := range m.Chunks {
+			v := m.Chunks[k]
+			baseI := i
+			{
+				size, err := (&v).MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = encodeVarintTypes(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = encodeVarintTypes(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Requests) > 0 {
+		for iNdEx := len(m.Requests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Requests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Segment) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Segment) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Segment) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ChunksCount != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.ChunksCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.ChunksGroups) > 0 {
+		for iNdEx := len(m.ChunksGroups) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.ChunksGroups[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.UserID) > 0 {
+		i -= len(m.UserID)
+		copy(dAtA[i:], m.UserID)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.UserID)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TableName) > 0 {
+		i -= len(m.TableName)
+		copy(dAtA[i:], m.TableName)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TableName)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeletionJob) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeletionJob) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DeletionJob) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.DeleteRequests) > 0 {
+		for iNdEx := len(m.DeleteRequests) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.DeleteRequests[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.ChunkIDs) > 0 {
+		for iNdEx := len(m.ChunkIDs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.ChunkIDs[iNdEx])
+			copy(dAtA[i:], m.ChunkIDs[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.ChunkIDs[iNdEx])))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.UserID) > 0 {
+		i -= len(m.UserID)
+		copy(dAtA[i:], m.UserID)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.UserID)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TableName) > 0 {
+		i -= len(m.TableName)
+		copy(dAtA[i:], m.TableName)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TableName)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Chunk) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Chunk) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Entries != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Entries))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.KB != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.KB))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.Checksum != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Checksum))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Fingerprint != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Fingerprint))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Through != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Through))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.From != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.From))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StorageUpdates) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StorageUpdates) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *StorageUpdates) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.ChunksToIndex) > 0 {
+		for iNdEx := len(m.ChunksToIndex) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.ChunksToIndex[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.ChunksToDeIndex) > 0 {
+		for iNdEx := len(m.ChunksToDeIndex) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.ChunksToDeIndex[iNdEx])
+			copy(dAtA[i:], m.ChunksToDeIndex[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.ChunksToDeIndex[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.ChunksToDelete) > 0 {
+		for iNdEx := len(m.ChunksToDelete) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.ChunksToDelete[iNdEx])
+			copy(dAtA[i:], m.ChunksToDelete[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.ChunksToDelete[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *StorageUpdatesCollection) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *StorageUpdatesCollection) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *StorageUpdatesCollection) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.StorageUpdates) > 0 {
+		for k := range m.StorageUpdates {
+			v := m.StorageUpdates[k]
+			baseI := i
+			{
+				size, err := (&v).MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = encodeVarintTypes(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = encodeVarintTypes(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.UserID) > 0 {
+		i -= len(m.UserID)
+		copy(dAtA[i:], m.UserID)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.UserID)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TableName) > 0 {
+		i -= len(m.TableName)
+		copy(dAtA[i:], m.TableName)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TableName)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -325,6 +1771,207 @@ func (m *DeleteRequest) Size() (n int) {
 	return n
 }
 
+func (m *DeletionManifest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Requests) > 0 {
+		for _, e := range m.Requests {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.DuplicateRequests) > 0 {
+		for _, e := range m.DuplicateRequests {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if m.SegmentsCount != 0 {
+		n += 1 + sovTypes(uint64(m.SegmentsCount))
+	}
+	if m.ChunksCount != 0 {
+		n += 1 + sovTypes(uint64(m.ChunksCount))
+	}
+	return n
+}
+
+func (m *ChunkIDs) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.IDs) > 0 {
+		for _, s := range m.IDs {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *ChunksGroup) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Requests) > 0 {
+		for _, e := range m.Requests {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.Chunks) > 0 {
+		for k, v := range m.Chunks {
+			_ = k
+			_ = v
+			l = v.Size()
+			mapEntrySize := 1 + len(k) + sovTypes(uint64(len(k))) + 1 + l + sovTypes(uint64(l))
+			n += mapEntrySize + 1 + sovTypes(uint64(mapEntrySize))
+		}
+	}
+	return n
+}
+
+func (m *Segment) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TableName)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.UserID)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.ChunksGroups) > 0 {
+		for _, e := range m.ChunksGroups {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if m.ChunksCount != 0 {
+		n += 1 + sovTypes(uint64(m.ChunksCount))
+	}
+	return n
+}
+
+func (m *DeletionJob) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TableName)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.UserID)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.ChunkIDs) > 0 {
+		for _, s := range m.ChunkIDs {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.DeleteRequests) > 0 {
+		for _, e := range m.DeleteRequests {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *Chunk) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.From != 0 {
+		n += 1 + sovTypes(uint64(m.From))
+	}
+	if m.Through != 0 {
+		n += 1 + sovTypes(uint64(m.Through))
+	}
+	if m.Fingerprint != 0 {
+		n += 1 + sovTypes(uint64(m.Fingerprint))
+	}
+	if m.Checksum != 0 {
+		n += 1 + sovTypes(uint64(m.Checksum))
+	}
+	if m.KB != 0 {
+		n += 1 + sovTypes(uint64(m.KB))
+	}
+	if m.Entries != 0 {
+		n += 1 + sovTypes(uint64(m.Entries))
+	}
+	return n
+}
+
+func (m *StorageUpdates) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.ChunksToDelete) > 0 {
+		for _, s := range m.ChunksToDelete {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.ChunksToDeIndex) > 0 {
+		for _, s := range m.ChunksToDeIndex {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.ChunksToIndex) > 0 {
+		for _, e := range m.ChunksToIndex {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *StorageUpdatesCollection) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TableName)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.UserID)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.StorageUpdates) > 0 {
+		for k, v := range m.StorageUpdates {
+			_ = k
+			_ = v
+			l = v.Size()
+			mapEntrySize := 1 + len(k) + sovTypes(uint64(len(k))) + 1 + l + sovTypes(uint64(l))
+			n += mapEntrySize + 1 + sovTypes(uint64(mapEntrySize))
+		}
+	}
+	return n
+}
+
 func sovTypes(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -344,6 +1991,155 @@ func (this *DeleteRequest) String() string {
 		`CreatedAt:` + fmt.Sprintf("%v", this.CreatedAt) + `,`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
 		`SequenceNum:` + fmt.Sprintf("%v", this.SequenceNum) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeletionManifest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForRequests := "[]DeleteRequest{"
+	for _, f := range this.Requests {
+		repeatedStringForRequests += strings.Replace(strings.Replace(f.String(), "DeleteRequest", "DeleteRequest", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForRequests += "}"
+	repeatedStringForDuplicateRequests := "[]DeleteRequest{"
+	for _, f := range this.DuplicateRequests {
+		repeatedStringForDuplicateRequests += strings.Replace(strings.Replace(f.String(), "DeleteRequest", "DeleteRequest", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForDuplicateRequests += "}"
+	s := strings.Join([]string{`&DeletionManifest{`,
+		`Requests:` + repeatedStringForRequests + `,`,
+		`DuplicateRequests:` + repeatedStringForDuplicateRequests + `,`,
+		`SegmentsCount:` + fmt.Sprintf("%v", this.SegmentsCount) + `,`,
+		`ChunksCount:` + fmt.Sprintf("%v", this.ChunksCount) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ChunkIDs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ChunkIDs{`,
+		`IDs:` + fmt.Sprintf("%v", this.IDs) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ChunksGroup) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForRequests := "[]DeleteRequest{"
+	for _, f := range this.Requests {
+		repeatedStringForRequests += strings.Replace(strings.Replace(f.String(), "DeleteRequest", "DeleteRequest", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForRequests += "}"
+	keysForChunks := make([]string, 0, len(this.Chunks))
+	for k, _ := range this.Chunks {
+		keysForChunks = append(keysForChunks, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForChunks)
+	mapStringForChunks := "map[string]ChunkIDs{"
+	for _, k := range keysForChunks {
+		mapStringForChunks += fmt.Sprintf("%v: %v,", k, this.Chunks[k])
+	}
+	mapStringForChunks += "}"
+	s := strings.Join([]string{`&ChunksGroup{`,
+		`Requests:` + repeatedStringForRequests + `,`,
+		`Chunks:` + mapStringForChunks + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Segment) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForChunksGroups := "[]ChunksGroup{"
+	for _, f := range this.ChunksGroups {
+		repeatedStringForChunksGroups += strings.Replace(strings.Replace(f.String(), "ChunksGroup", "ChunksGroup", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForChunksGroups += "}"
+	s := strings.Join([]string{`&Segment{`,
+		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
+		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
+		`ChunksGroups:` + repeatedStringForChunksGroups + `,`,
+		`ChunksCount:` + fmt.Sprintf("%v", this.ChunksCount) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeletionJob) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForDeleteRequests := "[]DeleteRequest{"
+	for _, f := range this.DeleteRequests {
+		repeatedStringForDeleteRequests += strings.Replace(strings.Replace(f.String(), "DeleteRequest", "DeleteRequest", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForDeleteRequests += "}"
+	s := strings.Join([]string{`&DeletionJob{`,
+		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
+		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
+		`ChunkIDs:` + fmt.Sprintf("%v", this.ChunkIDs) + `,`,
+		`DeleteRequests:` + repeatedStringForDeleteRequests + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Chunk) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Chunk{`,
+		`From:` + fmt.Sprintf("%v", this.From) + `,`,
+		`Through:` + fmt.Sprintf("%v", this.Through) + `,`,
+		`Fingerprint:` + fmt.Sprintf("%v", this.Fingerprint) + `,`,
+		`Checksum:` + fmt.Sprintf("%v", this.Checksum) + `,`,
+		`KB:` + fmt.Sprintf("%v", this.KB) + `,`,
+		`Entries:` + fmt.Sprintf("%v", this.Entries) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *StorageUpdates) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForChunksToIndex := "[]Chunk{"
+	for _, f := range this.ChunksToIndex {
+		repeatedStringForChunksToIndex += strings.Replace(strings.Replace(f.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForChunksToIndex += "}"
+	s := strings.Join([]string{`&StorageUpdates{`,
+		`ChunksToDelete:` + fmt.Sprintf("%v", this.ChunksToDelete) + `,`,
+		`ChunksToDeIndex:` + fmt.Sprintf("%v", this.ChunksToDeIndex) + `,`,
+		`ChunksToIndex:` + repeatedStringForChunksToIndex + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *StorageUpdatesCollection) String() string {
+	if this == nil {
+		return "nil"
+	}
+	keysForStorageUpdates := make([]string, 0, len(this.StorageUpdates))
+	for k, _ := range this.StorageUpdates {
+		keysForStorageUpdates = append(keysForStorageUpdates, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForStorageUpdates)
+	mapStringForStorageUpdates := "map[string]StorageUpdates{"
+	for _, k := range keysForStorageUpdates {
+		mapStringForStorageUpdates += fmt.Sprintf("%v: %v,", k, this.StorageUpdates[k])
+	}
+	mapStringForStorageUpdates += "}"
+	s := strings.Join([]string{`&StorageUpdatesCollection{`,
+		`TableName:` + fmt.Sprintf("%v", this.TableName) + `,`,
+		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
+		`StorageUpdates:` + mapStringForStorageUpdates + `,`,
 		`}`,
 	}, "")
 	return s
@@ -589,6 +2385,1383 @@ func (m *DeleteRequest) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeletionManifest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeletionManifest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeletionManifest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Requests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Requests = append(m.Requests, DeleteRequest{})
+			if err := m.Requests[len(m.Requests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DuplicateRequests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.DuplicateRequests = append(m.DuplicateRequests, DeleteRequest{})
+			if err := m.DuplicateRequests[len(m.DuplicateRequests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SegmentsCount", wireType)
+			}
+			m.SegmentsCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SegmentsCount |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksCount", wireType)
+			}
+			m.ChunksCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ChunksCount |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ChunkIDs) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ChunkIDs: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ChunkIDs: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IDs", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IDs = append(m.IDs, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ChunksGroup) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ChunksGroup: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ChunksGroup: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Requests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Requests = append(m.Requests, DeleteRequest{})
+			if err := m.Requests[len(m.Requests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Chunks", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Chunks == nil {
+				m.Chunks = make(map[string]ChunkIDs)
+			}
+			var mapkey string
+			mapvalue := &ChunkIDs{}
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					var stringLenmapkey uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return ErrInvalidLengthTypes
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
+				} else if fieldNum == 2 {
+					var mapmsglen int
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						mapmsglen |= int(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					if mapmsglen < 0 {
+						return ErrInvalidLengthTypes
+					}
+					postmsgIndex := iNdEx + mapmsglen
+					if postmsgIndex < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if postmsgIndex > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = &ChunkIDs{}
+					if err := mapvalue.Unmarshal(dAtA[iNdEx:postmsgIndex]); err != nil {
+						return err
+					}
+					iNdEx = postmsgIndex
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := skipTypes(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if skippy < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.Chunks[mapkey] = *mapvalue
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Segment) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Segment: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Segment: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TableName", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TableName = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksGroups", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ChunksGroups = append(m.ChunksGroups, ChunksGroup{})
+			if err := m.ChunksGroups[len(m.ChunksGroups)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksCount", wireType)
+			}
+			m.ChunksCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ChunksCount |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeletionJob) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeletionJob: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeletionJob: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TableName", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TableName = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunkIDs", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ChunkIDs = append(m.ChunkIDs, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeleteRequests", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.DeleteRequests = append(m.DeleteRequests, DeleteRequest{})
+			if err := m.DeleteRequests[len(m.DeleteRequests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Chunk) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Chunk: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Chunk: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field From", wireType)
+			}
+			m.From = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.From |= github_com_prometheus_common_model.Time(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Through", wireType)
+			}
+			m.Through = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Through |= github_com_prometheus_common_model.Time(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Fingerprint", wireType)
+			}
+			m.Fingerprint = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Fingerprint |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Checksum", wireType)
+			}
+			m.Checksum = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Checksum |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KB", wireType)
+			}
+			m.KB = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.KB |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+			}
+			m.Entries = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Entries |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StorageUpdates) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StorageUpdates: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StorageUpdates: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksToDelete", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ChunksToDelete = append(m.ChunksToDelete, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksToDeIndex", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ChunksToDeIndex = append(m.ChunksToDeIndex, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunksToIndex", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ChunksToIndex = append(m.ChunksToIndex, Chunk{})
+			if err := m.ChunksToIndex[len(m.ChunksToIndex)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *StorageUpdatesCollection) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: StorageUpdatesCollection: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: StorageUpdatesCollection: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TableName", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TableName = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StorageUpdates", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.StorageUpdates == nil {
+				m.StorageUpdates = make(map[string]StorageUpdates)
+			}
+			var mapkey string
+			mapvalue := &StorageUpdates{}
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					var stringLenmapkey uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return ErrInvalidLengthTypes
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
+				} else if fieldNum == 2 {
+					var mapmsglen int
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowTypes
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						mapmsglen |= int(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					if mapmsglen < 0 {
+						return ErrInvalidLengthTypes
+					}
+					postmsgIndex := iNdEx + mapmsglen
+					if postmsgIndex < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if postmsgIndex > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = &StorageUpdates{}
+					if err := mapvalue.Unmarshal(dAtA[iNdEx:postmsgIndex]); err != nil {
+						return err
+					}
+					iNdEx = postmsgIndex
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := skipTypes(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if skippy < 0 {
+						return ErrInvalidLengthTypes
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.StorageUpdates[mapkey] = *mapvalue
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])

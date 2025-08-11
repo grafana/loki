@@ -2,13 +2,13 @@ package deletion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -36,37 +37,6 @@ type Chunk interface {
 	GetEntriesCount() uint32
 }
 
-type chunk struct {
-	From, Through model.Time
-	Fingerprint   uint64
-	Checksum      uint32
-	KB, Entries   uint32
-}
-
-func (c chunk) GetFrom() model.Time {
-	return c.From
-}
-
-func (c chunk) GetThrough() model.Time {
-	return c.Through
-}
-
-func (c chunk) GetFingerprint() uint64 {
-	return c.Fingerprint
-}
-
-func (c chunk) GetChecksum() uint32 {
-	return c.Checksum
-}
-
-func (c chunk) GetSize() uint32 {
-	return c.KB
-}
-
-func (c chunk) GetEntriesCount() uint32 {
-	return c.Entries
-}
-
 type JobRunner struct {
 	chunkProcessingConcurrency int
 	getChunkClientForTableFunc GetChunkClientForTableFunc
@@ -82,10 +52,10 @@ func NewJobRunner(chunkProcessingConcurrency int, getStorageClientForTableFunc G
 }
 
 func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
-	var deletionJob deletionJob
-	var updates storageUpdates
+	var deletionJob deletionproto.DeletionJob
+	var updates deletionproto.StorageUpdates
 
-	if err := json.Unmarshal(job.Payload, &deletionJob); err != nil {
+	if err := proto.Unmarshal(job.Payload, &deletionJob); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +171,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// add the new chunk details to the list of chunks to index
 		updatesMtx.Lock()
 		defer updatesMtx.Unlock()
-		updates.ChunksToIndex = append(updates.ChunksToIndex, chunk{
+		updates.ChunksToIndex = append(updates.ChunksToIndex, deletionproto.Chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,
@@ -219,10 +189,10 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 	}
 
 	jr.metrics.chunksProcessedTotal.Add(float64(len(deletionJob.ChunkIDs)))
-	jobResultJSON, err := json.Marshal(updates)
+	jobResultProto, err := proto.Marshal(&updates)
 	if err != nil {
 		return nil, err
 	}
 
-	return jobResultJSON, nil
+	return jobResultProto, nil
 }
