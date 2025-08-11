@@ -11,6 +11,8 @@ write common labels
 {{- define "loki.writeLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: write
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*

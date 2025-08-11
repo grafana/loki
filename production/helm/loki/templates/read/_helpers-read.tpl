@@ -11,6 +11,8 @@ read common labels
 {{- define "loki.readLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: read
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*

@@ -11,6 +11,8 @@ canary common labels
 {{- define "loki-canary.labels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: canary
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*

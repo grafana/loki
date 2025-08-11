@@ -11,6 +11,8 @@ ruler common labels
 {{- define "loki.rulerLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: ruler
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*

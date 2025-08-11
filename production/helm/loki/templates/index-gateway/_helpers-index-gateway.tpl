@@ -11,6 +11,8 @@ index-gateway common labels
 {{- define "loki.indexGatewayLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: index-gateway
+app.kubernetes.io/instance: loki
+app.kubernetes.io/name: loki
 {{- end }}
 
 {{/*
