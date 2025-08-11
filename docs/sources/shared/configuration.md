@@ -175,14 +175,24 @@ ui:
     # CLI flag: -ui.goldfish.max-idle-time
     [max_idle_time: <int> | default = 300]
 
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
     [grafana_url: <string> | default = ""]
 
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
     [traces_datasource_uid: <string> | default = ""]
 
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
     [logs_datasource_uid: <string> | default = ""]
 
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
     [cell_a_namespace: <string> | default = ""]
 
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
     [cell_b_namespace: <string> | default = ""]
 
   discovery:
@@ -1135,21 +1145,22 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-index-builder.storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0/"]
-
-    # Experimental: A list of tenant IDs to enable index building for. If empty,
-    # all tenants will be enabled.
-    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
-    [enabled_tenant_ids: <string> | default = ""]
-
   metastore:
     updater:
       # The format to use for the metastore top-level index objects.
       # CLI flag: -dataobj-metastore.storage-format
       [storage_format: <string> | default = "v1"]
+
+    storage:
+      # Experimental: A prefix to use for storing indexes in object storage.
+      # Used to separate the metastore & index files during initial testing.
+      # CLI flag: -dataobj-metastore.index-storage-prefix
+      [index_storage_prefix: <string> | default = "index/v0/"]
+
+      # Experimental: A list of tenant IDs to enable index building for. If
+      # empty, all tenants will be enabled.
+      # CLI flag: -dataobj-metastore.enabled-tenant-ids
+      [enabled_tenant_ids: <string> | default = ""]
 
   querier:
     # Enable the dataobj querier.

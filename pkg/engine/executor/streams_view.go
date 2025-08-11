@@ -80,6 +80,7 @@ func newStreamsView(sec *streams.Section, opts *streamsViewOptions) *streamsView
 		idColumn:      streamsIDColumn,
 		searchColumns: append([]*streams.Column{streamsIDColumn}, cols...),
 		batchSize:     opts.BatchSize,
+		pageCacheSize: opts.CacheSize,
 	}
 }
 

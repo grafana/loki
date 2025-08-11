@@ -98,4 +98,7 @@ const (
 	BCE_SERVER_SIDE_ENCRYPTION_KEY_ID   = "x-bce-server-side-encryption-bos-kms-key-id"
 	BCE_OBJECT_RETENTION_DATE           = "x-bce-object-rentention-date"
 	BCE_TAGGING_COUNT                   = "x-bce-tagging-count"
+	//post field
+	SUCCESS_ACTION_REDIRECT = "success-action-redirect"
+	SUCCESS_ACTION_STATUS   = "success-action-status"
 )

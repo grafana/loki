@@ -97,7 +97,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(metastoreCfg.Updater, bucket, tenantID, logger)
+	metastoreUpdater := metastore.NewUpdater(metastoreCfg, bucket, tenantID, logger)
 	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
@@ -194,20 +194,23 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
-func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
-	stats, err := p.builder.Flush(flushBuffer)
+func (p *partitionProcessor) flushStream() error {
+	minTime, maxTime := p.builder.TimeRange()
+
+	obj, closer, err := p.builder.Flush()
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 		return err
 	}
+	defer closer.Close()
 
-	objectPath, err := p.uploader.Upload(p.ctx, flushBuffer)
+	objectPath, err := p.uploader.Upload(p.ctx, obj)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
 		return err
 	}
 
-	if err := p.metastoreUpdater.Update(p.ctx, objectPath, stats.MinTimestamp, stats.MaxTimestamp); err != nil {
+	if err := p.metastoreUpdater.Update(p.ctx, objectPath, minTime, maxTime); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}
@@ -284,17 +287,10 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		func() {
-			flushBuffer := p.bufPool.Get().(*bytes.Buffer)
-			defer p.bufPool.Put(flushBuffer)
-
-			flushBuffer.Reset()
-
-			if err := p.flushStream(flushBuffer); err != nil {
-				level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-				return
-			}
-		}()
+		if err := p.flushStream(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
+			return
+		}
 
 		if err := p.commitRecords(record); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
@@ -346,17 +342,10 @@ func (p *partitionProcessor) idleFlush() {
 		return // Avoid checking too frequently
 	}
 
-	func() {
-		flushBuffer := p.bufPool.Get().(*bytes.Buffer)
-		defer p.bufPool.Put(flushBuffer)
+	if err := p.flushStream(); err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
+		return
+	}
 
-		flushBuffer.Reset()
-
-		if err := p.flushStream(flushBuffer); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-			return
-		}
-
-		p.lastFlush = time.Now()
-	}()
+	p.lastFlush = time.Now()
 }

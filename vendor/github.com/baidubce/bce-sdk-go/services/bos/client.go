@@ -19,6 +19,7 @@
 package bos
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1241,6 +1242,49 @@ func (c *Client) PutObjectWithCallback(bucket, object string, body *bce.Body,
 	}
 	etag, putObjectResult, err := api.PutObject(c, bucket, object, body, args, c.BosContext, options...)
 	return etag, putObjectResult, err
+}
+
+func (c *Client) PostObjectFromBytes(bucket, object string, content []byte, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := bytes.NewBuffer(content)
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromString(bucket, object, content string, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := bytes.NewBuffer([]byte(content))
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromFile(bucket, object, fileName string, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	byteBuf := &bytes.Buffer{}
+	n, err := io.CopyN(byteBuf, file, fileInfo.Size())
+	if err != nil {
+		return nil, err
+	}
+	if n != fileInfo.Size() {
+		return nil, bce.NewBceClientError("unexpected EOF.")
+	}
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromStream(bucket, object string, content io.Reader, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := &bytes.Buffer{}
+	_, err := io.Copy(byteBuf, content)
+	if err != nil {
+		return nil, err
+	}
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
 }
 
 // CopyObject - copy a remote object to another one
@@ -2912,4 +2956,57 @@ func (c *Client) ListBucketInventory(bucket string, options ...api.Option) (*api
 
 func (c *Client) DeleteBucketInventory(bucket, id string, options ...api.Option) error {
 	return api.DeleteBucketInventory(c, bucket, id, c.BosContext, options...)
+}
+
+func (c *Client) PutBucketQuota(bucket string, args *api.BucketQuotaArgs, options ...api.Option) error {
+	return api.PutBucketQuota(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketQuota(bucket string, options ...api.Option) (*api.BucketQuotaArgs, error) {
+	return api.GetBucketQuota(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketQuota(bucket string, options ...api.Option) error {
+	return api.DeleteBucketQuota(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) PutBucketRequestPayment(bucket string, args *api.RequestPaymentArgs, options ...api.Option) error {
+	return api.PutBucketRequestPayment(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketRequestPayment(bucket string, options ...api.Option) (*api.RequestPaymentArgs, error) {
+	return api.GetBucketRequestPayment(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) InitBucketObjectLock(bucket string, args *api.InitBucketObjectLockArgs, options ...api.Option) error {
+	return api.InitBucketObjectLock(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketObjectLock(bucket string, options ...api.Option) (*api.BucketObjectLockResult, error) {
+	return api.GetBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketObjectLock(bucket string, options ...api.Option) error {
+	return api.DeleteBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) CompleteBucketObjectLock(bucket string, options ...api.Option) error {
+	return api.CompleteBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) ExtendBucketObjectLock(bucket string, args *api.ExtendBucketObjectLockArgs,
+	options ...api.Option) error {
+	return api.ExtendBucketObjectLock(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) PutUserQuota(args *api.UserQuotaArgs, options ...api.Option) error {
+	return api.PutUserQuota(c, args, c.BosContext, options...)
+}
+
+func (c *Client) GetUserQuota(options ...api.Option) (*api.UserQuotaArgs, error) {
+	return api.GetUserQuota(c, c.BosContext, options...)
+}
+
+func (c *Client) DeleteUserQuota(options ...api.Option) error {
+	return api.DeleteUserQuota(c, c.BosContext, options...)
 }

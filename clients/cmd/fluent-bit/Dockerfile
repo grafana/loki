@@ -14,7 +14,7 @@ RUN go build \
     -o clients/cmd/fluent-bit/out_grafana_loki.so \
     /src/clients/cmd/fluent-bit
 
-FROM fluent/fluent-bit:4.0.6@sha256:772eb472f3945d26ccef0e8cf00d971a492460f2000065682eb9b77f3e9fb8a0
+FROM fluent/fluent-bit:4.0.7@sha256:f10afc6d4e652adc3826ba665f32e605bec86757525c2ff73f10115f303ac133
 
 COPY --from=builder /src/clients/cmd/fluent-bit/out_grafana_loki.so /fluent-bit/bin
 COPY clients/cmd/fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf

@@ -10,6 +10,7 @@ import (
 const (
 	genAIBasePath                = "/v2/gen-ai/agents"
 	agentModelBasePath           = "/v2/gen-ai/models"
+	agentRouteBasePath           = genAIBasePath + "/%s/child_agents/%s"
 	KnowledgeBasePath            = "/v2/gen-ai/knowledge_bases"
 	KnowledgeBaseDataSourcesPath = KnowledgeBasePath + "/%s/data_sources"
 	GetKnowledgeBaseByIDPath     = KnowledgeBasePath + "/%s"
@@ -17,6 +18,9 @@ const (
 	DeleteKnowledgeBaseByIDPath  = KnowledgeBasePath + "/%s"
 	AgentKnowledgeBasePath       = "/v2/gen-ai/agents" + "/%s/knowledge_bases/%s"
 	DeleteDataSourcePath         = KnowledgeBasePath + "/%s/data_sources/%s"
+	AnthropicAPIKeysPath         = "/v2/gen-ai/anthropic/keys"
+	AnthropicAPIKeyByIDPath      = AnthropicAPIKeysPath + "/%s"
+	OpenAIAPIKeysPath            = "/v2/gen-ai/openai/keys"
 )
 
 // GenAIService is an interface for interfacing with the Gen AI Agent endpoints
@@ -45,6 +49,23 @@ type GenAIService interface {
 	DeleteKnowledgeBase(ctx context.Context, knowledgeBaseID string) (string, *Response, error)
 	AttachKnowledgeBaseToAgent(ctx context.Context, agentID string, knowledgeBaseID string) (*Agent, *Response, error)
 	DetachKnowledgeBaseToAgent(ctx context.Context, agentID string, knowledgeBaseID string) (*Agent, *Response, error)
+	AddAgentRoute(context.Context, string, string, *AgentRouteCreateRequest) (*AgentRouteResponse, *Response, error)
+	UpdateAgentRoute(context.Context, string, string, *AgentRouteUpdateRequest) (*AgentRouteResponse, *Response, error)
+	DeleteAgentRoute(context.Context, string, string) (*AgentRouteResponse, *Response, error)
+	ListAgentVersions(context.Context, string, *ListOptions) ([]*AgentVersion, *Response, error)
+	RollbackAgentVersion(context.Context, string, string) (string, *Response, error)
+	ListAnthropicAPIKeys(context.Context, *ListOptions) ([]*AnthropicApiKeyInfo, *Response, error)
+	CreateAnthropicAPIKey(ctx context.Context, anthropicAPIKeyCreateRequest *AnthropicAPIKeyCreateRequest) (*AnthropicApiKeyInfo, *Response, error)
+	GetAnthropicAPIKey(ctx context.Context, id string) (*AnthropicApiKeyInfo, *Response, error)
+	UpdateAnthropicAPIKey(ctx context.Context, id string, anthropicAPIKeyUpdateRequest *AnthropicAPIKeyUpdateRequest) (*AnthropicApiKeyInfo, *Response, error)
+	DeleteAnthropicAPIKey(ctx context.Context, id string) (*AnthropicApiKeyInfo, *Response, error)
+	ListAgentsByAnthropicAPIKey(ctx context.Context, id string, opt *ListOptions) ([]*Agent, *Response, error)
+	ListOpenAIAPIKeys(context.Context, *ListOptions) ([]*OpenAiApiKey, *Response, error)
+	CreateOpenAIAPIKey(ctx context.Context, openaiAPIKeyCreate *OpenAIAPIKeyCreateRequest) (*OpenAiApiKey, *Response, error)
+	GetOpenAIAPIKey(ctx context.Context, openaiApiKeyId string) (*OpenAiApiKey, *Response, error)
+	UpdateOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, openaiAPIKeyUpdate *OpenAIAPIKeyUpdateRequest) (*OpenAiApiKey, *Response, error)
+	DeleteOpenAIAPIKey(ctx context.Context, openaiApiKeyId string) (*OpenAiApiKey, *Response, error)
+	ListAgentsByOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, opt *ListOptions) ([]*Agent, *Response, error)
 }
 
 var _ GenAIService = &GenAIServiceOp{}
@@ -78,6 +99,31 @@ type agentAPIKeysRoot struct {
 
 type agentAPIKeyRoot struct {
 	ApiKey *ApiKeyInfo `json:"api_key_info,omitempty"`
+}
+
+type agentVersionsRoot struct {
+	AgentVersions []*AgentVersion `json:"agent_versions,omitempty"`
+	Links         *Links          `json:"links,omitempty"`
+	Meta          *Meta           `json:"meta,omitempty"`
+}
+
+type anthropicAPIKeysRoot struct {
+	AnthropicApiKeys []*AnthropicApiKeyInfo `json:"api_key_infos"`
+	Links            *Links                 `json:"links"`
+	Meta             *Meta                  `json:"meta"`
+}
+
+type openaiAPIKeysRoot struct {
+	OpenAIApiKeys []*OpenAiApiKey `json:"api_key_infos"`
+	Links         *Links          `json:"links"`
+	Meta          *Meta           `json:"meta"`
+}
+
+type anthropicAPIKeyRoot struct {
+	AnthropicApiKey *AnthropicApiKeyInfo `json:"api_key_info,omitempty"`
+}
+type openaiAPIKeyRoot struct {
+	OpenAIAPIKey *OpenAiApiKey `json:"api_key_info,omitempty"`
 }
 
 // Agent represents a Gen AI Agent
@@ -119,6 +165,63 @@ type Agent struct {
 	Uuid               string                    `json:"uuid,omitempty"`
 }
 
+// AgentVersion represents a version of a Gen AI Agent
+type AgentVersion struct {
+	AgentUuid              string                `json:"agent_uuid,omitempty"`
+	AttachedChildAgents    []*AttachedChildAgent `json:"attached_child_agents,omitempty"`
+	AttachedFunctions      []*AgentFunction      `json:"attached_functions,omitempty"`
+	AttachedGuardrails     []*AgentGuardrail     `json:"attached_guardrails,omitempty"`
+	AttachedKnowledgeBases []*KnowledgeBase      `json:"attached_knowledgebases,omitempty"`
+	CanRollback            bool                  `json:"can_rollback,omitempty"`
+	CreatedAt              *Timestamp            `json:"created_at,omitempty"`
+	CreatedByEmail         string                `json:"created_by_email,omitempty"`
+	CurrentlyApplied       bool                  `json:"currently_applied,omitempty"`
+	Description            string                `json:"description,omitempty"`
+	ID                     string                `json:"id,omitempty"`
+	Instruction            string                `json:"instruction,omitempty"`
+	K                      int64                 `json:"k,omitempty"`
+	MaxTokens              int64                 `json:"max_tokens,omitempty"`
+	ModelName              string                `json:"model_name,omitempty"`
+	Name                   string                `json:"name,omitempty"`
+	ProvideCitations       bool                  `json:"provide_citations,omitempty"`
+	RetrievalMethod        string                `json:"retrieval_method,omitempty"`
+	Tags                   []string              `json:"tags,omitempty"`
+	Temperature            float64               `json:"temperature,omitempty"`
+	TopP                   float64               `json:"top_p,omitempty"`
+	TriggerAction          string                `json:"trigger_action,omitempty"`
+	VersionHash            string                `json:"version_hash,omitempty"`
+}
+
+type AttachedChildAgent struct {
+	AgentName      string `json:"agent_name,omitempty"`
+	ChildAgentUuid string `json:"child_agent_uuid,omitempty"`
+	IfCase         string `json:"if_case,omitempty"`
+	IsDeleted      bool   `json:"is_deleted,omitempty"`
+	RouteName      string `json:"route_name,omitempty"`
+}
+
+type auditResponse struct {
+	AuditHeader AuditHeader `json:"audit_header,omitempty"`
+	VersionHash string      `json:"version_hash,omitempty"`
+}
+
+// AuditHeader represents audit metadata for an action.
+type AuditHeader struct {
+	ActorID           string `json:"actor_id,omitempty"`
+	ActorIP           string `json:"actor_ip,omitempty"`
+	ActorUUID         string `json:"actor_uuid,omitempty"`
+	ContextURN        string `json:"context_urn,omitempty"`
+	OriginApplication string `json:"origin_application,omitempty"`
+	UserID            string `json:"user_id,omitempty"`
+	UserUUID          string `json:"user_uuid,omitempty"`
+}
+
+// RollbackVersionRequest represents the request to rollback a Gen AI Agent to a previous version
+type RollbackVersionRequest struct {
+	AgentUuid   string `json:"uuid,omitempty"`
+	VersionHash string `json:"version_hash,omitempty"`
+}
+
 // AgentFunction represents a Gen AI Agent Function
 type AgentFunction struct {
 	ApiKey        string     `json:"api_key,omitempty"`
@@ -131,6 +234,7 @@ type AgentFunction struct {
 	UpdatedAt     *Timestamp `json:"updated_at,omitempty"`
 	Url           string     `json:"url,omitempty"`
 	Uuid          string     `json:"uuid,omitempty"`
+	IsDeleted     bool       `json:"is_deleted,omitempty"`
 }
 
 // AgentGuardrail represents a Guardrail attached to Gen AI Agent
@@ -147,6 +251,7 @@ type AgentGuardrail struct {
 	Type            string     `json:"type,omitempty"`
 	UpdatedAt       *Timestamp `json:"updated_at,omitempty"`
 	Uuid            string     `json:"uuid,omitempty"`
+	IsDeleted       bool       `json:"is_deleted,omitempty"`
 }
 
 type ApiKey struct {
@@ -221,6 +326,7 @@ type KnowledgeBase struct {
 	UpdatedAt          *Timestamp       `json:"updated_at,omitempty"`
 	UserId             string           `json:"user_id,omitempty"`
 	Uuid               string           `json:"uuid,omitempty"`
+	IsDeleted          bool             `json:"is_deleted,omitempty"`
 }
 
 // LastIndexingJob represents the last indexing job description of a Gen AI Knowledge Base
@@ -342,6 +448,28 @@ type AgentAPIKeyUpdateRequest struct {
 	Name       string `json:"name,omitempty"`
 }
 
+type AnthropicAPIKeyCreateRequest struct {
+	Name   string `json:"name,omitempty"`
+	ApiKey string `json:"api_key,omitempty"`
+}
+
+type AnthropicAPIKeyUpdateRequest struct {
+	Name       string `json:"name,omitempty"`
+	ApiKey     string `json:"api_key,omitempty"`
+	ApiKeyUuid string `json:"api_key_uuid,omitempty"`
+}
+
+type OpenAIAPIKeyCreateRequest struct {
+	Name   string `json:"name,omitempty"`
+	ApiKey string `json:"api_key,omitempty"`
+}
+
+type OpenAIAPIKeyUpdateRequest struct {
+	Name       string `json:"name,omitempty"`
+	ApiKey     string `json:"api_key,omitempty"`
+	ApiKeyUuid string `json:"api_key_uuid,omitempty"`
+}
+
 type KnowledgeBaseCreateRequest struct {
 	DatabaseID         string                    `json:"database_id"`
 	DataSources        []KnowledgeBaseDataSource `json:"datasources"`
@@ -411,6 +539,13 @@ type DeleteDataSourceRoot struct {
 	KnowledgeBaseUuid string `json:"knowledge_base_uuid"`
 }
 
+type AgentRouteResponse struct {
+	ChildAgentUuid  string `json:"child_agent_uuid,omitempty"`
+	ParentAgentUuid string `json:"parent_agent_uuid,omitempty"`
+	Rollback        bool   `json:"rollback,omitempty"`
+	UUID            string `json:"uuid,omitempty"`
+}
+
 type DeleteKnowledgeBaseRoot struct {
 	KnowledgeBaseUuid string `json:"uuid"`
 }
@@ -433,6 +568,23 @@ type UpdateKnowledgeBaseRequest struct {
 	ProjectID          string   `json:"project_id"`
 	Tags               []string `json:"tags"`
 	KnowledgeBaseUUID  string   `json:"uuid"`
+}
+
+// AgentRouteCreateRequest represents a route between a parent and child agent.
+type AgentRouteCreateRequest struct {
+	ChildAgentUuid  string `json:"child_agent_uuid,omitempty"`
+	IfCase          string `json:"if_case,omitempty"`
+	ParentAgentUuid string `json:"parent_agent_uuid,omitempty"`
+	RouteName       string `json:"route_name,omitempty"`
+}
+
+// AgentRouteUpdateRequest represents the request to update an existing route between a parent and child agent.
+type AgentRouteUpdateRequest struct {
+	ChildAgentUuid  string `json:"child_agent_uuid,omitempty"`
+	IfCase          string `json:"if_case,omitempty"`
+	ParentAgentUuid string `json:"parent_agent_uuid,omitempty"`
+	RouteName       string `json:"route_name,omitempty"`
+	UUID            string `json:"uuid,omitempty"`
 }
 
 type genAIAgentKBRoot struct {
@@ -895,6 +1047,7 @@ func (s *GenAIServiceOp) AttachKnowledgeBaseToAgent(ctx context.Context, agentID
 func (s *GenAIServiceOp) DetachKnowledgeBaseToAgent(ctx context.Context, agentID string, knowledgeBaseID string) (*Agent, *Response, error) {
 
 	path := fmt.Sprintf(AgentKnowledgeBasePath, agentID, knowledgeBaseID)
+
 	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return nil, nil, err
@@ -905,6 +1058,363 @@ func (s *GenAIServiceOp) DetachKnowledgeBaseToAgent(ctx context.Context, agentID
 		return nil, resp, err
 	}
 	return root.Agent, resp, nil
+}
+
+// AddAgentRoute function adds a route between a parent and child agent.
+func (s *GenAIServiceOp) AddAgentRoute(ctx context.Context, parentId string, childId string, route *AgentRouteCreateRequest) (*AgentRouteResponse, *Response, error) {
+	path := fmt.Sprintf(agentRouteBasePath, parentId, childId)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, route)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(AgentRouteResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root, resp, nil
+}
+
+// UpdateAgentRoute function updates a route between a parent and child agent.
+func (s *GenAIServiceOp) UpdateAgentRoute(ctx context.Context, parentId string, childId string, route *AgentRouteUpdateRequest) (*AgentRouteResponse, *Response, error) {
+	path := fmt.Sprintf(agentRouteBasePath, parentId, childId)
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, route)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(AgentRouteResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root, resp, nil
+}
+
+// DeleteAgentRoute function deletes a route between a parent and child agent.
+func (s *GenAIServiceOp) DeleteAgentRoute(ctx context.Context, parentId string, childId string) (*AgentRouteResponse, *Response, error) {
+	path := fmt.Sprintf(agentRouteBasePath, parentId, childId)
+	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(AgentRouteResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root, resp, nil
+}
+
+func (s *GenAIServiceOp) ListAgentVersions(ctx context.Context, agentId string, opt *ListOptions) ([]*AgentVersion, *Response, error) {
+	path := fmt.Sprintf("%s/%s/versions", genAIBasePath, agentId)
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(agentVersionsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.AgentVersions, resp, nil
+}
+
+func (s *GenAIServiceOp) RollbackAgentVersion(ctx context.Context, agentId string, versionId string) (string, *Response, error) {
+	path := fmt.Sprintf("%s/%s/versions", genAIBasePath, agentId)
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, RollbackVersionRequest{
+		AgentUuid:   agentId,
+		VersionHash: versionId,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	root := new(auditResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return "", resp, err
+	}
+
+	return root.VersionHash, resp, nil
+}
+
+// ListAnthropicAPIKeys retrieves a list of Anthropic API Keys
+func (s *GenAIServiceOp) ListAnthropicAPIKeys(ctx context.Context, opt *ListOptions) ([]*AnthropicApiKeyInfo, *Response, error) {
+	path := AnthropicAPIKeysPath
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(anthropicAPIKeysRoot)
+	resp, err := s.client.Do(ctx, req, &root)
+	if err != nil {
+		return nil, resp, err
+	}
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.AnthropicApiKeys, resp, nil
+}
+
+func (s *GenAIServiceOp) CreateAnthropicAPIKey(ctx context.Context, anthropicAPIKeyCreate *AnthropicAPIKeyCreateRequest) (*AnthropicApiKeyInfo, *Response, error) {
+	path := AnthropicAPIKeysPath
+
+	if anthropicAPIKeyCreate.Name == "" {
+		return nil, nil, fmt.Errorf("Name is required")
+	}
+	if anthropicAPIKeyCreate.ApiKey == "" {
+		return nil, nil, fmt.Errorf("ApiKey is required")
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, anthropicAPIKeyCreate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(anthropicAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.AnthropicApiKey, resp, nil
+}
+
+func (s *GenAIServiceOp) GetAnthropicAPIKey(ctx context.Context, anthropicApiKeyId string) (*AnthropicApiKeyInfo, *Response, error) {
+	path := AnthropicAPIKeysPath + "/" + anthropicApiKeyId
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(anthropicAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.AnthropicApiKey, resp, nil
+}
+
+func (s *GenAIServiceOp) UpdateAnthropicAPIKey(ctx context.Context, anthropicApiKeyId string, anthropicAPIKeyUpdate *AnthropicAPIKeyUpdateRequest) (*AnthropicApiKeyInfo, *Response, error) {
+	path := AnthropicAPIKeysPath + "/" + anthropicApiKeyId
+
+	if anthropicAPIKeyUpdate.ApiKeyUuid == "" {
+		anthropicAPIKeyUpdate.ApiKeyUuid = anthropicApiKeyId
+	}
+	if anthropicAPIKeyUpdate.ApiKeyUuid == "" {
+		return nil, nil, fmt.Errorf("ApiKeyUuid is required")
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, anthropicAPIKeyUpdate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(anthropicAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.AnthropicApiKey, resp, nil
+}
+
+func (s *GenAIServiceOp) DeleteAnthropicAPIKey(ctx context.Context, anthropicApiKeyId string) (*AnthropicApiKeyInfo, *Response, error) {
+	path := AnthropicAPIKeysPath + "/" + anthropicApiKeyId
+
+	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(anthropicAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.AnthropicApiKey, resp, nil
+}
+
+func (s *GenAIServiceOp) ListAgentsByAnthropicAPIKey(ctx context.Context, anthropicApiKeyId string, opt *ListOptions) ([]*Agent, *Response, error) {
+	path := fmt.Sprintf("%s/%s/agents", AnthropicAPIKeysPath, anthropicApiKeyId)
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIAgentsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.Agents, resp, nil
+}
+
+func (s *GenAIServiceOp) ListOpenAIAPIKeys(ctx context.Context, opt *ListOptions) ([]*OpenAiApiKey, *Response, error) {
+	path := OpenAIAPIKeysPath
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(openaiAPIKeysRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.OpenAIApiKeys, resp, nil
+}
+
+func (s *GenAIServiceOp) CreateOpenAIAPIKey(ctx context.Context, openaiAPIKeyCreate *OpenAIAPIKeyCreateRequest) (*OpenAiApiKey, *Response, error) {
+	path := OpenAIAPIKeysPath
+
+	if openaiAPIKeyCreate.Name == "" {
+		return nil, nil, fmt.Errorf("Name is required")
+	}
+	if openaiAPIKeyCreate.ApiKey == "" {
+		return nil, nil, fmt.Errorf("ApiKey is required")
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, openaiAPIKeyCreate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(openaiAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.OpenAIAPIKey, resp, nil
+}
+
+func (s *GenAIServiceOp) GetOpenAIAPIKey(ctx context.Context, openaiApiKeyId string) (*OpenAiApiKey, *Response, error) {
+	path := OpenAIAPIKeysPath + "/" + openaiApiKeyId
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(openaiAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.OpenAIAPIKey, resp, nil
+}
+
+func (s *GenAIServiceOp) UpdateOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, openaiAPIKeyUpdate *OpenAIAPIKeyUpdateRequest) (*OpenAiApiKey, *Response, error) {
+	path := OpenAIAPIKeysPath + "/" + openaiApiKeyId
+
+	if openaiAPIKeyUpdate.ApiKeyUuid == "" {
+		openaiAPIKeyUpdate.ApiKeyUuid = openaiApiKeyId
+	}
+	if openaiAPIKeyUpdate.ApiKeyUuid == "" {
+		return nil, nil, fmt.Errorf("ApiKeyUuid is required")
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, openaiAPIKeyUpdate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(openaiAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.OpenAIAPIKey, resp, nil
+}
+
+func (s *GenAIServiceOp) DeleteOpenAIAPIKey(ctx context.Context, openaiApiKeyId string) (*OpenAiApiKey, *Response, error) {
+	path := OpenAIAPIKeysPath + "/" + openaiApiKeyId
+
+	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(openaiAPIKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.OpenAIAPIKey, resp, nil
+}
+
+func (s *GenAIServiceOp) ListAgentsByOpenAIAPIKey(ctx context.Context, openaiApiKeyId string, opt *ListOptions) ([]*Agent, *Response, error) {
+	path := fmt.Sprintf("%s/%s/agents", OpenAIAPIKeysPath, openaiApiKeyId)
+	path, err := addOptions(path, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(genAIAgentsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.Agents, resp, nil
 }
 
 func (a Agent) String() string {
@@ -924,5 +1434,13 @@ func (a KnowledgeBaseDataSource) String() string {
 }
 
 func (a ApiKeyInfo) String() string {
+	return Stringify(a)
+}
+
+func (a AgentRouteResponse) String() string {
+	return Stringify(a)
+}
+
+func (a AgentVersion) String() string {
 	return Stringify(a)
 }

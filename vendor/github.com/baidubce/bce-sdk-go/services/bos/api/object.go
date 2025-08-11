@@ -17,12 +17,21 @@
 package api
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -178,6 +187,113 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 		return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, nil
 	}
 	return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, nil
+}
+
+// PostObject - put the object by multipart/form-data
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name of the object
+//   - object: the name of the object
+//   - body: the input content of the object
+//   - args: the optional arguments of this api
+//
+// RETURNS:
+//   - result: the result of post object
+//   - error: nil if ok otherwise the specific error
+func PostObject(cli bce.Client, bucket, object string, content *bytes.Buffer, args *PostObjectArgs,
+	ctx *BosContext, options ...Option) (*PostObjectResult, error) {
+	req := &BosRequest{}
+	req.SetMethod(http.POST)
+	req.SetUri(getBucketUri(bucket))
+	req.SetBucket(bucket)
+
+	//post policy
+	expiration := time.Now().UTC().Add(args.Expiration)
+	policyMap := map[string]interface{}{
+		"expiration": expiration.Format(util.ISO8601Format),
+		"conditions": []interface{}{
+			map[string]string{"bucket": bucket},
+			map[string]string{"key": object},
+			[]interface{}{
+				"content-length-range",
+				args.ContentLengthLower,
+				args.ContentLengthUpper,
+			},
+		},
+	}
+	//json serialize policyMap
+	policy, err := json.Marshal(policyMap)
+	if err != nil {
+		return nil, err
+	}
+	// calc post signature
+	cred := cli.GetBceClientConfig().Credentials
+	stringToSign := base64.StdEncoding.EncodeToString([]byte(policy))
+	hmacHash := func() hash.Hash { return sha256.New() }
+	h := hmac.New(hmacHash, []byte(cred.SecretAccessKey))
+	_, err = io.WriteString(h, stringToSign)
+	if err != nil {
+		return nil, err
+	}
+	signature := hex.EncodeToString(h.Sum(nil))
+	// build post body
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+	options = append(options, SetPostField("accessKey", cred.AccessKeyId))
+	options = append(options, SetPostField("policy", stringToSign))
+	options = append(options, SetPostField("signature", signature))
+	options = append(options, SetPostField("key", object))
+	if err := handlePostOptions(bodyWriter, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle post options error: %s", err))
+	}
+	// create a field named 'file', used to upload content
+	w, _ := bodyWriter.CreateFormField("file")
+	_, err = io.Copy(w, bytes.NewReader(content.Bytes()))
+	if err != nil {
+		return nil, err
+	}
+	bodyWriter.Close()
+	//build bcebody
+	body := &bce.Body{}
+	body.SetStream(ioutil.NopCloser(bytes.NewBuffer(bodyBuf.Bytes())))
+	body.SetSize(int64(len(bodyBuf.Bytes())))
+	contentMD5, err := util.CalculateContentMD5(content, int64(content.Len()))
+	if err != nil {
+		return nil, err
+	}
+	body.SetContentMD5(contentMD5)
+	if body.Size() >= THRESHOLD_100_CONTINUE {
+		req.SetHeader("Expect", "100-continue")
+	}
+	req.SetBody(body)
+	req.SetHeader(http.CONTENT_TYPE, bodyWriter.FormDataContentType())
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options error: %s", err))
+	}
+
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+
+	//get header
+	result := &PostObjectResult{}
+	getOptions := []GetOption{
+		getHeader(http.ETAG, &result.ETag),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+	result.ETag = strings.Trim(result.ETag, "\"")
+	return result, nil
 }
 
 // CopyObject - copy one object to a new object with new bucket and/or name. It can alse set the

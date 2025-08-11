@@ -549,7 +549,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger, prometheus.DefaultRegisterer)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(t.Cfg.DataObj.Metastore.Storage, store, logger, prometheus.DefaultRegisterer)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -627,7 +627,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.DataObj.Metastore.Storage, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
