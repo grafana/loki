@@ -133,7 +133,7 @@ describe('useGoldfishQueries', () => {
         ({ tenant, user, newEngine }: { tenant?: string; user?: string; newEngine?: boolean }) => 
           useGoldfishQueries(1, 20, OUTCOME_ALL, tenant, user, newEngine),
         {
-          initialProps: { tenant: undefined, user: undefined, newEngine: undefined },
+          initialProps: {  } as { tenant?: string; user?: string; newEngine?: boolean },
           wrapper: createWrapper(),
         }
       );
@@ -146,7 +146,7 @@ describe('useGoldfishQueries', () => {
       expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, undefined, undefined, undefined);
 
       // Change tenant filter
-      rerender({ tenant: 'tenant-new', user: undefined, newEngine: undefined });
+      rerender({ tenant: 'tenant-new' });
 
       await waitFor(() => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(2);
@@ -155,7 +155,7 @@ describe('useGoldfishQueries', () => {
       expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', undefined, undefined);
 
       // Change user filter
-      rerender({ tenant: 'tenant-new', user: 'charlie', newEngine: undefined });
+      rerender({ tenant: 'tenant-new', user: 'charlie' });
 
       await waitFor(() => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
