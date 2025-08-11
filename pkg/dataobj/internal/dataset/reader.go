@@ -373,7 +373,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			return
 		}
 
-		var start = full.Start
+		start := full.Start
 
 		for _, row := range s {
 			if !full.Contains(uint64(row.Index)) {
@@ -813,6 +813,8 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 
 		if include {
 			ranges.Add(pageRange)
+		} else {
+			stats.FromContext(ctx).AddPagesSkipped(1)
 		}
 	}
 

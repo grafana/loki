@@ -238,6 +238,8 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.PagesDownloadedBytes += m.Dataobj.PagesDownloadedBytes
 	s.Dataobj.PageBatches += m.Dataobj.PageBatches
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
+	s.Dataobj.SectionsScanned += m.Dataobj.SectionsScanned
+	s.Dataobj.PagesSkipped += m.Dataobj.PagesSkipped
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -556,6 +558,14 @@ func (c *Context) AddPostPredicateStructuredMetadataBytes(i int64) {
 
 func (c *Context) AddPostFilterRows(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PostFilterRows, i)
+}
+
+func (c *Context) AddSectionsScanned(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.SectionsScanned, i)
+}
+
+func (c *Context) AddPagesSkipped(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesSkipped, i)
 }
 
 func (c *Context) AddPagesScanned(i int64) {

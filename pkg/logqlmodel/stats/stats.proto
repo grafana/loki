@@ -199,6 +199,9 @@ message Dataobj {
 
   // Total possible rows in the data object
   int64 totalRowsAvailable = 12 [(gogoproto.jsontag) = "totalRowsAvailable"];
+
+  int64 sectionsScanned = 13 [(gogoproto.jsontag) = "sectionsScanned"];
+  int64 pagesSkipped = 14 [(gogoproto.jsontag) = "pagesSkipped"];
 }
 
 message Chunk {

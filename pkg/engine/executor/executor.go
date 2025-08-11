@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type Config struct {
@@ -126,14 +127,23 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		}
 
 		var err error
-		logsSection, err = logs.Open(ctx, sec)
+		section, err := logs.Open(ctx, sec)
 		if err != nil {
 			return errorPipeline(fmt.Errorf("opening logs section %q: %w", sec.Type, err))
 		}
+		if section.TenantID() != tenantID {
+			continue
+		}
+		logsSection = section
 	}
 	if logsSection == nil {
-		return errorPipeline(fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+		// This is a valid case in prior metastore, as the data object may not contain any logs for
+		// the tenant.
+		level.Debug(c.logger).Log("msg", "logs section not found in data object, returning empty pipeline", "data_obj", node.Location, "section", node.Section, "tenant", tenantID)
+		return emptyPipeline() // errorPipeline(fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
 	}
+
+	stats.FromContext(ctx).AddSectionsScanned(1)
 
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
