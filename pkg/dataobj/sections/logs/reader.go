@@ -40,35 +40,26 @@ type ReaderOptions struct {
 // Validate returns an error if the opts is not valid. ReaderOptions are only
 // valid when:
 //
-//   - Each [Column] in Columns belongs to the same [Section].
-//   - Each [Predicate] in Predicates references a [Column] from Columns.
+//   - Each [Column] in Columns and Predicates belongs to the same [Section].
 //   - Scalar values used in predicates are of a supported type: an int64,
 //     uint64, timestamp, or a byte array.
 func (opts *ReaderOptions) Validate() error {
-	columnLookup := make(map[*Column]struct{}, len(opts.Columns))
-
-	if len(opts.Columns) > 0 {
-		// Ensure all columns belong to the same section.
-		var checkSection *Section
-
-		for _, col := range opts.Columns {
-			if checkSection != nil && col.Section != checkSection {
-				return fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection)
-			} else if checkSection == nil {
-				checkSection = col.Section
-			}
-			columnLookup[col] = struct{}{}
+	// Ensure all columns belong to the same section.
+	var checkSection *Section
+	var errs []error
+	validateSection := func(col *Column) {
+		if checkSection != nil && col.Section != checkSection {
+			errs = append(errs, fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection))
+		} else if checkSection == nil {
+			checkSection = col.Section
 		}
 	}
 
-	var errs []error
-
-	validateColumn := func(col *Column) {
-		if col == nil {
-			errs = append(errs, fmt.Errorf("column is nil"))
-		} else if _, found := columnLookup[col]; !found {
-			errs = append(errs, fmt.Errorf("column %p not in Columns", col))
-		}
+	for _, col := range opts.Columns {
+		validateSection(col)
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	validateScalar := func(s scalar.Scalar) {
@@ -80,8 +71,7 @@ func (opts *ReaderOptions) Validate() error {
 
 	for _, p := range opts.Predicates {
 		walkPredicate(p, func(p Predicate) bool {
-			// Validate that predicates reference valid columns and use valid
-			// scalars.
+			// Validate that predicates use valid scalars.
 			switch p := p.(type) {
 			case nil: // End of walk; nothing to do.
 
@@ -92,25 +82,25 @@ func (opts *ReaderOptions) Validate() error {
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case InPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				for _, val := range p.Values {
 					validateScalar(val)
 				}
 
 			case GreaterThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case LessThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case FuncPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 
 			default:
 				errs = append(errs, fmt.Errorf("unrecognized predicate type %T", p))
@@ -186,6 +176,11 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 		row := r.buf[rowIndex]
 
 		for columnIndex, val := range row.Values {
+			if columnIndex >= len(r.opts.Columns) {
+				// Ignore columns that are not in projection list.
+				continue
+			}
+
 			columnBuilder := builder.Field(columnIndex)
 
 			if val.IsNil() {
@@ -231,16 +226,23 @@ func (r *Reader) init() error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	dset, err := newColumnsDataset(r.opts.Columns)
+	// Compose dataset using projected columns and any additional columns
+	// used for evaluating predicates.
+	//
+	// Non-projected columns are appended to the end of the list to allow
+	// easy filtering of Row Values with index >= len(r.opts.Columns).
+	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
+
+	dset, err := newColumnsDataset(cols)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
-	} else if len(dset.Columns()) != len(r.opts.Columns) {
-		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(r.opts.Columns))
+	} else if len(dset.Columns()) != len(cols) {
+		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(cols))
 	}
 
-	columnLookup := make(map[*Column]dataset.Column, len(r.opts.Columns))
+	columnLookup := make(map[*Column]dataset.Column, len(cols))
 	for i, col := range dset.Columns() {
-		columnLookup[r.opts.Columns[i]] = col
+		columnLookup[cols[i]] = col
 	}
 
 	preds, err := mapPredicates(r.opts.Predicates, columnLookup)
@@ -420,6 +422,57 @@ func (r *Reader) Close() error {
 		return r.inner.Close()
 	}
 	return nil
+}
+
+func predicateColumns(predicates []Predicate) []*Column {
+	columns := make([]*Column, 0, len(predicates))
+	for _, p := range predicates {
+		walkPredicate(p, func(p Predicate) bool {
+			switch p := p.(type) {
+			case nil: // End of walk; nothing to do.
+
+			case AndPredicate: // Nothing to do.
+			case OrPredicate: // Nothing to do.
+			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
+			case FalsePredicate: // Nothing to do.
+
+			case EqualPredicate:
+				columns = append(columns, p.Column)
+			case InPredicate:
+				columns = append(columns, p.Column)
+			case GreaterThanPredicate:
+				columns = append(columns, p.Column)
+			case LessThanPredicate:
+				columns = append(columns, p.Column)
+			case FuncPredicate:
+				columns = append(columns, p.Column)
+
+			default:
+				panic(fmt.Sprintf("unrecognized predicate type %T", p))
+			}
+
+			return true
+		})
+	}
+
+	return columns
+}
+
+func appendMissingColumns(dst, src []*Column) []*Column {
+	columnLookup := make(map[*Column]struct{}, len(dst))
+	for _, col := range dst {
+		columnLookup[col] = struct{}{}
+	}
+
+	for _, col := range src {
+		if _, ok := columnLookup[col]; !ok {
+			// Not seen, add it.
+			dst = append(dst, col)
+		}
+	}
+
+	return dst
 }
 
 func columnsSchema(cols []*Column) *arrow.Schema {
