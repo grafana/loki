@@ -11,7 +11,7 @@ type Storage interface {
 	StoreComparisonResult(ctx context.Context, result *ComparisonResult) error
 
 	// Read operations (used by UI)
-	GetSampledQueries(ctx context.Context, page, pageSize int, outcome string) (*APIResponse, error)
+	GetSampledQueries(ctx context.Context, page, pageSize int, filter QueryFilter) (*APIResponse, error)
 
 	// Lifecycle
 	Close() error

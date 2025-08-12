@@ -8,25 +8,8 @@ import (
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 )
 
-type Logs struct {
-	orig  *otlpcollectorlog.ExportLogsServiceRequest
-	state *State
-}
-
-func GetOrigLogs(ms Logs) *otlpcollectorlog.ExportLogsServiceRequest {
-	return ms.orig
-}
-
-func GetLogsState(ms Logs) *State {
-	return ms.state
-}
-
 func SetLogsState(ms Logs, state State) {
 	*ms.state = state
-}
-
-func NewLogs(orig *otlpcollectorlog.ExportLogsServiceRequest, state *State) Logs {
-	return Logs{orig: orig, state: state}
 }
 
 // LogsToProto internal helper to convert Logs to protobuf representation.

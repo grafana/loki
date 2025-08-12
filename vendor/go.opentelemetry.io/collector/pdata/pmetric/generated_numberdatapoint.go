@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -135,53 +134,5 @@ func (ms NumberDataPoint) SetFlags(v DataPointFlags) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms NumberDataPoint) CopyTo(dest NumberDataPoint) {
 	dest.state.AssertMutable()
-	copyOrigNumberDataPoint(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms NumberDataPoint) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.StartTimeUnixNano != 0 {
-		dest.WriteObjectField("startTimeUnixNano")
-		dest.WriteUint64(ms.orig.StartTimeUnixNano)
-	}
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	switch ov := ms.orig.Value.(type) {
-	case *otlpmetrics.NumberDataPoint_AsDouble:
-		dest.WriteObjectField("asDouble")
-		dest.WriteFloat64(ov.AsDouble)
-	case *otlpmetrics.NumberDataPoint_AsInt:
-		dest.WriteObjectField("asInt")
-		dest.WriteInt64(ov.AsInt)
-	}
-	if len(ms.orig.Exemplars) > 0 {
-		dest.WriteObjectField("exemplars")
-		ms.Exemplars().marshalJSONStream(dest)
-	}
-	if ms.orig.Flags != 0 {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigNumberDataPoint(dest, src *otlpmetrics.NumberDataPoint) {
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.StartTimeUnixNano = src.StartTimeUnixNano
-	dest.TimeUnixNano = src.TimeUnixNano
-	switch t := src.Value.(type) {
-	case *otlpmetrics.NumberDataPoint_AsDouble:
-		dest.Value = &otlpmetrics.NumberDataPoint_AsDouble{AsDouble: t.AsDouble}
-	case *otlpmetrics.NumberDataPoint_AsInt:
-		dest.Value = &otlpmetrics.NumberDataPoint_AsInt{AsInt: t.AsInt}
-	}
-	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
-	dest.Flags = src.Flags
+	internal.CopyOrigNumberDataPoint(dest.orig, ms.orig)
 }

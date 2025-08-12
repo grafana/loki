@@ -765,8 +765,8 @@ github.com/hashicorp/nomad/api v0.0.0-20241218080744-e3ac00f30eec/go.mod h1:svtx
 github.com/hashicorp/serf v0.8.2/go.mod h1:6hOLApaqBFA1NXqRQAsxw9QxuDEvNxSQRwA/JwenrHc=
 github.com/hashicorp/serf v0.10.2 h1:m5IORhuNSjaxeljg5DeQVDlQyVkhRIjJDimbkCa8aAc=
 github.com/hashicorp/serf v0.10.2/go.mod h1:T1CmSGfSeGfnfNy/w0odXQUR1rfECGd2Qdsp84DjOiY=
-github.com/heroku/x v0.5.1 h1:Li4p4+MKiAdJXKYU4k6d5RoBYijO5OGL014a2su2oJ4=
-github.com/heroku/x v0.5.1/go.mod h1:+NbJydzrphlrl5nys0tjOCwajqlup8N3lJ+EVbQ+Sa0=
+github.com/heroku/x v0.5.2 h1:B3g+m78yQk70Mhe1MsrHICgDJwJMZNVDkaQtLhsSA/U=
+github.com/heroku/x v0.5.2/go.mod h1:B025iaZU9I0gPJSsBYmipizkS5TKgX9NWEx8IQQYTuI=
 github.com/hetznercloud/hcloud-go/v2 v2.21.1 h1:IH3liW8/cCRjfJ4cyqYvw3s1ek+KWP8dl1roa0lD8JM=
 github.com/hetznercloud/hcloud-go/v2 v2.21.1/go.mod h1:XOaYycZJ3XKMVWzmqQ24/+1V7ormJHmPdck/kxrNnQA=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
@@ -1350,8 +1350,8 @@ go.opentelemetry.io/collector/featuregate v1.35.0 h1:c/XRtA35odgxVc4VgOF/PTIk7aj
 go.opentelemetry.io/collector/featuregate v1.35.0/go.mod h1:Y/KsHbvREENKvvN9RlpiWk/IGBK+CATBYzIIpU7nccc=
 go.opentelemetry.io/collector/internal/telemetry v0.129.0 h1:jkzRpIyMxMGdAzVOcBe8aRNrbP7eUrMq6cxEHe0sbzA=
 go.opentelemetry.io/collector/internal/telemetry v0.129.0/go.mod h1:riAPlR2LZBV7VEx4LicOKebg3N1Ja3izzkv5fl1Lhiw=
-go.opentelemetry.io/collector/pdata v1.37.0 h1:aEEpd03GgAS352xntcYMsaxYvRXvzqEWqdrSro+TSh4=
-go.opentelemetry.io/collector/pdata v1.37.0/go.mod h1:aE9l1Lcdsg7nmSoiucnWHuPYIk6T0RKzOjPepNJC5AQ=
+go.opentelemetry.io/collector/pdata v1.38.0 h1:94LzVKMQM8R7RFJ8Z1+sL51IkI90TDfTc/ipH3mPUro=
+go.opentelemetry.io/collector/pdata v1.38.0/go.mod h1:DSvnwj37IKyQj2hpB97cGITyauR8tvAauJ6/gsxg8mg=
 go.opentelemetry.io/collector/pdata/pprofile v0.129.0 h1:DgZTvjOGmyZRx7Or80hz8XbEaGwHPkIh2SX1A5eXttQ=
 go.opentelemetry.io/collector/pdata/pprofile v0.129.0/go.mod h1:uUBZxqJNOk6QIMvbx30qom//uD4hXJ1K/l3qysijMLE=
 go.opentelemetry.io/collector/pdata/testdata v0.129.0 h1:n1QLnLOtrcAR57oMSVzmtPsQEpCc/nE5Avk1xfuAkjY=

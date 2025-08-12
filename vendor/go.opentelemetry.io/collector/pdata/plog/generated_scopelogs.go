@@ -9,7 +9,6 @@ package plog
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -56,6 +55,11 @@ func (ms ScopeLogs) Scope() pcommon.InstrumentationScope {
 	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state))
 }
 
+// LogRecords returns the LogRecords associated with this ScopeLogs.
+func (ms ScopeLogs) LogRecords() LogRecordSlice {
+	return newLogRecordSlice(&ms.orig.LogRecords, ms.state)
+}
+
 // SchemaUrl returns the schemaurl associated with this ScopeLogs.
 func (ms ScopeLogs) SchemaUrl() string {
 	return ms.orig.SchemaUrl
@@ -67,35 +71,8 @@ func (ms ScopeLogs) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// LogRecords returns the LogRecords associated with this ScopeLogs.
-func (ms ScopeLogs) LogRecords() LogRecordSlice {
-	return newLogRecordSlice(&ms.orig.LogRecords, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeLogs) CopyTo(dest ScopeLogs) {
 	dest.state.AssertMutable()
-	copyOrigScopeLogs(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ScopeLogs) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("scope")
-	internal.MarshalJSONStreamInstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.LogRecords) > 0 {
-		dest.WriteObjectField("logRecords")
-		ms.LogRecords().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigScopeLogs(dest, src *otlplogs.ScopeLogs) {
-	internal.CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.LogRecords = copyOrigLogRecordSlice(dest.LogRecords, src.LogRecords)
+	internal.CopyOrigScopeLogs(dest.orig, ms.orig)
 }

@@ -1,6 +1,7 @@
 export interface SampledQuery {
   correlationId: string;
   tenantId: string;
+  user: string;
   query: string;
   queryType: string;
   startTime: string;
@@ -46,6 +47,10 @@ export interface SampledQuery {
   // Logs explore links (only included when logs config is available)
   cellALogsLink?: string | null;
   cellBLogsLink?: string | null;
+  
+  // Query engine version tracking
+  cellAUsedNewEngine: boolean;
+  cellBUsedNewEngine: boolean;
   
   sampledAt: string;
   createdAt: string;

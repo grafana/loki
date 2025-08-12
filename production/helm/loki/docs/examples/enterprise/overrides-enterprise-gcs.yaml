@@ -2,22 +2,9 @@ enterprise:
   enabled: true
   useExternalLicense: true
   externalLicenseName: gel-secrets
-  tokengen:
-    env:
-      - name: GOOGLE_APPLICATION_CREDENTIALS
-        value: "/etc/gel_secrets/gcp_service_account.json"
-    extraVolumeMounts:
-      - name: gel-secrets
-        mountPath: "/etc/gel_secrets"
-    extraVolumes:
-      - name: gel-secrets
-        secret:
-          secretName: gel-secrets
-          items:
-          - key: license.jwt
-            path: license.jwt
-          - key: gcp_service_account.json
-            path: gcp_service_account.json
+  # If using provisioner, specify the admin token secret
+  # adminToken:
+  #   secret: loki-admin-token
 loki:
   auth_enabled: true
 
