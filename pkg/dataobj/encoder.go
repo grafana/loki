@@ -49,7 +49,7 @@ func newEncoder(store scratch.Store) *encoder {
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
+func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte, extension []byte) {
 	var (
 		dataHandle     = enc.store.Put(data)
 		metadataHandle = enc.store.Put(metadata)
@@ -63,6 +63,8 @@ func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
 
 		DataSize:     len(data),
 		MetadataSize: len(metadata),
+
+		ExtensionData: extension,
 	})
 
 	enc.totalBytes += len(data) + len(metadata)
@@ -146,6 +148,8 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 					Length: uint64(info.MetadataSize),
 				},
 			},
+
+			ExtensionData: info.ExtensionData,
 		}
 
 		offset += info.DataSize + info.MetadataSize

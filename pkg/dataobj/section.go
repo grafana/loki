@@ -62,6 +62,14 @@ func (ty SectionType) String() string {
 // Section packages provider higher-level abstractions around [Section] using
 // this interface.
 type SectionReader interface {
+	// ExtensionData returns optional encoded information about the section
+	// stored at the file level, provided through the [SectionWriter]. Sections
+	// can use this for retrieving critical information that must be known
+	// without needing to read the metadata first.
+	//
+	// ExtensionData will be nil if no extension data is available.
+	ExtensionData() []byte
+
 	// DataRange opens a reader of length bytes from the data region of a
 	// section. The offset argument determines where in the data region reading
 	// should start.
@@ -127,6 +135,13 @@ type SectionWriter interface {
 	// from both input slices (0 <= n <= len(data)+len(metadata)) and any error
 	// encountered that caused the write to stop early.
 	//
+	// The extensionData slice is an optional field for section information to
+	// store at the file level. To minimize the cost of opening data objects,
+	// sections should only use this field for information that's required to
+	// start reading section metadata and to keep the payload as small as
+	// possible. Since the extensionData field is written to the file-wide
+	// metadata, its length does not impact the return value of n.
+	//
 	// Implementations of WriteSection:
 	//
 	//   - Must return an error if the write stops early.
@@ -135,5 +150,5 @@ type SectionWriter interface {
 	//
 	// The physical layout of data and metadata is not defined: they may be
 	// written non-contiguously, interleaved, or in any order.
-	WriteSection(data, metadata []byte) (n int64, err error)
+	WriteSection(data, metadata []byte, extensionData []byte) (n int64, err error)
 }

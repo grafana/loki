@@ -63,8 +63,8 @@ func (d *decoder) tailer(ctx context.Context) (tailer, error) {
 	}, nil
 }
 
-func (d *decoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo) SectionReader {
-	return &sectionReader{rr: d.rr, md: metadata, sec: section}
+func (d *decoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo, extensionData []byte) SectionReader {
+	return &sectionReader{rr: d.rr, md: metadata, sec: section, extensionData: extensionData}
 }
 
 var errMissingSectionType = errors.New("missing section type")

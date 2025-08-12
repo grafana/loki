@@ -13,7 +13,11 @@ type sectionReader struct {
 	rr  rangeReader // Reader for absolute ranges within the file.
 	md  *filemd.Metadata
 	sec *filemd.SectionInfo
+
+	extensionData []byte
 }
+
+func (sr *sectionReader) ExtensionData() []byte { return sr.extensionData }
 
 func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
 	if offset < 0 || length < 0 {

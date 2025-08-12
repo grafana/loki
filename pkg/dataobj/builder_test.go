@@ -26,6 +26,24 @@ func TestBuilder_preserve_section_version(t *testing.T) {
 	require.Equal(t, uint32(42), obj.Sections()[0].Type.Version, "expected section version to be preserved")
 }
 
+func TestBuilder_preserve_extension(t *testing.T) {
+	builder := dataobj.NewBuilder(nil)
+	err := builder.Append(fakeSectionBuilder{
+		SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"},
+		FlushFunc: func(w dataobj.SectionWriter) (n int64, err error) {
+			return w.WriteSection([]byte("test data"), []byte("test metadata"), []byte("test extension"))
+		},
+	})
+	require.NoError(t, err)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.Len(t, obj.Sections(), 1, "expected only one section in the object")
+	require.Equal(t, []byte("test extension"), obj.Sections()[0].Reader.ExtensionData())
+}
+
 type fakeSectionBuilder struct {
 	SectionType dataobj.SectionType
 	FlushFunc   func(w dataobj.SectionWriter) (n int64, err error)
@@ -40,7 +58,7 @@ func (fake fakeSectionBuilder) Flush(w dataobj.SectionWriter) (n int64, err erro
 	if fake.FlushFunc != nil {
 		return fake.FlushFunc(w)
 	}
-	return w.WriteSection(nil, nil)
+	return w.WriteSection(nil, nil, nil)
 }
 
 func (fake fakeSectionBuilder) Reset() {

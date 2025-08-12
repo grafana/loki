@@ -78,6 +78,17 @@ message SectionInfo {
 
   // An index into Metadata.types specifying the type of this section.
   uint32 type_ref = 5;
+
+  // Optional additional information about the section that sections can
+  // provide.
+  //
+  // Because extended_info increases the size of the file metadata, sections
+  // should only use this field for required information that must be stored
+  // without loading the section.
+  //
+  // Sections implementations are recommended to use the version field of
+  // [SectionType] to determine how to interpret the payload.
+  bytes extension_data = 6;
 }
 
 // SectionLayout describes the physical placement of the regions that form a
