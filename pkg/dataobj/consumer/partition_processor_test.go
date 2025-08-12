@@ -3,11 +3,11 @@ package consumer
 import (
 	"bytes"
 	"context"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -22,235 +22,116 @@ import (
 )
 
 var testBuilderConfig = logsobj.BuilderConfig{
-	TargetPageSize:    2048,
-	TargetObjectSize:  1 << 22, // 4 MiB
-	TargetSectionSize: 1 << 22, // 4 MiB
-
-	BufferSize: 2048 * 8,
-
+	TargetPageSize:          2048,
+	TargetObjectSize:        1 << 22, // 4 MiB
+	TargetSectionSize:       1 << 22, // 4 MiB
+	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 }
 
-// TestIdleFlush tests the idle flush behavior of the partition processor
-// under different timeout and initialization conditions.
-func TestIdleFlush(t *testing.T) {
-	tests := []struct {
-		name          string
-		idleTimeout   time.Duration
-		sleepDuration time.Duration
-		expectFlush   bool
-		initBuilder   bool
-	}{
-		{
-			name:          "should not flush before idle timeout",
-			idleTimeout:   1 * time.Second,
-			sleepDuration: 100 * time.Millisecond,
-			expectFlush:   false,
-			initBuilder:   true,
-		},
-		{
-			name:          "should flush after idle timeout",
-			idleTimeout:   100 * time.Millisecond,
-			sleepDuration: 1 * time.Second,
-			expectFlush:   true,
-			initBuilder:   true,
-		},
-		{
-			name:          "should not flush if builder is nil",
-			idleTimeout:   100 * time.Millisecond,
-			sleepDuration: 100 * time.Millisecond,
-			expectFlush:   false,
-			initBuilder:   false,
-		},
-		{
-			name:          "should not flush if last modified is less than idle timeout",
-			idleTimeout:   1 * time.Second,
-			sleepDuration: 100 * time.Millisecond,
-			expectFlush:   false,
-			initBuilder:   true,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			// Setup test dependencies
-			bucket := newMockBucket()
-			bufPool := &sync.Pool{
-				New: func() interface{} {
-					return bytes.NewBuffer(make([]byte, 0, 1024))
-				},
-			}
+func TestPartitionProcessor_IdleFlush(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+	p.idleFlushTimeout = 60 * time.Minute
 
-			// Create processor with test configuration
-			p := newPartitionProcessor(
-				context.Background(),
-				&kgo.Client{},
-				testBuilderConfig,
-				uploader.Config{},
-				metastore.Config{},
-				bucket,
-				"test-tenant",
-				0,
-				"test-topic",
-				0,
-				log.NewNopLogger(),
-				prometheus.NewRegistry(),
-				bufPool,
-				tc.idleTimeout,
-				nil,
-			)
+	// Last flush time should be initialized to the zero time.
+	require.True(t, p.lastFlush.IsZero())
 
-			if tc.initBuilder {
-				require.NoError(t, p.initBuilder())
-				p.start()
-				defer p.stop()
-			}
+	// Should not flush when builder is un-initialized.
+	flushed, err := p.idleFlush()
+	require.NoError(t, err)
+	require.False(t, flushed)
+	require.True(t, p.lastFlush.IsZero())
 
-			// The initial value for the last modified and last flush time
-			// should be zero.
-			require.True(t, p.lastModified.IsZero())
-			require.True(t, p.lastFlush.IsZero())
-
-			// Record initial flush time
-			initialFlushTime := p.lastFlush
-
-			stream := logproto.Stream{
-				Labels: `{cluster="test",app="foo"}`,
-				Entries: []push.Entry{{
-					Timestamp: time.Now().UTC(),
-					Line:      strings.Repeat("a", 1024),
-				}},
-			}
-
-			streamBytes, err := stream.Marshal()
-			require.NoError(t, err)
-
-			// Send a record to the processor
-			p.records <- &kgo.Record{
-				Value: streamBytes,
-				Key:   []byte("test-tenant"),
-			}
-
-			// Wait for specified duration
-			time.Sleep(tc.sleepDuration)
-
-			// Trigger idle flush check
-			p.idleFlush()
-
-			if tc.expectFlush {
-				require.True(t, p.lastFlush.After(initialFlushTime), "expected flush to occur")
-			} else {
-				require.Equal(t, initialFlushTime, p.lastFlush, "expected no flush to occur")
-			}
-		})
-	}
-}
-
-// TestIdleFlushWithActiveProcessing tests the idle flush behavior
-// while the processor is actively processing records.
-func TestIdleFlushWithActiveProcessing(t *testing.T) {
-	t.Parallel()
-	// Setup test dependencies
-	bucket := newMockBucket()
-	bufPool := &sync.Pool{
-		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 1024))
-		},
-	}
-
-	p := newPartitionProcessor(
-		context.Background(),
-		&kgo.Client{},
-		testBuilderConfig,
-		uploader.Config{},
-		metastore.Config{},
-		bucket,
-		"test-tenant",
-		0,
-		"test-topic",
-		0,
-		log.NewNopLogger(),
-		prometheus.NewRegistry(),
-		bufPool,
-		200*time.Millisecond,
-		nil,
-	)
-
+	// Should not flush if no records have been consumed.
 	require.NoError(t, p.initBuilder())
+	flushed, err = p.idleFlush()
+	require.NoError(t, err)
+	require.False(t, flushed)
+	require.True(t, p.lastFlush.IsZero())
 
-	// Start the processor
-	p.start()
-	defer p.stop()
-
-	stream := logproto.Stream{
-		Labels: `{cluster="test",app="foo"}`,
+	// Should not flush if idle timeout is not reached.
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
 		Entries: []push.Entry{{
 			Timestamp: time.Now().UTC(),
-			Line:      strings.Repeat("a", 1024),
+			Line:      "abc",
 		}},
 	}
-
-	streamBytes, err := stream.Marshal()
+	b, err := s.Marshal()
 	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: clock.Now(),
+	})
+	// A modification should have happened.
+	require.False(t, p.lastModified.IsZero())
+	// But the idle timeout should not have been reached.
+	flushed, err = p.idleFlush()
+	require.NoError(t, err)
+	require.False(t, flushed)
+	require.True(t, p.lastFlush.IsZero())
 
-	// Send a record to the processor
-	p.records <- &kgo.Record{
-		Value: streamBytes,
-		Key:   []byte("test-tenant"),
-	}
-
-	// Record initial flush time
-	initialFlushTime := p.lastFlush
-
-	// Wait longer than idle timeout
-	time.Sleep(300 * time.Millisecond)
-
-	// Verify that idle flush occurred
-	require.True(t, p.lastFlush.After(initialFlushTime), "expected idle flush to occur while processor is running")
+	// Advance the clock. The idle timeout should have been reached.
+	clock.Advance((60 * time.Minute) + 1)
+	flushed, err = p.idleFlush()
+	require.NoError(t, err)
+	require.True(t, flushed)
+	require.Equal(t, clock.Now(), p.lastFlush)
 }
 
-// TestIdleFlushWithEmptyData tests the idle flush behavior
-// when no data has been processed.
-func TestIdleFlushWithEmptyData(t *testing.T) {
-	t.Parallel()
-	// Setup test dependencies
-	bucket := newMockBucket()
-	bufPool := &sync.Pool{
-		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 1024))
-		},
-	}
+func TestPartitionProcessor_ProcessRecord(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
 
+	// The builder is initialized to nil until the first record.
+	require.Nil(t, p.builder)
+	require.True(t, p.lastModified.IsZero())
+
+	// Push a record.
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: time.Now().UTC(),
+			Line:      "abc",
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: clock.Now(),
+	})
+
+	// The builder should be initialized and last modified timestamp updated.
+	require.NotNil(t, p.builder)
+	require.Equal(t, clock.Now(), p.lastModified)
+}
+
+func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {
 	p := newPartitionProcessor(
 		context.Background(),
 		&kgo.Client{},
 		testBuilderConfig,
 		uploader.Config{},
 		metastore.Config{},
-		bucket,
+		newMockBucket(),
 		"test-tenant",
 		0,
 		"test-topic",
 		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
-		bufPool,
-		200*time.Millisecond,
+		&sync.Pool{
+			New: func() any {
+				return bytes.NewBuffer(make([]byte, 0, 1024))
+			},
+		},
+		60*time.Minute,
 		nil,
 	)
-
-	require.NoError(t, p.initBuilder())
-
-	// Start the processor
-	p.start()
-	defer p.stop()
-
-	// Record initial flush time
-	initialFlushTime := p.lastFlush
-
-	// Wait longer than idle timeout
-	time.Sleep(300 * time.Millisecond)
-
-	// Verify that idle flush occurred
-	require.True(t, p.lastFlush.Equal(initialFlushTime), "expected no idle flush with empty data")
+	p.clock = clock
+	return p
 }
