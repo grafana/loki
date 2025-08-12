@@ -51,7 +51,11 @@ func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (i
 	return sr.rr.ReadRange(ctx, absoluteOffset, length)
 }
 
-func (sr *sectionReader) Metadata(ctx context.Context) (io.ReadCloser, error) {
+func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
+	if offset < 0 || length < 0 {
+		return nil, fmt.Errorf("parameters must not be negative: offset=%d length=%d", offset, length)
+	}
+
 	metadataRegion, err := findMetadataRegion(sr.sec)
 	if err != nil {
 		return nil, err
@@ -59,7 +63,31 @@ func (sr *sectionReader) Metadata(ctx context.Context) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("section is missing metadata")
 	}
 
-	return sr.rr.ReadRange(ctx, int64(metadataRegion.Offset), int64(metadataRegion.Length))
+	// Validate bounds within the range of the section.
+	var (
+		start = offset
+		end   = offset + length - 1
+	)
+	if start > int64(metadataRegion.Length) || end > int64(metadataRegion.Length) {
+		return nil, fmt.Errorf("section data is invalid: start=%d end=%d length=%d", start, end, metadataRegion.Length)
+	}
+
+	// Unlike DataRange, MetadataRange was only introduced in newer versions of
+	// data objects. Previously, callers always had to read the entire metadata
+	// region at once. Because of this, we can always treat offset as relative
+	// to the beginning of the region.
+	absoluteOffset := int64(metadataRegion.Offset) + offset
+	return sr.rr.ReadRange(ctx, absoluteOffset, length)
+}
+
+func (sr *sectionReader) MetadataSize() int64 {
+	metadataRegion, err := findMetadataRegion(sr.sec)
+	if err != nil {
+		return 0
+	} else if metadataRegion == nil {
+		return 0
+	}
+	return int64(metadataRegion.Length)
 }
 
 // findMetadataRegion returns the region where a section's metadata is stored.

@@ -99,7 +99,7 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 		sectionBuilder.Append(rec)
 	}
 
-	objectBuilder := dataobj.NewBuilder()
+	objectBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objectBuilder.Append(sectionBuilder))
 
 	obj, closer, err := objectBuilder.Flush()

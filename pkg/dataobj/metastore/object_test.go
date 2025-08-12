@@ -253,7 +253,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -286,7 +286,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreUpdater := NewUpdater(Config{}, bucket, tenantID, log.NewNopLogger())
+	metastoreUpdater := NewUpdater(Config{}, bucket, nil, tenantID, log.NewNopLogger())
 
 	err = metastoreUpdater.Update(context.Background(), path, minTime, maxTime)
 	require.NoError(t, err)
@@ -362,13 +362,13 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		TargetSectionSize:       1024 * 1024,      // 1MB
 		BufferSize:              1024 * 1024,      // 1MB
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewUpdater(Config{}, bucket, tenantID, logger)
+	meta := NewUpdater(Config{}, bucket, nil, tenantID, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

@@ -758,11 +758,6 @@ http {
     default   $http_x_query_tags; # Otherwise, preserve the original value
   }
 
-  # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
-  proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
-  proxy_set_header Upgrade $http_upgrade;
-  proxy_set_header Connection "upgrade";
-
   server {
     {{- if (.Values.gateway.nginxConfig.ssl) }}
     listen             8080 ssl;
@@ -1032,12 +1027,16 @@ http {
 
     # QueryFrontend, Querier
     location = /api/prom/tail {
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}
       proxy_pass       {{ $queryFrontendUrl }}$request_uri;
     }
     location = /loki/api/v1/tail {
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}
@@ -1056,6 +1055,8 @@ http {
       internal;        # to suppress 301
     }
     location ^~ /loki/api/v1/ {
+      # pass custom headers set by Grafana as X-Query-Tags which are logged as key/value pairs in metrics.go log messages
+      proxy_set_header X-Query-Tags "${query_tags},user=${http_x_grafana_user},dashboard_id=${http_x_dashboard_uid},dashboard_title=${http_x_dashboard_title},panel_id=${http_x_panel_id},panel_title=${http_x_panel_title},source_rule_uid=${http_x_rule_uid},rule_name=${http_x_rule_name},rule_folder=${http_x_rule_folder},rule_version=${http_x_rule_version},rule_source=${http_x_rule_source},rule_type=${http_x_rule_type}";
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}

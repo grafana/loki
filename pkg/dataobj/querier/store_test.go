@@ -530,10 +530,10 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		BufferSize:        1024 * 1024,      // 1MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
-	meta := metastore.NewUpdater(metastore.Config{}, bucket, tenantID, log.NewNopLogger())
+	meta := metastore.NewUpdater(metastore.Config{}, bucket, nil, tenantID, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())

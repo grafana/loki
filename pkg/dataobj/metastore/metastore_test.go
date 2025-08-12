@@ -35,7 +35,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 				Updater: UpdaterConfig{
 					StorageFormat: bm.format,
 				},
-			}, bucket, tenantID, log.NewNopLogger())
+			}, bucket, nil, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
 			m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -87,7 +87,7 @@ func TestWriteMetastores(t *testing.T) {
 				Updater: UpdaterConfig{
 					StorageFormat: tt.format,
 				},
-			}, bucket, tenantID, log.NewNopLogger())
+			}, bucket, nil, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
 			m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -239,7 +239,7 @@ func TestDataObjectsPathsV1(t *testing.T) {
 					IndexStoragePrefix: tt.prefix,
 					EnabledTenantIDs:   tt.enabledTenantIDs,
 				},
-			}, bucket, tenantID, log.NewNopLogger())
+			}, bucket, nil, tenantID, log.NewNopLogger())
 
 			// Set limits for the test
 			m.backoff = backoff.New(context.TODO(), backoff.Config{

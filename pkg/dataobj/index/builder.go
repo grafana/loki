@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 type Config struct {
@@ -71,8 +72,9 @@ type Builder struct {
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
 	// Builder initialization
-	builderCfg indexobj.BuilderConfig
-	bucket     objstore.Bucket
+	builderCfg   indexobj.BuilderConfig
+	bucket       objstore.Bucket
+	scratchStore scratch.Store
 
 	// Metrics
 	metrics *indexBuilderMetrics
@@ -91,6 +93,7 @@ func NewIndexBuilder(
 	logger log.Logger,
 	instanceID string,
 	bucket objstore.Bucket,
+	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
 	kafkaCfg.AutoCreateTopicEnabled = true
@@ -121,7 +124,7 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig)
+	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
@@ -320,7 +323,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
+	metastoreUpdater := metastore.NewUpdater(p.mCfg, indexStorageBucket, p.scratchStore, events[0].Tenant, p.logger)
 	if minTime.IsZero() || maxTime.IsZero() {
 		return errors.New("failed to get min/max timestamps")
 	}
