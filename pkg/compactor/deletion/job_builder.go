@@ -170,7 +170,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *deletionprot
 
 		segmentPath := path.Join(manifestPath, fmt.Sprintf("%d.proto", segmentNum))
 
-		manifestExists, err := b.deletionManifestStoreClient.ObjectExists(ctx, segmentPath)
+		manifestExists, err := objectExists(ctx, b.deletionManifestStoreClient, segmentPath)
 		if err != nil {
 			return err
 		}
