@@ -288,7 +288,7 @@ func storageHasValidManifest(ctx context.Context, deletionManifestStoreClient cl
 
 		// Check if manifest.proto exists in this directory
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := deletionManifestStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(ctx, deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return false, err
 		}
