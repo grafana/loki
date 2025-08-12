@@ -25,7 +25,7 @@ type decoder struct {
 
 // Metadata returns the metadata for the logs section.
 func (rd *decoder) Metadata(ctx context.Context) (*logsmd.Metadata, error) {
-	rc, err := rd.sr.Metadata(ctx)
+	rc, err := rd.sr.MetadataRange(ctx, 0, rd.sr.MetadataSize())
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
 	}
