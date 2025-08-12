@@ -33,12 +33,12 @@ type DataObjStore struct {
 	builder  *logsobj.Builder
 	buf      *bytes.Buffer
 	uploader *uploader.Uploader
-	meta     *metastore.Updater
+	meta     *metastore.TableOfContentsWriter
 
 	bucket objstore.Bucket
 
 	indexWriterBucket objstore.Bucket
-	indexMetastore    *metastore.Updater
+	indexMetastoreToc *metastore.TableOfContentsWriter
 
 	logger log.Logger
 }
@@ -85,12 +85,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(metastore.Config{}, bucket, nil, tenantID, logger)
+	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastore := metastore.NewUpdater(metastore.Config{}, indexWriterBucket, nil, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, tenantID, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -102,7 +102,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		bucket:            bucket,
 		logger:            logger,
 		indexWriterBucket: indexWriterBucket,
-		indexMetastore:    indexMetastore,
+		indexMetastoreToc: indexMetastoreToc,
 	}, nil
 }
 
@@ -147,7 +147,7 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update metastore with the new data object
-	err = s.meta.Update(context.Background(), path, minTime, maxTime)
+	err = s.meta.WriteEntry(context.Background(), path, minTime, maxTime)
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
@@ -201,7 +201,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastore.Update(context.Background(), key, minTime, maxTime)
+		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, minTime, maxTime)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}

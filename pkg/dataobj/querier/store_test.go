@@ -510,7 +510,7 @@ type testDataBuilder struct {
 
 	tenantID string
 	builder  *logsobj.Builder
-	meta     *metastore.Updater
+	meta     *metastore.TableOfContentsWriter
 	uploader *uploader.Uploader
 }
 
@@ -533,7 +533,11 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	}, nil)
 	require.NoError(t, err)
 
+<<<<<<< HEAD
 	meta := metastore.NewUpdater(metastore.Config{}, bucket, nil, tenantID, log.NewNopLogger())
+=======
+	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, log.NewNopLogger())
+>>>>>>> 2032775139 (chore: Refactor metastore Updater (breaking change))
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
@@ -569,7 +573,7 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, minTime, maxTime)
+	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()

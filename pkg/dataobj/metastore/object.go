@@ -10,7 +10,6 @@ import (
 	"maps"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,8 +93,9 @@ func storagePrefixFor(cfg StorageConfig, tenantID string) string {
 	return ""
 }
 
-func metastorePath(tenantID string, window time.Time, prefix string) string {
-	path := fmt.Sprintf("tenant-%s/metastore/%s.store", tenantID, window.Format(time.RFC3339))
+// Table of Content files are stored in well-known locations that can be computed with the time range required.
+func tableOfContentsPath(tenantID string, window time.Time, prefix string) string {
+	path := fmt.Sprintf("tenant-%s/metastore/%s.toc", tenantID, strings.Replace(window.Format(time.RFC3339), ":", "_", -1))
 	if prefix != "" {
 		if !strings.HasSuffix(prefix, "/") {
 			prefix += "/"
@@ -105,13 +105,13 @@ func metastorePath(tenantID string, window time.Time, prefix string) string {
 	return path
 }
 
-func iterStorePaths(tenantID string, start, end time.Time, prefix string) iter.Seq[string] {
-	minMetastoreWindow := start.Truncate(metastoreWindowSize).UTC()
-	maxMetastoreWindow := end.Truncate(metastoreWindowSize).UTC()
+func iterTableOfContentsPaths(tenantID string, start, end time.Time, prefix string) iter.Seq[string] {
+	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
+	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
 
 	return func(yield func(t string) bool) {
-		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
-			if !yield(metastorePath(tenantID, metastoreWindow, prefix)) {
+		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
+			if !yield(tableOfContentsPath(tenantID, tocWindow, prefix)) {
 				return
 			}
 		}
@@ -169,7 +169,7 @@ func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, mat
 		storePaths []string
 		prefix     = storagePrefixFor(m.cfg, tenantID)
 	)
-	for path := range iterStorePaths(tenantID, start, end, prefix) {
+	for path := range iterTableOfContentsPaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 
@@ -198,7 +198,7 @@ func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, m
 		storePaths []string
 		prefix     = storagePrefixFor(m.cfg, tenantID)
 	)
-	for path := range iterStorePaths(tenantID, start, end, prefix) {
+	for path := range iterTableOfContentsPaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 	level.Debug(logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
@@ -250,7 +250,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		storePaths []string
 		prefix     = storagePrefixFor(m.cfg, tenantID)
 	)
-	for path := range iterStorePaths(tenantID, start, end, prefix) {
+	for path := range iterTableOfContentsPaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 
@@ -329,7 +329,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 		storePaths []string
 		prefix     = storagePrefixFor(m.cfg, tenantID)
 	)
-	for path := range iterStorePaths(tenantID, start, end, prefix) {
+	for path := range iterTableOfContentsPaths(tenantID, start, end, prefix) {
 		storePaths = append(storePaths, path)
 	}
 
@@ -724,18 +724,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, prefix s
 	}
 	var objectPaths []string
 
-	// First we iterate over index objects based on the old format.
-	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {
-		ok, objPath := objectOverlapsRange(stream.Labels, start, end)
-		if ok {
-			objectPaths = append(objectPaths, objPath)
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Then we iterate over index objects based on the new format.
+	// Read all relevant entries from the table of contents
 	predicate := indexpointers.TimeRangeRowPredicate{
 		Start: start.UTC(),
 		End:   end.UTC(),
@@ -884,40 +873,4 @@ func dedupeAndSort(objects [][]string) []string {
 	}
 	sort.Strings(paths)
 	return paths
-}
-
-// objectOverlapsRange checks if an object's time range overlaps with the query range
-func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string) {
-	var (
-		objStart, objEnd time.Time
-		objPath          string
-	)
-
-	lbs.Range(func(lb labels.Label) {
-		if lb.Name == labelNameStart {
-			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
-			if err != nil {
-				panic(err)
-			}
-			objStart = time.Unix(0, tsNano).UTC()
-		}
-		if lb.Name == labelNameEnd {
-			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
-			if err != nil {
-				panic(err)
-			}
-			objEnd = time.Unix(0, tsNano).UTC()
-		}
-		if lb.Name == labelNamePath {
-			objPath = lb.Value
-		}
-	})
-
-	if objStart.IsZero() || objEnd.IsZero() {
-		return false, ""
-	}
-	if objEnd.Before(start) || objStart.After(end) {
-		return false, ""
-	}
-	return true, objPath
 }

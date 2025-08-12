@@ -5,7 +5,6 @@ import (
 	"context"
 	stderrors "errors"
 	"io"
-	"strconv"
 	"sync"
 	"time"
 
@@ -14,36 +13,16 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/scratch"
-)
-
-const (
-	labelNameStart = "__start__"
-	labelNameEnd   = "__end__"
-	labelNamePath  = "__path__"
-)
-
-// StorageFormatType is the dataobj section type used to store the metastore top-level index oblects.
-type StorageFormatType int
-
-const (
-	// StorageFormatTypeV1 is the old top-level streams based object format.
-	StorageFormatTypeV1 StorageFormatType = iota
-	// StorageFormatTypeV2 is the new top-level index pointer based object format.
-	StorageFormatTypeV2
 )
 
 // Define our own builder config because metastore objects are significantly smaller.
-var metastoreBuilderCfg = logsobj.BuilderConfig{
+var tocBuilderCfg = logsobj.BuilderConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -52,31 +31,30 @@ var metastoreBuilderCfg = logsobj.BuilderConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-type Updater struct {
-	cfg              Config
-	builder          *indexobj.Builder // New index pointer based builder.
-	metastoreBuilder *logsobj.Builder  // Deprecated streams based builder.
-	tenantID         string
-	metrics          *metastoreMetrics
-	bucket           objstore.Bucket
-	scratchStore     scratch.Store
-	logger           log.Logger
-	backoff          *backoff.Backoff
-	buf              *bytes.Buffer
+// The TableOfContents updater writes the entrypoint file to the metastore, the Table of Contents, which is a list of other data objects in storage.
+// The Table of contents is used to look up another set of objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
+type TableOfContentsWriter struct {
+	cfg        Config
+	tocBuilder *indexobj.Builder // New index pointer based builder.
+	tenantID   string
+	metrics    *tocMetrics
+	bucket     objstore.Bucket
+	logger     log.Logger
+	backoff    *backoff.Backoff
+	buf        *bytes.Buffer
 
 	builderOnce sync.Once
 }
 
-func NewUpdater(cfg Config, bucket objstore.Bucket, scratchStore scratch.Store, tenantID string, logger log.Logger) *Updater {
-	metrics := newMetastoreMetrics()
+func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *TableOfContentsWriter {
+	metrics := newTableOfContentsMetrics()
 
-	return &Updater{
-		cfg:          cfg,
-		bucket:       bucket,
-		scratchStore: scratchStore,
-		metrics:      metrics,
-		logger:       logger,
-		tenantID:     tenantID,
+	return &TableOfContentsWriter{
+		cfg:      cfg,
+		bucket:   bucket,
+		metrics:  metrics,
+		logger:   logger,
+		tenantID: tenantID,
 		backoff: backoff.New(context.TODO(), backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -85,45 +63,38 @@ func NewUpdater(cfg Config, bucket objstore.Bucket, scratchStore scratch.Store, 
 	}
 }
 
-func (m *Updater) RegisterMetrics(reg prometheus.Registerer) error {
+func (m *TableOfContentsWriter) RegisterMetrics(reg prometheus.Registerer) error {
 	return m.metrics.register(reg)
 }
 
-func (m *Updater) UnregisterMetrics(reg prometheus.Registerer) {
+func (m *TableOfContentsWriter) UnregisterMetrics(reg prometheus.Registerer) {
 	m.metrics.unregister(reg)
 }
 
-func (m *Updater) initBuilder() error {
+func (m *TableOfContentsWriter) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := logsobj.NewBuilder(metastoreBuilderCfg, m.scratchStore)
-		if err != nil {
-			initErr = err
-			return
-		}
-		m.buf = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
-		m.metastoreBuilder = metastoreBuilder
-
+		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
 		indexBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
-			TargetObjectSize:        metastoreBuilderCfg.TargetObjectSize,
-			TargetPageSize:          metastoreBuilderCfg.TargetPageSize,
-			BufferSize:              metastoreBuilderCfg.BufferSize,
-			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
-			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
-		}, m.scratchStore)
+			TargetObjectSize:        tocBuilderCfg.TargetObjectSize,
+			TargetPageSize:          tocBuilderCfg.TargetPageSize,
+			BufferSize:              tocBuilderCfg.BufferSize,
+			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
+			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
+		})
 		if err != nil {
 			initErr = err
 			return
 		}
-		m.builder = indexBuilder
+		m.tocBuilder = indexBuilder
 	})
 	return initErr
 }
 
-// Update adds provided dataobj path to the metastore. Flush stats are used to determine the stored metadata about this dataobj.
-func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+// WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
 	var err error
-	processingTime := prometheus.NewTimer(m.metrics.metastoreProcessingTime)
+	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
 
 	// Initialize builder if this is the first call for this partition
@@ -134,7 +105,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	prefix := storagePrefixFor(m.cfg.Storage, m.tenantID)
-	for metastorePath := range iterStorePaths(m.tenantID, minTimestamp, maxTimestamp, prefix) {
+	for metastorePath := range iterTableOfContentsPaths(m.tenantID, minTimestamp, maxTimestamp, prefix) {
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.ReadCloser, error) {
@@ -143,37 +114,32 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 				}
 
 				m.buf.Reset()
+				m.tocBuilder.Reset()
+
 				if existing != nil {
-					level.Debug(m.logger).Log("msg", "found existing metastore, updating", "path", metastorePath)
 					_, err := io.Copy(m.buf, existing)
 					if err != nil {
 						return nil, errors.Wrap(err, "copying to local buffer")
 					}
-				} else {
-					level.Debug(m.logger).Log("msg", "no existing metastore found, creating new one", "path", metastorePath)
 				}
 
-				m.metastoreBuilder.Reset()
-				m.builder.Reset()
-				ty := m.cfg.Updater.StorageFormat
-
 				if m.buf.Len() > 0 {
-					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
+					replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
 					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
 					if err != nil {
 						return nil, errors.Wrap(err, "creating object from buffer")
 					}
-					ty, err = m.readFromExisting(ctx, object)
+					err = m.copyFromExistingToc(ctx, object)
 					if err != nil {
 						return nil, errors.Wrap(err, "reading existing metastore version")
 					}
 					replayDuration.ObserveDuration()
 				}
 
-				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
-				err = m.append(ty, dataobjPath, minTimestamp, maxTimestamp)
+				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
+				err := m.tocBuilder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
 				if err != nil {
-					return nil, errors.Wrap(err, "appending to metastore builder")
+					return nil, errors.Wrap(err, "appending index pointer")
 				}
 
 				var (
@@ -181,19 +147,9 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 					closer io.Closer
 				)
 
-				switch ty {
-				case StorageFormatTypeV1:
-					obj, closer, err = m.metastoreBuilder.Flush()
-					if err != nil {
-						return nil, errors.Wrap(err, "flushing metastore builder")
-					}
-				case StorageFormatTypeV2:
-					obj, closer, err = m.builder.Flush()
-					if err != nil {
-						return nil, errors.Wrap(err, "flushing metastore builder")
-					}
-				default:
-					return nil, errors.New("unknown metastore top-level object type")
+				obj, closer, err = m.tocBuilder.Flush()
+				if err != nil {
+					return nil, errors.Wrap(err, "flushing metastore builder")
 				}
 
 				reader, err := obj.Reader(ctx)
@@ -226,7 +182,7 @@ func (m *Updater) Update(ctx context.Context, dataobjPath string, minTimestamp, 
 		}
 
 		// Reset at the end too so we don't leave our memory hanging around between calls.
-		m.metastoreBuilder.Reset()
+		m.tocBuilder.Reset()
 	}
 	return err
 }
@@ -249,100 +205,32 @@ func (w *wrappedReadCloser) Close() error {
 	return w.rc.Close()
 }
 
-func (m *Updater) append(ty StorageFormatType, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
-	switch ty {
-	// Backwards compatibility with old metastore top-level objects.
-	case StorageFormatTypeV1:
-		ls := labels.New(
-			labels.Label{Name: labelNameStart, Value: strconv.FormatInt(minTimestamp.UnixNano(), 10)},
-			labels.Label{Name: labelNameEnd, Value: strconv.FormatInt(maxTimestamp.UnixNano(), 10)},
-			labels.Label{Name: labelNamePath, Value: dataobjPath},
-		)
-
-		err := m.metastoreBuilder.Append(logproto.Stream{
-			Labels:  ls.String(),
-			Entries: []logproto.Entry{{Line: ""}},
-		})
-		if err != nil {
-			return errors.Wrap(err, "appending internal metadata stream")
-		}
-	// New standard approach for metastore top-level objects.
-	case StorageFormatTypeV2:
-		err := m.builder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
-		if err != nil {
-			return errors.Wrap(err, "appending index pointer")
-		}
-	default:
-		return errors.New("unknown metastore top-level object type")
-	}
-
-	return nil
-}
-
-// readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
-func (m *Updater) readFromExisting(ctx context.Context, object *dataobj.Object) (StorageFormatType, error) {
-	var streamsReader streams.RowReader
-	defer streamsReader.Close()
-
+// copyFromExistingToc reads the provided table of contents object and appends the index pointers to the builder. The resulting builder will contain exactly the same entries as the input object.
+func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObject *dataobj.Object) error {
 	var indexPointersReader indexpointers.RowReader
 	defer indexPointersReader.Close()
 
-	// Read streams from existing metastore object and write them to the builder for the new object
-	buf := make([]streams.Stream, 100)
-	pbuf := make([]indexpointers.IndexPointer, 100)
+	// Read index pointers from existing metastore object and write them to the builder for the new object
+	pbuf := make([]indexpointers.IndexPointer, 256)
 
-	for _, section := range object.Sections() {
-		if !streams.CheckSection(section) && !indexpointers.CheckSection(section) {
-			continue
+	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
+		sec, err := indexpointers.Open(ctx, section)
+		if err != nil {
+			return errors.Wrap(err, "opening section")
 		}
-
-		switch {
-		// Backwards compatibility with old metastore top-level objects.
-		case streams.CheckSection(section):
-			sec, err := streams.Open(ctx, section)
-			if err != nil {
-				return StorageFormatTypeV1, errors.Wrap(err, "opening section")
+		indexPointersReader.Reset(sec)
+		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
+			if err != nil && err != io.EOF {
+				return errors.Wrap(err, "reading index pointers")
 			}
-
-			streamsReader.Reset(sec)
-			for n, err := streamsReader.Read(ctx, buf); n > 0; n, err = streamsReader.Read(ctx, buf) {
-				if err != nil && err != io.EOF {
-					return StorageFormatTypeV1, errors.Wrap(err, "reading streams")
-				}
-				for _, stream := range buf[:n] {
-					err = m.metastoreBuilder.Append(logproto.Stream{
-						Labels:  stream.Labels.String(),
-						Entries: []logproto.Entry{{Line: ""}},
-					})
-					if err != nil {
-						return StorageFormatTypeV1, errors.Wrap(err, "appending streams")
-					}
+			for _, indexPointer := range pbuf[:n] {
+				err = m.tocBuilder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+				if err != nil {
+					return errors.Wrap(err, "appending index pointers")
 				}
 			}
-
-			return StorageFormatTypeV1, nil
-		// New standard approach for metastore top-level objects.
-		case indexpointers.CheckSection(section):
-			sec, err := indexpointers.Open(ctx, section)
-			if err != nil {
-				return StorageFormatTypeV2, errors.Wrap(err, "opening section")
-			}
-			indexPointersReader.Reset(sec)
-			for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
-				if err != nil && err != io.EOF {
-					return StorageFormatTypeV2, errors.Wrap(err, "reading index pointers")
-				}
-				for _, indexPointer := range pbuf[:n] {
-					err = m.builder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
-					if err != nil {
-						return StorageFormatTypeV2, errors.Wrap(err, "appending index pointers")
-					}
-				}
-			}
-
-			return StorageFormatTypeV2, nil
 		}
 	}
 
-	return m.cfg.Updater.StorageFormat, nil
+	return nil
 }
