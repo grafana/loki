@@ -93,9 +93,10 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
 			cell_a_trace_id, cell_b_trace_id,
+			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := s.db.ExecContext(ctx, query,
@@ -133,6 +134,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBStatusCode,
 		sample.CellATraceID,
 		sample.CellBTraceID,
+		sample.CellASpanID,
+		sample.CellBSpanID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
@@ -255,6 +258,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
 			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
 			sq.cell_a_trace_id, sq.cell_b_trace_id,
+			sq.cell_a_span_id, sq.cell_b_span_id,
 			sq.sampled_at, sq.created_at,
 			CASE
 				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
@@ -299,6 +303,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
 			&q.CellATraceID, &q.CellBTraceID,
+			&q.CellASpanID, &q.CellBSpanID,
 			&q.SampledAt, &createdAt,
 			&comparisonStatus,
 		)

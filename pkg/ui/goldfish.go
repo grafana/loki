@@ -85,6 +85,8 @@ type SampledQuery struct {
 	// Trace IDs - nullable as not all requests have traces
 	CellATraceID *string `json:"cellATraceID" db:"cell_a_trace_id"`
 	CellBTraceID *string `json:"cellBTraceID" db:"cell_b_trace_id"`
+	CellASpanID  *string `json:"cellASpanID" db:"cell_a_span_id"`
+	CellBSpanID  *string `json:"cellBSpanID" db:"cell_b_span_id"`
 
 	// Query engine version tracking
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine" db:"cell_a_used_new_engine"`
@@ -188,6 +190,8 @@ func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFil
 			CellBStatusCode:    intPtr(q.CellBStatusCode),
 			CellATraceID:       strPtr(q.CellATraceID),
 			CellBTraceID:       strPtr(q.CellBTraceID),
+			CellASpanID:        strPtr(q.CellASpanID),
+			CellBSpanID:        strPtr(q.CellBSpanID),
 			CellAUsedNewEngine: q.CellAUsedNewEngine,
 			CellBUsedNewEngine: q.CellBUsedNewEngine,
 		}
@@ -204,11 +208,11 @@ func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFil
 		// Add trace ID explore links if explore is configured
 		if s.cfg.Goldfish.GrafanaURL != "" && s.cfg.Goldfish.TracesDatasourceUID != "" {
 			if q.CellATraceID != "" {
-				link := s.GenerateTraceExploreURL(q.CellATraceID, q.SampledAt)
+				link := s.GenerateTraceExploreURL(q.CellATraceID, q.CellASpanID, q.SampledAt)
 				uiQuery.CellATraceLink = &link
 			}
 			if q.CellBTraceID != "" {
-				link := s.GenerateTraceExploreURL(q.CellBTraceID, q.SampledAt)
+				link := s.GenerateTraceExploreURL(q.CellBTraceID, q.CellBSpanID, q.SampledAt)
 				uiQuery.CellBTraceLink = &link
 			}
 		}
@@ -260,14 +264,20 @@ var ErrGoldfishDisabled = sql.ErrNoRows
 var ErrGoldfishNotConfigured = sql.ErrConnDone
 
 // GenerateTraceExploreURL generates a Grafana Explore URL for a given trace ID
-func (s *Service) GenerateTraceExploreURL(traceID string, sampledAt time.Time) string {
+func (s *Service) GenerateTraceExploreURL(traceID, spanID string, sampledAt time.Time) string {
 	// Return empty string if configuration is incomplete
 	if s.cfg.Goldfish.GrafanaURL == "" || s.cfg.Goldfish.TracesDatasourceUID == "" {
 		return ""
 	}
 
-	// For Tempo explore, we just need the trace ID, not the full TraceQL query
-	// Grafana will construct the query based on the queryType
+	// Build query - include span ID if provided for direct navigation
+	// If spanID is provided, construct a TraceQL query to find the specific span
+	// Otherwise just use the trace ID for finding the trace
+	query := traceID
+	if spanID != "" {
+		// TraceQL syntax to find a specific span within a trace
+		query = fmt.Sprintf(`{.spanID = "%s"} && {.traceID = "%s"}`, spanID, traceID)
+	}
 
 	// Build the explore state for Tempo
 	exploreState := map[string]any{
@@ -275,7 +285,7 @@ func (s *Service) GenerateTraceExploreURL(traceID string, sampledAt time.Time) s
 		"queries": []map[string]any{
 			{
 				"refId": "A",
-				"query": traceID, // Just the trace ID, not the full TraceQL query
+				"query": query,
 				"datasource": map[string]any{
 					"type": "tempo",
 					"uid":  s.cfg.Goldfish.TracesDatasourceUID,

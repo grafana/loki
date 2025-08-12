@@ -203,8 +203,8 @@ func Test_CaptureResponse_withTraceID(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader(`{"status":"success","data":{"resultType":"matrix","result":[]}}`)),
 			}
 
-			// Call CaptureResponseWithTraceID
-			data, err := CaptureResponse(resp, time.Duration(100)*time.Millisecond, tt.traceID)
+			// Call CaptureResponse with traceID and empty spanID
+			data, err := CaptureResponse(resp, time.Duration(100)*time.Millisecond, tt.traceID, "")
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, data.TraceID)

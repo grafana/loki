@@ -139,6 +139,8 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CellBStatusCode:    cellBResp.StatusCode,
 		CellATraceID:       cellAResp.TraceID,
 		CellBTraceID:       cellBResp.TraceID,
+		CellASpanID:        cellAResp.SpanID,
+		CellBSpanID:        cellBResp.SpanID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
 		SampledAt:          time.Now(),
@@ -269,10 +271,11 @@ type ResponseData struct {
 	Size          int64
 	UsedNewEngine bool
 	TraceID       string
+	SpanID        string
 }
 
-// CaptureResponse captures response data for comparison including trace ID
-func CaptureResponse(resp *http.Response, duration time.Duration, traceID string) (*ResponseData, error) {
+// CaptureResponse captures response data for comparison including trace ID and span ID
+func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanID string) (*ResponseData, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -305,6 +308,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID string
 		Size:          size,
 		UsedNewEngine: usedNewEngine,
 		TraceID:       traceID,
+		SpanID:        spanID,
 	}, nil
 }
 

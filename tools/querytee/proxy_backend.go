@@ -12,8 +12,12 @@ import (
 
 	"github.com/grafana/dskit/tracing"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("tools/querytee")
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
@@ -62,21 +66,15 @@ func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
 }
 
 // createIsolatedContextWithTracing creates a new context that:
-// - Inherits cancellation from the parent context
+// - Is isolated from parent and sibling cancellation
 // - Preserves trace context for distributed tracing
-// - Is isolated from sibling context failures
+// - Has its own independent cancellation
 func createIsolatedContextWithTracing(parent context.Context) (context.Context, context.CancelFunc) {
 	// Extract trace context from parent
 	spanCtx := trace.SpanFromContext(parent).SpanContext()
 
-	// Create new context with its own cancellation
+	// Create new context with its own cancellation, isolated from parent
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Link parent cancellation to this context
-	go func() {
-		<-parent.Done()
-		cancel()
-	}()
 
 	// Restore trace context
 	if spanCtx.IsValid() {
@@ -88,13 +86,26 @@ func createIsolatedContextWithTracing(parent context.Context) (context.Context, 
 
 func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *BackendResponse {
 	start := time.Now()
-	req := b.createBackendRequest(orig, body)
+	req, span := b.createBackendRequest(orig, body)
+	defer span.End()
 
-	// Extract trace ID from the original request context before it's lost
-	traceID, _ := tracing.ExtractSampledTraceID(orig.Context())
+	// Extract trace ID and span ID from the child span context
+	traceID, _ := tracing.ExtractSampledTraceID(req.Context())
+	spanCtx := span.SpanContext()
+	spanID := spanCtx.SpanID().String()
 
 	status, responseBody, err := b.doBackendRequest(req)
 	duration := time.Since(start)
+
+	// Set span status based on response
+	if err != nil {
+		span.RecordError(err)
+		span.SetAttributes(attribute.String("error", err.Error()))
+	}
+	span.SetAttributes(
+		attribute.Int("http.status_code", status),
+		attribute.Int64("duration.ms", duration.Milliseconds()),
+	)
 
 	return &BackendResponse{
 		backend:  b,
@@ -103,14 +114,24 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 		err:      err,
 		duration: duration,
 		traceID:  traceID,
+		spanID:   spanID,
 	}
 }
 
-func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadCloser) *http.Request {
+func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadCloser) (*http.Request, trace.Span) {
 	// Create isolated context that preserves tracing but is isolated from sibling failures
 	isolatedCtx, _ := createIsolatedContextWithTracing(orig.Context())
 
-	req := orig.Clone(isolatedCtx)
+	// Create a child span for this backend request
+	spanCtx, span := tracer.Start(isolatedCtx, "querytee.backend.request",
+		trace.WithAttributes(
+			attribute.String("backend.name", b.name),
+			attribute.Bool("backend.preferred", b.preferred),
+			attribute.String("backend.endpoint", b.endpoint.String()),
+		),
+	)
+
+	req := orig.Clone(spanCtx)
 	req.Body = body
 	// RequestURI can't be set on a cloned request. It's only for handlers.
 	req.RequestURI = ""
@@ -144,7 +165,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	// Remove Accept-Encoding header to avoid sending compressed responses
 	req.Header.Del("Accept-Encoding")
 
-	return req
+	return req, span
 }
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
