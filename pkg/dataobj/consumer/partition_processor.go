@@ -42,8 +42,9 @@ type partitionProcessor struct {
 
 	// Idle stream handling
 	idleFlushTimeout time.Duration
-	lastFlush        time.Time
-	lastModified     time.Time
+	// The initial value is the zero time.
+	lastFlush    time.Time
+	lastModified time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -120,8 +121,6 @@ func newPartitionProcessor(
 		metastoreUpdater:     metastoreUpdater,
 		bufPool:              bufPool,
 		idleFlushTimeout:     idleFlushTimeout,
-		lastFlush:            time.Now(),
-		lastModified:         time.Now(),
 		eventsProducerClient: eventsProducerClient,
 	}
 }
@@ -337,15 +336,17 @@ func (p *partitionProcessor) idleFlush() {
 	if p.builder == nil {
 		return
 	}
-
-	if time.Since(p.lastModified) < p.idleFlushTimeout {
-		return // Avoid checking too frequently
+	if p.lastModified.IsZero() {
+		// No records have been processed, no data to flush.
+		return
 	}
-
+	if time.Since(p.lastModified) < p.idleFlushTimeout {
+		// The idle timeout has not been reached.
+		return
+	}
 	if err := p.flushStream(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 		return
 	}
-
 	p.lastFlush = time.Now()
 }

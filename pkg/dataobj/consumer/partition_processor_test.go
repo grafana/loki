@@ -106,6 +106,11 @@ func TestIdleFlush(t *testing.T) {
 				defer p.stop()
 			}
 
+			// The initial value for the last modified and last flush time
+			// should be zero.
+			require.True(t, p.lastModified.IsZero())
+			require.True(t, p.lastFlush.IsZero())
+
 			// Record initial flush time
 			initialFlushTime := p.lastFlush
 
