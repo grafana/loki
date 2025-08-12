@@ -25,7 +25,7 @@ type decoder struct {
 
 // Metadata returns the metadata for the index pointers section.
 func (rd *decoder) Metadata(ctx context.Context) (*indexpointersmd.Metadata, error) {
-	rc, err := rd.sr.Metadata(ctx)
+	rc, err := rd.sr.MetadataRange(ctx, 0, rd.sr.MetadataSize())
 	if err != nil {
 		return nil, fmt.Errorf("reading pointers section metadata: %w", err)
 	}

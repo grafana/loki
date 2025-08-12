@@ -73,10 +73,21 @@ type SectionReader interface {
 	// implicitly the entire file.
 	DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
 
-	// Metadata opens a reader to the entire metadata region of a section.
-	// Metadata returns an error if the read fails. The returned reader is only
-	// valid as long as the provided ctx is not canceled.
-	Metadata(ctx context.Context) (io.ReadCloser, error)
+	// MetadataRange opens a reader of length bytes from the metadata region of
+	// a section. The offset argument determines where in the metadata region
+	// reading should start.
+	//
+	// MetadataRange returns an error if the read fails or if offset+length goes
+	// beyond the readable metadata region. The returned reader is only valid as long
+	// as the provided ctx is not canceled.
+	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
+
+	// TODO(rfratto): DataSize() is only possible to implement after we fully
+	// remove support for older data objects where the data region was not
+	// explicitly specified.
+
+	// MetadataSize returns the total size of the metadata region of a section.
+	MetadataSize() int64
 }
 
 // A SectionBuilder accumulates data for a single in-progress section.
