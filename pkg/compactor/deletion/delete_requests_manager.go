@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -45,7 +46,7 @@ var (
 )
 
 type userDeleteRequests struct {
-	requests []*DeleteRequest
+	requests []*deleteRequest
 	// requestsInterval holds the earliest start time and latest end time considering all the delete requests
 	requestsInterval model.Interval
 }
@@ -121,9 +122,9 @@ func (d *DeleteRequestsManager) Init(tablesManager TablesManager, registerer pro
 	d.tablesManager = tablesManager
 
 	if d.HSModeEnabled {
-		d.jobBuilder = NewJobBuilder(d.deletionManifestStoreClient, tablesManager.ApplyStorageUpdates, func(requests []DeleteRequest) {
+		d.jobBuilder = NewJobBuilder(d.deletionManifestStoreClient, tablesManager.ApplyStorageUpdates, func(requests []deletionproto.DeleteRequest) {
 			for _, req := range requests {
-				d.markRequestAsProcessed(req)
+				d.markRequestAsProcessed(req, 0)
 			}
 		}, registerer)
 
@@ -307,7 +308,7 @@ func (d *DeleteRequestsManager) updateMetrics() error {
 		}
 
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
-		if deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
+		if deleteRequest.Status != deletionproto.StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 
@@ -338,7 +339,10 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 
 	reqCount := 0
 	for i := range deleteRequests {
-		deleteRequest := deleteRequests[i]
+		deleteRequest, err := newDeleteRequest(deleteRequests[i], d.metrics.deletedLinesTotal)
+		if err != nil {
+			return nil, err
+		}
 
 		if deleteRequest.logSelectorExpr == nil {
 			err := deleteRequest.SetQuery(deleteRequest.Query)
@@ -361,11 +365,11 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 					"delete_request_id", deleteRequest.RequestID,
 					"user", deleteRequest.UserID,
 				)
-				d.markRequestAsProcessed(deleteRequest)
+				d.markRequestAsProcessed(deleteRequest.DeleteRequest, 0)
 				continue
 			}
 		}
-		isDuplicate, err := batch.checkDuplicate(deleteRequest)
+		isDuplicate, err := batch.checkDuplicate(*deleteRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -383,14 +387,14 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 			"user", deleteRequest.UserID,
 		)
 
-		batch.addDeleteRequest(&deleteRequest)
+		batch.addDeleteRequest(deleteRequest)
 		reqCount++
 	}
 
 	return batch, nil
 }
 
-func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
+func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]deletionproto.DeleteRequest, error) {
 	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return nil, err
@@ -408,8 +412,8 @@ func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest,
 	return deleteRequests, nil
 }
 
-func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {
-	filtered := make([]DeleteRequest, 0, len(reqs))
+func (d *DeleteRequestsManager) filteredRequests(reqs []deletionproto.DeleteRequest) ([]deletionproto.DeleteRequest, error) {
+	filtered := make([]deletionproto.DeleteRequest, 0, len(reqs))
 	for _, deleteRequest := range reqs {
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
@@ -439,7 +443,7 @@ func logBatchTruncation(size, total int) {
 	}
 }
 
-func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, error) {
+func (d *DeleteRequestsManager) shouldProcessRequest(dr deletionproto.DeleteRequest) (bool, error) {
 	mode, err := deleteModeFromLimits(d.limits, dr.UserID)
 	if err != nil {
 		level.Error(util_log.Logger).Log(
@@ -472,7 +476,7 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 }
 
 func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, _ model.Time) (bool, filter.Func) {
-	return d.currentBatch.expired(userID, chk, lbls, func(request *DeleteRequest) bool {
+	return d.currentBatch.expired(userID, chk, lbls, func(request *deleteRequest) bool {
 		return d.isSeriesProcessed(buildProcessedSeriesKey(request.RequestID, request.StartTime, request.EndTime, seriesID, tableName))
 	})
 }
@@ -523,7 +527,7 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 	d.metrics.deletionFailures.WithLabelValues("timeout").Inc()
 }
 
-func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
+func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest deletionproto.DeleteRequest, deletedLines int32) {
 	if err := d.deleteRequestsStore.MarkShardAsProcessed(context.Background(), deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log(
 			"msg", "failed to mark delete request for user as processed",
@@ -531,7 +535,7 @@ func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteReque
 			"sequence_num", deleteRequest.SequenceNum,
 			"user", deleteRequest.UserID,
 			"err", err,
-			"deleted_lines", deleteRequest.DeletedLines,
+			"deleted_lines", deletedLines,
 		)
 	} else {
 		level.Info(util_log.Logger).Log(
@@ -539,7 +543,7 @@ func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteReque
 			"delete_request_id", deleteRequest.RequestID,
 			"sequence_num", deleteRequest.SequenceNum,
 			"user", deleteRequest.UserID,
-			"deleted_lines", deleteRequest.DeletedLines,
+			"deleted_lines", deletedLines,
 		)
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
@@ -556,7 +560,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			d.markRequestAsProcessed(*deleteRequest)
+			d.markRequestAsProcessed(deleteRequest.DeleteRequest, deleteRequest.DeletedLines)
 		}
 	}
 
@@ -566,7 +570,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 			"sequence_num", req.SequenceNum,
 			"user", req.UserID,
 		)
-		d.markRequestAsProcessed(req)
+		d.markRequestAsProcessed(req, 0)
 	}
 
 	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {

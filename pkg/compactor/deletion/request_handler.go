@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -169,14 +170,14 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 }
 
-func mergeDeletes(reqs []DeleteRequest) []DeleteRequest {
+func mergeDeletes(reqs []deletionproto.DeleteRequest) []deletionproto.DeleteRequest {
 	if len(reqs) <= 1 {
 		return reqs
 	}
-	slices.SortFunc(reqs, func(a, b DeleteRequest) int {
+	slices.SortFunc(reqs, func(a, b deletionproto.DeleteRequest) int {
 		return strings.Compare(a.RequestID, b.RequestID)
 	})
-	mergedRequests := []DeleteRequest{} // Declare this way so the return value is [] rather than null
+	mergedRequests := []deletionproto.DeleteRequest{} // Declare this way so the return value is [] rather than null
 	// find the start and end of shards of same request and merge them
 	i := 0
 	for j := 0; j < len(reqs); j++ {
@@ -197,7 +198,7 @@ func mergeDeletes(reqs []DeleteRequest) []DeleteRequest {
 	return mergedRequests
 }
 
-func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestStatus) {
+func mergeData(deletes []deletionproto.DeleteRequest) (model.Time, model.Time, deletionproto.DeleteRequestStatus) {
 	var (
 		startTime    = model.Time(math.MaxInt64)
 		endTime      = model.Time(0)
@@ -213,7 +214,7 @@ func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestSt
 			endTime = del.EndTime
 		}
 
-		if del.Status == StatusProcessed {
+		if del.Status == deletionproto.StatusProcessed {
 			numProcessed++
 		}
 	}
@@ -221,17 +222,17 @@ func mergeData(deletes []DeleteRequest) (model.Time, model.Time, DeleteRequestSt
 	return startTime, endTime, deleteRequestStatus(numProcessed, len(deletes))
 }
 
-func deleteRequestStatus(processed, total int) DeleteRequestStatus {
+func deleteRequestStatus(processed, total int) deletionproto.DeleteRequestStatus {
 	if processed == 0 {
-		return StatusReceived
+		return deletionproto.StatusReceived
 	}
 
 	if processed == total {
-		return StatusProcessed
+		return deletionproto.StatusProcessed
 	}
 
 	percentCompleted := float64(processed) / float64(total)
-	return DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
+	return deletionproto.DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
@@ -261,12 +262,12 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 		return
 	}
 
-	if deleteRequest.Status == StatusProcessed {
+	if deleteRequest.Status == deletionproto.StatusProcessed {
 		http.Error(w, "deletion of request which is in process or already processed is not allowed", http.StatusBadRequest)
 		return
 	}
 
-	if (deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now())) && params.Get("force") != "true" {
+	if (deleteRequest.Status != deletionproto.StatusReceived || deleteRequest.CreatedAt.Add(dm.deleteRequestCancelPeriod).Before(model.Now())) && params.Get("force") != "true" {
 		http.Error(w, fmt.Sprintf("Cancellation of partially completed delete request or delete request past the deadline of %s since its creation is not allowed. To force, use the ?force query parameter", dm.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
@@ -280,10 +281,10 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func filterProcessed(reqs []DeleteRequest) []DeleteRequest {
-	var unprocessed []DeleteRequest
+func filterProcessed(reqs []deleteRequest) []deleteRequest {
+	var unprocessed []deleteRequest
 	for _, r := range reqs {
-		if r.Status == StatusReceived {
+		if r.Status == deletionproto.StatusReceived {
 			unprocessed = append(unprocessed, r)
 		}
 	}
@@ -383,11 +384,11 @@ func timeFromInt(in string) (int64, error) {
 	return util.ParseTime(in)
 }
 
-func buildRequests(shardByInterval time.Duration, query, userID string, startTime, endTime model.Time) []DeleteRequest {
-	var deleteRequests []DeleteRequest
+func buildRequests(shardByInterval time.Duration, query, userID string, startTime, endTime model.Time) []deletionproto.DeleteRequest {
+	var deleteRequests []deletionproto.DeleteRequest
 
 	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
-		deleteRequests = []DeleteRequest{
+		deleteRequests = []deletionproto.DeleteRequest{
 			{
 				StartTime: startTime,
 				EndTime:   endTime,
@@ -396,18 +397,16 @@ func buildRequests(shardByInterval time.Duration, query, userID string, startTim
 			},
 		}
 	} else {
-		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
+		deleteRequests = make([]deletionproto.DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
 		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
 		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
 		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
-			deleteRequests = append(deleteRequests,
-				DeleteRequest{
-					StartTime: model.Time(start.UnixMilli()),
-					EndTime:   model.Time(end.UnixMilli()),
-					Query:     query,
-					UserID:    userID,
-				},
-			)
+			deleteRequests = append(deleteRequests, deletionproto.DeleteRequest{
+				StartTime: model.Time(start.UnixMilli()),
+				EndTime:   model.Time(end.UnixMilli()),
+				Query:     query,
+				UserID:    userID,
+			})
 		})
 	}
 
