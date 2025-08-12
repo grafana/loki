@@ -48,7 +48,7 @@ func (ms Resource) MoveTo(dest Resource) {
 
 // Attributes returns the Attributes associated with this Resource.
 func (ms Resource) Attributes() Map {
-	return Map(internal.NewMap(&ms.getOrig().Attributes, internal.GetResourceState(internal.Resource(ms))))
+	return Map(internal.NewMap(&ms.getOrig().Attributes, ms.getState()))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this Resource.
