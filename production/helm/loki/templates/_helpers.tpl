@@ -182,13 +182,6 @@ Docker image name
 {{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
 {{- end -}}
 
-{{/*
-Docker image name for kubectl container
-*/}}
-{{- define "loki.kubectlImage" -}}
-{{- $dict := dict "service" .Values.kubectlImage "global" .Values.global.image "defaultVersion" "latest" -}}
-{{- include "loki.baseImage" $dict -}}
-{{- end -}}
 
 {{/*
 Generated storage config for loki common config
@@ -694,11 +687,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Name of kubernetes secret to persist GEL admin token to */}}
 {{- define "enterprise-logs.adminTokenSecret" }}
-{{- if .Values.enterprise.tokengen.adminTokenSecret }}
-{{- .Values.enterprise.tokengen.adminTokenSecret -}}
-{{- else }}
 {{- .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) -}}
-{{- end -}}
 {{- end -}}
 
 {{/* Prefix for provisioned secrets created for each provisioned tenant */}}
