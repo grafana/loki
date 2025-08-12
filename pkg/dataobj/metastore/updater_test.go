@@ -25,7 +25,7 @@ import (
 func TestUpdater(t *testing.T) {
 	t.Run("append new top-level object to deprecated metastore v1", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := logsobj.NewBuilder(metastoreBuilderCfg)
+		builder, err := logsobj.NewBuilder(metastoreBuilderCfg, nil)
 		require.NoError(t, err)
 
 		ls := labels.New(
@@ -60,7 +60,7 @@ func TestUpdater(t *testing.T) {
 			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
 			BufferSize:              metastoreBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		err = builder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
@@ -86,7 +86,7 @@ func TestUpdater(t *testing.T) {
 			TargetSectionSize:       metastoreBuilderCfg.TargetSectionSize,
 			BufferSize:              metastoreBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: metastoreBuilderCfg.SectionStripeMergeLimit,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		bucket := newInMemoryBucket(t, tenantID, unixTime(0), nil)

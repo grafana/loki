@@ -118,6 +118,7 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		uploader.Config{},
 		metastore.Config{},
 		newMockBucket(),
+		nil,
 		"test-tenant",
 		0,
 		"test-topic",
