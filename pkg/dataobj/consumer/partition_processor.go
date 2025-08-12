@@ -30,6 +30,7 @@ import (
 // builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(stream logproto.Stream) error
+	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRange() (time.Time, time.Time)
 	UnregisterMetrics(prometheus.Registerer)
@@ -63,11 +64,29 @@ type partitionProcessor struct {
 	bufPool      *sync.Pool
 	scratchStore scratch.Store
 
-	// Idle stream handling
-	idleFlushTimeout time.Duration
-	// The initial value is the zero time.
-	lastFlush    time.Time
+	// Flushing is the process of creating a complete data object from the
+	// in-memory builder. There are currently three different reasons for
+	// a flush:
+	//
+	// 1. The builder has reached its target size.
+	// 2. The builder has not reached its target size, but needs to be flushed
+	//    to ensure data objects are built at the expected flush interval.
+	// 3. The builder has not reached its target size, but needs to be flushed
+	//    as has not receivedany more writes within the idle timeout.
+	flushInterval time.Duration
+	idleTimeout   time.Duration
+
+	// firstModified is used to know when flush interval is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
+	firstModified time.Time
+
+	// lastModified is used to know when the idle  is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
+
+	// lastFlushed tracks the time of the most recent flush. The initial value
+	// is zero.
+	lastFlushed time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -87,7 +106,7 @@ type partitionProcessor struct {
 
 func newPartitionProcessor(
 	ctx context.Context,
-	client *kgo.Client,
+	committer committer,
 	builderCfg logsobj.BuilderConfig,
 	uploaderCfg uploader.Config,
 	metastoreCfg metastore.Config,
@@ -100,7 +119,8 @@ func newPartitionProcessor(
 	logger log.Logger,
 	reg prometheus.Registerer,
 	bufPool *sync.Pool,
-	idleFlushTimeout time.Duration,
+	flushInterval time.Duration,
+	idleTimeout time.Duration,
 	eventsProducerClient *kgo.Client,
 ) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
@@ -131,7 +151,7 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
-		committer:            client,
+		committer:            committer,
 		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
 		topic:                topic,
 		partition:            partition,
@@ -148,7 +168,8 @@ func newPartitionProcessor(
 		uploader:             uploader,
 		metastoreTocWriter:   metastoreTocWriter,
 		bufPool:              bufPool,
-		idleFlushTimeout:     idleFlushTimeout,
+		flushInterval:        flushInterval,
+		idleTimeout:          idleTimeout,
 		eventsProducerClient: eventsProducerClient,
 		clock:                quartz.NewReal(),
 	}
@@ -158,7 +179,6 @@ func (p *partitionProcessor) start() {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-
 		level.Info(p.logger).Log("msg", "started partition processor")
 		for {
 			select {
@@ -172,7 +192,7 @@ func (p *partitionProcessor) start() {
 				}
 				p.processRecord(record)
 
-			case <-time.After(p.idleFlushTimeout):
+			case <-time.After(p.idleTimeout):
 				if _, err := p.idleFlush(); err != nil {
 					level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 				}
@@ -225,8 +245,6 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) flush() error {
-	minTime, maxTime := p.builder.TimeRange()
-
 	obj, closer, err := p.builder.Flush()
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
@@ -240,6 +258,7 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
+	minTime, maxTime := p.builder.TimeRange()
 	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
@@ -250,7 +269,9 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	p.lastFlush = p.clock.Now()
+	p.firstModified = time.Time{}
+	p.lastModified = time.Time{}
+	p.lastFlushed = p.clock.Now()
 
 	return nil
 }
@@ -286,6 +307,8 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
+	now := p.clock.Now()
+
 	// Update offset metric at the end of processing
 	defer p.metrics.updateOffset(record.Offset)
 
@@ -309,6 +332,13 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
+	if p.needsFlush() {
+		if err := p.flushAndCommit(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
+			return
+		}
+	}
+
 	p.metrics.incAppendsTotal()
 	if err := p.builder.Append(stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
@@ -317,13 +347,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.flush(); err != nil {
+		if err := p.flushAndCommit(); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-			return
-		}
-
-		if err := p.commit(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to commit offset", "err", err)
 			return
 		}
 
@@ -334,8 +359,11 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 	}
 
+	if p.firstModified.IsZero() {
+		p.firstModified = now
+	}
 	p.lastRecord = record
-	p.lastModified = p.clock.Now()
+	p.lastModified = now
 }
 
 // commits the offset of the last record processed. It should be called after
@@ -365,7 +393,49 @@ func (p *partitionProcessor) commit() error {
 	return lastErr
 }
 
-// idleFlush flushes the partition if it has exceeded the idle flush timeout.
+// flushAndCommit flushes the builder and commits the offset of the last
+// record processed.
+func (p *partitionProcessor) flushAndCommit() error {
+	if err := p.flush(); err != nil {
+		return fmt.Errorf("failed to flush: %w", err)
+	}
+	if err := p.commit(); err != nil {
+		return fmt.Errorf("failed to commit: %w", err)
+	}
+	return nil
+}
+
+// needsFlush returns true if the partition has exceeded the flush interval
+// and the builder has some data buffered.
+func (p *partitionProcessor) needsFlush() bool {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that firstModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
+		return false
+	}
+	if p.firstModified.IsZero() {
+		return false
+	}
+	return p.clock.Since(p.firstModified) > p.flushInterval
+}
+
+// needsIdleFlush returns true if the partition has exceeded the idle timeout
+// and the builder has some data buffered.
+func (p *partitionProcessor) needsIdleFlush() bool {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
+		return false
+	}
+	if p.lastModified.IsZero() {
+		return false
+	}
+	return p.clock.Since(p.lastModified) > p.idleTimeout
+}
+
+// idleFlush flushes the partition if it has exceeded the idle timeout.
 // It returns true if the partition was flushed, false with a non-nil error
 // if the partition could not be flushed, and false with a nil error if
 // the partition has not exceeded the timeout.
@@ -373,22 +443,8 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
-	if err := p.flush(); err != nil {
-		return false, fmt.Errorf("failed to flush: %w", err)
-	}
-	if err := p.commit(); err != nil {
-		return false, fmt.Errorf("failed to commit offset: %w", err)
+	if err := p.flushAndCommit(); err != nil {
+		return false, fmt.Errorf("failed to flush and commit: %w", err)
 	}
 	return true, nil
-}
-
-// isIdle returns true if the partition has exceeded the idle flush timeout.
-func (p *partitionProcessor) needsIdleFlush() bool {
-	if p.builder == nil {
-		return false
-	}
-	if p.lastModified.IsZero() {
-		return false
-	}
-	return p.clock.Since(p.lastModified) > p.idleFlushTimeout
 }

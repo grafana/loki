@@ -97,6 +97,9 @@ func (m *mockBuilder) Append(stream logproto.Stream) error {
 	}
 	return m.builder.Append(stream)
 }
+func (m *mockBuilder) GetEstimatedSize() int {
+	return m.builder.GetEstimatedSize()
+}
 func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil

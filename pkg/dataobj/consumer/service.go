@@ -120,7 +120,25 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, s.scratchStore, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
+			processor := newPartitionProcessor(
+				ctx,
+				client,
+				s.cfg.BuilderConfig,
+				s.cfg.UploaderConfig,
+				s.mCfg,
+				s.bucket,
+				s.scratchStore,
+				tenant,
+				virtualShard,
+				topic,
+				partition,
+				s.logger,
+				s.reg,
+				s.bufPool,
+				s.cfg.FlushInterval,
+				s.cfg.IdleTimeout,
+				s.eventsProducerClient,
+			)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
