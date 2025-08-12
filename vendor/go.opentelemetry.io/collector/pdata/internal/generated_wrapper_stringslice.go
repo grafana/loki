@@ -27,40 +27,26 @@ func NewStringSlice(orig *[]string, state *State) StringSlice {
 	return StringSlice{orig: orig, state: state}
 }
 
-func CopyOrigStringSlice(dst, src []string) []string {
-	dst = dst[:0]
-	return append(dst, src...)
-}
-
-func FillTestStringSlice(ms StringSlice) {
-	*ms.orig = []string{"a", "b", "c"}
-}
-
 func GenerateTestStringSlice() StringSlice {
-	orig := []string(nil)
+	orig := GenerateOrigTestStringSlice()
 	state := StateMutable
-	ms := NewStringSlice(&orig, &state)
-	FillTestStringSlice(ms)
-	return ms
+	return NewStringSlice(&orig, &state)
 }
 
-// MarshalJSONStreamStringSlice marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamStringSlice(ms StringSlice, dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		dest.WriteString((*ms.orig)[0])
-	}
-	for i := 1; i < len((*ms.orig)); i++ {
-		dest.WriteMore()
-		dest.WriteString((*ms.orig)[i])
-	}
-	dest.WriteArrayEnd()
+func CopyOrigStringSlice(dst, src []string) []string {
+	return append(dst[:0], src...)
 }
 
-// UnmarshalJSONIterStringSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONIterStringSlice(ms StringSlice, iter *json.Iterator) {
+func GenerateOrigTestStringSlice() []string {
+	return []string{"a", "b", "c"}
+}
+
+// UnmarshalJSONOrigStringSlice unmarshals all properties from the current struct from the source iterator.
+func UnmarshalJSONOrigStringSlice(iter *json.Iterator) []string {
+	var orig []string
 	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, iter.ReadString())
+		orig = append(orig, iter.ReadString())
 		return true
 	})
+	return orig
 }
