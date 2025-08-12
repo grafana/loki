@@ -22,14 +22,6 @@ const (
 	fileFormatVersion = 0x1
 )
 
-// Legacy section types; these can be removed once support for the Kind field
-// is completely removed.
-var (
-	legacySectionTypeInvalid = SectionType{}
-	legacySectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
-	legacySectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
-)
-
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 type encoder struct {
@@ -80,7 +72,7 @@ func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
 // one.
 func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 	if !enc.typesReady {
-		enc.initLegacyTypeRefs()
+		enc.initTypeRefs()
 	}
 
 	ref, ok := enc.typeRefLookup[typ]
@@ -98,29 +90,18 @@ func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 	return ref
 }
 
-func (enc *encoder) initLegacyTypeRefs() {
+func (enc *encoder) initTypeRefs() {
 	// Reserve the zero index in the dictionary for an invalid entry. This is
 	// only required for the type refs, but it's still easier to debug.
-	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
-
-	enc.dictionaryLookup = map[string]uint32{
-		"":                        0,
-		"github.com/grafana/loki": 1,
-		"streams":                 2,
-		"logs":                    3,
-	}
+	enc.dictionary = []string{""}
+	enc.dictionaryLookup = map[string]uint32{"": 0}
 
 	enc.rawTypes = []*filemd.SectionType{
 		{NameRef: nil}, // Invalid type.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2}}, // Streams.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3}}, // Logs.
 	}
 
-	enc.typeRefLookup = map[SectionType]uint32{
-		legacySectionTypeInvalid: 0,
-		legacySectionTypeStreams: 1,
-		legacySectionTypeLogs:    2,
-	}
+	var invalidType SectionType // Zero value for SectionType is reserved for invalid types.
+	enc.typeRefLookup = map[SectionType]uint32{invalidType: 0}
 
 	enc.typesReady = true
 }

@@ -65,12 +65,6 @@ type SectionReader interface {
 	// DataRange returns an error if the read fails or if offset+length goes
 	// beyond the readable data region. The returned reader is only valid as long
 	// as the provided ctx is not canceled.
-	//
-	// Implementations of SectionReader should interpret offset as relative to
-	// the start of the data object if the data object does not explicitly
-	// specify a data region. This is only relevant to older versions of data
-	// objects where sections used absolute offsets and the data region was
-	// implicitly the entire file.
 	DataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
 
 	// MetadataRange opens a reader of length bytes from the metadata region of
@@ -82,11 +76,12 @@ type SectionReader interface {
 	// as the provided ctx is not canceled.
 	MetadataRange(ctx context.Context, offset, length int64) (io.ReadCloser, error)
 
-	// TODO(rfratto): DataSize() is only possible to implement after we fully
-	// remove support for older data objects where the data region was not
-	// explicitly specified.
+	// DataSize returns the total size of the data region of a section. DataSize
+	// returns 0 for sections with no data region.
+	DataSize() int64
 
 	// MetadataSize returns the total size of the metadata region of a section.
+	// MetadataSize returns 0 for sections with no metadata region.
 	MetadataSize() int64
 }
 

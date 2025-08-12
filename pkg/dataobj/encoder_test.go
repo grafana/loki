@@ -19,21 +19,21 @@ func Test_encoder_typeRefs(t *testing.T) {
 	}{
 		{
 			name:  "invalid",
-			input: legacySectionTypeInvalid,
+			input: SectionType{},
 
 			expectRef:     0,
 			expectNameRef: nil,
 		},
 		{
 			name:  "streams",
-			input: legacySectionTypeStreams,
+			input: SectionType{"github.com/grafana/loki", "streams"},
 
 			expectRef:     1,
 			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2},
 		},
 		{
 			name:  "logs",
-			input: legacySectionTypeLogs,
+			input: SectionType{"github.com/grafana/loki", "logs"},
 
 			expectRef:     2,
 			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3},
