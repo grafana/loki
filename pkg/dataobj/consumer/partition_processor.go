@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -57,6 +58,9 @@ type partitionProcessor struct {
 	logger log.Logger
 
 	eventsProducerClient *kgo.Client
+
+	// Used for tests.
+	clock quartz.Clock
 }
 
 func newPartitionProcessor(
@@ -122,6 +126,7 @@ func newPartitionProcessor(
 		bufPool:              bufPool,
 		idleFlushTimeout:     idleFlushTimeout,
 		eventsProducerClient: eventsProducerClient,
+		clock:                quartz.NewReal(),
 	}
 }
 
@@ -144,7 +149,9 @@ func (p *partitionProcessor) start() {
 				p.processRecord(record)
 
 			case <-time.After(p.idleFlushTimeout):
-				p.idleFlush()
+				if _, err := p.idleFlush(); err != nil {
+					level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
+				}
 			}
 		}
 	}()
@@ -193,7 +200,7 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
-func (p *partitionProcessor) flushStream() error {
+func (p *partitionProcessor) flush() error {
 	minTime, maxTime := p.builder.TimeRange()
 
 	obj, closer, err := p.builder.Flush()
@@ -219,7 +226,7 @@ func (p *partitionProcessor) flushStream() error {
 		return err
 	}
 
-	p.lastFlush = time.Now()
+	p.lastFlush = p.clock.Now()
 
 	return nil
 }
@@ -232,7 +239,7 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	event := &metastore.ObjectWrittenEvent{
 		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
-		WriteTime:  time.Now().Format(time.RFC3339),
+		WriteTime:  p.clock.Now().Format(time.RFC3339),
 	}
 
 	eventBytes, err := event.Marshal()
@@ -286,7 +293,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.flushStream(); err != nil {
+		if err := p.flush(); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 			return
 		}
@@ -303,7 +310,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 	}
 
-	p.lastModified = time.Now()
+	p.lastModified = p.clock.Now()
 }
 
 func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
@@ -329,24 +336,27 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	return lastErr
 }
 
-// idleFlush flushes the file if it has been idle for too long.
-// This is used to avoid holding on to memory for too long.
-// We compare the current time with the last flush time to determine if the builder has been idle.
-func (p *partitionProcessor) idleFlush() {
+// idleFlush flushes the partition if it has exceeded the idle flush timeout.
+// It returns true if the partition was flushed, false with a non-nil error
+// if the partition could not be flushed, and false with a nil error if
+// the partition has not exceeded the timeout.
+func (p *partitionProcessor) idleFlush() (bool, error) {
+	if !p.needsIdleFlush() {
+		return false, nil
+	}
+	if err := p.flush(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// isIdle returns true if the partition has exceeded the idle flush timeout.
+func (p *partitionProcessor) needsIdleFlush() bool {
 	if p.builder == nil {
-		return
+		return false
 	}
 	if p.lastModified.IsZero() {
-		// No records have been processed, no data to flush.
-		return
+		return false
 	}
-	if time.Since(p.lastModified) < p.idleFlushTimeout {
-		// The idle timeout has not been reached.
-		return
-	}
-	if err := p.flushStream(); err != nil {
-		level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-		return
-	}
-	p.lastFlush = time.Now()
+	return p.clock.Since(p.lastModified) > p.idleFlushTimeout
 }
