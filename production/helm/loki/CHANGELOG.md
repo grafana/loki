@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
+
 ## 6.35.1
 
 - [BUGFIX] Removing deprecated admin_api_directory to avoid config crash. [#18731](https://github.com/grafana/loki/pull/18731)
