@@ -149,7 +149,7 @@ func TestAddingColumnIndexes(t *testing.T) {
 }
 
 func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(st); err != nil {
 		return nil, nil, err
 	}

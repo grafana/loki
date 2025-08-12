@@ -43,7 +43,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 
 		BufferSize:              4 * 1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -104,6 +104,7 @@ func TestIndexBuilder(t *testing.T) {
 		log.NewNopLogger(),
 		"instance-id",
 		bucket,
+		nil,
 		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
