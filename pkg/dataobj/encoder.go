@@ -84,6 +84,7 @@ func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 				NamespaceRef: enc.getDictionaryKey(typ.Namespace),
 				KindRef:      enc.getDictionaryKey(typ.Kind),
 			},
+			Version: typ.Version,
 		})
 		return enc.typeRefLookup[typ]
 	}

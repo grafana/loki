@@ -92,5 +92,6 @@ func getSectionType(md *filemd.Metadata, section *filemd.SectionInfo) (SectionTy
 	return SectionType{
 		Namespace: md.Dictionary[namespaceRef],
 		Kind:      md.Dictionary[kindRef],
+		Version:   rawType.Version,
 	}, nil
 }

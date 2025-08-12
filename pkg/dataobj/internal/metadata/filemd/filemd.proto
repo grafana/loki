@@ -44,6 +44,10 @@ message SectionType {
 
   // The reference to the type name.
   NameRef name_ref = 1;
+
+  // An optional section-specified version of this type, used to inform section
+  // implementations how to read the section.
+  uint32 version = 2;
 }
 
 // SectionInfo describes a section within the data object. Each section is an

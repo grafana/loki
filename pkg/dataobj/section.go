@@ -46,6 +46,10 @@ type Section struct {
 type SectionType struct {
 	Namespace string // A namesapce for the section (e.g., "github.com/grafana/loki").
 	Kind      string // The kind of section, scoped to the namespace (e.g., "logs").
+
+	// Version is an optional section-specified value denoting an encoding
+	// version of the section.
+	Version uint32
 }
 
 func (ty SectionType) String() string {
