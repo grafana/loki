@@ -50,7 +50,7 @@ jobs:
           # assignee_trigger: "claude-bot"
           
           # Optional: Allow Claude to run specific commands
-          # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
+          allowed_tools: "Bash(awk:*),Bash(chmod:*),Bash(curl:*),Bash(docker:*),Bash(docker-compose:*),Bash(env:*),Bash(find:*),Bash(git:*),Bash(go build:*),Bash(go get:*),Bash(go run:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*),Bash(grep:*),Bash(head:*),Bash(ls:*),Bash(make:*),Bash(mkdir:*),Bash(nix:*),Bash(npm install:*),Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(rg:*),Bash(sed:*),Bash(tail:*),Bash(yarn:*),WebFetch(domain:github.com),WebFetch(domain:google.com),WebFetch(domain:localhost),WebFetch(domain:raw.githubusercontent.com)"
           
           # Optional: Add custom instructions for Claude to customize its behavior for your project
           # custom_instructions: |
