@@ -35,6 +35,10 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	clock := quartz.NewMock(t)
 	p := newTestPartitionProcessor(t, clock)
 	p.idleFlushTimeout = 60 * time.Minute
+	// Use a mock committer as we don't have a real Kafka client that can
+	// commit offsets.
+	committer := &mockCommitter{}
+	p.committer = committer
 
 	// Last flush time should be initialized to the zero time.
 	require.True(t, p.lastFlush.IsZero())
