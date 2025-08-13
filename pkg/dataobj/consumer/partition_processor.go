@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strconv"
 	"sync"
 	"time"
@@ -16,16 +17,31 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
+// builder allows mocking of [logsobj.Builder] in tests.
+type builder interface {
+	Append(stream logproto.Stream) error
+	Flush() (*dataobj.Object, io.Closer, error)
+	TimeRange() (time.Time, time.Time)
+	UnregisterMetrics(prometheus.Registerer)
+}
+
+// committer allows mocking of certain [kgo.Client] methods in tests.
+type committer interface {
+	CommitRecords(ctx context.Context, records ...*kgo.Record) error
+}
+
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
-	client    *kgo.Client
+	committer committer
 	topic     string
 	partition int32
 	tenantID  []byte
@@ -111,7 +127,7 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
-		client:               client,
+		committer:            client,
 		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
 		topic:                topic,
 		partition:            partition,
@@ -328,7 +344,7 @@ func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(p.ctx, record)
+		err := p.committer.CommitRecords(p.ctx, record)
 		if err == nil {
 			return nil
 		}
