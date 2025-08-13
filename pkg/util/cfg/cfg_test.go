@@ -160,7 +160,7 @@ type TestConfigWrapper struct {
 }
 
 func (c *TestConfigWrapper) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load")
+	f.StringVar(&c.ConfigFile, "config.file", "", "yaml file to load (see https://bit.ly/promtail-yaml-reference)")
 	c.TestConfig.RegisterFlags(f)
 }
 
