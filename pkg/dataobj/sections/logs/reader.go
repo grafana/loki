@@ -424,49 +424,14 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-func predicateColumns(predicates []Predicate) []*Column {
-	columns := make([]*Column, 0, len(predicates))
-	for _, p := range predicates {
-		walkPredicate(p, func(p Predicate) bool {
-			switch p := p.(type) {
-			case nil: // End of walk; nothing to do.
-
-			case AndPredicate: // Nothing to do.
-			case OrPredicate: // Nothing to do.
-			case NotPredicate: // Nothing to do.
-			case TruePredicate: // Nothing to do.
-			case FalsePredicate: // Nothing to do.
-
-			case EqualPredicate:
-				columns = append(columns, p.Column)
-			case InPredicate:
-				columns = append(columns, p.Column)
-			case GreaterThanPredicate:
-				columns = append(columns, p.Column)
-			case LessThanPredicate:
-				columns = append(columns, p.Column)
-			case FuncPredicate:
-				columns = append(columns, p.Column)
-
-			default:
-				panic(fmt.Sprintf("unrecognized predicate type %T", p))
-			}
-
-			return true
-		})
-	}
-
-	return columns
-}
-
 func appendMissingColumns(dst, src []*Column) []*Column {
-	columnLookup := make(map[*Column]struct{}, len(dst))
+	exists := make(map[*Column]struct{}, len(dst))
 	for _, col := range dst {
-		columnLookup[col] = struct{}{}
+		exists[col] = struct{}{}
 	}
 
 	for _, col := range src {
-		if _, ok := columnLookup[col]; !ok {
+		if _, ok := exists[col]; !ok {
 			// Not seen, add it.
 			dst = append(dst, col)
 		}

@@ -45,45 +45,67 @@ func TestReader(t *testing.T) {
 	require.Equal(t, "", message.Name)
 	require.Equal(t, logs.ColumnTypeMessage, message.Type)
 
-	r := logs.NewReader(logs.ReaderOptions{
-		Columns:   []*logs.Column{streamID, traceID, message},
-		Allocator: alloc,
-		Predicates: []logs.Predicate{
-			logs.FuncPredicate{
-				Column: traceID,
-				Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-					if !value.IsValid() {
-						return false
-					}
-
-					bb := value.(*scalar.String).Value.Bytes()
-					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
-				},
-			},
-			logs.InPredicate{
-				Column: streamID,
-				Values: []scalar.Scalar{
-					scalar.NewInt64Scalar(1),
-					scalar.NewInt64Scalar(2),
-				},
+	for _, tt := range []struct {
+		name     string
+		columns  []*logs.Column
+		expected arrowtest.Rows
+	}{
+		{
+			name:    "basic reads with predicate",
+			columns: []*logs.Column{streamID, traceID, message},
+			expected: arrowtest.Rows{
+				{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
+				{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
 			},
 		},
-	})
+		// tests that the reader evaluates predicates correctly even when predicate columns are not projected.
+		{
+			name:    "reads with predicate columns that are not projected",
+			columns: []*logs.Column{streamID, message},
+			expected: arrowtest.Rows{
+				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
+				{"stream_id.int64": int64(1), "message.utf8": "goodbye, world!"},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := logs.NewReader(logs.ReaderOptions{
+				Columns:   tt.columns,
+				Allocator: alloc,
+				Predicates: []logs.Predicate{
+					logs.FuncPredicate{
+						Column: traceID,
+						Keep: func(_ *logs.Column, value scalar.Scalar) bool {
+							if !value.IsValid() {
+								return false
+							}
 
-	expect := arrowtest.Rows{
-		{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
-		{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
+							bb := value.(*scalar.String).Value.Bytes()
+							return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
+						},
+					},
+					logs.InPredicate{
+						Column: streamID,
+						Values: []scalar.Scalar{
+							scalar.NewInt64Scalar(1),
+							scalar.NewInt64Scalar(2),
+						},
+					},
+				},
+			})
+
+			actualTable, err := readTable(context.Background(), r)
+			if actualTable != nil {
+				defer actualTable.Release()
+			}
+			require.NoError(t, err)
+
+			actual, err := arrowtest.TableRows(alloc, actualTable)
+			require.NoError(t, err, "failed to get rows from table")
+			require.Equal(t, tt.expected, actual)
+		})
+
 	}
-
-	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
-	require.NoError(t, err)
-
-	actual, err := arrowtest.TableRows(alloc, actualTable)
-	require.NoError(t, err, "failed to get rows from table")
-	require.Equal(t, expect, actual)
 }
 
 func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
