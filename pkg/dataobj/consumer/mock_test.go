@@ -118,7 +118,7 @@ type mockCommitter struct {
 	records []*kgo.Record
 }
 
-func (m *mockCommitter) CommitRecords(ctx context.Context, records ...*kgo.Record) error {
+func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
 	m.records = append(m.records, records...)
 	return nil
 }
