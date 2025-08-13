@@ -50,7 +50,7 @@ type partitionProcessor struct {
 	// lastRecord contains the last record appended to the builder. It is used
 	// to commit the correct offset after a flush.
 	lastRecord         *kgo.Record
-	builder            *logsobj.Builder
+	builder            builder
 	decoder            *kafka.Decoder
 	uploader           *uploader.Uploader
 	metastoreTocWriter *metastore.TableOfContentsWriter
