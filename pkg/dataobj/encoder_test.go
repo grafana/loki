@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,15 +26,21 @@ func Test_encoder_typeRefs(t *testing.T) {
 			expectNameRef: nil,
 		},
 		{
-			name:  "streams",
-			input: SectionType{"github.com/grafana/loki", "streams"},
+			name: "streams",
+			input: SectionType{
+				Namespace: "github.com/grafana/loki",
+				Kind:      "streams",
+			},
 
 			expectRef:     1,
 			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2},
 		},
 		{
-			name:  "logs",
-			input: SectionType{"github.com/grafana/loki", "logs"},
+			name: "logs",
+			input: SectionType{
+				Namespace: "github.com/grafana/loki",
+				Kind:      "logs",
+			},
 
 			expectRef:     2,
 			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3},
@@ -77,6 +84,17 @@ func Test_encoder_typeRefs(t *testing.T) {
 
 			expectRef:     5,
 			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 6, KindRef: 7},
+		},
+		{
+			name: "existing type, new version",
+			input: SectionType{
+				Namespace: "github.com/grafana/loki",
+				Kind:      "streams",
+				Version:   math.MaxUint32,
+			},
+
+			expectRef:     6,
+			expectNameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2},
 		},
 	}
 
