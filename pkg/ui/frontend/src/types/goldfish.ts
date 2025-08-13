@@ -40,6 +40,10 @@ export interface SampledQuery {
   cellATraceID: string | null;
   cellBTraceID: string | null;
   
+  // Span IDs
+  cellASpanID: string | null;
+  cellBSpanID: string | null;
+  
   // Trace ID explore links (only included when explore config is available)
   cellATraceLink?: string | null;
   cellBTraceLink?: string | null;

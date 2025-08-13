@@ -1,10 +1,13 @@
-.PHONY: build
-build:
+.PHONY: prepare
+prepare:
 	npm install
+
+.PHONY: build
+build: prepare
 	npm run build
 
 .PHONY: dev
-dev:
+dev: prepare
 	npm run dev
 
 .PHONY: clean
@@ -13,14 +16,14 @@ clean:
 	rm -rf dist
 
 .PHONY: check-deps
-check-deps:
+check-deps: prepare
 	npx depcheck
 	npm audit
 
 .PHONY: lint
-lint:
+lint: prepare
 	npm run lint
 
 .PHONY: test
-test:
+test: prepare
 	npm run test:ci
