@@ -1,0 +1,260 @@
+// datasetmd.proto holds metadata for columnar-based sections within a data
+// object. Columnar-based sections embed dataset for the representation of data
+// and metadata.
+//
+// The metadata of a dataset-based section is encoded into two chunks:
+//
+// - SectionMetadata, which describes the columns available in the dataset.
+// - ColumnMetadata, which describes the pages available for a given column.
+//
+// The location of SectionMetadata is encoded at the dataobj level using
+// SectionInfoExtension, and the location of each ColumnMetadata is referenced
+// inside of the SectionMetadata.
+syntax = "proto3";
+
+package dataobj.metadata.dataset.v2;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2;datasetmd";
+
+// SectionInfoExtension holds basic information about how to read this section.
+// It is encoded into the extension data field of
+// [github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd.FileMetadata].
+message SectionInfoExtension {
+    // Byte offset relative to the start of the section's metadata region where
+    // SectionMetadata for this section is stored.
+    uint64 section_metadata_offset = 1;
+
+    // Length of the SectionMetadata for this column in bytes.
+    uint64 section_metadata_length = 2;
+}
+
+// SectionMetadata holds the entrypoint metadata for the overall section.
+// SectionMetadata points to the offset of per-column ColumnMetadata which can
+// be retrieved on demand.
+message SectionMetadata {
+    // The list of columns in the dataset.
+    repeated ColumnDesc columns = 1;
+
+    // Dictionary for deduplicating logical types and column tags. The first
+    // element (index zero) is reserved for invalid strings ("").
+    repeated string dictionary = 2;
+
+    // Sort information about the columns.
+    SortInfo sort_info = 3;
+}
+
+// ColumnDesc describes an individual column within a data set.
+message ColumnDesc {
+    // Type holds the type of data in the column.
+    ColumnType type = 1;
+
+    // Tag is an optional string that can be used to distinguish between
+    // different columns with the same type.
+    //
+    // For example, there may be two columns with the type (uint64.timestamp)
+    // but with different tags ("start_time" and "end_time").
+    //
+    // Columns are uniquely named based on the combination of their type and
+    // optional tag, separated by a "/" when a tag is present:
+    //
+    //   - uint64.timestamp/start_time
+    //   - uint64.timestamp/end_time
+    //   - uint64.stream_id (no tag)
+    //
+    // The tag string can be retrieved from the dictionary field in
+    // SectionMetadata, using the tag_ref value as the index.
+    uint32 tag_ref = 2;
+
+    // Total number of pages in the column.
+    uint64 pages_count = 3;
+
+    // Total number of rows (values + nulls) in the column across all pages.
+    uint64 rows_count = 4;
+
+    // Total number of non-NULL values in this column across all pages. The
+    // number of NULL values is rows_count - values_count.
+    uint64 values_count = 5;
+
+    // Compression type used for all pages.
+    CompressionType compression = 6;
+
+    // Total uncompressed size of all pages in the column in bytes.
+    uint64 uncompressed_size = 7;
+
+    // Total compressed size of all pages in the column. If no compression is
+    // used, compressed_size matches uncompressed_size.
+    uint64 compressed_size = 8;
+
+    // Byte offset relative to the start of the section's metadata region where
+    // ColumnMetadata for this column is stored.
+    uint64 column_metadata_offset = 9;
+
+    // Length of the ColumnMetadata for this column in bytes.
+    uint64 column_metadata_length = 10;
+
+    // Statistics for this column.
+    Statistics statistics = 11;
+}
+
+// ColumnType represents the type of data in a column, combined from its
+// physical layout and logical interpretation.
+//
+// A ColumnType is usually described by concatenating its physical and logical
+// type with a ".", such as "uint64.timestamp" or "binary.label".
+message ColumnType {
+    // Physical is the physical type of the column.
+    PhysicalType physical = 1;
+
+    // Logical is a section-specified string indicating how to interpret the
+    // physical type. Section implementations are responsible for interpreting
+    // this value.
+    //
+    // The string can be retrieved from the dictionary field in SectionMetadata,
+    // using the logical_ref value as the index.
+    uint32 logical_ref = 3;
+}
+
+// PhysicalType represents the type that the column is encoded as.
+enum PhysicalType {
+    // Invalid PhysicalType.
+    PHYSICAL_TYPE_UNSPECIFIED = 0;
+
+    // PHYSICAL_TYPE_INT64 holds 64-bit integer values.
+    PHYSICAL_TYPE_INT64 = 1;
+
+    // PHYSICAL_TYPE_UINT64 holds 64-bit unsigned integer values.
+    PHYSICAL_TYPE_UINT64 = 2;
+
+    // PHYSICAL_TYPE_BINARY holds binary data of variable length.
+    PHYSICAL_TYPE_BINARY = 3;
+}
+
+// CompressionType represents valid compression types that can be used for
+// compressing content within pages.
+enum CompressionType {
+    // Invalid compression type.
+    COMPRESSION_TYPE_UNSPECIFIED = 0;
+
+    // No compression.
+    COMPRESSION_TYPE_NONE = 1;
+
+    // Snappy compression.
+    COMPRESSION_TYPE_SNAPPY = 2;
+
+    // Zstd compression.
+    COMPRESSION_TYPE_ZSTD = 3;
+}
+
+// ColumnMetadata holds additional metadata for an individual column.
+// ColumnMetadata is stored within the metadata region of a section, and its
+// offset and size is retrieved from within [ColumnDesc].
+message ColumnMetadata {
+    // Pages within the column.
+    repeated PageDesc pages = 1;
+}
+
+// PageDesc describes an individual page within a column.
+message PageDesc {
+    // Uncompressed size of the page in bytes.
+    uint64 uncompressed_size = 1;
+
+    // Compressed size of the page in bytes.
+    uint64 compressed_size = 2;
+
+    // CRC32 checksum of the page data.
+    uint32 crc32 = 3;
+
+    // Total number of rows (values + nulls) in the page.
+    uint64 rows_count = 4;
+
+    // Total number of non-NULL values in the page. The number of NULL values is
+    // rows_count - values_count.
+    uint64 values_count = 5;
+
+    // Encoding used for values in the page.
+    EncodingType encoding = 6;
+
+    // Byte offset relative to the start of the section's data region where the
+    // page is stored.
+    uint64 data_offset = 7;
+
+    // Size of the page's data in bytes.
+    uint64 data_size = 8;
+
+    // Optional statistics for the page.
+    Statistics statistics = 9;
+}
+
+// EncodingType represents the valid types that a sequence of values which a
+// column can be encoded with.
+enum EncodingType {
+  // Invalid encoding type.
+  ENCODING_TYPE_UNSPECIFIED = 0;
+
+  // Plain encoding; data is stored as-is.
+  ENCODING_TYPE_PLAIN = 1;
+
+  // Delta encoding. The first value within the page is stored as-is, and
+  // subsequent values are stored as the delta from the previous value.
+  ENCODING_TYPE_DELTA = 2;
+
+  // Bitmap encoding. Bitmaps efficiently store repeating sequences of unsigned
+  // integers using a combination of run-length encoding and bitpacking.
+  ENCODING_TYPE_BITMAP = 3;
+}
+
+// Statistics about a column or a page. All statistics are optional and are
+// conditionally set depending on the column type.
+message Statistics {
+  // Minimum value. Applications should only set min_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, min_value should be unset.
+  //
+  // Applications must not assume that an unset min_value means that the column
+  // is empty; check for values_count == 0 instead.
+  bytes min_value = 1;
+
+  // Maximum value. Applications should only set max_value to an encoding of a
+  // non-NULL value. If there is no non-NULL value, max_value should be unset.
+  //
+  // Applications must not assume that an unset max_value means that the column
+  // is empty; check for values_count == 0 instead.
+  bytes max_value = 2;
+
+  // Estimated number of distinct values in the column.
+  //
+  // Applications must not assume that an unset cardinality_count means that
+  // the column has no distinct values; check for values_count == 0 instead.
+  uint64 cardinality_count = 3;
+}
+
+// SortInfo holds sort order information for rows in the section.
+message SortInfo {
+    message ColumnSort {
+        // Index of the column in the columns list.
+        uint32 column_index = 1;
+
+        // Sort direction of the column.
+        SortDirection direction = 2;
+    }
+
+    // The list of column sorts. The length of this depends on how many columns
+    // are used for sorting.
+    //
+    // If the section has no sorting at all, this field will be empty. If the
+    // section is sorted based on the value of a single column, this field will
+    // contain a single element. Otherwise, this field will contain multiple
+    // elements when compound sorting is used.
+    repeated ColumnSort column_sorts = 1;
+}
+
+// SortDirection represents sort direction of a column.
+enum SortDirection {
+  // Sort direction is unspecified.
+  SORT_DIRECTION_UNSPECIFIED = 0;
+
+  // SORT_DIRECTION_ASCENDING represents ascending sort order (smallest values first).
+  SORT_DIRECTION_ASCENDING = 1;
+
+  // SORT_DIRECTION_DESCENDING represents descending sort order (largest values first).
+  SORT_DIRECTION_DESCENDING = 2;
+}
