@@ -99,6 +99,15 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Convert empty span IDs to NULL for database storage
+	var cellASpanID, cellBSpanID any
+	if sample.CellASpanID != "" {
+		cellASpanID = sample.CellASpanID
+	}
+	if sample.CellBSpanID != "" {
+		cellBSpanID = sample.CellBSpanID
+	}
+
 	_, err := s.db.ExecContext(ctx, query,
 		sample.CorrelationID,
 		sample.TenantID,
@@ -134,8 +143,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBStatusCode,
 		sample.CellATraceID,
 		sample.CellBTraceID,
-		sample.CellASpanID,
-		sample.CellBSpanID,
+		cellASpanID,
+		cellBSpanID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
@@ -293,6 +302,8 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var stepDurationMs int64
 		var comparisonStatus string
 		var createdAt time.Time
+		// Use sql.NullString for nullable span ID columns
+		var cellASpanID, cellBSpanID sql.NullString
 
 		err := rows.Scan(
 			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
@@ -303,12 +314,20 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
 			&q.CellATraceID, &q.CellBTraceID,
-			&q.CellASpanID, &q.CellBSpanID,
+			&cellASpanID, &cellBSpanID,
 			&q.SampledAt, &createdAt,
 			&comparisonStatus,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		// Convert nullable strings to regular strings (empty string if NULL)
+		if cellASpanID.Valid {
+			q.CellASpanID = cellASpanID.String
+		}
+		if cellBSpanID.Valid {
+			q.CellBSpanID = cellBSpanID.String
 		}
 
 		// Convert step duration from milliseconds to Duration

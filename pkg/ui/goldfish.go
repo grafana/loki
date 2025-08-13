@@ -276,7 +276,7 @@ func (s *Service) GenerateTraceExploreURL(traceID, spanID string, sampledAt time
 	query := traceID
 	if spanID != "" {
 		// TraceQL syntax to find a specific span within a trace
-		query = fmt.Sprintf(`{.spanID = "%s"} && {.traceID = "%s"}`, spanID, traceID)
+		query = fmt.Sprintf(`{span:id = "%s" && trace:id = "%s"}`, spanID, traceID)
 	}
 
 	// Build the explore state for Tempo

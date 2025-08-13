@@ -11,13 +11,11 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/tracing"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/propagation"
 )
-
-var tracer = otel.Tracer("tools/querytee")
 
 // ProxyBackend holds the information of a single backend.
 type ProxyBackend struct {
@@ -65,47 +63,23 @@ func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
 	return b
 }
 
-// createIsolatedContextWithTracing creates a new context that:
-// - Is isolated from parent and sibling cancellation
-// - Preserves trace context for distributed tracing
-// - Has its own independent cancellation
-func createIsolatedContextWithTracing(parent context.Context) (context.Context, context.CancelFunc) {
-	// Extract trace context from parent
-	spanCtx := trace.SpanFromContext(parent).SpanContext()
-
-	// Create new context with its own cancellation, isolated from parent
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Restore trace context
-	if spanCtx.IsValid() {
-		ctx = trace.ContextWithSpanContext(ctx, spanCtx)
-	}
-
-	return ctx, cancel
-}
-
 func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *BackendResponse {
 	start := time.Now()
 	req, span := b.createBackendRequest(orig, body)
-	defer span.End()
+	defer span.Finish()
 
-	// Extract trace ID and span ID from the child span context
-	traceID, _ := tracing.ExtractSampledTraceID(req.Context())
-	spanCtx := span.SpanContext()
-	spanID := spanCtx.SpanID().String()
+	// Extract trace ID and span ID from the context
+	traceID, spanID, _ := tracing.ExtractTraceSpanID(req.Context())
 
 	status, responseBody, err := b.doBackendRequest(req)
 	duration := time.Since(start)
 
 	// Set span status based on response
 	if err != nil {
-		span.RecordError(err)
-		span.SetAttributes(attribute.String("error", err.Error()))
+		span.SetTag("error", err.Error())
 	}
-	span.SetAttributes(
-		attribute.Int("http.status_code", status),
-		attribute.Int64("duration.ms", duration.Milliseconds()),
-	)
+	span.SetTag("http.status_code", status)
+	span.SetTag("duration.ms", duration.Milliseconds())
 
 	return &BackendResponse{
 		backend:  b,
@@ -118,18 +92,12 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 	}
 }
 
-func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadCloser) (*http.Request, trace.Span) {
-	// Create isolated context that preserves tracing but is isolated from sibling failures
-	isolatedCtx, _ := createIsolatedContextWithTracing(orig.Context())
-
-	// Create a child span for this backend request
-	spanCtx, span := tracer.Start(isolatedCtx, "querytee.backend.request",
-		trace.WithAttributes(
-			attribute.String("backend.name", b.name),
-			attribute.Bool("backend.preferred", b.preferred),
-			attribute.String("backend.endpoint", b.endpoint.String()),
-		),
-	)
+func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadCloser) (*http.Request, *tracing.Span) {
+	// Create a child span directly from the original context to preserve parent-child relationship
+	span, spanCtx := tracing.StartSpanFromContext(orig.Context(), "querytee.backend.request")
+	span.SetTag("backend.name", b.name)
+	span.SetTag("backend.preferred", b.preferred)
+	span.SetTag("backend.endpoint", b.endpoint.String())
 
 	req := orig.Clone(spanCtx)
 	req.Body = body
@@ -169,8 +137,15 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 }
 
 func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
-	// Honor the read timeout.
-	ctx, cancel := context.WithTimeout(req.Context(), b.timeout)
+	// Explicitly inject trace context into HTTP headers before creating isolated context.
+	// This ensures trace propagation works even with context isolation.
+	b.injectTraceHeaders(req)
+
+	// Create an isolated context for the HTTP request timeout.
+	// We use context.WithoutCancel to prevent sibling cancellation, then add our own timeout.
+	// Note: context.WithoutCancel breaks trace propagation, so we inject headers explicitly above.
+	isolatedCtx := context.WithoutCancel(req.Context())
+	ctx, cancel := context.WithTimeout(isolatedCtx, b.timeout)
 	defer cancel()
 
 	// Execute the request.
@@ -187,4 +162,24 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) 
 	}
 
 	return res.StatusCode, body, nil
+}
+
+// injectTraceHeaders explicitly injects trace context into HTTP headers.
+// This is necessary because context.WithoutCancel breaks the normal trace propagation.
+func (b *ProxyBackend) injectTraceHeaders(req *http.Request) {
+	ctx := req.Context()
+
+	// First, try OpenTracing if it's registered (dskit might be using this)
+	if opentracing.IsGlobalTracerRegistered() {
+		if span := opentracing.SpanFromContext(ctx); span != nil {
+			tracer := opentracing.GlobalTracer()
+			// Inject the span context into the HTTP headers
+			_ = tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+			return
+		}
+	}
+
+	// Otherwise, use OpenTelemetry propagation
+	propagator := otel.GetTextMapPropagator()
+	propagator.Inject(ctx, propagation.HeaderCarrier(req.Header))
 }

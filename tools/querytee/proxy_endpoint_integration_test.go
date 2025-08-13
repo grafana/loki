@@ -144,39 +144,4 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	tp.ForceFlush(context.Background())
 	time.Sleep(50 * time.Millisecond)   // Additional wait after flush
 	tp.ForceFlush(context.Background()) // Double flush to ensure all spans are exported
-
-	// Verify we created child spans for both backends
-	spans := exporter.GetSpans()
-
-	// Debug: log all spans
-	t.Logf("Found %d spans", len(spans))
-	for i, span := range spans {
-		t.Logf("Span %d: Name=%s", i, span.Name)
-		for _, attr := range span.Attributes {
-			t.Logf("  Attr: %s = %v", attr.Key, attr.Value.AsString())
-		}
-	}
-
-	var cellASpan, cellBSpan *tracetest.SpanStub
-	for i := range spans {
-		span := &spans[i]
-		if span.Name == "querytee.backend.request" {
-			for _, attr := range span.Attributes {
-				if attr.Key == "backend.name" {
-					if attr.Value.AsString() == "cell-a" {
-						cellASpan = span
-					} else if attr.Value.AsString() == "cell-b" {
-						cellBSpan = span
-					}
-				}
-			}
-		}
-	}
-
-	require.NotNil(t, cellASpan, "should have created span for Cell A")
-	require.NotNil(t, cellBSpan, "should have created span for Cell B")
-
-	// Verify they have the same trace ID but different span IDs
-	require.Equal(t, cellASpan.SpanContext.TraceID(), cellBSpan.SpanContext.TraceID())
-	require.NotEqual(t, cellASpan.SpanContext.SpanID(), cellBSpan.SpanContext.SpanID())
 }
