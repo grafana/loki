@@ -3,6 +3,7 @@ package consumer
 import (
 	"bytes"
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/scratch"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -108,6 +110,61 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	// The builder should be initialized and last modified timestamp updated.
 	require.NotNil(t, p.builder)
 	require.Equal(t, clock.Now(), p.lastModified)
+}
+
+func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+	// Use our own builder instead of initBuilder.
+	builder, err := logsobj.NewBuilder(testBuilderConfig, scratch.NewMemory())
+	require.NoError(t, err)
+	wrappedBuilder := &mockBuilder{builder: builder}
+	p.builderOnce.Do(func() { p.builder = wrappedBuilder })
+	// Use a mock committer so we can assert when offsets are committed.
+	committer := &mockCommitter{}
+	p.committer = committer
+
+	// Push a record.
+	now1 := clock.Now()
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: now1,
+			Line:      strings.Repeat("a", 1024),
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: now1,
+		Offset:    1,
+	})
+
+	// No flush should have occurred and no offsets should be committed.
+	require.True(t, p.lastFlush.IsZero())
+	require.Nil(t, committer.records)
+
+	// Mark the builder as full.
+	wrappedBuilder.nextErr = logsobj.ErrBuilderFull
+
+	// Append another record.
+	clock.Advance(time.Minute)
+	now2 := clock.Now()
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: now2,
+		Offset:    2,
+	})
+
+	// A flush should have occurred and offsets should be committed.
+	require.Equal(t, now2, p.lastFlush)
+	require.Len(t, committer.records, 1)
+	// The offset committed should be the offset of the first record, as that
+	// was the record that was flushed.
+	require.Equal(t, int64(1), committer.records[0].Offset)
 }
 
 func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {

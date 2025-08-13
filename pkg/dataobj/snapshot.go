@@ -32,6 +32,10 @@ type sectionInfo struct {
 
 	Data, Metadata         scratch.Handle
 	DataSize, MetadataSize int
+
+	// ExtensionData holds additional encoded info about the section, written to
+	// the file-level metadata.
+	ExtensionData []byte
 }
 
 // newSnapshot creates a new snapshot for the given data. [sectionHandle]s
