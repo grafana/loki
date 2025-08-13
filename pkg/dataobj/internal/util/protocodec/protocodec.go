@@ -17,6 +17,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
+// Size returns the number of bytes that would be required to call [Encode] for
+// pb.
+func Size(pb proto.Message) int {
+	protoSize := proto.Size(pb)
+
+	scratch := [binary.MaxVarintLen64]byte{}
+	uvarintSize := binary.PutUvarint(scratch[:], uint64(protoSize))
+
+	return uvarintSize + protoSize
+}
+
 // Encode encodes a protobuf message into w. Encoded messages can be decoded
 // with [Decode].
 func Encode(w streamio.Writer, pb proto.Message) error {
