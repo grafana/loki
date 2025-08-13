@@ -113,58 +113,106 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 }
 
 func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
-	clock := quartz.NewMock(t)
-	p := newTestPartitionProcessor(t, clock)
-	// Use our own builder instead of initBuilder.
-	builder, err := logsobj.NewBuilder(testBuilderConfig, scratch.NewMemory())
-	require.NoError(t, err)
-	wrappedBuilder := &mockBuilder{builder: builder}
-	p.builderOnce.Do(func() { p.builder = wrappedBuilder })
-	// Use a mock committer so we can assert when offsets are committed.
-	committer := &mockCommitter{}
-	p.committer = committer
+	t.Run("when builder is full", func(t *testing.T) {
+		clock := quartz.NewMock(t)
+		p := newTestPartitionProcessor(t, clock)
+		// Use our own builder instead of initBuilder.
+		builder, err := logsobj.NewBuilder(testBuilderConfig, scratch.NewMemory())
+		require.NoError(t, err)
+		wrappedBuilder := &mockBuilder{builder: builder}
+		p.builderOnce.Do(func() { p.builder = wrappedBuilder })
+		// Use a mock committer so we can assert when offsets are committed.
+		committer := &mockCommitter{}
+		p.committer = committer
 
-	// Push a record.
-	now1 := clock.Now()
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
-		Entries: []push.Entry{{
+		// Push a record.
+		now1 := clock.Now()
+		s := logproto.Stream{
+			Labels: `{service="test"}`,
+			Entries: []push.Entry{{
+				Timestamp: now1,
+				Line:      strings.Repeat("a", 1024),
+			}},
+		}
+		b, err := s.Marshal()
+		require.NoError(t, err)
+		p.processRecord(&kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now1,
-			Line:      strings.Repeat("a", 1024),
-		}},
-	}
-	b, err := s.Marshal()
-	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: now1,
-		Offset:    1,
+			Offset:    1,
+		})
+
+		// No flush should have occurred and no offsets should be committed.
+		require.True(t, p.lastFlush.IsZero())
+		require.Nil(t, committer.records)
+
+		// Mark the builder as full.
+		wrappedBuilder.nextErr = logsobj.ErrBuilderFull
+
+		// Append another record.
+		clock.Advance(time.Minute)
+		now2 := clock.Now()
+		p.processRecord(&kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
+			Timestamp: now2,
+			Offset:    2,
+		})
+
+		// A flush should have occurred and offsets should be committed.
+		require.Equal(t, now2, p.lastFlush)
+		require.Len(t, committer.records, 1)
+		// The offset committed should be the offset of the first record, as that
+		// was the record that was flushed.
+		require.Equal(t, int64(1), committer.records[0].Offset)
 	})
 
-	// No flush should have occurred and no offsets should be committed.
-	require.True(t, p.lastFlush.IsZero())
-	require.Nil(t, committer.records)
+	t.Run("when idle timeout is exceeded", func(t *testing.T) {
+		clock := quartz.NewMock(t)
+		p := newTestPartitionProcessor(t, clock)
+		p.idleFlushTimeout = 60 * time.Minute
+		// Use a mock committer so we can assert when offsets are committed.
+		committer := &mockCommitter{}
+		p.committer = committer
 
-	// Mark the builder as full.
-	wrappedBuilder.nextErr = logsobj.ErrBuilderFull
+		// Push a record.
+		now1 := clock.Now()
+		s := logproto.Stream{
+			Labels: `{service="test"}`,
+			Entries: []push.Entry{{
+				Timestamp: now1,
+				Line:      strings.Repeat("a", 1024),
+			}},
+		}
+		b, err := s.Marshal()
+		require.NoError(t, err)
+		p.processRecord(&kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
+			Timestamp: now1,
+			Offset:    1,
+		})
 
-	// Append another record.
-	clock.Advance(time.Minute)
-	now2 := clock.Now()
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: now2,
-		Offset:    2,
+		// No flush should have occurred and no offsets should be committed.
+		require.True(t, p.lastFlush.IsZero())
+		require.Nil(t, committer.records)
+
+		// Advance the clock past the idle timeout.
+		clock.Advance(61 * time.Minute)
+		now2 := clock.Now()
+		flushed, err := p.idleFlush()
+		require.NoError(t, err)
+		require.True(t, flushed)
+
+		// A flush should have occurred and offsets should be committed.
+		require.Equal(t, now2, p.lastFlush)
+		require.Len(t, committer.records, 1)
+
+		// The offset committed should be the offset of the first record, as that
+		// was the record that was flushed.
+		require.Equal(t, int64(1), committer.records[0].Offset)
 	})
-
-	// A flush should have occurred and offsets should be committed.
-	require.Equal(t, now2, p.lastFlush)
-	require.Len(t, committer.records, 1)
-	// The offset committed should be the offset of the first record, as that
-	// was the record that was flushed.
-	require.Equal(t, int64(1), committer.records[0].Offset)
 }
 
 func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {
