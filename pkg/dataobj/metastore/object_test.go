@@ -286,11 +286,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-<<<<<<< HEAD
-	metastoreUpdater := NewUpdater(Config{}, bucket, nil, tenantID, log.NewNopLogger())
-=======
 	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
->>>>>>> 2032775139 (chore: Refactor metastore Updater (breaking change))
 
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(t, err)

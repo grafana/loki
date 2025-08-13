@@ -16,13 +16,12 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-// Define our own builder config because metastore objects are significantly smaller.
-var tocBuilderCfg = logsobj.BuilderConfig{
+// Define our own builder config for the Table Of Contents object because they are smaller than logs objects.
+var tocBuilderCfg = indexobj.BuilderConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -31,8 +30,8 @@ var tocBuilderCfg = logsobj.BuilderConfig{
 	SectionStripeMergeLimit: 2,
 }
 
-// The TableOfContents updater writes the entrypoint file to the metastore, the Table of Contents, which is a list of other data objects in storage.
-// The Table of contents is used to look up another set of objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
+// The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular time range.
+// The Table of Contents files are used to look up other objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
 type TableOfContentsWriter struct {
 	cfg        Config
 	tocBuilder *indexobj.Builder // New index pointer based builder.
@@ -46,6 +45,7 @@ type TableOfContentsWriter struct {
 	builderOnce sync.Once
 }
 
+// NewTableOfContentsWriter creates a new Writer for adding entries to the metastore's Table of Contents files.
 func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *TableOfContentsWriter {
 	metrics := newTableOfContentsMetrics()
 
@@ -75,13 +75,7 @@ func (m *TableOfContentsWriter) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
 		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
-		indexBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
-			TargetObjectSize:        tocBuilderCfg.TargetObjectSize,
-			TargetPageSize:          tocBuilderCfg.TargetPageSize,
-			BufferSize:              tocBuilderCfg.BufferSize,
-			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
-			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
-		})
+		indexBuilder, err := indexobj.NewBuilder(tocBuilderCfg, nil)
 		if err != nil {
 			initErr = err
 			return
@@ -205,7 +199,7 @@ func (w *wrappedReadCloser) Close() error {
 	return w.rc.Close()
 }
 
-// copyFromExistingToc reads the provided table of contents object and appends the index pointers to the builder. The resulting builder will contain exactly the same entries as the input object.
+// copyFromExistingToc reads the provided table of contents (toc) object and appends the contained index pointers to the builder. The resulting builder will contain exactly the same entries as the input object.
 func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObject *dataobj.Object) error {
 	var indexPointersReader indexpointers.RowReader
 	defer indexPointersReader.Close()

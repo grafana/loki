@@ -28,15 +28,16 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	dir      string
-	tenantID string
-	builder  *logsobj.Builder
-	buf      *bytes.Buffer
-	uploader *uploader.Uploader
-	meta     *metastore.TableOfContentsWriter
+	dir              string
+	tenantID         string
+	builder          *logsobj.Builder
+	buf              *bytes.Buffer
+	uploader         *uploader.Uploader
+	logsMetastoreToc *metastore.TableOfContentsWriter
 
 	bucket objstore.Bucket
 
+	// Index files have their own, separate, metastore directory, with their own table of contents.
 	indexWriterBucket objstore.Bucket
 	indexMetastoreToc *metastore.TableOfContentsWriter
 
@@ -85,7 +86,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
@@ -98,7 +99,7 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		builder:           builder,
 		buf:               bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
 		uploader:          uploader,
-		meta:              meta,
+		logsMetastoreToc:  logsMetastoreToc,
 		bucket:            bucket,
 		logger:            logger,
 		indexWriterBucket: indexWriterBucket,
@@ -146,8 +147,8 @@ func (s *DataObjStore) flush() error {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	// Update metastore with the new data object
-	err = s.meta.WriteEntry(context.Background(), path, minTime, maxTime)
+	// Update logs metastore's table of contents with the new data object
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, minTime, maxTime)
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}

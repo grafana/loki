@@ -27,7 +27,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
 			BufferSize:              tocBuilderCfg.BufferSize,
 			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		err = tocBuilder.AppendIndexPointer("testdata/metastore.obj", unixTime(10), unixTime(20))
