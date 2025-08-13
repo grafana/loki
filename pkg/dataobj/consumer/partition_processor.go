@@ -46,7 +46,10 @@ type partitionProcessor struct {
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records            chan *kgo.Record
+	records chan *kgo.Record
+	// lastRecord contains the last record appended to the builder. It is used
+	// to commit the correct offset after a flush.
+	lastRecord         *kgo.Record
 	builder            *logsobj.Builder
 	decoder            *kafka.Decoder
 	uploader           *uploader.Uploader
@@ -318,7 +321,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.commitRecords(record); err != nil {
+		// It should never happen that the builder is full and last record
+		// is nil.
+		if err := p.commitRecords(p.lastRecord); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
 			return
 		}
@@ -330,6 +335,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 	}
 
+	p.lastRecord = record
 	p.lastModified = p.clock.Now()
 }
 
