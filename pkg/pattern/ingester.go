@@ -48,6 +48,7 @@ type Config struct {
 	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
 	MaxChunkAge           time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
 	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
+	VolumeThreshold       float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -121,6 +122,12 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		10*time.Second,
 		"The time resolution for pattern samples within chunks.",
 	)
+	fs.Float64Var(
+		&cfg.VolumeThreshold,
+		"pattern-ingester.volume-threshold",
+		0.99,
+		"The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1).",
+	)
 }
 
 type TeeConfig struct {
@@ -177,6 +184,11 @@ func (cfg *Config) Validate() error {
 	// Validate chunk-duration >= sample-interval
 	if cfg.MaxChunkAge < cfg.PatternSampleInterval {
 		return fmt.Errorf("chunk-duration (%v) must be greater than or equal to sample-interval (%v)", cfg.MaxChunkAge, cfg.PatternSampleInterval)
+	}
+
+	// Validate volume threshold is between 0 and 1
+	if cfg.VolumeThreshold < 0 || cfg.VolumeThreshold > 1 {
+		return fmt.Errorf("volume_threshold (%v) must be between 0 and 1", cfg.VolumeThreshold)
 	}
 
 	return cfg.LifecyclerConfig.Validate()
@@ -494,6 +506,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			metricWriter,
 			patternWriter,
 			aggregationMetrics,
+			i.cfg.VolumeThreshold,
 		)
 		if err != nil {
 			return nil, err
