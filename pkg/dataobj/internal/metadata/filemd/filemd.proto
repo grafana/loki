@@ -82,7 +82,7 @@ message SectionInfo {
   // Optional additional information about the section that sections can
   // provide.
   //
-  // Because extended_info increases the size of the file metadata, sections
+  // Because extension_data increases the size of the file metadata, sections
   // should only use this field for required information that must be stored
   // without loading the section.
   //

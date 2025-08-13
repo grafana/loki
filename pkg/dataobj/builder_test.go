@@ -3,8 +3,9 @@ package dataobj_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
 func TestBuilder_preserve_section_version(t *testing.T) {
