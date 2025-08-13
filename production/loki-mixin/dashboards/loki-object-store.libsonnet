@@ -9,7 +9,7 @@ local row = grafana.row;
         _config+:: $._config,
       }
     ),
-    'loki_thanos_object_storage.json':
+    'loki-thanos-object-storage.json':
       dashboard.dashboard('Loki / Object Store Thanos', uid='object-store')
       .addCluster()
       .addNamespace()
