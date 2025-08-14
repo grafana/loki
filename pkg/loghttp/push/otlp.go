@@ -79,6 +79,8 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 			return plog.NewLogs(), err
 		}
 		body = r
+	case "":
+		// no content encoding, use the body as is
 	default:
 		return plog.NewLogs(), errors.Errorf("unsupported content encoding %s: only gzip and zstd are supported", pushStats.ContentEncoding)
 	}
