@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -149,7 +150,12 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update logs metastore's table of contents with the new data object
-	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, minTime, maxTime)
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
+		s.tenantID: multitenancy.TimeRange{
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
@@ -180,7 +186,7 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		minTime, maxTime := calculator.TimeRange()
+		timeRanges := calculator.TimeRanges()
 		obj, closer, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
@@ -203,7 +209,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, minTime, maxTime)
+		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}

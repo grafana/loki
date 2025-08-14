@@ -23,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -105,13 +106,16 @@ func tableOfContentsPath(tenantID string, window time.Time, prefix string) strin
 	return path
 }
 
-func iterTableOfContentsPaths(tenantID string, start, end time.Time, prefix string) iter.Seq[string] {
+func iterTableOfContentsPaths(tenantID string, start, end time.Time, prefix string) iter.Seq2[string, multitenancy.TimeRange] {
 	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
 	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
 
-	return func(yield func(t string) bool) {
+	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
 		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
-			if !yield(tableOfContentsPath(tenantID, tocWindow, prefix)) {
+			if !yield(tableOfContentsPath(tenantID, tocWindow, prefix), multitenancy.TimeRange{
+				MinTime: tocWindow,
+				MaxTime: tocWindow.Add(metastoreWindowSize),
+			}) {
 				return
 			}
 		}

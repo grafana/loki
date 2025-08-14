@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -86,7 +87,7 @@ func (m *TableOfContentsWriter) initBuilder() error {
 }
 
 // WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
-func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges multitenancy.TimeRangeSet) error {
 	var err error
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
@@ -96,13 +97,23 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 		return err
 	}
 
+	var globalMinTime, globalMaxTime time.Time
+	for _, timeRange := range tenantTimeRanges.Iter() {
+		if globalMinTime.IsZero() || timeRange.MinTime.Before(globalMinTime) {
+			globalMinTime = timeRange.MinTime
+		}
+		if globalMaxTime.IsZero() || timeRange.MaxTime.After(globalMaxTime) {
+			globalMaxTime = timeRange.MaxTime
+		}
+	}
+
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	prefix := storagePrefixFor(m.cfg.Storage, m.tenantID)
-	for metastorePath := range iterTableOfContentsPaths(m.tenantID, minTimestamp, maxTimestamp, prefix) {
+	for tocPath, tocTimeRange := range iterTableOfContentsPaths(m.tenantID, globalMinTime, globalMaxTime, prefix) {
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
-			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.ReadCloser, error) {
+			err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
 				if existing != nil {
 					defer existing.Close()
 				}
@@ -131,9 +142,14 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				}
 
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				err := m.tocBuilder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
-				if err != nil {
-					return nil, errors.Wrap(err, "appending index pointer")
+				// Append all the tenant time ranges that overlap with the current Table of Contents window.
+				for tenant, timeRange := range tenantTimeRanges.Iter() {
+					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && timeRange.MaxTime.After(tocTimeRange.MinTime) {
+						err := m.tocBuilder.AppendIndexPointer(tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
+						if err != nil {
+							return nil, errors.Wrap(err, "appending index pointer")
+						}
+					}
 				}
 
 				var (
@@ -166,12 +182,12 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				}, nil
 			})
 			if err == nil {
-				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)
-				m.metrics.incMetastoreWrites(statusSuccess)
+				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
+				m.metrics.incTableOfContentsWrites(statusSuccess)
 				break
 			}
-			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", metastorePath)
-			m.metrics.incMetastoreWrites(statusFailure)
+			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
+			m.metrics.incTableOfContentsWrites(statusFailure)
 			m.backoff.Wait()
 		}
 
@@ -218,7 +234,7 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 				return errors.Wrap(err, "reading index pointers")
 			}
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+				err = m.tocBuilder.AppendIndexPointer(section.Tenant, indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
 				if err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}
