@@ -31,6 +31,56 @@ var testBuilderConfig = logsobj.BuilderConfig{
 	SectionStripeMergeLimit: 2,
 }
 
+func TestPartitionProcessor_Flush(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+	// Wrap the TOC writer to record all of the entries.
+	tocWriter, ok := p.metastoreTocWriter.(*metastore.TableOfContentsWriter)
+	require.True(t, ok)
+	recordingTocWriter := &recordingTocWriter{TableOfContentsWriter: tocWriter}
+	p.metastoreTocWriter = recordingTocWriter
+
+	// Push a stream.
+	now := clock.Now()
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: now,
+			Line:      "abc",
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: now,
+	})
+	require.True(t, p.lastFlush.IsZero())
+
+	// Get the time range. We will use this to check that the metastore has
+	// the correct time range.
+	minTime, maxTime := p.builder.TimeRange()
+	require.Equal(t, now, minTime)
+	require.Equal(t, now, maxTime)
+
+	// Flush the data object.
+	require.NoError(t, p.flush())
+	require.Equal(t, now, p.lastFlush)
+
+	// Flush should produce two uploads, the data object and the metastore
+	// object.
+	bucket, ok := p.bucket.(*mockBucket)
+	require.True(t, ok)
+	require.Len(t, bucket.uploads, 2)
+
+	// Check that the expected entries were written to the metastore.
+	require.Len(t, recordingTocWriter.entries, 1)
+	actual := recordingTocWriter.entries[0]
+	require.Equal(t, minTime, actual.MaxTimestamp)
+	require.Equal(t, maxTime, actual.MaxTimestamp)
+}
+
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	clock := quartz.NewMock(t)
 	p := newTestPartitionProcessor(t, clock)

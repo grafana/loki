@@ -40,6 +40,10 @@ type committer interface {
 	CommitRecords(ctx context.Context, records ...*kgo.Record) error
 }
 
+type tocWriter interface {
+	WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error
+}
+
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
 	committer committer
@@ -54,7 +58,7 @@ type partitionProcessor struct {
 	builder            builder
 	decoder            *kafka.Decoder
 	uploader           *uploader.Uploader
-	metastoreTocWriter *metastore.TableOfContentsWriter
+	metastoreTocWriter tocWriter
 
 	// Builder initialization
 	builderOnce  sync.Once
