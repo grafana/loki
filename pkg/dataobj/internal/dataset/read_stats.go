@@ -99,12 +99,6 @@ func StatsFromContext(ctx context.Context) *ReaderStats {
 	return v
 }
 
-// IsStatsPresent returns true if reader stats are present in the context.
-func IsStatsPresent(ctx context.Context) bool {
-	_, ok := ctx.Value(readerStatsKey).(*ReaderStats)
-	return ok
-}
-
 func (s *ReaderStats) LinkGlobalStats(stats *stats.Context) {
 	// If the global stats are already set, we don't override it.
 	if s.globalStats == nil {

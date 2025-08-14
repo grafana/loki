@@ -39,7 +39,7 @@ type dataobjScan struct {
 	logger log.Logger
 
 	initialized     bool
-	initedAt        time.Time
+	initializedAt   time.Time
 	streams         *streamsView
 	streamsInjector *streamInjector
 	reader          *logs.Reader
@@ -94,7 +94,7 @@ func (s *dataobjScan) init() error {
 	}
 
 	s.initialized = true
-	s.initedAt = time.Now().UTC()
+	s.initializedAt = time.Now().UTC()
 	return nil
 }
 
@@ -417,7 +417,7 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 func (s *dataobjScan) Close() {
 	if s.reader != nil {
 		// TODO(ashwanth): remove this once we have stats collection via executor
-		s.reader.Stats().LogSummary(s.logger, time.Since(s.initedAt))
+		s.reader.Stats().LogSummary(s.logger, time.Since(s.initializedAt))
 	}
 
 	if s.streams != nil {
