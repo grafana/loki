@@ -36,6 +36,37 @@ func (s ShardInfo) String() string {
 	return fmt.Sprintf("%d_of_%d", s.Shard, s.Of)
 }
 
+type TimeRange struct {
+	Start time.Time
+	End   time.Time
+}
+
+func (t *TimeRange) Overlaps(secondRange TimeRange) bool {
+	return (secondRange.Start.Before(t.End) && t.Start.Before(secondRange.End))
+}
+
+func (t *TimeRange) Merge(secondRange TimeRange) TimeRange {
+	var out TimeRange
+	if t.Start.Before(secondRange.Start) {
+		out.Start = t.Start
+	} else {
+		out.Start = secondRange.Start
+	}
+	if t.End.After(secondRange.End) {
+		out.End = t.End
+	} else {
+		out.End = secondRange.End
+	}
+	return out
+}
+
+type FilteredShardDescriptor struct {
+	Location  DataObjLocation
+	Streams   []int64
+	Sections  []int
+	TimeRange TimeRange
+}
+
 // Catalog is an interface that provides methods for interacting with
 // storage metadata. In traditional database systems there are system tables
 // providing this information (e.g. pg_catalog, ...) whereas in Loki there
@@ -44,8 +75,8 @@ type Catalog interface {
 	// ResolveDataObj returns a list of data object paths,
 	// a list of stream IDs for each data data object,
 	// and a list of sections for each data object
-	ResolveDataObj(Expression, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
-	ResolveDataObjWithShard(Expression, []Expression, ShardInfo, time.Time, time.Time) ([]DataObjLocation, [][]int64, [][]int, error)
+	ResolveDataObj(Expression, time.Time, time.Time) ([]FilteredShardDescriptor, error)
+	ResolveDataObjWithShard(Expression, []Expression, ShardInfo, time.Time, time.Time) ([]FilteredShardDescriptor, error)
 }
 
 // MetastoreCatalog is the default implementation of [Catalog].
@@ -65,18 +96,18 @@ func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *Metastore
 // ResolveDataObj resolves DataObj locations and streams IDs based on a given
 // [Expression]. The expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
-func (c *MetastoreCatalog) ResolveDataObj(selector Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) ResolveDataObj(selector Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	return c.ResolveDataObjWithShard(selector, nil, noShard, from, through)
 }
 
-func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	if c.metastore == nil {
-		return nil, nil, nil, errors.New("no metastore to resolve objects")
+		return nil, errors.New("no metastore to resolve objects")
 	}
 
 	tenants, err := tenant.TenantIDs(c.ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	switch c.metastore.ResolveStrategy(tenants) {
@@ -85,28 +116,26 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicat
 	case metastore.ResolveStrategyTypeIndex:
 		return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
 	default:
-		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %d", c.metastore.ResolveStrategy(tenants))
+		return nil, fmt.Errorf("invalid catalogue type: %d", c.metastore.ResolveStrategy(tenants))
 	}
 }
 
-func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
+		return nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
 	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
+		return nil, fmt.Errorf("failed to resolve data object locations: %w", err)
 	}
 
-	return filterForShard(shard, paths, streamIDs, numSections)
+	return filterForShard(shard, paths, streamIDs, numSections, from, through)
 }
 
-func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {
-	locations := make([]DataObjLocation, 0, len(paths))
-	streams := make([][]int64, 0, len(paths))
-	sections := make([][]int, 0, len(paths))
+func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int, from, through time.Time) ([]FilteredShardDescriptor, error) {
+	filteredDescriptors := make([]FilteredShardDescriptor, 0, len(paths))
 
 	var count int
 	for i := range paths {
@@ -120,24 +149,28 @@ func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSec
 		}
 
 		if len(sec) > 0 {
-			locations = append(locations, DataObjLocation(paths[i]))
-			streams = append(streams, streamIDs[i])
-			sections = append(sections, sec)
+			filteredDescriptor := FilteredShardDescriptor{}
+			filteredDescriptor.Location = DataObjLocation(paths[i])
+			filteredDescriptor.Sections = sec
+			filteredDescriptor.Streams = streamIDs[i]
+			filteredDescriptor.TimeRange.Start = from
+			filteredDescriptor.TimeRange.End = through
+			filteredDescriptors = append(filteredDescriptors, filteredDescriptor)
 		}
 	}
 
-	return locations, streams, sections, nil
+	return filteredDescriptors, nil
 }
 
 // resolveDataobjWithIndex expects the metastore to initially point to index objects, not the log objects directly.
-func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	if c.metastore == nil {
-		return nil, nil, nil, errors.New("no metastore to resolve objects")
+		return nil, errors.New("no metastore to resolve objects")
 	}
 
 	matchers, err := expressionToMatchers(selector, false)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
+		return nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
 	}
 
 	predicateMatchers := make([]*labels.Matcher, 0, len(predicates))
@@ -152,7 +185,7 @@ func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicat
 
 	sectionDescriptors, err := c.metastore.Sections(c.ctx, from, through, matchers, predicateMatchers)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to resolve data object sections: %w", err)
+		return nil, fmt.Errorf("failed to resolve data object sections: %w", err)
 	}
 
 	return filterDescriptorsForShard(shard, sectionDescriptors)
@@ -161,38 +194,36 @@ func (c *MetastoreCatalog) resolveDataObjWithIndex(selector Expression, predicat
 // filterDescriptorsForShard filters the section descriptors for a given shard.
 // It returns the locations, streams, and sections for the shard.
 // TODO: Improve filtering: this method could be improved because it doesn't resolve the stream IDs to sections, even though this information is available. Instead, it resolves streamIDs to the whole object.
-func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.DataobjSectionDescriptor) ([]DataObjLocation, [][]int64, [][]int, error) {
+func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.DataobjSectionDescriptor) ([]FilteredShardDescriptor, error) {
 	index := make(map[DataObjLocation]int)
 
-	locations := make([]DataObjLocation, 0, len(sectionDescriptors))
-	streams := make([][]int64, 0, len(sectionDescriptors))
-	sections := make([][]int, 0, len(sectionDescriptors))
+	filteredDescriptors := make([]FilteredShardDescriptor, 0, len(sectionDescriptors))
 
 	for _, desc := range sectionDescriptors {
-		location := DataObjLocation(desc.ObjectPath)
-		idx, ok := index[location]
+		filteredDescriptor := FilteredShardDescriptor{}
+		filteredDescriptor.Location = DataObjLocation(desc.ObjectPath)
+		_, ok := index[filteredDescriptor.Location]
 		if !ok {
-			idx = len(index)
-			index[location] = idx
-			locations = append(locations, location)
-			streams = append(streams, []int64{})
-			sections = append(sections, []int{})
+			idx := len(index)
+			index[filteredDescriptor.Location] = idx
+			filteredDescriptor.Streams = []int64{}
 		}
 
 		if int(desc.SectionIdx)%int(shard.Of) == int(shard.Shard) {
-			streams[idx] = append(streams[idx], desc.StreamIDs...)
-			sections[idx] = append(sections[idx], int(desc.SectionIdx))
+			filteredDescriptor.Streams = desc.StreamIDs
+			filteredDescriptor.Sections = []int{int(desc.SectionIdx)}
+			filteredDescriptor.TimeRange.Start = desc.Start
+			filteredDescriptor.TimeRange.End = desc.End
 		}
+		filteredDescriptors = append(filteredDescriptors, filteredDescriptor)
 	}
 
-	for i := range streams {
-		sort.Slice(streams[i], func(j, k int) bool { return streams[i][j] < streams[i][k] })
-		sort.Slice(sections[i], func(j, k int) bool { return sections[i][j] < sections[i][k] })
-		streams[i] = slices.Compact(streams[i])
-		sections[i] = slices.Compact(sections[i])
+	for _, desc := range filteredDescriptors {
+		sort.Slice(desc.Streams, func(j, k int) bool { return desc.Streams[j] < desc.Streams[k] })
+		desc.Streams = slices.Compact(desc.Streams)
 	}
 
-	return locations, streams, sections, nil
+	return filteredDescriptors, nil
 }
 
 // expressionToMatchers converts a selector expression to a list of matchers.

@@ -21,6 +21,9 @@ type DataObjScan struct {
 	// StreamIDs is a set of stream IDs inside the data object. These IDs are
 	// only unique in the context of a single data object.
 	StreamIDs []int64
+	// TimeRange is a pair of time.Time values representing the
+	// start and end time of the relevant data.
+	TimeRange TimeRange
 	// Projections are used to limit the columns that are read to the ones
 	// provided in the column expressions to reduce the amount of data that needs
 	// to be processed.

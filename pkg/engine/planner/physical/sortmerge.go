@@ -39,6 +39,9 @@ type SortMerge struct {
 	// descending order. Must match the read direction of the DataObjScan that
 	// feeds into the SortMerge.
 	Order SortOrder
+	// TimeRange is a pair of time.Time values representing the
+	// start and end time of the relevant data.
+	TimeRange TimeRange
 }
 
 // ID implements the [Node] interface.

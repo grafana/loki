@@ -166,3 +166,40 @@ func TestCatalog_ExpressionToMatchers(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalog_TimeRangeOverlaps(t *testing.T) {
+	tests := []struct {
+		name        string
+		firstRange  TimeRange
+		secondRange TimeRange
+		want        bool
+	}{
+		{name: "Second contained in first",
+			firstRange:  TimeRange{Start: time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)},
+			secondRange: TimeRange{Start: time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 2, 0, 0, 0, time.UTC)},
+			want:        true,
+		},
+		{name: "Second completely after first",
+			firstRange:  TimeRange{Start: time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)},
+			secondRange: TimeRange{Start: time.Date(2025, time.January, 1, 13, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 14, 0, 0, 0, time.UTC)},
+			want:        false,
+		},
+		{name: "Second starts in first",
+			firstRange:  TimeRange{Start: time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)},
+			secondRange: TimeRange{Start: time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 13, 0, 0, 0, time.UTC)},
+			want:        true,
+		},
+		{name: "Second ends in first",
+			firstRange:  TimeRange{Start: time.Date(2025, time.January, 1, 6, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)},
+			secondRange: TimeRange{Start: time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC), End: time.Date(2025, time.January, 1, 9, 0, 0, 0, time.UTC)},
+			want:        true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got1 := tt.firstRange.Overlaps(tt.secondRange)
+			got2 := tt.secondRange.Overlaps(tt.firstRange)
+			require.Equal(t, tt.want, got1, got2)
+		})
+	}
+}

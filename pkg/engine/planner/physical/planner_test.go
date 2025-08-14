@@ -22,12 +22,12 @@ type catalog struct {
 }
 
 // ResolveDataObj implements Catalog.
-func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	return c.ResolveDataObjWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -49,7 +49,7 @@ func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard Sh
 		return paths[i] < paths[j]
 	})
 
-	return filterForShard(shard, paths, streams, sections)
+	return filterForShard(shard, paths, streams, sections, from, through)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -61,49 +61,41 @@ func TestMockCatalog(t *testing.T) {
 			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
 		},
 	}
-
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
 	for _, tt := range []struct {
-		shard       ShardInfo
-		expPaths    []DataObjLocation
-		expStreams  [][]int64
-		expSections [][]int
+		shard          ShardInfo
+		expDescriptors []FilteredShardDescriptor
 	}{
 		{
-			shard:       ShardInfo{0, 1},
-			expPaths:    []DataObjLocation{"obj1", "obj2"},
-			expStreams:  [][]int64{{1, 2}, {3, 4}},
-			expSections: [][]int{{0, 1, 2}, {0, 1}},
+			shard: ShardInfo{0, 1},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0, 1, 2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0, 1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
-			shard:       ShardInfo{0, 4},
-			expPaths:    []DataObjLocation{"obj1", "obj2"},
-			expStreams:  [][]int64{{1, 2}, {3, 4}},
-			expSections: [][]int{{0}, {1}},
+			shard: ShardInfo{0, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
-			shard:       ShardInfo{1, 4},
-			expPaths:    []DataObjLocation{"obj1"},
-			expStreams:  [][]int64{{1, 2}},
-			expSections: [][]int{{1}},
+			shard:          ShardInfo{1, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
-			shard:       ShardInfo{2, 4},
-			expPaths:    []DataObjLocation{"obj1"},
-			expStreams:  [][]int64{{1, 2}},
-			expSections: [][]int{{2}},
+			shard:          ShardInfo{2, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
-			shard:       ShardInfo{3, 4},
-			expPaths:    []DataObjLocation{"obj2"},
-			expStreams:  [][]int64{{3, 4}},
-			expSections: [][]int{{0}},
+			shard:          ShardInfo{3, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, time.Now(), time.Now())
-			require.ElementsMatch(t, tt.expPaths, paths)
-			require.ElementsMatch(t, tt.expStreams, streams)
-			require.ElementsMatch(t, tt.expSections, sections)
+			filteredShardDescriptors, err := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			require.Nil(t, err)
+			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
 	}
 }
@@ -113,6 +105,7 @@ func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 
 	visitor := &nodeCollectVisitor{
 		onVisitDataObjScan: func(scan *DataObjScan) error {
+			print("VISITED NODE", scan.Location)
 			res = append(res, string(scan.Location))
 			return nil
 		},
@@ -209,7 +202,9 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
+			timeStart := time.Now()
+			timeEnd := timeStart.Add(time.Second * 10)
+			nodes, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
 			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
 			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))

@@ -3,6 +3,7 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -151,6 +152,47 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
+func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, groupRange TimeRange, baseNode Node, ctx *Context) error {
+	scans := []Node{}
+	for _, descriptor := range currentGroup {
+		// output current group to nodes
+		for _, section := range descriptor.Sections {
+			scan := &DataObjScan{
+				Location:  descriptor.Location,
+				StreamIDs: descriptor.Streams,
+				Section:   section,
+				Direction: ctx.direction,
+				TimeRange: descriptor.TimeRange,
+			}
+			p.plan.addNode(scan)
+			scans = append(scans, scan)
+		}
+	}
+	if len(scans) > 1 && ctx.direction != UNSORTED {
+		sortMerge := &SortMerge{
+			Column:    newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:     ctx.direction, // apply direction from previously visited Sort node
+			TimeRange: groupRange,
+		}
+		p.plan.addNode(sortMerge)
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+				return err
+			}
+		}
+		if err := p.plan.addEdge(Edge{Parent: baseNode, Child: sortMerge}); err != nil {
+			return err
+		}
+	} else {
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: baseNode, Child: scan}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -165,60 +207,38 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	from, through := ctx.GetResolveTimeRange()
 
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	filteredShardDescriptors, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
-
-	nodes := make([]Node, 0, len(objects))
-	for i := range objects {
-		scans := make([]Node, 0, len(sections[i]))
-
-		for _, section := range sections[i] {
-			scan := &DataObjScan{
-				Location:  objects[i],
-				StreamIDs: streams[i],
-				Section:   section,
-				Direction: ctx.direction, // apply direction from previously visited Sort node
-			}
-			p.plan.addNode(scan)
-
-			scans = append(scans, scan)
-		}
-
-		if ctx.direction != UNSORTED && len(scans) > 0 {
-			sortMerge := &SortMerge{
-				Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-				Order:  ctx.direction, // apply direction from previously visited Sort node
-			}
-			p.plan.addNode(sortMerge)
-
-			for _, scan := range scans {
-				if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+	})
+	merge := &Merge{}
+	p.plan.addNode(merge)
+	var currentGroup []FilteredShardDescriptor
+	var groupRange TimeRange
+	for i := range filteredShardDescriptors {
+		if groupRange.Start.IsZero() {
+			groupRange = filteredShardDescriptors[i].TimeRange
+			currentGroup = append(currentGroup, filteredShardDescriptors[i])
+		} else {
+			if groupRange.Overlaps(filteredShardDescriptors[i].TimeRange) {
+				currentGroup = append(currentGroup, filteredShardDescriptors[i])
+			} else {
+				if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
 					return nil, err
 				}
-			}
-
-			nodes = append(nodes, sortMerge)
-		} else {
-			nodes = append(nodes, scans...)
-		}
-	}
-
-	if ctx.direction == UNSORTED && len(nodes) > 0 {
-		// Add a merge node to map N inputs to 1 output.
-		merge := &Merge{}
-		p.plan.addNode(merge)
-
-		for _, node := range nodes {
-			if err := p.plan.addEdge(Edge{Parent: merge, Child: node}); err != nil {
-				return nil, err
+				currentGroup = []FilteredShardDescriptor{filteredShardDescriptors[i]}
 			}
 		}
-
-		nodes = nodes[:0]
-		nodes = append(nodes, merge)
 	}
+	// Clean up the last remaining group
+	if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
+		return nil, err
+	}
+	nodes := make([]Node, 0)
+	nodes = append(nodes, merge)
 
 	return nodes, nil
 }
@@ -248,8 +268,9 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 		order = ASC
 	}
 	node := &SortMerge{
-		Column: &ColumnExpr{Ref: lp.Column.Ref},
-		Order:  order,
+		Column:    &ColumnExpr{Ref: lp.Column.Ref},
+		Order:     order,
+		TimeRange: TimeRange{Start: ctx.from, End: ctx.through},
 	}
 
 	p.plan.addNode(node)
