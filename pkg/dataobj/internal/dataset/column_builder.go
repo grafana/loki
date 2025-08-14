@@ -176,6 +176,7 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 		Name: cb.name,
 		Type: cb.opts.Value,
 
+		PagesCount:  len(cb.pages),
 		Compression: cb.opts.Compression,
 		Statistics:  cb.statsBuilder.Flush(cb.pages),
 	}

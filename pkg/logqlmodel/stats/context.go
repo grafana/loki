@@ -78,11 +78,6 @@ func NewContext(ctx context.Context) (*Context, context.Context) {
 	return contextData, ctx
 }
 
-func IsPresent(ctx context.Context) bool {
-	_, ok := ctx.Value(statsKey).(*Context)
-	return ok
-}
-
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)

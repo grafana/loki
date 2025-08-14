@@ -5,7 +5,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // readerDownloader is a utility for downloading pages in bulk from a
@@ -216,6 +215,19 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 		return err
 	}
 
+	stats := StatsFromContext(ctx)
+	for _, page := range batch {
+		if page.column.primary {
+			stats.AddPrimaryColumnPagesDownloaded(1)
+			stats.AddPrimaryColumnBytesDownloaded(uint64(page.inner.PageInfo().CompressedSize))
+			stats.AddPrimaryColumnUncompressedBytes(uint64(page.inner.PageInfo().UncompressedSize))
+		} else {
+			stats.AddSecondaryColumnPagesDownloaded(1)
+			stats.AddSecondaryColumnBytesDownloaded(uint64(page.inner.PageInfo().CompressedSize))
+			stats.AddSecondaryColumnUncompressedBytes(uint64(page.inner.PageInfo().UncompressedSize))
+		}
+	}
+
 	// Build the set of inner pages that will be passed to the inner Dataset for
 	// downloading.
 	innerPages := make([]Page, len(batch))
@@ -325,10 +337,6 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		batchSize += pageSize
 	}
 
-	statistics := stats.FromContext(ctx)
-	statistics.AddPageBatches(1)
-	statistics.AddPagesDownloaded(int64(len(pageBatch)))
-	statistics.AddPagesDownloadedBytes(int64(batchSize))
 	return pageBatch, nil
 }
 
@@ -580,10 +588,14 @@ func (page *readerPage) PageInfo() *PageInfo {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
+	stats := StatsFromContext(ctx)
+	stats.AddPagesScanned(1)
 	if page.data != nil {
+		stats.AddPagesFoundInCache(1)
 		return page.data, nil
 	}
 
+	stats.AddBatchDownloadRequests(1)
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}
