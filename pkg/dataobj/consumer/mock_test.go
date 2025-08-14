@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -121,4 +122,26 @@ type mockCommitter struct {
 func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
 	m.records = append(m.records, records...)
 	return nil
+}
+
+type recordedTocEntry struct {
+	DataObjectPath string
+	MinTimestamp   time.Time
+	MaxTimestamp   time.Time
+}
+
+// A recordingTocWriter wraps a [metastore.TableOfContentsWriter] and records
+// all entries written to it.
+type recordingTocWriter struct {
+	entries []recordedTocEntry
+	*metastore.TableOfContentsWriter
+}
+
+func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+	m.entries = append(m.entries, recordedTocEntry{
+		DataObjectPath: dataobjPath,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
+	})
+	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, minTimestamp, maxTimestamp)
 }

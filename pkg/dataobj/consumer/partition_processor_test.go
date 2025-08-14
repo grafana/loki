@@ -31,6 +31,71 @@ var testBuilderConfig = logsobj.BuilderConfig{
 	SectionStripeMergeLimit: 2,
 }
 
+func TestPartitionProcessor_Flush(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+	// Wrap the TOC writer to record all of the entries.
+	tocWriter, ok := p.metastoreTocWriter.(*metastore.TableOfContentsWriter)
+	require.True(t, ok)
+	recordingTocWriter := &recordingTocWriter{TableOfContentsWriter: tocWriter}
+	p.metastoreTocWriter = recordingTocWriter
+
+	// Push two streams, one minute apart.
+	now1 := clock.Now()
+	s1 := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: now1,
+			Line:      "abc",
+		}},
+	}
+	b1, err := s1.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b1,
+		Timestamp: now1,
+	})
+
+	// Push the second stream, one minute later.
+	clock.Advance(time.Minute)
+	now2 := clock.Now()
+	s2 := s1
+	s2.Entries[0].Timestamp = now2
+	b2, err := s2.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b2,
+		Timestamp: now2,
+	})
+
+	// No flush should have occurred, we will flush ourselves instead.
+	require.True(t, p.lastFlush.IsZero())
+
+	// Get the time range. We will use this to check that the metastore has
+	// the correct time range.
+	minTime, maxTime := p.builder.TimeRange()
+	require.Equal(t, now1, minTime)
+	require.Equal(t, now2, maxTime)
+
+	// Flush the data object.
+	require.NoError(t, p.flush())
+	require.Equal(t, now2, p.lastFlush)
+
+	// Flush should produce two uploads, the data object and the metastore
+	// object.
+	bucket, ok := p.bucket.(*mockBucket)
+	require.True(t, ok)
+	require.Len(t, bucket.uploads, 2)
+
+	// Check that the expected entries were written to the metastore.
+	require.Len(t, recordingTocWriter.entries, 1)
+	actual := recordingTocWriter.entries[0]
+	require.Equal(t, minTime, actual.MinTimestamp)
+	require.Equal(t, maxTime, actual.MaxTimestamp)
+}
+
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	clock := quartz.NewMock(t)
 	p := newTestPartitionProcessor(t, clock)
