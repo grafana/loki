@@ -134,7 +134,8 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
-		if !logs.IsMetadataColumn(column.Type) {
+		logsType, _ := logs.ParseColumnType(column.Type)
+		if logsType != logs.ColumnTypeMetadata {
 			continue
 		}
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)

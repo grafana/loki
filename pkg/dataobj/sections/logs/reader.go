@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
@@ -235,7 +236,16 @@ func (r *Reader) init(ctx context.Context) error {
 	// easy filtering of Row Values with index >= len(r.opts.Columns).
 	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
 
-	dset, err := newColumnsDataset(cols)
+	var innerSection *columnar.Section
+	innerColumns := make([]*columnar.Column, len(cols))
+	for i, column := range cols {
+		if innerSection == nil {
+			innerSection = column.Section.inner
+		}
+		innerColumns[i] = column.inner
+	}
+
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(cols) {

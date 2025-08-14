@@ -8,26 +8,24 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 )
 
 func TestDecode(t *testing.T) {
 	tests := []struct {
 		name     string
-		columns  []*logsmd.ColumnDesc
+		columns  []*Column
 		row      dataset.Row
 		expected Record
 		wantErr  bool
 	}{
 		{
 			name: "all fields present",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_STREAM_ID},
-				{Type: logsmd.COLUMN_TYPE_TIMESTAMP},
-				{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "app"}},
-				{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "env"}},
-				{Type: logsmd.COLUMN_TYPE_MESSAGE},
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMetadata, Name: "app"},
+				{Type: ColumnTypeMetadata, Name: "env"},
+				{Type: ColumnTypeMessage},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -47,11 +45,11 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "nil values are skipped",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_STREAM_ID},
-				{Type: logsmd.COLUMN_TYPE_TIMESTAMP},
-				{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "app"}},
-				{Type: logsmd.COLUMN_TYPE_MESSAGE},
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
+				{Type: ColumnTypeTimestamp},
+				{Type: ColumnTypeMetadata, Name: "app"},
+				{Type: ColumnTypeMessage},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -70,8 +68,8 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "invalid stream_id type",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_STREAM_ID},
+			columns: []*Column{
+				{Type: ColumnTypeStreamID},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -82,8 +80,8 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "invalid timestamp type",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_TIMESTAMP},
+			columns: []*Column{
+				{Type: ColumnTypeTimestamp},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -94,8 +92,8 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "invalid metadata type",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "app"}},
+			columns: []*Column{
+				{Type: ColumnTypeMetadata, Name: "app"},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -106,8 +104,8 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "invalid message type",
-			columns: []*logsmd.ColumnDesc{
-				{Type: logsmd.COLUMN_TYPE_MESSAGE},
+			columns: []*Column{
+				{Type: ColumnTypeMessage},
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
@@ -130,17 +128,4 @@ func TestDecode(t *testing.T) {
 			require.Equal(t, tt.expected, record)
 		})
 	}
-}
-
-func TestMetadataColumns(t *testing.T) {
-	columns := []*logsmd.ColumnDesc{
-		{Type: logsmd.COLUMN_TYPE_STREAM_ID},
-		{Type: logsmd.COLUMN_TYPE_TIMESTAMP},
-		{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "app"}},
-		{Type: logsmd.COLUMN_TYPE_METADATA, Info: &datasetmd.ColumnInfo{Name: "env"}},
-		{Type: logsmd.COLUMN_TYPE_MESSAGE},
-	}
-
-	count := metadataColumns(columns)
-	require.Equal(t, 2, count)
 }

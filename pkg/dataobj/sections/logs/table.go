@@ -8,7 +8,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -23,7 +22,7 @@ type table struct {
 type tableColumn struct {
 	*dataset.MemColumn
 
-	Type logsmd.ColumnType
+	Type ColumnType
 }
 
 var _ dataset.Dataset = (*table)(nil)
@@ -327,7 +326,7 @@ func (b *tableBuffer) Flush() (*table, error) {
 		// other columns. Since adding NULLs isn't free, we don't call Backfill
 		// here.
 		metadata, _ := metadataBuilder.Flush()
-		metadatas = append(metadatas, &tableColumn{metadata, logsmd.COLUMN_TYPE_METADATA})
+		metadatas = append(metadatas, &tableColumn{metadata, ColumnTypeMetadata})
 	}
 
 	// Sort metadata columns by name for consistency.
@@ -336,9 +335,9 @@ func (b *tableBuffer) Flush() (*table, error) {
 	})
 
 	return &table{
-		StreamID:  &tableColumn{streamID, logsmd.COLUMN_TYPE_STREAM_ID},
-		Timestamp: &tableColumn{timestamp, logsmd.COLUMN_TYPE_TIMESTAMP},
+		StreamID:  &tableColumn{streamID, ColumnTypeStreamID},
+		Timestamp: &tableColumn{timestamp, ColumnTypeTimestamp},
 		Metadatas: metadatas,
-		Message:   &tableColumn{messages, logsmd.COLUMN_TYPE_MESSAGE},
+		Message:   &tableColumn{messages, ColumnTypeMessage},
 	}, nil
 }
