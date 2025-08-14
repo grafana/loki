@@ -1,27 +1,54 @@
-"jobs":
-  "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@39f70c4db167e7e61065455fdbc48b50fd7c12a2"
-    "with":
-      "build_image": "grafana/loki-build-image:0.34.6"
-      "golang_ci_lint_version": "v1.64.5"
-      "release_lib_ref": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
-      "skip_validation": false
-      "use_github_app_token": true
-"name": "check"
-"on":
-  "pull_request":
-    "paths-ignore":
-    - "production/helm/**"
-    - "**.md"
-    - "docs/sources/**"
+name: check
+on:
+  pull_request: {}
+  push:
+    branches: [ main ]
 
-  "push":
-    "branches":
-    - "main"
-    "paths-ignore":
-    - "production/helm/**"
-    - "**.md"
-    - "docs/sources/**"
-"permissions":
-  "contents": "read"
-  "pull-requests": "read"
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_or_helm_only: ${{ steps.filter.outputs.other != 'true' && (steps.filter.outputs.docs == 'true' || steps.filter.outputs.helm == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - '**/*.md'
+            helm:
+              - 'production/helm/**'
+            other:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!production/helm/**'
+
+  full:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_or_helm_only != 'true' }}
+    uses: grafana/loki-release/.github/workflows/check.yml@39f70c4db167e7e61065455fdbc48b50fd7c12a2
+    with:
+      build_image: grafana/loki-build-image:0.34.6
+      golang_ci_lint_version: v1.64.5
+      release_lib_ref: 39f70c4db167e7e61065455fdbc48b50fd7c12a2
+      skip_validation: false
+      use_github_app_token: true
+
+  check:
+    needs: [changes, full]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ needs.changes.outputs.docs_or_helm_only == 'true' }}
+        run: echo "docs/helm-only; bypass source code check"
+      - if: ${{ needs.changes.outputs.docs_or_helm_only != 'true' }}
+        run: test "${{ needs.full.result }}" = "success"
