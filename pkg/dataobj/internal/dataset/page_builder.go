@@ -291,7 +291,6 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
-
 	minValueBytes, err := b.minValue.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))

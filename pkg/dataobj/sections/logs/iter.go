@@ -5,11 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
-	"strings"
 	"time"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -18,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 // Iter iterates over records in the provided decoder. All logs sections are
@@ -51,7 +48,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 		//
 		// TODO(rfratto): find a way to expose this information from
 		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx)
+		metadata, err := dec.Metadata(ctx)
 		if err != nil {
 			return err
 		}
@@ -81,8 +78,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			} else if n == 0 && errors.Is(err, io.EOF) {
 				return nil
 			}
+
 			for _, row := range rows[:n] {
-				err := decodeRow(streamsColumns, row, &record, nil)
+				err := decodeRow(metadata.GetColumns(), row, &record, nil)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -98,10 +96,8 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 // The sym argument is used for reusing metadata strings between calls to
 // decodeRow. If sym is nil, metadata strings are always allocated.
 func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
-	metadataColumns := metadataColumns(columns)
-	record.Metadata = slicegrow.GrowToCap(record.Metadata, metadataColumns)
-	record.Metadata = record.Metadata[:metadataColumns]
-	nextMetadataIdx := 0
+	labelBuilder := labelpool.Get()
+	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
@@ -127,15 +123,11 @@ func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record, sy
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			record.Metadata[nextMetadataIdx].Name = column.Info.Name
-
 			if sym != nil {
-				record.Metadata[nextMetadataIdx].Value = sym.Get(unsafeString(columnValue.ByteArray()))
+				labelBuilder.Add(column.Info.Name, sym.Get(unsafeString(columnValue.ByteArray())))
 			} else {
-				record.Metadata[nextMetadataIdx].Value = string(columnValue.ByteArray())
+				labelBuilder.Add(column.Info.Name, string(columnValue.ByteArray()))
 			}
-
-			nextMetadataIdx++
 
 		case logsmd.COLUMN_TYPE_MESSAGE:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
@@ -146,19 +138,9 @@ func decodeRow(columns []*logsmd.ColumnDesc, row dataset.Row, record *Record, sy
 		}
 	}
 
-	// Truncate the metadata slice to the number of metadata columns we found.
-	record.Metadata = record.Metadata[:nextMetadataIdx]
-
-	// Metadata is originally sorted in received order; we sort it by key
-	// per-record since it might not be obvious why keys appear in a certain
-	// order.
-	slices.SortFunc(record.Metadata, func(a, b labels.Label) int {
-		if res := strings.Compare(a.Name, b.Name); res != 0 {
-			return res
-		}
-		return strings.Compare(a.Value, b.Value)
-	})
-
+	// Commit the final metadata to the record.
+	labelBuilder.Sort()
+	record.Metadata = labelBuilder.Labels()
 	return nil
 }
 

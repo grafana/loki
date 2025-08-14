@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
@@ -30,8 +31,8 @@ func toTreeNode(n Node) *tree.Node {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
-			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
-			tree.NewProperty("section_id", true, node.Section),
+			tree.NewProperty("streams", false, len(node.StreamIDs)),
+			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
@@ -52,6 +53,8 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+	case *Merge:
+		// nothing to add
 	case *Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),
@@ -60,8 +63,8 @@ func toTreeNode(n Node) *tree.Node {
 	case *RangeAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
-			tree.NewProperty("start", false, node.Start),
-			tree.NewProperty("end", false, node.End),
+			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 			tree.NewProperty("step", false, node.Step),
 			tree.NewProperty("range", false, node.Range),
 		}

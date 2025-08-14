@@ -55,12 +55,14 @@ func (m Map) EnsureCapacity(capacity int) {
 	copy(*m.getOrig(), oldOrig)
 }
 
-// Get returns the Value associated with the key and true. Returned
+// Get returns the Value associated with the key and true. The returned
 // Value is not a copy, it is a reference to the value stored in this map.
 // It is allowed to modify the returned value using Value.Set* functions.
 // Such modification will be applied to the value stored in this map.
+// Accessing the returned value after modifying the underlying map
+// (removing or adding new values) is an undefined behavior.
 //
-// If the key does not exist returns a zero-initialized KeyValue and false.
+// If the key does not exist, returns a zero-initialized KeyValue and false.
 // Calling any functions on the returned invalid instance may cause a panic.
 func (m Map) Get(key string) (Value, bool) {
 	for i := range *m.getOrig() {
@@ -92,8 +94,8 @@ func (m Map) RemoveIf(f func(string, Value) bool) {
 	m.getState().AssertMutable()
 	newLen := 0
 	for i := 0; i < len(*m.getOrig()); i++ {
-		akv := &(*m.getOrig())[i]
-		if f(akv.Key, newValue(&akv.Value, m.getState())) {
+		if f((*m.getOrig())[i].Key, newValue(&(*m.getOrig())[i].Value, m.getState())) {
+			(*m.getOrig())[i] = otlpcommon.KeyValue{}
 			continue
 		}
 		if newLen == i {
@@ -102,6 +104,7 @@ func (m Map) RemoveIf(f func(string, Value) bool) {
 			continue
 		}
 		(*m.getOrig())[newLen] = (*m.getOrig())[i]
+		(*m.getOrig())[i] = otlpcommon.KeyValue{}
 		newLen++
 	}
 	*m.getOrig() = (*m.getOrig())[:newLen]
@@ -122,7 +125,7 @@ func (m Map) PutEmpty(k string) Value {
 // PutStr performs the Insert or Update action. The Value is
 // inserted to the map that did not originally have the key. The key/value is
 // updated to the map where the key already existed.
-func (m Map) PutStr(k string, v string) {
+func (m Map) PutStr(k, v string) {
 	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.SetStr(v)
@@ -259,7 +262,7 @@ func (m Map) MoveTo(dest Map) {
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigMap(*dest.getOrig(), *m.getOrig())
+	*dest.getOrig() = internal.CopyOrigKeyValueSlice(*dest.getOrig(), *m.getOrig())
 }
 
 // AsRaw returns a standard go map representation of this Map.

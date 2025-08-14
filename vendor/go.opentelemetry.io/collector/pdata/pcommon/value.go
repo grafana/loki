@@ -336,7 +336,7 @@ func (v Value) MoveTo(dest Value) {
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) CopyTo(dest Value) {
 	dest.getState().AssertMutable()
-	internal.CopyOrigValue(dest.getOrig(), v.getOrig())
+	internal.CopyOrigAnyValue(dest.getOrig(), v.getOrig())
 }
 
 // AsString converts an OTLP Value object of any type to its equivalent string
@@ -456,7 +456,7 @@ func (v Value) Equal(c Value) bool {
 	return false
 }
 
-func newKeyValueString(k string, v string) otlpcommon.KeyValue {
+func newKeyValueString(k, v string) otlpcommon.KeyValue {
 	orig := otlpcommon.KeyValue{Key: k}
 	state := internal.StateMutable
 	akv := newValue(&orig.Value, &state)

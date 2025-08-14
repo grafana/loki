@@ -2,13 +2,17 @@ package jobqueue
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -21,6 +25,11 @@ var (
 	}
 )
 
+const (
+	statusSuccess = "success"
+	statusFailure = "failure"
+)
+
 type CompactorClient interface {
 	JobQueueClient() grpc.JobQueueClient
 }
@@ -29,18 +38,60 @@ type JobRunner interface {
 	Run(ctx context.Context, job *grpc.Job) ([]byte, error)
 }
 
-type WorkerManager struct {
-	grpcClient CompactorClient
-	jobRunners map[grpc.JobType]JobRunner
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+type WorkerConfig struct {
+	NumWorkers int `yaml:"num_sub_workers"`
 }
 
-func NewWorkerManager(grpcClient CompactorClient) *WorkerManager {
-	return &WorkerManager{
+func (c *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.IntVar(&c.NumWorkers, prefix+"num-sub-workers", 0, "Number of sub-workers to run for concurrent processing of jobs. Setting it to 0 will run a subworker per available CPU core.")
+}
+
+func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *WorkerConfig) Validate() error {
+	if c.NumWorkers < 0 {
+		return errors.New("num_workers must be >= 0")
+	}
+	if c.NumWorkers == 0 {
+		c.NumWorkers = runtime.GOMAXPROCS(0)
+	}
+
+	return nil
+}
+
+type WorkerManager struct {
+	cfg        WorkerConfig
+	grpcClient CompactorClient
+	jobRunners map[grpc.JobType]JobRunner
+	metrics    *workerMetrics
+
+	workers []*worker
+	wg      sync.WaitGroup
+}
+
+func NewWorkerManager(cfg WorkerConfig, grpcClient CompactorClient, r prometheus.Registerer) *WorkerManager {
+	wm := &WorkerManager{
+		cfg:        cfg,
 		grpcClient: grpcClient,
 		jobRunners: make(map[grpc.JobType]JobRunner),
 	}
+
+	wm.metrics = newWorkerMetrics(r, func() bool {
+		if len(wm.workers) != cfg.NumWorkers {
+			return false
+		}
+
+		for _, w := range wm.workers {
+			if !w.isConnected() {
+				return false
+			}
+		}
+		return true
+	})
+
+	return wm
 }
 
 func (w *WorkerManager) RegisterJobRunner(jobType grpc.JobType, jobRunner JobRunner) error {
@@ -52,39 +103,48 @@ func (w *WorkerManager) RegisterJobRunner(jobType grpc.JobType, jobRunner JobRun
 	return nil
 }
 
-func (w *WorkerManager) Start(ctx context.Context, numWorkers int) {
-	ctx, cancel := context.WithCancel(ctx)
-	w.cancel = cancel
+func (w *WorkerManager) Start(ctx context.Context) error {
+	if len(w.jobRunners) == 0 {
+		return errors.New("no job runners registered")
+	}
 
-	for i := 0; i < numWorkers; i++ {
-		w.wg.Add(1)
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < w.cfg.NumWorkers; i++ {
+		worker := newWorker(w.grpcClient, w.jobRunners, w.metrics)
+		w.workers = append(w.workers, worker)
+
+		wg.Add(1)
 		go func() {
-			defer w.wg.Done()
-			newWorker(w.grpcClient, w.jobRunners).start(ctx)
+			defer wg.Done()
+			worker.Start(ctx)
 		}()
 	}
-}
 
-func (w *WorkerManager) Stop() {
-	if w.cancel != nil {
-		w.cancel()
-	}
-	w.wg.Wait()
+	wg.Wait()
+	return nil
 }
 
 type worker struct {
 	grpcClient CompactorClient
 	jobRunners map[grpc.JobType]JobRunner
+	metrics    *workerMetrics
+	connected  atomic.Bool
 }
 
-func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner) *worker {
+func newWorker(grpcClient CompactorClient, jobRunners map[grpc.JobType]JobRunner, metrics *workerMetrics) *worker {
 	return &worker{
 		grpcClient: grpcClient,
 		jobRunners: jobRunners,
+		metrics:    metrics,
 	}
 }
 
-func (w *worker) start(ctx context.Context) {
+func (w *worker) isConnected() bool {
+	return w.connected.Load()
+}
+
+func (w *worker) Start(ctx context.Context) {
 	client := w.grpcClient.JobQueueClient()
 
 	backoff := backoff.New(ctx, connBackoffConfig)
@@ -112,6 +172,9 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 	ctx, cancel := context.WithCancelCause(c.Context())
 	defer cancel(errors.New("job queue stream closed"))
 
+	w.connected.Store(true)
+	defer w.connected.Store(false)
+
 	for {
 		job, err := c.Recv()
 		if err != nil {
@@ -124,6 +187,16 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 		// here, as we're running in a lock-step with the server - each Recv is
 		// paired with a Send.
 		go func() {
+			jobFailed := true
+			defer func() {
+				status := statusSuccess
+				if jobFailed {
+					status = statusFailure
+				}
+
+				w.metrics.jobsProcessed.WithLabelValues(status).Inc()
+			}()
+
 			jobResult := &grpc.JobResult{
 				JobId:   job.Id,
 				JobType: job.Type,
@@ -141,19 +214,21 @@ func (w *worker) process(c grpc.JobQueue_LoopClient) error {
 
 			jobResponse, err := jobRunner.Run(ctx, job)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error running job", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error running job", "job_id", job.Id, "err", err)
 				jobResult.Error = err.Error()
 				if err := c.Send(jobResult); err != nil {
-					level.Error(util_log.Logger).Log("msg", "error sending job result", "err", err)
+					level.Error(util_log.Logger).Log("msg", "error sending job result", "job_id", job.Id, "err", err)
 				}
 				return
 			}
 
 			jobResult.Result = jobResponse
 			if err := c.Send(jobResult); err != nil {
-				level.Error(util_log.Logger).Log("msg", "error sending job result", "err", err)
+				level.Error(util_log.Logger).Log("msg", "error sending job result", "job_id", job.Id, "err", err)
 				return
 			}
+
+			jobFailed = false
 		}()
 	}
 }

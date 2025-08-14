@@ -19,6 +19,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	encoder "go.opentelemetry.io/collector/confmap/internal/mapstructure"
+	"go.opentelemetry.io/collector/confmap/internal/third_party/composehook"
 )
 
 const (
@@ -34,14 +35,18 @@ const (
 
 // New creates a new empty confmap.Conf instance.
 func New() *Conf {
-	return &Conf{k: koanf.New(KeyDelimiter)}
+	return &Conf{k: koanf.New(KeyDelimiter), isNil: false}
 }
 
 // NewFromStringMap creates a confmap.Conf from a map[string]any.
 func NewFromStringMap(data map[string]any) *Conf {
 	p := New()
-	// Cannot return error because the koanf instance is empty.
-	_ = p.k.Load(confmap.Provider(data, KeyDelimiter), nil)
+	if data == nil {
+		p.isNil = true
+	} else {
+		// Cannot return error because the koanf instance is empty.
+		_ = p.k.Load(confmap.Provider(data, KeyDelimiter), nil)
+	}
 	return p
 }
 
@@ -54,6 +59,9 @@ type Conf struct {
 	// This avoids running into an infinite recursion where Unmarshaler.Unmarshal and
 	// Conf.Unmarshal would call each other.
 	skipTopLevelUnmarshaler bool
+	// isNil is true if this Conf was created from a nil field, as opposed to an empty map.
+	// AllKeys must return an empty slice if this is true.
+	isNil bool
 }
 
 // AllKeys returns all keys holding a value, regardless of where they are set.
@@ -140,7 +148,12 @@ func sanitizeExpanded(a any, useOriginal bool) any {
 		}
 		return c
 	case []any:
+		// If the value is nil, return nil.
 		var newSlice []any
+		if m == nil {
+			return newSlice
+		}
+		newSlice = make([]any, 0, len(m))
 		for _, e := range m {
 			newSlice = append(newSlice, sanitizeExpanded(e, useOriginal))
 		}
@@ -168,7 +181,21 @@ func (l *Conf) IsSet(key string) bool {
 // Merge merges the input given configuration into the existing config.
 // Note that the given map may be modified.
 func (l *Conf) Merge(in *Conf) error {
+	if enableMergeAppendOption.IsEnabled() {
+		// only use MergeAppend when enableMergeAppendOption featuregate is enabled.
+		return l.mergeAppend(in)
+	}
+	l.isNil = l.isNil && in.isNil
 	return l.k.Merge(in.k)
+}
+
+// Delete a path from the Conf.
+// If the path exists, deletes it and returns true.
+// If the path does not exist, does nothing and returns false.
+func (l *Conf) Delete(key string) bool {
+	wasSet := l.IsSet(key)
+	l.k.Delete(key)
+	return wasSet
 }
 
 // mergeAppend merges the input given configuration into the existing config.
@@ -177,7 +204,12 @@ func (l *Conf) Merge(in *Conf) error {
 // For example, if listA = [extension1, extension2] and listB = [extension1, extension3],
 // the resulting list will be [extension1, extension2, extension3].
 func (l *Conf) mergeAppend(in *Conf) error {
-	return l.k.Load(confmap.Provider(in.ToStringMap(), ""), nil, koanf.WithMergeFunc(mergeAppend))
+	err := l.k.Load(confmap.Provider(in.ToStringMap(), ""), nil, koanf.WithMergeFunc(mergeAppend))
+	if err != nil {
+		return err
+	}
+	l.isNil = l.isNil && in.isNil
+	return nil
 }
 
 // Sub returns new Conf instance representing a sub-config of this instance.
@@ -186,7 +218,9 @@ func (l *Conf) Sub(key string) (*Conf, error) {
 	// Code inspired by the koanf "Cut" func, but returns an error instead of empty map for unsupported sub-config type.
 	data := l.unsanitizedGet(key)
 	if data == nil {
-		return New(), nil
+		c := New()
+		c.isNil = true
+		return c, nil
 	}
 
 	switch v := data.(type) {
@@ -195,18 +229,37 @@ func (l *Conf) Sub(key string) (*Conf, error) {
 	case expandedValue:
 		if m, ok := v.Value.(map[string]any); ok {
 			return NewFromStringMap(m), nil
+		} else if v.Value == nil {
+			// If the value is nil, return a new empty Conf.
+			c := New()
+			c.isNil = true
+			return c, nil
 		}
+		// override data with the original value to make the error message more informative.
+		data = v.Value
 	}
 
 	return nil, fmt.Errorf("unexpected sub-config value kind for key:%s value:%v kind:%v", key, data, reflect.TypeOf(data).Kind())
 }
 
 func (l *Conf) toStringMapWithExpand() map[string]any {
+	if l.isNil {
+		return nil
+	}
 	m := maps.Unflatten(l.k.All(), KeyDelimiter)
 	return m
 }
 
-// ToStringMap creates a map[string]any from a Parser.
+// ToStringMap creates a map[string]any from a Conf.
+// Values with multiple representations
+// are normalized with the YAML parsed representation.
+//
+// For example, for a Conf created from `foo: ${env:FOO}` and `FOO=123`
+// ToStringMap will return `map[string]any{"foo": 123}`.
+//
+// For any map `m`, `NewFromStringMap(m).ToStringMap() == m`.
+// In particular, if the Conf was created from a nil value,
+// ToStringMap will return map[string]any(nil).
 func (l *Conf) ToStringMap() map[string]any {
 	return sanitize(l.toStringMapWithExpand()).(map[string]any)
 }
@@ -225,7 +278,8 @@ func decodeConfig(m *Conf, result any, errorUnused bool, skipTopLevelUnmarshaler
 		TagName:          MapstructureTag,
 		WeaklyTypedInput: false,
 		MatchName:        caseSensitiveMatchName,
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+		DecodeNil:        true,
+		DecodeHook: composehook.ComposeDecodeHookFunc(
 			useExpandValue(),
 			expandNilStructPointersHookFunc(),
 			mapstructure.StringToSliceHookFunc(","),
@@ -236,7 +290,7 @@ func decodeConfig(m *Conf, result any, errorUnused bool, skipTopLevelUnmarshaler
 			// after the main unmarshaler hook is called,
 			// we unmarshal the embedded structs if present to merge with the result:
 			unmarshalerEmbeddedStructsHookFunc(),
-			zeroSliceHookFunc(),
+			zeroSliceAndMapHookFunc(),
 		),
 	}
 	decoder, err := mapstructure.NewDecoder(dc)
@@ -297,6 +351,23 @@ func isStringyStructure(t reflect.Type) bool {
 	return false
 }
 
+// safeWrapDecodeHookFunc wraps a DecodeHookFuncValue to ensure fromVal is a valid `reflect.Value`
+// object and therefore it is safe to call `reflect.Value` methods on fromVal.
+//
+// Use this only if the hook does not need to be called on untyped nil values.
+// Typed nil values are safe to call and will be passed to the hook.
+// See https://github.com/golang/go/issues/51649
+func safeWrapDecodeHookFunc(
+	f mapstructure.DecodeHookFuncValue,
+) mapstructure.DecodeHookFuncValue {
+	return func(fromVal reflect.Value, toVal reflect.Value) (any, error) {
+		if !fromVal.IsValid() {
+			return nil, nil
+		}
+		return f(fromVal, toVal)
+	}
+}
+
 // When a value has been loaded from an external source via a provider, we keep both the
 // parsed value and the original string value. This allows us to expand the value to its
 // original string representation when decoding into a string field, and use the original otherwise.
@@ -346,7 +417,7 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 // we want an unmarshaled Config to be equivalent to
 // Config{Thing: &SomeStruct{}} instead of Config{Thing: nil}
 func expandNilStructPointersHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, to reflect.Value) (any, error) {
+	return safeWrapDecodeHookFunc(func(from reflect.Value, to reflect.Value) (any, error) {
 		// ensure we are dealing with map to map comparison
 		if from.Kind() == reflect.Map && to.Kind() == reflect.Map {
 			toElem := to.Type().Elem()
@@ -366,7 +437,7 @@ func expandNilStructPointersHookFunc() mapstructure.DecodeHookFuncValue {
 			}
 		}
 		return from.Interface(), nil
-	}
+	})
 }
 
 // mapKeyStringToMapKeyTextUnmarshalerHookFunc returns a DecodeHookFuncType that checks that a conversion from
@@ -413,7 +484,7 @@ func mapKeyStringToMapKeyTextUnmarshalerHookFunc() mapstructure.DecodeHookFuncTy
 // unmarshalerEmbeddedStructsHookFunc provides a mechanism for embedded structs to define their own unmarshal logic,
 // by implementing the Unmarshaler interface.
 func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, to reflect.Value) (any, error) {
+	return safeWrapDecodeHookFunc(func(from reflect.Value, to reflect.Value) (any, error) {
 		if to.Type().Kind() != reflect.Struct {
 			return from.Interface(), nil
 		}
@@ -439,6 +510,9 @@ func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
 						return nil, err
 					}
 					resultMap := conf.ToStringMap()
+					if fromAsMap == nil && len(resultMap) > 0 {
+						fromAsMap = make(map[string]any, len(resultMap))
+					}
 					for k, v := range resultMap {
 						fromAsMap[k] = v
 					}
@@ -446,14 +520,14 @@ func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
 			}
 		}
 		return fromAsMap, nil
-	}
+	})
 }
 
 // Provides a mechanism for individual structs to define their own unmarshal logic,
 // by implementing the Unmarshaler interface, unless skipTopLevelUnmarshaler is
 // true and the struct matches the top level object being unmarshaled.
 func unmarshalerHookFunc(result any, skipTopLevelUnmarshaler bool) mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, to reflect.Value) (any, error) {
+	return safeWrapDecodeHookFunc(func(from reflect.Value, to reflect.Value) (any, error) {
 		if !to.CanAddr() {
 			return from.Interface(), nil
 		}
@@ -486,14 +560,14 @@ func unmarshalerHookFunc(result any, skipTopLevelUnmarshaler bool) mapstructure.
 		}
 
 		return unmarshaler, nil
-	}
+	})
 }
 
 // marshalerHookFunc returns a DecodeHookFuncValue that checks structs that aren't
 // the original to see if they implement the Marshaler interface.
 func marshalerHookFunc(orig any) mapstructure.DecodeHookFuncValue {
 	origType := reflect.TypeOf(orig)
-	return func(from reflect.Value, _ reflect.Value) (any, error) {
+	return safeWrapDecodeHookFunc(func(from reflect.Value, _ reflect.Value) (any, error) {
 		if from.Kind() != reflect.Struct {
 			return from.Interface(), nil
 		}
@@ -506,15 +580,27 @@ func marshalerHookFunc(orig any) mapstructure.DecodeHookFuncValue {
 		if !ok {
 			return from.Interface(), nil
 		}
-		conf := New()
+		conf := NewFromStringMap(nil)
 		if err := marshaler.Marshal(conf); err != nil {
 			return nil, err
 		}
-		return conf.ToStringMap(), nil
-	}
+
+		stringMap := conf.ToStringMap()
+		if stringMap == nil {
+			// If conf is still nil after marshaling, we want to encode it as an untyped nil
+			// instead of a map-typed nil. This ensures the value is a proper null value
+			// in the final marshaled output instead of an empty map. We hit this case
+			// when marshaling wrapper structs that have no direct representation
+			// in the marshaled output that aren't tagged with "squash" on the fields
+			// they're used on.
+			return nil, nil
+		}
+		return stringMap, nil
+	})
 }
 
 // Unmarshaler interface may be implemented by types to customize their behavior when being unmarshaled from a Conf.
+// Only types with struct or pointer to struct kind are supported.
 type Unmarshaler interface {
 	// Unmarshal a Conf into the struct in a custom way.
 	// The Conf for this specific component may be nil or empty if no config available.
@@ -552,14 +638,27 @@ type Marshaler interface {
 //
 // 4. configuration have no `keys` field specified, the output should be default config
 //   - for example, input is {}, then output is Config{ Keys: ["a", "b"]}
-func zeroSliceHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, to reflect.Value) (any, error) {
+//
+// This hook is also used to solve https://github.com/open-telemetry/opentelemetry-collector/issues/13117.
+// Since v0.127.0, we decode nil values to avoid creating empty map objects.
+// The nil value is not well understood when layered on top of a default map non-nil value.
+// The fix is to avoid the assignment and return the previous value.
+func zeroSliceAndMapHookFunc() mapstructure.DecodeHookFuncValue {
+	return safeWrapDecodeHookFunc(func(from reflect.Value, to reflect.Value) (any, error) {
 		if to.CanSet() && to.Kind() == reflect.Slice && from.Kind() == reflect.Slice {
-			to.Set(reflect.MakeSlice(to.Type(), from.Len(), from.Cap()))
+			if !from.IsNil() {
+				// input slice is not nil, set the output slice to a new slice of the same type.
+				to.Set(reflect.MakeSlice(to.Type(), from.Len(), from.Cap()))
+			}
+		}
+		if to.CanSet() && to.Kind() == reflect.Map && from.Kind() == reflect.Map {
+			if from.IsNil() {
+				return to.Interface(), nil
+			}
 		}
 
 		return from.Interface(), nil
-	}
+	})
 }
 
 type moduleFactory[T any, S any] interface {

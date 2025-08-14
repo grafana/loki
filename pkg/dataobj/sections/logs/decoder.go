@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // newDecoder creates a new [decoder] for the given [dataobj.SectionReader].
@@ -23,22 +27,18 @@ type decoder struct {
 	sr dataobj.SectionReader
 }
 
-// Columns describes the set of columns in the section.
-func (rd *decoder) Columns(ctx context.Context) ([]*logsmd.ColumnDesc, error) {
-	rc, err := rd.sr.Metadata(ctx)
+// Metadata returns the metadata for the logs section.
+func (rd *decoder) Metadata(ctx context.Context) (*logsmd.Metadata, error) {
+	rc, err := rd.sr.MetadataRange(ctx, 0, rd.sr.MetadataSize())
 	if err != nil {
-		return nil, fmt.Errorf("reading streams section metadata: %w", err)
+		return nil, fmt.Errorf("reading logs section metadata: %w", err)
 	}
 	defer rc.Close()
 
 	br := bufpool.GetReader(rc)
 	defer bufpool.PutReader(br)
 
-	md, err := decodeLogsMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Columns, nil
+	return decodeLogsMetadata(br)
 }
 
 // Pages retrieves the set of pages for the provided columns. The order of page
@@ -52,10 +52,13 @@ func (rd *decoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) resu
 			return c.GetInfo().MetadataOffset, c.GetInfo().MetadataSize
 		}
 
+		numWindows := 0
 		for window := range windowing.Iter(columns, columnInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
+
+			numWindows++
 
 			var (
 				windowOffset = window.Start().GetInfo().MetadataOffset
@@ -91,6 +94,8 @@ func (rd *decoder) Pages(ctx context.Context, columns []*logsmd.ColumnDesc) resu
 			}
 		}
 
+		level.Debug(utillog.WithContext(ctx, utillog.Logger)).Log("msg", "logs.decoder: retrieve page desc", "num_columns", len(columns), "window_size", humanize.Bytes(windowing.S3WindowSize), "total_windows", numWindows)
+
 		for _, data := range results {
 			if !yield(data) {
 				return nil
@@ -125,10 +130,13 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 
 		// TODO(rfratto): If there are many windows, it may make sense to read them
 		// in parallel.
+		numWindows := 0
 		for window := range windowing.Iter(pages, pageInfo, windowing.S3WindowSize) {
 			if len(window) == 0 {
 				continue
 			}
+
+			numWindows++
 
 			var (
 				windowOffset = window.Start().GetInfo().DataOffset
@@ -139,10 +147,13 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
+
+			buffer := bufpool.Get(int(windowSize))
+			if err := copyAndClose(buffer, rc); err != nil {
+				bufpool.Put(buffer)
 				return fmt.Errorf("read page data: %w", err)
 			}
+			data := buffer.Bytes()
 
 			for _, wp := range window {
 				// Find the slice in the data for this page.
@@ -153,9 +164,16 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 
 				// wp.Index is the position of the page in the original pages slice;
 				// this retains the proper order of data in results.
-				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
+				//
+				// We need to make a copy here of the slice since data is pooled (and
+				// we don't want to hold on to the entire window if we don't need to).
+				results[wp.Index] = dataset.PageData(bytes.Clone(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize]))
 			}
+
+			bufpool.Put(buffer)
 		}
+
+		level.Debug(utillog.WithContext(ctx, utillog.Logger)).Log("msg", "logs.decoder: read pages", "num_pages", len(pages), "window_size", humanize.Bytes(windowing.S3WindowSize), "total_windows", numWindows)
 
 		for _, data := range results {
 			if !yield(data) {
@@ -165,4 +183,15 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*logsmd.PageDesc) resu
 
 		return nil
 	})
+}
+
+// copyAndClose copies the data from rc into the destination writer w and then
+// closes rc.
+func copyAndClose(dst io.Writer, rc io.ReadCloser) error {
+	defer rc.Close()
+
+	if _, err := io.Copy(dst, rc); err != nil {
+		return fmt.Errorf("copying data: %w", err)
+	}
+	return nil
 }

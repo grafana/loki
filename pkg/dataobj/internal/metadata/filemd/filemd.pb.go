@@ -4,13 +4,13 @@
 package filemd
 
 import (
+	bytes "bytes"
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
-	strconv "strconv"
 	strings "strings"
 )
 
@@ -24,41 +24,6 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
-
-// SectionKind describes the kind of section stored within a data object.
-//
-// Deprecated: Types are now specified as values in the Metadata's types field
-// instead of structurally.
-type SectionKind int32
-
-const (
-	// SECTION_KIND_UNSPECIFIED is an invalid section kind.
-	SECTION_KIND_UNSPECIFIED SectionKind = 0
-	// SECTION_KIND_STREAMS is a section containing references to streams that
-	// exist within the data object. SECTION_KIND_STREAMS does not contain any
-	// actual log data.
-	SECTION_KIND_STREAMS SectionKind = 1
-	// SECTION_KIND_LOGS is a section containing log records across multiple
-	// streams. Each log record contains a stream ID which refers to a stream
-	// from SECTION_KIND_STREAMS.
-	SECTION_KIND_LOGS SectionKind = 2
-)
-
-var SectionKind_name = map[int32]string{
-	0: "SECTION_KIND_UNSPECIFIED",
-	1: "SECTION_KIND_STREAMS",
-	2: "SECTION_KIND_LOGS",
-}
-
-var SectionKind_value = map[string]int32{
-	"SECTION_KIND_UNSPECIFIED": 0,
-	"SECTION_KIND_STREAMS":     1,
-	"SECTION_KIND_LOGS":        2,
-}
-
-func (SectionKind) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_be80f52d1e05bad9, []int{0}
-}
 
 // Metadata for the overall data object.
 type Metadata struct {
@@ -129,6 +94,9 @@ func (m *Metadata) GetTypes() []*SectionType {
 type SectionType struct {
 	// The reference to the type name.
 	NameRef *SectionType_NameRef `protobuf:"bytes,1,opt,name=name_ref,json=nameRef,proto3" json:"name_ref,omitempty"`
+	// An optional section-specified version of this type, used to inform section
+	// implementations how to read the section.
+	Version uint32 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
 }
 
 func (m *SectionType) Reset()      { *m = SectionType{} }
@@ -168,6 +136,13 @@ func (m *SectionType) GetNameRef() *SectionType_NameRef {
 		return m.NameRef
 	}
 	return nil
+}
+
+func (m *SectionType) GetVersion() uint32 {
+	if m != nil {
+		return m.Version
+	}
+	return 0
 }
 
 // NameRef is a tuple of references into the Metadata.dictionary which
@@ -234,18 +209,6 @@ func (m *SectionType_NameRef) GetKindRef() uint32 {
 // SectionInfo describes a section within the data object. Each section is an
 // independent unit of the data object.
 type SectionInfo struct {
-	// Kind of the section within the data object.
-	//
-	// Deprecated: Use type_index to refer to the type of a section.
-	Kind SectionKind `protobuf:"varint,1,opt,name=kind,proto3,enum=dataobj.metadata.file.v1.SectionKind" json:"kind,omitempty"` // Deprecated: Do not use.
-	// Byte offset of the section's metadata from the start of the data object.
-	//
-	// Deprecated: Use layout to describe the location of regions of a section.
-	MetadataOffset uint64 `protobuf:"varint,2,opt,name=metadata_offset,json=metadataOffset,proto3" json:"metadata_offset,omitempty"` // Deprecated: Do not use.
-	// Size of the section's metadata in bytes.
-	//
-	// Deprecated: Use layout to describe the location of regions of a section.
-	MetadataSize uint64 `protobuf:"varint,3,opt,name=metadata_size,json=metadataSize,proto3" json:"metadata_size,omitempty"` // Deprecated: Do not use.
 	// The physical layout of the section within the data object. Setting
 	// layout is mutually exclusive with specifying the metadata_offset and
 	// metadata_size fields.
@@ -267,10 +230,25 @@ type SectionInfo struct {
 	// objects that set both.
 	Layout *SectionLayout `protobuf:"bytes,4,opt,name=layout,proto3" json:"layout,omitempty"`
 	// An index into Metadata.types specifying the type of this section.
-	//
-	// This field supersedes the deprecated kind field. Either this or the kind
-	// field must be set to a non-zero value.
 	TypeRef uint32 `protobuf:"varint,5,opt,name=type_ref,json=typeRef,proto3" json:"type_ref,omitempty"`
+	// Optional additional information about the section that sections can
+	// provide.
+	//
+	// Because extension_data increases the size of the file metadata, sections
+	// should only use this field for required information that must be stored
+	// without loading the section.
+	//
+	// Sections implementations are recommended to use the version field of
+	// [SectionType] to determine how to interpret the payload.
+	ExtensionData []byte `protobuf:"bytes,6,opt,name=extension_data,json=extensionData,proto3" json:"extension_data,omitempty"`
+	// An index into Metadata.dictionary specifying the owning tenant of this
+	// section.
+	//
+	// Sections containing data wholly owned by a single tenant must specify the
+	// owning tenant. If tenant_ref is 0, the section holds data owned by multiple
+	// tenants, usually with some other mechanism to determine ownership (e.g., if
+	// the section does not contain cross-tenant aggregated data).
+	TenantRef uint32 `protobuf:"varint,7,opt,name=tenant_ref,json=tenantRef,proto3" json:"tenant_ref,omitempty"`
 }
 
 func (m *SectionInfo) Reset()      { *m = SectionInfo{} }
@@ -305,30 +283,6 @@ func (m *SectionInfo) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SectionInfo proto.InternalMessageInfo
 
-// Deprecated: Do not use.
-func (m *SectionInfo) GetKind() SectionKind {
-	if m != nil {
-		return m.Kind
-	}
-	return SECTION_KIND_UNSPECIFIED
-}
-
-// Deprecated: Do not use.
-func (m *SectionInfo) GetMetadataOffset() uint64 {
-	if m != nil {
-		return m.MetadataOffset
-	}
-	return 0
-}
-
-// Deprecated: Do not use.
-func (m *SectionInfo) GetMetadataSize() uint64 {
-	if m != nil {
-		return m.MetadataSize
-	}
-	return 0
-}
-
 func (m *SectionInfo) GetLayout() *SectionLayout {
 	if m != nil {
 		return m.Layout
@@ -339,6 +293,20 @@ func (m *SectionInfo) GetLayout() *SectionLayout {
 func (m *SectionInfo) GetTypeRef() uint32 {
 	if m != nil {
 		return m.TypeRef
+	}
+	return 0
+}
+
+func (m *SectionInfo) GetExtensionData() []byte {
+	if m != nil {
+		return m.ExtensionData
+	}
+	return nil
+}
+
+func (m *SectionInfo) GetTenantRef() uint32 {
+	if m != nil {
+		return m.TenantRef
 	}
 	return 0
 }
@@ -465,7 +433,6 @@ func (m *Region) GetLength() uint64 {
 }
 
 func init() {
-	proto.RegisterEnum("dataobj.metadata.file.v1.SectionKind", SectionKind_name, SectionKind_value)
 	proto.RegisterType((*Metadata)(nil), "dataobj.metadata.file.v1.Metadata")
 	proto.RegisterType((*SectionType)(nil), "dataobj.metadata.file.v1.SectionType")
 	proto.RegisterType((*SectionType_NameRef)(nil), "dataobj.metadata.file.v1.SectionType.NameRef")
@@ -479,52 +446,41 @@ func init() {
 }
 
 var fileDescriptor_be80f52d1e05bad9 = []byte{
-	// 567 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x4d, 0x6f, 0x12, 0x4f,
-	0x18, 0xdf, 0x01, 0x4a, 0xf9, 0x3f, 0x2d, 0xfd, 0xe3, 0x44, 0xcd, 0x6a, 0xcc, 0x84, 0x60, 0x4c,
-	0x89, 0xc6, 0xdd, 0xb4, 0xf5, 0x60, 0xa2, 0xa6, 0xe9, 0x0b, 0xea, 0xa6, 0x2d, 0x98, 0x59, 0xbc,
-	0x18, 0x13, 0x32, 0xc0, 0x2c, 0x5d, 0x81, 0x59, 0xc2, 0x2e, 0x4d, 0xe8, 0xc9, 0xc4, 0x2f, 0xe0,
-	0x67, 0xf0, 0x64, 0xfc, 0x24, 0x1e, 0x39, 0xf6, 0x28, 0xcb, 0xc5, 0x63, 0x3f, 0x81, 0x31, 0x33,
-	0xbb, 0x6c, 0xcb, 0xa1, 0x91, 0xd3, 0xee, 0xf3, 0x7b, 0x79, 0x9e, 0x99, 0xdf, 0x93, 0x0c, 0x6c,
-	0x0d, 0xba, 0x1d, 0xb3, 0xcd, 0x02, 0xe6, 0x35, 0x3f, 0x99, 0xae, 0x08, 0xf8, 0x50, 0xb0, 0x9e,
-	0xd9, 0xe7, 0x01, 0x93, 0xa0, 0xe9, 0xb8, 0x3d, 0xde, 0x6f, 0xc7, 0x1f, 0x63, 0x30, 0xf4, 0x02,
-	0x0f, 0xeb, 0xb1, 0xdc, 0x98, 0xab, 0x0c, 0x49, 0x1b, 0x67, 0x5b, 0xa5, 0x1f, 0x08, 0x72, 0x27,
-	0x31, 0x88, 0xf7, 0x20, 0xe7, 0xf3, 0x56, 0xe0, 0x7a, 0xc2, 0xd7, 0x51, 0x31, 0x5d, 0x5e, 0xdb,
-	0x7e, 0x64, 0xdc, 0xe4, 0x34, 0xec, 0x48, 0x69, 0x09, 0xc7, 0xa3, 0x89, 0x0d, 0x13, 0x80, 0xb6,
-	0xab, 0xfe, 0xd9, 0x70, 0xac, 0xa7, 0x8a, 0xe9, 0xf2, 0x7f, 0xf4, 0x1a, 0x82, 0x5f, 0xc0, 0x4a,
-	0x30, 0x1e, 0x70, 0x5f, 0x4f, 0x2f, 0xd9, 0xbf, 0x3e, 0x1e, 0x70, 0x1a, 0x79, 0x4a, 0xdf, 0x10,
-	0xac, 0x5d, 0x83, 0xf1, 0x5b, 0xc8, 0x09, 0xd6, 0xe7, 0x8d, 0x21, 0x77, 0x74, 0x54, 0x44, 0xe5,
-	0xb5, 0xed, 0xa7, 0x4b, 0xf5, 0x33, 0xaa, 0xac, 0xcf, 0x29, 0x77, 0xe8, 0xaa, 0x88, 0x7e, 0xee,
-	0x5b, 0xb0, 0x1a, 0x63, 0xf8, 0x21, 0xe4, 0x25, 0xea, 0x0f, 0x58, 0xeb, 0xaa, 0x73, 0x9e, 0xae,
-	0x27, 0xa0, 0x14, 0xdd, 0x83, 0x5c, 0xd7, 0x15, 0x6d, 0xc5, 0xa7, 0x14, 0xbf, 0x2a, 0x6b, 0xca,
-	0x9d, 0xd2, 0x9f, 0xab, 0x43, 0xca, 0x6c, 0xf0, 0x2b, 0xc8, 0x48, 0x4a, 0xb5, 0xd9, 0x58, 0xe2,
-	0xc2, 0x47, 0xae, 0x68, 0xef, 0xa7, 0x74, 0x44, 0x95, 0x0d, 0x3f, 0x81, 0xff, 0xe7, 0xca, 0x86,
-	0xe7, 0x38, 0x3e, 0x0f, 0xd4, 0xc0, 0x8c, 0x92, 0x6c, 0xcc, 0xa9, 0x9a, 0x62, 0xf0, 0x26, 0xe4,
-	0x13, 0xb1, 0xef, 0x9e, 0x73, 0x3d, 0x9d, 0x48, 0xd7, 0xe7, 0x84, 0xed, 0x9e, 0x73, 0xbc, 0x0b,
-	0xd9, 0x1e, 0x1b, 0x7b, 0xa3, 0x40, 0xcf, 0xa8, 0xdc, 0x36, 0xff, 0x79, 0xac, 0x63, 0x25, 0xa7,
-	0xb1, 0x4d, 0x06, 0x20, 0x77, 0xa2, 0x02, 0x58, 0x89, 0x02, 0x90, 0xb5, 0x0c, 0xe0, 0x0b, 0x82,
-	0xfc, 0x82, 0x09, 0x3f, 0x83, 0x8c, 0x6c, 0x19, 0xef, 0xa8, 0x78, 0xf3, 0x2c, 0xca, 0x3b, 0xae,
-	0x27, 0xa8, 0x52, 0xe3, 0x97, 0x90, 0x9b, 0x0b, 0xd4, 0x95, 0x97, 0x71, 0x26, 0x8e, 0xd2, 0x73,
-	0xc8, 0x46, 0x18, 0xbe, 0x0b, 0xd9, 0x38, 0x38, 0x39, 0x3f, 0x43, 0xe3, 0x4a, 0xe2, 0x3d, 0x2e,
-	0x3a, 0xc1, 0x69, 0x14, 0x28, 0x8d, 0xab, 0xc7, 0x1f, 0x93, 0xfd, 0xc9, 0x55, 0xe0, 0x07, 0xa0,
-	0xdb, 0x95, 0x83, 0xba, 0x55, 0xab, 0x36, 0x8e, 0xac, 0xea, 0x61, 0xe3, 0x7d, 0xd5, 0x7e, 0x57,
-	0x39, 0xb0, 0x5e, 0x5b, 0x95, 0xc3, 0x82, 0x86, 0x75, 0xb8, 0xbd, 0xc0, 0xda, 0x75, 0x5a, 0xd9,
-	0x3b, 0xb1, 0x0b, 0x08, 0xdf, 0x81, 0x5b, 0x0b, 0xcc, 0x71, 0xed, 0x8d, 0x5d, 0x48, 0xed, 0x8f,
-	0x26, 0x53, 0xa2, 0x5d, 0x4c, 0x89, 0x76, 0x39, 0x25, 0xe8, 0x73, 0x48, 0xd0, 0xf7, 0x90, 0xa0,
-	0x9f, 0x21, 0x41, 0x93, 0x90, 0xa0, 0x5f, 0x21, 0x41, 0xbf, 0x43, 0xa2, 0x5d, 0x86, 0x04, 0x7d,
-	0x9d, 0x11, 0x6d, 0x32, 0x23, 0xda, 0xc5, 0x8c, 0x68, 0x1f, 0x76, 0x3b, 0x6e, 0x70, 0x3a, 0x6a,
-	0x1a, 0x2d, 0xaf, 0x6f, 0x76, 0x86, 0xcc, 0x61, 0x82, 0x99, 0x3d, 0xaf, 0xeb, 0x9a, 0x67, 0x3b,
-	0xe6, 0x32, 0xcf, 0x41, 0x33, 0xab, 0x1e, 0x82, 0x9d, 0xbf, 0x01, 0x00, 0x00, 0xff, 0xff, 0x0f,
-	0x5f, 0x97, 0x92, 0x3d, 0x04, 0x00, 0x00,
+	// 504 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x53, 0x3f, 0x6f, 0xd3, 0x4c,
+	0x18, 0xf7, 0x35, 0x6e, 0xe2, 0x3e, 0x69, 0x5e, 0xbd, 0xba, 0x01, 0x19, 0x24, 0x4e, 0x96, 0x51,
+	0x85, 0x17, 0x6c, 0xb5, 0x65, 0x40, 0x02, 0xa9, 0x02, 0x31, 0x50, 0x04, 0x0c, 0x07, 0x13, 0x4b,
+	0x75, 0x49, 0xce, 0xae, 0x89, 0x7d, 0x67, 0xd9, 0x97, 0x88, 0x6c, 0x48, 0x7c, 0x01, 0x3e, 0x06,
+	0x62, 0x67, 0xe3, 0x03, 0x30, 0x66, 0xec, 0x48, 0x9c, 0x85, 0xb1, 0x1f, 0x01, 0xdd, 0xd9, 0x49,
+	0xcb, 0x50, 0x91, 0x29, 0xf7, 0xfc, 0xee, 0xf7, 0x2f, 0x8f, 0x75, 0x70, 0x58, 0x4c, 0x92, 0x68,
+	0xcc, 0x14, 0x93, 0xc3, 0x0f, 0x51, 0x2a, 0x14, 0x2f, 0x05, 0xcb, 0xa2, 0x9c, 0x2b, 0xa6, 0xc1,
+	0x28, 0x4e, 0x33, 0x9e, 0x8f, 0xdb, 0x9f, 0xb0, 0x28, 0xa5, 0x92, 0xd8, 0x6d, 0xe9, 0xe1, 0x9a,
+	0x15, 0xea, 0xeb, 0x70, 0x76, 0xe8, 0x7f, 0x43, 0xe0, 0xbc, 0x6e, 0x41, 0xfc, 0x14, 0x9c, 0x8a,
+	0x8f, 0x54, 0x2a, 0x45, 0xe5, 0x22, 0xaf, 0x13, 0xf4, 0x8f, 0x0e, 0xc2, 0x9b, 0x94, 0xe1, 0xdb,
+	0x86, 0x79, 0x2a, 0x62, 0x49, 0x37, 0x32, 0x4c, 0x00, 0xc6, 0xa9, 0x39, 0xb3, 0x72, 0xee, 0xee,
+	0x78, 0x9d, 0x60, 0x8f, 0x5e, 0x43, 0xf0, 0x63, 0xd8, 0x55, 0xf3, 0x82, 0x57, 0x6e, 0x67, 0x4b,
+	0xff, 0x77, 0xf3, 0x82, 0xd3, 0x46, 0xe3, 0xff, 0x40, 0xd0, 0xbf, 0x06, 0xe3, 0x17, 0xe0, 0x08,
+	0x96, 0xf3, 0xb3, 0x92, 0xc7, 0x2e, 0xf2, 0x50, 0xd0, 0x3f, 0x7a, 0xb0, 0x95, 0x5f, 0xf8, 0x86,
+	0xe5, 0x9c, 0xf2, 0x98, 0xf6, 0x44, 0x73, 0xc0, 0x2e, 0xf4, 0x66, 0xbc, 0xac, 0x52, 0x29, 0xdc,
+	0x1d, 0x0f, 0x05, 0x03, 0xba, 0x1e, 0xef, 0x9c, 0x42, 0xaf, 0x65, 0xe3, 0x7b, 0x30, 0xd0, 0xfc,
+	0xaa, 0x60, 0xa3, 0xab, 0xcc, 0x01, 0xdd, 0xdf, 0x80, 0x9a, 0x74, 0x1b, 0x9c, 0x49, 0x2a, 0xc6,
+	0xe6, 0xbe, 0xb5, 0xd2, 0x33, 0xe5, 0xb1, 0xff, 0xfd, 0xaa, 0xbe, 0xde, 0x1a, 0x3e, 0x81, 0x6e,
+	0xc6, 0xe6, 0x72, 0xaa, 0x5c, 0xdb, 0x94, 0xbf, 0xff, 0xcf, 0xf2, 0xaf, 0x0c, 0x9d, 0xb6, 0x32,
+	0x9d, 0xa5, 0x17, 0x63, 0xb2, 0x76, 0x9b, 0x2c, 0x3d, 0xeb, 0x1a, 0x07, 0xf0, 0x1f, 0xff, 0xa8,
+	0xb8, 0xd0, 0xff, 0xe1, 0x4c, 0x5b, 0xb9, 0x5d, 0x0f, 0x05, 0xfb, 0x74, 0xb0, 0x41, 0x9f, 0xeb,
+	0x2f, 0x7e, 0x17, 0x40, 0x71, 0xc1, 0x84, 0x32, 0x1e, 0x3d, 0xe3, 0xb1, 0xd7, 0x20, 0x94, 0xc7,
+	0x2f, 0x6d, 0x07, 0xfd, 0x6f, 0xfb, 0x9f, 0x11, 0x0c, 0xfe, 0x2a, 0x80, 0x1f, 0x82, 0x6d, 0x3c,
+	0x9b, 0xa5, 0x7b, 0x37, 0xf7, 0xa6, 0x3c, 0x49, 0xa5, 0xa0, 0x86, 0x8d, 0x9f, 0x80, 0xb3, 0x26,
+	0x98, 0xd5, 0x6c, 0xa3, 0xdc, 0x28, 0xfc, 0x47, 0xd0, 0x6d, 0x30, 0x7c, 0x0b, 0xba, 0x32, 0x8e,
+	0x2b, 0xae, 0x4c, 0xbe, 0x4d, 0xdb, 0x49, 0xe3, 0x19, 0x17, 0x89, 0x3a, 0x37, 0xee, 0x36, 0x6d,
+	0xa7, 0x67, 0xd3, 0xc5, 0x92, 0x58, 0x17, 0x4b, 0x62, 0x5d, 0x2e, 0x09, 0xfa, 0x54, 0x13, 0xf4,
+	0xb5, 0x26, 0xe8, 0x67, 0x4d, 0xd0, 0xa2, 0x26, 0xe8, 0x57, 0x4d, 0xd0, 0xef, 0x9a, 0x58, 0x97,
+	0x35, 0x41, 0x5f, 0x56, 0xc4, 0x5a, 0xac, 0x88, 0x75, 0xb1, 0x22, 0xd6, 0xfb, 0x93, 0x24, 0x55,
+	0xe7, 0xd3, 0x61, 0x38, 0x92, 0x79, 0x94, 0x94, 0x2c, 0x66, 0x82, 0x45, 0x99, 0x9c, 0xa4, 0xd1,
+	0xec, 0x38, 0xda, 0xe6, 0x05, 0x0e, 0xbb, 0xe6, 0xed, 0x1d, 0xff, 0x09, 0x00, 0x00, 0xff, 0xff,
+	0x7b, 0xfa, 0xb3, 0x7e, 0xb0, 0x03, 0x00, 0x00,
 }
 
-func (x SectionKind) String() string {
-	s, ok := SectionKind_name[int32(x)]
-	if ok {
-		return s
-	}
-	return strconv.Itoa(int(x))
-}
 func (this *Metadata) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -592,6 +548,9 @@ func (this *SectionType) Equal(that interface{}) bool {
 	if !this.NameRef.Equal(that1.NameRef) {
 		return false
 	}
+	if this.Version != that1.Version {
+		return false
+	}
 	return true
 }
 func (this *SectionType_NameRef) Equal(that interface{}) bool {
@@ -640,19 +599,16 @@ func (this *SectionInfo) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.Kind != that1.Kind {
-		return false
-	}
-	if this.MetadataOffset != that1.MetadataOffset {
-		return false
-	}
-	if this.MetadataSize != that1.MetadataSize {
-		return false
-	}
 	if !this.Layout.Equal(that1.Layout) {
 		return false
 	}
 	if this.TypeRef != that1.TypeRef {
+		return false
+	}
+	if !bytes.Equal(this.ExtensionData, that1.ExtensionData) {
+		return false
+	}
+	if this.TenantRef != that1.TenantRef {
 		return false
 	}
 	return true
@@ -731,11 +687,12 @@ func (this *SectionType) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 5)
+	s := make([]string, 0, 6)
 	s = append(s, "&filemd.SectionType{")
 	if this.NameRef != nil {
 		s = append(s, "NameRef: "+fmt.Sprintf("%#v", this.NameRef)+",\n")
 	}
+	s = append(s, "Version: "+fmt.Sprintf("%#v", this.Version)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -754,15 +711,14 @@ func (this *SectionInfo) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 9)
+	s := make([]string, 0, 8)
 	s = append(s, "&filemd.SectionInfo{")
-	s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
-	s = append(s, "MetadataOffset: "+fmt.Sprintf("%#v", this.MetadataOffset)+",\n")
-	s = append(s, "MetadataSize: "+fmt.Sprintf("%#v", this.MetadataSize)+",\n")
 	if this.Layout != nil {
 		s = append(s, "Layout: "+fmt.Sprintf("%#v", this.Layout)+",\n")
 	}
 	s = append(s, "TypeRef: "+fmt.Sprintf("%#v", this.TypeRef)+",\n")
+	s = append(s, "ExtensionData: "+fmt.Sprintf("%#v", this.ExtensionData)+",\n")
+	s = append(s, "TenantRef: "+fmt.Sprintf("%#v", this.TenantRef)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -880,6 +836,11 @@ func (m *SectionType) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Version != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.NameRef != nil {
 		{
 			size, err := m.NameRef.MarshalToSizedBuffer(dAtA[:i])
@@ -948,6 +909,18 @@ func (m *SectionInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.TenantRef != 0 {
+		i = encodeVarintFilemd(dAtA, i, uint64(m.TenantRef))
+		i--
+		dAtA[i] = 0x38
+	}
+	if len(m.ExtensionData) > 0 {
+		i -= len(m.ExtensionData)
+		copy(dAtA[i:], m.ExtensionData)
+		i = encodeVarintFilemd(dAtA, i, uint64(len(m.ExtensionData)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if m.TypeRef != 0 {
 		i = encodeVarintFilemd(dAtA, i, uint64(m.TypeRef))
 		i--
@@ -964,21 +937,6 @@ func (m *SectionInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		i--
 		dAtA[i] = 0x22
-	}
-	if m.MetadataSize != 0 {
-		i = encodeVarintFilemd(dAtA, i, uint64(m.MetadataSize))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.MetadataOffset != 0 {
-		i = encodeVarintFilemd(dAtA, i, uint64(m.MetadataOffset))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Kind != 0 {
-		i = encodeVarintFilemd(dAtA, i, uint64(m.Kind))
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -1111,6 +1069,9 @@ func (m *SectionType) Size() (n int) {
 		l = m.NameRef.Size()
 		n += 1 + l + sovFilemd(uint64(l))
 	}
+	if m.Version != 0 {
+		n += 1 + sovFilemd(uint64(m.Version))
+	}
 	return n
 }
 
@@ -1135,21 +1096,19 @@ func (m *SectionInfo) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.Kind != 0 {
-		n += 1 + sovFilemd(uint64(m.Kind))
-	}
-	if m.MetadataOffset != 0 {
-		n += 1 + sovFilemd(uint64(m.MetadataOffset))
-	}
-	if m.MetadataSize != 0 {
-		n += 1 + sovFilemd(uint64(m.MetadataSize))
-	}
 	if m.Layout != nil {
 		l = m.Layout.Size()
 		n += 1 + l + sovFilemd(uint64(l))
 	}
 	if m.TypeRef != 0 {
 		n += 1 + sovFilemd(uint64(m.TypeRef))
+	}
+	l = len(m.ExtensionData)
+	if l > 0 {
+		n += 1 + l + sovFilemd(uint64(l))
+	}
+	if m.TenantRef != 0 {
+		n += 1 + sovFilemd(uint64(m.TenantRef))
 	}
 	return n
 }
@@ -1220,6 +1179,7 @@ func (this *SectionType) String() string {
 	}
 	s := strings.Join([]string{`&SectionType{`,
 		`NameRef:` + strings.Replace(fmt.Sprintf("%v", this.NameRef), "SectionType_NameRef", "SectionType_NameRef", 1) + `,`,
+		`Version:` + fmt.Sprintf("%v", this.Version) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1240,11 +1200,10 @@ func (this *SectionInfo) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&SectionInfo{`,
-		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
-		`MetadataOffset:` + fmt.Sprintf("%v", this.MetadataOffset) + `,`,
-		`MetadataSize:` + fmt.Sprintf("%v", this.MetadataSize) + `,`,
 		`Layout:` + strings.Replace(this.Layout.String(), "SectionLayout", "SectionLayout", 1) + `,`,
 		`TypeRef:` + fmt.Sprintf("%v", this.TypeRef) + `,`,
+		`ExtensionData:` + fmt.Sprintf("%v", this.ExtensionData) + `,`,
+		`TenantRef:` + fmt.Sprintf("%v", this.TenantRef) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1497,6 +1456,25 @@ func (m *SectionType) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Version |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFilemd(dAtA[iNdEx:])
@@ -1641,63 +1619,6 @@ func (m *SectionInfo) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: SectionInfo: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
-			}
-			m.Kind = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowFilemd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Kind |= SectionKind(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataOffset", wireType)
-			}
-			m.MetadataOffset = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowFilemd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MetadataOffset |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataSize", wireType)
-			}
-			m.MetadataSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowFilemd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MetadataSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Layout", wireType)
@@ -1749,6 +1670,59 @@ func (m *SectionInfo) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.TypeRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExtensionData", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFilemd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ExtensionData = append(m.ExtensionData[:0], dAtA[iNdEx:postIndex]...)
+			if m.ExtensionData == nil {
+				m.ExtensionData = []byte{}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TenantRef", wireType)
+			}
+			m.TenantRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFilemd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TenantRef |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

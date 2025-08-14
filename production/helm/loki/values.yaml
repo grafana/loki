@@ -62,6 +62,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -75,7 +77,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.1
+    tag: 3.5.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -155,8 +157,10 @@ loki:
       {{- toYaml . | nindent 2}}
     {{- end}}
 
+    {{- with .Values.loki.pattern_ingester }}
     pattern_ingester:
-      enabled: {{ .Values.loki.pattern_ingester.enabled }}
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
 
     memberlist:
     {{- if .Values.loki.memberlistConfig }}
@@ -176,6 +180,11 @@ loki:
 
     {{- with .Values.loki.ingester }}
     ingester:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.ingester_client }}
+    ingester_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -199,8 +208,8 @@ loki:
     runtime_config:
       file: /etc/loki/runtime-config/runtime-config.yaml
 
+    {{- if .Values.chunksCache.enabled }}
     {{- with .Values.chunksCache }}
-    {{- if .enabled }}
     chunk_store_config:
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
@@ -216,7 +225,26 @@ loki:
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
-    {{- end }}
+      {{- end }}
+      {{- with .Values.chunksCache.l2 }}
+      {{- if .enabled }}
+      l2_chunk_cache_handoff: {{ .l2ChunkCacheHandoff }}
+      chunk_cache_config_l2:
+        default_validity: {{ .defaultValidity }}
+        background:
+          writeback_goroutines: {{ .writebackParallelism }}
+          writeback_buffer: {{ .writebackBuffer }}
+          writeback_size_limit: {{ .writebackSizeLimit }}
+        memcached:
+          batch_size: {{ .batchSize }}
+          parallelism: {{ .parallelism }}
+        memcached_client:
+          addresses: {{ .addresses }}
+          consistent_hash: true
+          timeout: {{ .timeout }}
+          max_idle_conns: 72
+      {{- end }}
+      {{- end }}
     {{- end }}
 
     {{- if .Values.loki.schemaConfig }}
@@ -269,7 +297,10 @@ loki:
 
     {{- with .Values.loki.storage_config }}
     storage_config:
-      {{- tpl (. | toYaml) $ | nindent 4 }}
+        {{- if not (hasKey $.Values.loki.storage_config "use_thanos_objstore") }}
+        use_thanos_objstore: {{ $.Values.loki.storage.use_thanos_objstore }}
+        {{- end }}
+        {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
     {{- with .Values.loki.query_scheduler }}
@@ -279,6 +310,11 @@ loki:
 
     {{- with .Values.loki.compactor }}
     compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.compactor_grpc_client }}
+    compactor_grpc_client:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
@@ -331,13 +367,26 @@ loki:
     bloom_gateway:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.operational_config }}
+    operational_config:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
   memberlistConfig: {}
   # -- Extra memberlist configuration
   extraMemberlistConfig: {}
-  # -- Tenants list to be created on nginx htpasswd file, with name and password keys
+  # -- Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br>
+  # Example:
+  # <pre>
+  # tenants:<br>
+  #   - name: "test-user-1"<br>
+  #     password: "test-password-1"<br>
+  #   - name: "test-user-2"<br>
+  #     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2`
+  # </pre>
   tenants: []
   # -- Check https://grafana.com/docs/loki/latest/configuration/#server for more info on the server configuration.
   server:
@@ -359,7 +408,9 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    compactor_address: '{{ include "loki.compactorAddress" . }}'
+    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.
+    # If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.
+    compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
@@ -420,7 +471,6 @@ loki:
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
-      admin_api_directory: /var/loki/admin
 
     # Loki now supports using thanos storage clients for connecting to object storage backend.
     # This will become the default way to configure storage in a future releases.
@@ -480,6 +530,11 @@ loki:
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
+    # -- Storage for the ruler. If defining rules in `ruler.directories`, this must be configured to use local storage as shown below.
+    # storage:
+    #   type: local
+    #   local:
+    #     directory: /etc/loki/rules
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
@@ -500,6 +555,8 @@ loki:
       up_to: 3
   # --  Optional compactor configuration
   compactor: {}
+  # --  Optional compactor grpc client configuration
+  compactor_grpc_client: {}
   # --  Optional pattern ingester configuration
   pattern_ingester:
     enabled: false
@@ -518,6 +575,8 @@ loki:
   querier: {}
   # --  Optional ingester configuration
   ingester: {}
+  # --  Optional ingester client configuration
+  ingester_client: {}
   # --  Optional block builder configuration
   block_builder: {}
   # --  Optional index gateway configuration
@@ -541,6 +600,8 @@ loki:
     enabled: false
     client:
       addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
+  # -- Optional operational configuration
+  operational_config: {}
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -552,7 +613,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: 3.4.0
+  version: 3.5.2
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -594,57 +655,19 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.1
+    tag: 3.5.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   adminToken:
-    # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
+    # -- Name of external secret containing the admin token for enterprise provisioner
+    # This secret must exist before deploying and must contain a key named 'token'
     secret: null
-    # -- Additional namespace to also create the token in. Useful if your Grafana instance
-    # is in a different namespace
-    additionalNamespaces: []
   # -- Alternative name of the secret to store token for the canary
   canarySecret: null
-  # -- Configuration for `tokengen` target
-  tokengen:
-    # -- Whether the job should be part of the deployment
-    enabled: true
-    # -- Comma-separated list of Loki modules to load for tokengen
-    targetModule: "tokengen"
-    # -- Name of the secret to store the admin token.
-    adminTokenSecret: null
-    # -- Additional CLI arguments for the `tokengen` target
-    extraArgs: []
-    # -- Additional Kubernetes environment
-    env: []
-    # -- Additional labels for the `tokengen` Job
-    labels: {}
-    # -- Additional annotations for the `tokengen` Job
-    annotations: {}
-    # -- Affinity for tokengen Pods
-    affinity: {}
-    # -- Node selector for tokengen Pods
-    nodeSelector: {}
-    # -- Tolerations for tokengen Job
-    tolerations: []
-    # -- Additional volumes for Pods
-    extraVolumes: []
-    # -- Additional volume mounts for Pods
-    extraVolumeMounts: []
-    # -- Run containers as user `enterprise-logs(uid=10001)`
-    securityContext:
-      runAsNonRoot: true
-      runAsGroup: 10001
-      runAsUser: 10001
-      fsGroup: 10001
-    # -- Environment variables from secrets or configmaps to add to the tokengen pods
-    extraEnvFrom: []
-    # -- The name of the PriorityClass for tokengen Pods
-    priorityClassName: ""
   # -- Configuration for `provisioner` target
-  # Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.
+  # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
   provisioner:
     # -- Whether the job should be part of the deployment
     enabled: true
@@ -697,18 +720,6 @@ enterprise:
     extraVolumeMounts: []
     # -- Additional volumes for Pods
     extraVolumes: []
-# -- kubetclImage is used in the enterprise provisioner and tokengen jobs
-kubectlImage:
-  # -- The Docker registry
-  registry: docker.io
-  # -- Docker image repository
-  repository: bitnami/kubectl
-  # -- Overrides the image tag whose default is the chart's appVersion
-  tag: null
-  # -- Overrides the image tag with an image digest
-  digest: null
-  # -- Docker image pull policy
-  pullPolicy: IfNotPresent
 ######################################################################################################################
 #
 # Chart Testing
@@ -828,6 +839,8 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+  # -- Toggle this to true to allow the use of hostPath volumes on OpenShift
+  sccAllowHostDirVolumePlugin: false
   # -- Specify PSP annotations
   # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
   pspAnnotations: {}
@@ -946,12 +959,16 @@ adminApi:
   # -- Update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -1031,7 +1048,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.28-alpine
+    tag: 1.29-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy
@@ -1143,16 +1160,21 @@ gateway:
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
     # @default -- Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
-    htpasswd: >-
-      {{ if .Values.loki.tenants }}
-
-
-        {{- range $t := .Values.loki.tenants }}
-      {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
+    htpasswd: |
+      {{- with $tenants := .Values.loki.tenants }}
+        {{- range $t := $tenants }}
+          {{- $username := required "All tenants must have a 'name' set" $t.name }}
+          {{- if $passwordHash := $t.passwordHash }}
+            {{- printf "%s:%s\n" $username $passwordHash }}
+          {{- else if $password := $t.password }}
+            {{- printf "%s\n" (htpasswd $username $password) }}
+          {{- else }}
+            {{- fail "All tenants must have a 'password' or 'passwordHash' set" }}
+          {{- end }}
         {{- end }}
-      {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
+      {{- else }}
+        {{- printf "%s\n" (htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password)) }}
+      {{- end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
   # Configures the readiness probe for the gateway
@@ -1175,7 +1197,9 @@ gateway:
     # -- Allows appending custom configuration to the server block
     serverSnippet: ""
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
-    httpSnippet: >-
+    httpSnippet: ""
+    # -- Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.
+    locationSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
     # -- Allows customizing the `client_max_body_size` directive
     clientMaxBodySize: 4M
@@ -1285,6 +1309,7 @@ ingress:
       - /api/prom/push
       - /loki/api/v1/push
       - /otlp/v1/logs
+      - /ui
     # -- Paths that are exposed by Loki Query Frontend.
     # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
     # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
@@ -1449,6 +1474,8 @@ singleBinary:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1578,6 +1605,8 @@ write:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1690,6 +1719,8 @@ read:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1802,6 +1833,8 @@ backend:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -1856,6 +1889,7 @@ ingester:
     tag: null
   # -- Command to execute instead of defined in Docker image
   command: null
+  labels: {}
   priorityClassName: null
   # -- Labels for ingester pods
   podLabels: {}
@@ -2198,19 +2232,6 @@ querier:
   tolerations: []
   # -- DNSConfig for querier pods
   dnsConfig: {}
-  persistence:
-    # -- Enable creating PVCs for the querier cache
-    enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
-    # -- Annotations for querier PVCs
-    annotations: {}
   # -- Adds the appProtocol field to the querier service. This allows querier to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2449,6 +2470,8 @@ indexGateway:
     storageClass: null
     # -- Annotations for index gateway PVCs
     annotations: {}
+    # -- Labels for index gateway PVCs
+    labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2540,8 +2563,6 @@ compactor:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for compactor PVCs
-    annotations: {}
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
@@ -2553,6 +2574,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for compactor PVCs
+        annotations: {}
+        # -- Labels for compactor PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2642,6 +2667,8 @@ bloomGateway:
     enabled: false
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
+    # -- Labels for bloom gateway PVCs
+    labels: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
@@ -2739,8 +2766,6 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Annotations for bloom-planner PVCs
-    annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
     claims:
@@ -2753,6 +2778,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for bloom-planner PVCs
+        annotations: {}
+        # -- Labels for bloom planner PVCs
+        labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2940,8 +2969,6 @@ patternIngester:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for pattern ingester PVCs
-    annotations: {}
     # -- List of the pattern ingester PVCs
     # @notationType -- list
     claims:
@@ -2953,6 +2980,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Annotations for pattern ingester PVCs
+        annotations: {}
+        # -- Labels for pattern ingester PVCs
+        labels: {}
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -3053,10 +3084,12 @@ ruler:
     storageClass: null
     # -- Annotations for ruler PVCs
     annotations: {}
+    # -- Labels for ruler PVCs
+    labels: {}
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
-  # -- Directories containing rules files
+  # -- Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.
   directories: {}
   # tenant_foo:
   #   rules1.txt: |
@@ -3211,6 +3244,12 @@ memcached:
     fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
+  # -- The SecurityContext for memcached containers
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    allowPrivilegeEscalation: false
   # -- Readiness probe for memcached pods (probe port defaults to container port)
   readinessProbe:
     tcpSocket:
@@ -3219,12 +3258,15 @@ memcached:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-  # -- The SecurityContext for memcached containers
-  containerSecurityContext:
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: [ALL]
-    allowPrivilegeEscalation: false
+  # -- Liveness probe for memcached pods
+  livenessProbe:
+    tcpSocket:
+      port: client
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
 memcachedExporter:
   # -- Whether memcached metrics should be exported
   enabled: true
@@ -3251,11 +3293,30 @@ memcachedExporter:
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
   extraArgs: {}
+  # -- Liveness probe for memcached exporter
+  livenessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe for memcached exporter
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-results-cache.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ $.Release.Namespace }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3292,9 +3353,8 @@ resultsCache:
   #  whenUnsatisfiable: ScheduleAnyway
   # -- Tolerations for results-cache pods
   tolerations: []
-  # -- Pod Disruption Budget
-  podDisruptionBudget:
-    maxUnavailable: 1
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- The name of the PriorityClass for results-cache pods
   priorityClassName: null
   # -- Labels for results-cache pods
@@ -3351,11 +3411,15 @@ resultsCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    # -- PVC additional labels
+    labels: {}
 chunksCache:
+  # -- Append to the name of the resources to make names different for l1 and l2
+  suffix: ""
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ template "loki.fullname" $ }}-chunks-cache.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3364,7 +3428,7 @@ chunksCache:
   timeout: 2000ms
   # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
   defaultValidity: 0s
-  # -- Total number of chunks-cache replicas
+  # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
   replicas: 1
   # -- Port of the chunks-cache service
   port: 11211
@@ -3396,9 +3460,8 @@ chunksCache:
   #  whenUnsatisfiable: ScheduleAnyway
   # -- Tolerations for chunks-cache pods
   tolerations: []
-  # -- Pod Disruption Budget
-  podDisruptionBudget:
-    maxUnavailable: 1
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- The name of the PriorityClass for chunks-cache pods
   priorityClassName: null
   # -- Labels for chunks-cache pods
@@ -3455,6 +3518,117 @@ chunksCache:
     storageClass: null
     # -- Volume mount path
     mountPath: /data
+    labels: {}
+  # -- l2 memcache configuration
+  l2:
+    # -- Append to the name of the resources to make names different for l1 and l2
+    suffix: "l2"
+    # -- The age of chunks should be transfered from l1 cache to l2
+    # 4 days
+    l2ChunkCacheHandoff: 345600s
+    # -- Specifies whether memcached based chunks-cache-l2 should be enabled
+    enabled: false
+    # -- Comma separated addresses list in DNS Service Discovery format
+    addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc
+    # -- Batchsize for sending and receiving chunks from chunks cache
+    batchSize: 4
+    # -- Parallel threads for sending and receiving chunks from chunks cache
+    parallelism: 5
+    # -- Memcached operation timeout
+    timeout: 2000ms
+    # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
+    defaultValidity: 0s
+    # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
+    replicas: 1
+    # -- Port of the chunks-cache-l2 service
+    port: 11211
+    # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
+    allocatedMemory: 8192
+    # -- Maximum item memory for chunks-cache-l2 (in MB).
+    maxItemMemory: 5
+    # -- Maximum number of connections allowed
+    connectionLimit: 16384
+    # -- Max memory to use for cache write back
+    writebackSizeLimit: 500MB
+    # -- Max number of objects to use for cache write back
+    writebackBuffer: 500000
+    # -- Number of parallel threads for cache write back
+    writebackParallelism: 1
+    # -- Extra init containers for chunks-cache-l2 pods
+    initContainers: []
+    # -- Annotations for the chunks-cache-l2 pods
+    annotations: {}
+    # -- Node selector for chunks-cach-l2 pods
+    nodeSelector: {}
+    # -- Affinity for chunks-cache-l2 pods
+    affinity: {}
+    # -- topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints.
+    # labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.
+    topologySpreadConstraints: []
+    #  maxSkew: 1
+    #  topologyKey: kubernetes.io/hostname
+    #  whenUnsatisfiable: ScheduleAnyway
+    # -- Tolerations for chunks-cache-l2 pods
+    tolerations: []
+    # -- Pod Disruption Budget maxUnavailable
+    maxUnavailable: 1
+    # -- The name of the PriorityClass for chunks-cache-l2 pods
+    priorityClassName: null
+    # -- Labels for chunks-cache-l2 pods
+    podLabels: {}
+    # -- Annotations for chunks-cache-l2 pods
+    podAnnotations: {}
+    # -- Management policy for chunks-cache-l2 pods
+    podManagementPolicy: Parallel
+    # -- Grace period to allow the chunks-cache-l2 to shutdown before it is killed
+    terminationGracePeriodSeconds: 60
+    # -- Stateful chunks-cache strategy
+    statefulStrategy:
+      type: RollingUpdate
+    # -- Add extended options for chunks-cache-l2 memcached container. The format is the same as for the memcached -o/--extend flag.
+    # Example:
+    # extraExtendedOptions: 'tls,no_hashexpand'
+    extraExtendedOptions: ""
+    # -- Additional CLI args for chunks-cache-l2
+    extraArgs: {}
+    # -- Additional containers to be added to the chunks-cache-l2 pod.
+    extraContainers: []
+    # -- Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers).
+    # Example:
+    # extraVolumes:
+    # - name: extra-volume
+    #   secret:
+    #    secretName: extra-volume-secret
+    extraVolumes: []
+    # -- Additional volume mounts to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers).
+    # Example:
+    # extraVolumeMounts:
+    # - name: extra-volume
+    #   mountPath: /etc/extra-volume
+    #   readOnly: true
+    extraVolumeMounts: []
+    # -- Resource requests and limits for the chunks-cache-l2
+    # By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).
+    resources: null
+    # -- Service annotations and labels
+    service:
+      annotations: {}
+      labels: {}
+    # -- Persistence settings for the chunks-cache-l2
+    persistence:
+      # -- Enable creating PVCs for the chunks-cache-l2
+      enabled: false
+      # -- Size of persistent disk, must be in G or Gi
+      storageSize: 10G
+      # -- Storage class to be used.
+      # If defined, storageClassName: <storageClass>.
+      # If set to "-", storageClassName: "", which disables dynamic provisioning.
+      # If empty or set to null, no storageClassName spec is
+      # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+      storageClass: null
+      # -- Volume mount path
+      mountPath: /data
+      labels: {}
 ######################################################################################################################
 #
 # Subchart configurations
@@ -3558,7 +3732,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.6
+    tag: 1.30.7
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -3586,6 +3760,8 @@ sidecar:
   readinessProbe: {}
   # -- Liveness probe definition. Probe is disabled on the sidecar by default.
   livenessProbe: {}
+  # -- Startup probe definition. Probe is disabled on the sidecar by default.
+  startupProbe: {}
   rules:
     # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.
     enabled: true
@@ -3595,6 +3771,10 @@ sidecar:
     labelValue: ""
     # -- Folder into which the rules will be placed.
     folder: /rules
+    # -- The annotation overwriting the folder value.
+    # The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER.
+    # Useful for multi-tenancy setups.
+    folderAnnotation: null
     # -- Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces.
     # Otherwise the namespace in which the sidecar is running will be used.
     # It's also possible to specify 'ALL' to search in all namespaces.

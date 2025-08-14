@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -29,40 +30,37 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// PageCacheSize is the total size of additional pages to prefetch into the
+	// reader that the reader may read on future calls. Pages are prefetched any
+	// time a new page is required up to this size. Setting to 0 disables
+	// prefetching additional pages.
+	PageCacheSize int
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
 // valid when:
 //
-//   - Each [Column] in Columns belongs to the same [Section].
-//   - Each [Predicate] in Predicates references a [Column] from Columns.
+//   - Each [Column] in Columns and Predicates belongs to the same [Section].
 //   - Scalar values used in predicates are of a supported type: an int64,
 //     uint64, timestamp, or a byte array.
 func (opts *ReaderOptions) Validate() error {
-	columnLookup := make(map[*Column]struct{}, len(opts.Columns))
-
-	if len(opts.Columns) > 0 {
-		// Ensure all columns belong to the same section.
-		var checkSection *Section
-
-		for _, col := range opts.Columns {
-			if checkSection != nil && col.Section != checkSection {
-				return fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection)
-			} else if checkSection == nil {
-				checkSection = col.Section
-			}
-			columnLookup[col] = struct{}{}
+	// Ensure all columns belong to the same section.
+	var checkSection *Section
+	var errs []error
+	validateSection := func(col *Column) {
+		if checkSection != nil && col.Section != checkSection {
+			errs = append(errs, fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection))
+		} else if checkSection == nil {
+			checkSection = col.Section
 		}
 	}
 
-	var errs []error
-
-	validateColumn := func(col *Column) {
-		if col == nil {
-			errs = append(errs, fmt.Errorf("column is nil"))
-		} else if _, found := columnLookup[col]; !found {
-			errs = append(errs, fmt.Errorf("column %p not in Columns", col))
-		}
+	for _, col := range opts.Columns {
+		validateSection(col)
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	validateScalar := func(s scalar.Scalar) {
@@ -74,36 +72,36 @@ func (opts *ReaderOptions) Validate() error {
 
 	for _, p := range opts.Predicates {
 		walkPredicate(p, func(p Predicate) bool {
-			// Validate that predicates reference valid columns and use valid
-			// scalars.
+			// Validate that predicates use valid scalars.
 			switch p := p.(type) {
 			case nil: // End of walk; nothing to do.
 
 			case AndPredicate: // Nothing to do.
 			case OrPredicate: // Nothing to do.
 			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case InPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				for _, val := range p.Values {
 					validateScalar(val)
 				}
 
 			case GreaterThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case LessThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case FuncPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 
 			default:
 				errs = append(errs, fmt.Errorf("unrecognized predicate type %T", p))
@@ -124,6 +122,7 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
+	stats dataset.ReaderStats
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -162,7 +161,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
 	if !r.ready {
-		err := r.init()
+		err := r.init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
@@ -174,11 +173,16 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
 	defer builder.Release()
 
-	n, readErr := r.inner.Read(ctx, r.buf)
+	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
 		for columnIndex, val := range row.Values {
+			if columnIndex >= len(r.opts.Columns) {
+				// Ignore columns that are not in projection list.
+				continue
+			}
+
 			columnBuilder := builder.Field(columnIndex)
 
 			if val.IsNil() {
@@ -191,7 +195,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -203,7 +207,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
 			default:
 				// We'll only hit this if we added a new column type but forgot to
 				// support reading it.
@@ -217,23 +221,30 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	return builder.NewRecord(), readErr
 }
 
-func (r *Reader) init() error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	dset, err := newColumnsDataset(r.opts.Columns)
+	// Compose dataset using projected columns and any additional columns
+	// used for evaluating predicates.
+	//
+	// Non-projected columns are appended to the end of the list to allow
+	// easy filtering of Row Values with index >= len(r.opts.Columns).
+	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
+
+	dset, err := newColumnsDataset(cols)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
-	} else if len(dset.Columns()) != len(r.opts.Columns) {
-		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(r.opts.Columns))
+	} else if len(dset.Columns()) != len(cols) {
+		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(cols))
 	}
 
-	columnLookup := make(map[*Column]dataset.Column, len(r.opts.Columns))
+	columnLookup := make(map[*Column]dataset.Column, len(cols))
 	for i, col := range dset.Columns() {
-		columnLookup[r.opts.Columns[i]] = col
+		columnLookup[cols[i]] = col
 	}
 
 	preds, err := mapPredicates(r.opts.Predicates, columnLookup)
@@ -241,11 +252,14 @@ func (r *Reader) init() error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
+	// TODO(ashwanth): remove when global stats are updated by the executor.
+	r.stats.LinkGlobalStats(stats.FromContext(ctx))
+
 	innerOptions := dataset.ReaderOptions{
 		Dataset:         dset,
 		Columns:         dset.Columns(),
-		Predicates:      preds,
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Predicates:      orderPredicates(preds),
+		TargetCacheSize: r.opts.PageCacheSize,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
@@ -298,6 +312,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		return dataset.NotPredicate{
 			Inner: mapPredicate(p.Inner, columnLookup),
 		}
+
+	case TruePredicate:
+		return dataset.TruePredicate{}
 
 	case FalsePredicate:
 		return dataset.FalsePredicate{}
@@ -393,6 +410,7 @@ func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.stats.Reset()
 
 	r.ready = false
 
@@ -401,6 +419,35 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
+}
+
+func (r *Reader) Stats() *dataset.ReaderStats {
+	return &r.stats
+}
+
+// Close closes the Reader and releases any resources it holds. Closed Readers
+// can be reused by calling [Reader.Reset].
+func (r *Reader) Close() error {
+	if r.inner != nil {
+		return r.inner.Close()
+	}
+	return nil
+}
+
+func appendMissingColumns(dst, src []*Column) []*Column {
+	exists := make(map[*Column]struct{}, len(dst))
+	for _, col := range dst {
+		exists[col] = struct{}{}
+	}
+
+	for _, col := range src {
+		if _, ok := exists[col]; !ok {
+			// Not seen, add it.
+			dst = append(dst, col)
+		}
+	}
+
+	return dst
 }
 
 func columnsSchema(cols []*Column) *arrow.Schema {
@@ -415,8 +462,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:   arrow.Null,
 	ColumnTypeStreamID:  arrow.PrimitiveTypes.Int64,
 	ColumnTypeTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMetadata:  arrow.BinaryTypes.Binary,
-	ColumnTypeMessage:   arrow.BinaryTypes.Binary,
+	ColumnTypeMetadata:  arrow.BinaryTypes.String,
+	ColumnTypeMessage:   arrow.BinaryTypes.String,
 }
 
 func columnToField(col *Column) arrow.Field {

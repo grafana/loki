@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.4](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.3...auth/v0.16.4) (2025-08-06)
+
+
+### Bug Fixes
+
+* **auth:** Add UseDefaultClient: true to metadata.Options ([#12666](https://github.com/googleapis/google-cloud-go/issues/12666)) ([1482191](https://github.com/googleapis/google-cloud-go/commit/1482191e88236693efef68769752638281566766)), refs [#11078](https://github.com/googleapis/google-cloud-go/issues/11078) [#12657](https://github.com/googleapis/google-cloud-go/issues/12657)
+
+## [0.16.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.2...auth/v0.16.3) (2025-07-17)
+
+
+### Bug Fixes
+
+* **auth:** Fix race condition in cachedTokenProvider.tokenAsync ([#12586](https://github.com/googleapis/google-cloud-go/issues/12586)) ([73867cc](https://github.com/googleapis/google-cloud-go/commit/73867ccc1e9808d65361bcfc0776bd95fe34dbb3))
+
 ## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
 
 

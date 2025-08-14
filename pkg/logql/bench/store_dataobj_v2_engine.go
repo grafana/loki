@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -25,6 +26,24 @@ type DataObjV2EngineStore struct {
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
 func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
+		EnableV2Engine: true,
+		BatchSize:      512,
+	}, metastore.StorageConfig{})
+}
+
+// NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
+// This is useful for comparing results between when an index is available and when it is not. Once tested, the indexed engine will be the default.
+func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
+		EnableV2Engine: true,
+		BatchSize:      512,
+	}, metastore.StorageConfig{
+		IndexStoragePrefix: "index/v0",
+	})
+}
+
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.StorageConfig) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
@@ -38,18 +57,13 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
 
-	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{
-		EnableV2Engine: true,
-	}
-
 	// Instantiate the new engine
 	// Note: The tenantID is not directly passed to engine.New here.
 	// The engine might expect tenant information to be part of the query context
 	// or derived from the bucket structure if it's multi-tenant aware.
 	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
 	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, bucketClient, logql.NoLimits, nil, logger)
+	queryEngine := engine.New(engineOpts, cfg, bucketClient, logql.NoLimits, nil, logger)
 
 	return &DataObjV2EngineStore{
 		engine:   queryEngine,

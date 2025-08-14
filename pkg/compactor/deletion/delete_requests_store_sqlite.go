@@ -11,6 +11,7 @@ import (
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
@@ -66,7 +67,7 @@ const (
                                      WHEN processed_shards+1 = total_shards THEN ?
                                     ELSE NULL
                                  END
-                              WHERE id=?`
+                              WHERE id=? AND processed_shards < total_shards;`
 	sqlDeleteShards          = `DELETE FROM shards WHERE id=? AND user_id=?;`
 	sqlRemoveDeleteRequest   = `DELETE FROM requests WHERE id=? AND user_id=?`
 	sqlSelectRequestByID     = `SELECT * FROM requests WHERE id = ? AND user_id = ?;`
@@ -79,7 +80,17 @@ const (
 	sqlGetUnprocessedShards                    = `SELECT dr.id, dr.user_id, dr.created_at, sh.start_time, sh.end_time, dr.query
                               FROM shards sh
                               JOIN requests dr ON sh.id = dr.id`
-	sqlCountDeleteRequests = `SELECT COUNT(*) FROM requests;`
+	sqlCountDeleteRequests   = `SELECT COUNT(*) FROM requests;`
+	sqlGetIncompleteRequests = `SELECT id FROM requests WHERE completed_at IS NULL;`
+	sqlUpdateShardCount      = `UPDATE requests
+                              SET
+                                 processed_shards = total_shards - ?,
+                                 completed_at = CASE
+                                     WHEN ? = 0 THEN ?
+                                    ELSE NULL
+                                 END
+                              WHERE id=?;`
+	sqlCountShards = `SELECT COUNT(*) FROM shards WHERE id=?;`
 )
 
 type userCacheGen struct {
@@ -124,8 +135,8 @@ func (ds *deleteRequestsStoreSQLite) Stop() {
 	ds.sqliteStore.Stop()
 }
 
-func (ds *deleteRequestsStoreSQLite) copyData(ctx context.Context, shards []DeleteRequest, userCacheGens []userCacheGen) error {
-	slices.SortFunc(shards, func(a, b DeleteRequest) int {
+func (ds *deleteRequestsStoreSQLite) copyData(ctx context.Context, shards []deletionproto.DeleteRequest, userCacheGens []userCacheGen) error {
+	slices.SortFunc(shards, func(a, b deletionproto.DeleteRequest) int {
 		return strings.Compare(a.RequestID, b.RequestID)
 	})
 	mergedReqs := mergeDeletes(shards)
@@ -152,7 +163,7 @@ func (ds *deleteRequestsStoreSQLite) copyData(ctx context.Context, shards []Dele
 	}
 
 	for _, shard := range shards {
-		if shard.Status != StatusProcessed {
+		if shard.Status != deletionproto.StatusProcessed {
 			continue
 		}
 
@@ -174,7 +185,7 @@ func (ds *deleteRequestsStoreSQLite) copyData(ctx context.Context, shards []Dele
 	return ds.sqliteStore.Exec(ctx, true, sqlQueries...)
 }
 
-func (ds *deleteRequestsStoreSQLite) buildAddDeleteRequestQueries(req DeleteRequest, shards []DeleteRequest) []sqlQuery {
+func (ds *deleteRequestsStoreSQLite) buildAddDeleteRequestQueries(req deletionproto.DeleteRequest, shards []deletionproto.DeleteRequest) []sqlQuery {
 	sqlQueries := []sqlQuery{
 		{
 			query: sqlInsertDeleteRequest,
@@ -245,7 +256,7 @@ func (ds *deleteRequestsStoreSQLite) AddDeleteRequest(ctx context.Context, userI
 }
 
 func (ds *deleteRequestsStoreSQLite) addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error {
-	var req DeleteRequest
+	var req deletionproto.DeleteRequest
 
 	req.RequestID = requestID
 	req.UserID = userID
@@ -272,7 +283,7 @@ func (ds *deleteRequestsStoreSQLite) addDeleteRequestWithID(ctx context.Context,
 	return ds.sqliteStore.Exec(ctx, true, sqlQueries...)
 }
 
-func (ds *deleteRequestsStoreSQLite) generateID(ctx context.Context, req DeleteRequest) (string, error) {
+func (ds *deleteRequestsStoreSQLite) generateID(ctx context.Context, req deletionproto.DeleteRequest) (string, error) {
 	requestID := generateUniqueID(req.UserID, req.Query)
 
 	for {
@@ -330,13 +341,13 @@ func (ds *deleteRequestsStoreSQLite) RemoveDeleteRequest(ctx context.Context, us
 	})
 }
 
-func (ds *deleteRequestsStoreSQLite) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+func (ds *deleteRequestsStoreSQLite) GetDeleteRequest(ctx context.Context, userID, requestID string) (deletionproto.DeleteRequest, error) {
 	reqs, err := ds.queryDeleteRequests(ctx, sqlSelectRequestByID, []any{
 		requestID,
 		userID,
 	})
 	if len(reqs) == 0 {
-		return DeleteRequest{}, ErrDeleteRequestNotFound
+		return deletionproto.DeleteRequest{}, ErrDeleteRequestNotFound
 	}
 
 	return reqs[0], err
@@ -346,11 +357,11 @@ func (ds *deleteRequestsStoreSQLite) MergeShardedRequests(_ context.Context) err
 	return nil
 }
 
-func (ds *deleteRequestsStoreSQLite) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
+func (ds *deleteRequestsStoreSQLite) MarkShardAsProcessed(ctx context.Context, req deletionproto.DeleteRequest) error {
 	return ds.sqliteStore.Exec(ctx, true, ds.buildMarkShardAsProcessedQueries(req)...)
 }
 
-func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req DeleteRequest) []sqlQuery {
+func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req deletionproto.DeleteRequest) []sqlQuery {
 	return []sqlQuery{
 		{
 			query: sqlDeleteShard,
@@ -361,6 +372,14 @@ func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req Delete
 					req.EndTime,
 				},
 			},
+			postUpdateExecCallback: func(numChanges int) error {
+				// Exactly one row should be deleted. Fail the transaction if not.
+				if numChanges != 1 {
+					return fmt.Errorf("expected 1 change, got %d", numChanges)
+				}
+
+				return nil
+			},
 		}, {
 			query: sqlProcessedShardUpdate,
 			execOpts: &sqlitex.ExecOptions{
@@ -369,25 +388,34 @@ func (ds *deleteRequestsStoreSQLite) buildMarkShardAsProcessedQueries(req Delete
 					req.RequestID,
 				},
 			},
+			postUpdateExecCallback: func(numChanges int) error {
+				// Exactly one row should be updated. Fail the transaction if not.
+				if numChanges != 1 {
+					return fmt.Errorf("expected 1 change, got %d", numChanges)
+				}
+
+				return nil
+			},
 		},
 	}
 }
 
-func (ds *deleteRequestsStoreSQLite) GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error) {
-	var requests []DeleteRequest
+func (ds *deleteRequestsStoreSQLite) GetUnprocessedShards(ctx context.Context) ([]deletionproto.DeleteRequest, error) {
+	var requests []deletionproto.DeleteRequest
 	if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
 		query: sqlGetUnprocessedShards,
 		execOpts: &sqlitex.ExecOptions{
 			ResultFunc: func(stmt *sqlite.Stmt) error {
-				requests = append(requests, DeleteRequest{
+				requests = append(requests, deletionproto.DeleteRequest{
 					RequestID: stmt.GetText(columnNameID),
 					UserID:    stmt.GetText(columnNameUserID),
 					CreatedAt: model.Time(stmt.GetInt64(columnNameCreatedAt)),
 					StartTime: model.Time(stmt.GetInt64(columnNameStartTime)),
 					EndTime:   model.Time(stmt.GetInt64(columnNameEndTime)),
 					Query:     stmt.GetText(columnNameQuery),
-					Status:    StatusReceived,
-				})
+					Status:    deletionproto.StatusReceived,
+				},
+				)
 				return nil
 			},
 		},
@@ -398,12 +426,12 @@ func (ds *deleteRequestsStoreSQLite) GetUnprocessedShards(ctx context.Context) (
 	return requests, nil
 }
 
-func (ds *deleteRequestsStoreSQLite) GetAllRequests(ctx context.Context) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStoreSQLite) GetAllRequests(ctx context.Context) ([]deletionproto.DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, sqlSelectRequests, nil)
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
-func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]DeleteRequest, error) {
+func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]deletionproto.DeleteRequest, error) {
 	if !forQuerytimeFiltering {
 		return ds.queryDeleteRequests(ctx, sqlSelectRequestsForUser, []any{userID})
 	}
@@ -432,14 +460,14 @@ func (ds *deleteRequestsStoreSQLite) GetCacheGenerationNumber(ctx context.Contex
 	return genNumber, nil
 }
 
-func (ds *deleteRequestsStoreSQLite) queryDeleteRequests(ctx context.Context, query string, args []any) ([]DeleteRequest, error) {
-	var requests []DeleteRequest
+func (ds *deleteRequestsStoreSQLite) queryDeleteRequests(ctx context.Context, query string, args []any) ([]deletionproto.DeleteRequest, error) {
+	var requests []deletionproto.DeleteRequest
 	if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
 		query: query,
 		execOpts: &sqlitex.ExecOptions{
 			Args: args,
 			ResultFunc: func(stmt *sqlite.Stmt) error {
-				requests = append(requests, DeleteRequest{
+				requests = append(requests, deletionproto.DeleteRequest{
 					RequestID: stmt.GetText(columnNameID),
 					UserID:    stmt.GetText(columnNameUserID),
 					CreatedAt: model.Time(stmt.GetInt64(columnNameCreatedAt)),
@@ -456,4 +484,54 @@ func (ds *deleteRequestsStoreSQLite) queryDeleteRequests(ctx context.Context, qu
 	}
 
 	return requests, nil
+}
+
+func (ds *deleteRequestsStoreSQLite) fixProcessedShardCount(ctx context.Context) error {
+	// find all the IDs of requests which are still incomplete
+	var incompleteRequestIDs []string
+	if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
+		query: sqlGetIncompleteRequests,
+		execOpts: &sqlitex.ExecOptions{
+			ResultFunc: func(stmt *sqlite.Stmt) error {
+				incompleteRequestIDs = append(incompleteRequestIDs, stmt.GetText(columnNameID))
+				return nil
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	// go through ID of each incomplete request and fix their shard count
+	for _, requestID := range incompleteRequestIDs {
+		shardCount := 0
+		if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
+			query: sqlCountShards,
+			execOpts: &sqlitex.ExecOptions{
+				Args: []any{requestID},
+				ResultFunc: func(stmt *sqlite.Stmt) error {
+					shardCount = stmt.ColumnInt(0)
+					return nil
+				},
+			},
+		}); err != nil {
+			return err
+		}
+
+		if err := ds.sqliteStore.Exec(ctx, true, sqlQuery{
+			query: sqlUpdateShardCount,
+			execOpts: &sqlitex.ExecOptions{
+				Args: []any{
+					shardCount,
+					shardCount,
+					time.Now().UnixNano(),
+					requestID,
+				},
+			},
+		}); err != nil {
+			return err
+		}
+
+	}
+
+	return nil
 }

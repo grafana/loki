@@ -54,6 +54,7 @@ func (enc *encoder) OpenColumn(columnType pointersmd.ColumnType, info *dataset.C
 		Info: &datasetmd.ColumnInfo{
 			Name:             info.Name,
 			ValueType:        info.Type,
+			PagesCount:       uint64(info.PagesCount),
 			RowsCount:        uint64(info.RowsCount),
 			ValuesCount:      uint64(info.ValuesCount),
 			Compression:      info.Compression,
@@ -115,7 +116,7 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes())
+	n, err := w.WriteSection(nil, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}

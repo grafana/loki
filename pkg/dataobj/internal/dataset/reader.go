@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions configures how a [Reader] will read [Row]s.
@@ -53,6 +52,7 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
+	stats  ReaderStats       // Stats about the read operation.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -66,6 +66,9 @@ func NewReader(opts ReaderOptions) *Reader {
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
+	stats := StatsFromContext(ctx)
+	stats.AddReadCalls(1)
+
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -127,9 +130,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 	r.dl.SetReadRange(readRange)
 
 	var (
-		rowsRead   int // tracks max rows accessed to move the [r.row] cursor
-		passCount  int // tracks how many rows passed the predicate
-		statistics = stats.FromContext(ctx)
+		rowsRead  int // tracks max rows accessed to move the [r.row] cursor
+		passCount int // tracks how many rows passed the predicate
 	)
 
 	// If there are no predicates, read all columns in the dataset
@@ -144,19 +146,18 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		rowsRead = count
 		passCount = count
 
-		statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
+		stats.AddPrimaryRowsRead(uint64(rowsRead))
 		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
-		statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+		stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
 	} else {
-		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], statistics)
+		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], stats)
 		if err != nil {
 			return n, err
 		}
 	}
-	statistics.AddPostPredicateRows(int64(passCount))
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
 		// Mask out any ranges that aren't in s[:passCount], so that filling in
@@ -181,7 +182,9 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		for i := range count {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
-		statistics.AddPostPredicateDecompressedBytes(totalBytesFilled)
+
+		stats.AddSecondaryRowsRead(uint64(count))
+		stats.AddSecondaryRowBytes(uint64(totalBytesFilled))
 	}
 
 	n += passCount
@@ -200,7 +203,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 // the columns on the reduced row range.
 //
 // It returns the max rows read, rows that passed all the predicates, and any error
-func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *stats.Context) (int, int, error) {
+func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *ReaderStats) (int, int, error) {
 	var (
 		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
@@ -268,8 +271,8 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		readSize = passCount
 	}
 
-	stats.AddPrePredicateDecompressedRows(int64(rowsRead))
-	stats.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+	stats.AddPrimaryRowsRead(uint64(rowsRead))
+	stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
 	return rowsRead, passCount, nil
 }
 
@@ -302,6 +305,9 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 
 	case NotPredicate:
 		return !checkPredicate(p.Inner, lookup, row)
+
+	case TruePredicate:
+		return true
 
 	case FalsePredicate:
 		return false
@@ -478,7 +484,7 @@ func (r *Reader) validatePredicate() error {
 				err = process(p.Column)
 			case FuncPredicate:
 				err = process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.validatePredicate: unsupported predicate type %T", p))
@@ -507,12 +513,18 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
 
+	stats := StatsFromContext(ctx)
 	for i, column := range r.opts.Columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
+			stats.AddPrimaryColumns(1)
+			stats.AddPrimaryColumnPages(uint64(column.ColumnInfo().PagesCount))
+		} else {
+			stats.AddSecondaryColumns(1)
+			stats.AddSecondaryColumnPages(uint64(column.ColumnInfo().PagesCount))
 		}
 	}
 
@@ -545,8 +557,9 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	for _, column := range r.dl.AllColumns() {
 		rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
 	}
-	statistics := stats.FromContext(ctx)
-	statistics.AddTotalRowsAvailable(int64(rowsCount))
+
+	stats.AddTotalRowsAvailable(int64(rowsCount))
+	stats.AddRowsToReadAfterPruning(ranges.TotalRowCount())
 
 	return nil
 }
@@ -584,7 +597,7 @@ func (r *Reader) fillPrimaryMask(mask *bitmask.Mask) {
 				process(p.Column)
 			case FuncPredicate:
 				process(p.Column)
-			case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
 				panic(fmt.Sprintf("dataset.Reader.fillPrimaryMask: unsupported predicate type %T", p))
@@ -657,7 +670,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case FuncPredicate, nil:
+	case TruePredicate, FuncPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -707,7 +720,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 		return inner.Inner, nil
 
 	case FalsePredicate:
-		return nil, fmt.Errorf("can't simplify FalsePredicate")
+		return TruePredicate{}, nil
 
 	case EqualPredicate: // De Morgan's law: !(A == B) == A != B == A < B || A > B
 		return OrPredicate{
@@ -845,7 +858,7 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 			columns[p.Column] = struct{}{}
 		case FuncPredicate:
 			columns[p.Column] = struct{}{}
-		case AndPredicate, OrPredicate, NotPredicate, FalsePredicate, nil:
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
 			panic(fmt.Sprintf("predicateColumns: unsupported predicate type %T", p))

@@ -14,18 +14,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
-var (
-	structuredMetadataPool = sync.Pool{
-		New: func() interface{} {
-			return make(labels.Labels, 0, 8)
-		},
-	}
-	errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")
-)
+var errSymbolizerReadOnly = errors.New("writes not allowed when symbolizer is in read-only mode")
 
 // symbol holds reference to a label name and value pair
 type symbol struct {
@@ -100,17 +93,19 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.Labels, error) {
 	if len(syms) == 0 {
-		return labels.EmptyLabels()
+		return labels.EmptyLabels(), nil
 	}
 
 	if buf == nil {
-		structuredMetadata := structuredMetadataPool.Get().(labels.Labels)
-		buf = log.NewBufferedLabelsBuilder(structuredMetadata)
+		buf = labelpool.Get()
+		defer labelpool.Put(buf)
+	} else {
+		buf.Reset()
 	}
-	buf.Reset()
 
+	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
 		s.mtx.RLock()
@@ -123,17 +118,23 @@ func (s *symbolizer) Lookup(syms symbols, buf *log.BufferedLabelsBuilder) labels
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized := otlptranslator.NormalizeLabel(name)
-			s.mtx.Lock()
-			s.normalizedNames[symbol.Name] = normalized
-			s.mtx.Unlock()
-			name = normalized
+			// If we have a match for the symbol name, normalize it. Otherwise keep "" as the name.
+			if name != "" {
+				normalized, err := labelNamer.Build(name)
+				if err != nil {
+					return labels.EmptyLabels(), err
+				}
+				s.mtx.Lock()
+				s.normalizedNames[symbol.Name] = normalized
+				s.mtx.Unlock()
+				name = normalized
+			}
 		}
 
-		buf.Add(labels.Label{Name: name, Value: s.lookup(symbol.Value)})
+		buf.Add(name, s.lookup(symbol.Value))
 	}
 
-	return buf.Labels()
+	return buf.Labels(), nil
 }
 
 func (s *symbolizer) lookup(idx uint32) string {

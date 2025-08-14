@@ -16,10 +16,12 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 const (
@@ -34,10 +36,13 @@ type Service struct {
 	client *consumer.Client
 
 	eventsProducerClient *kgo.Client
+	eventConsumerClient  *kgo.Client
 
-	cfg    Config
-	bucket objstore.Bucket
-	codec  distributor.TenantPrefixCodec
+	cfg          Config
+	mCfg         metastore.Config
+	bucket       objstore.Bucket
+	scratchStore scratch.Store
+	codec        distributor.TenantPrefixCodec
 
 	// Partition management
 	partitionMtx      sync.RWMutex
@@ -46,11 +51,13 @@ type Service struct {
 	bufPool *sync.Pool
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
+		mCfg:              mCfg,
 		bucket:            bucket,
+		scratchStore:      scratchStore,
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
@@ -82,14 +89,15 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 
 	eventsKafkaCfg := kafkaCfg
 	eventsKafkaCfg.Topic = "loki.metastore-events"
+	eventsKafkaCfg.AutoCreateTopicDefaultPartitions = 1
 	eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create producer", "err", err)
 		return nil
 	}
-
 	s.client = consumerClient
 	s.eventsProducerClient = eventsProducerClient
+
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
@@ -112,7 +120,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, s.scratchStore, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}

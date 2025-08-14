@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -93,17 +94,22 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
-			Selector: selector,
-			Shard:    shard,
+			Selector:   selector,
+			Predicates: predicates,
+			Shard:      shard,
 		},
 	)
 
-	// Metric queries currently do not expect the logs to be sorted by timestamp.
+	direction := params.Direction()
+	if !isMetricQuery && direction == logproto.FORWARD {
+		return nil, fmt.Errorf("forward search log queries are not supported: %w", errUnimplemented)
+	}
+
 	if !isMetricQuery {
 		// SORT -> SortMerge
-		direction := params.Direction()
-		ascending := direction == logproto.FORWARD
-		builder = builder.Sort(*timestampColumnRef(), ascending, false)
+		// We always sort DESC. ASC timestamp sorting is not supported for logs
+		// queries, and metric queries do not need sorting.
+		builder = builder.Sort(*timestampColumnRef(), false, false)
 	}
 
 	// SELECT -> Filter
@@ -351,12 +357,12 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 	return []*BinOp{
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(start),
+			Right: NewLiteral(datatype.Timestamp(start.UTC().UnixNano())),
 			Op:    types.BinaryOpGte,
 		},
 		{
 			Left:  timestampColumnRef(),
-			Right: NewLiteral(end),
+			Right: NewLiteral(datatype.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
 	}

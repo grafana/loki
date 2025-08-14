@@ -1,0 +1,123 @@
+package indexpointers
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
+)
+
+var sectionType = dataobj.SectionType{
+	Namespace: "github.com/grafana/loki",
+	Kind:      "indexpointers",
+}
+
+// CheckSection returns true if section is a indexpointers section.
+func CheckSection(section *dataobj.Section) bool { return section.Type == sectionType }
+
+// Section represents an opened indexpointers section.
+type Section struct {
+	reader  dataobj.SectionReader
+	columns []*Column
+}
+
+// Open opens a Section from an underlying [dataobj.Section]. Open returns an
+// error if the section metadata could not be read or if the provided ctx is
+// canceled.
+func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
+	if !CheckSection(section) {
+		return nil, fmt.Errorf("section is not a indexpointers section")
+	}
+
+	sec := &Section{reader: section.Reader}
+	if err := sec.init(ctx); err != nil {
+		return nil, fmt.Errorf("intializing section: %w", err)
+	}
+	return sec, nil
+}
+
+func (s *Section) init(ctx context.Context) error {
+	dec := newDecoder(s.reader)
+	metadata, err := dec.Metadata(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to decode metadata: %w", err)
+	}
+
+	for _, col := range metadata.GetColumns() {
+		colType, ok := convertColumnType(col.Type)
+		if !ok {
+			// Skip over unrecognized columns.
+			continue
+		}
+
+		s.columns = append(s.columns, &Column{
+			Section: s,
+			Name:    col.Info.Name,
+			Type:    colType,
+
+			desc: col,
+		})
+	}
+
+	return nil
+}
+
+// Columns returns the set of Columns in the section. The slice of returned
+// sections must not be mutated.
+//
+// Unrecognized columns (e.g., when running older code against newer indexpointers
+// sections) are skipped.
+func (s *Section) Columns() []*Column { return s.columns }
+
+// ColumnType represents the kind of information stored in a [Column].
+type ColumnType int
+
+const (
+	ColumnTypeInvalid      ColumnType = iota // ColumnTypeInvalid is an invalid column.
+	ColumnTypePath                           // ColumnTypePath is a column containing the path to the index object.
+	ColumnTypeMinTimestamp                   // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
+	ColumnTypeMaxTimestamp                   // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+)
+
+var columnTypeNames = map[ColumnType]string{
+	ColumnTypeInvalid:      "invalid",
+	ColumnTypePath:         "path",
+	ColumnTypeMinTimestamp: "min_timestamp",
+	ColumnTypeMaxTimestamp: "max_timestamp",
+}
+
+// String returns the human-readable name of ct.
+func (ct ColumnType) String() string {
+	text, ok := columnTypeNames[ct]
+	if !ok {
+		return fmt.Sprintf("ColumnType(%d)", ct)
+	}
+	return text
+}
+
+// A Column represents one of the columns in the indexpointers section. Valid columns
+// can only be retrieved by calling [Section.Columns].
+//
+// Data in columns can be read by using a [Reader].
+type Column struct {
+	Section *Section
+	Name    string
+	Type    ColumnType
+
+	desc *indexpointersmd.ColumnDesc // Column description used for further decoding and reading.
+}
+
+func convertColumnType(protoType indexpointersmd.ColumnType) (ColumnType, bool) {
+	switch protoType {
+	case indexpointersmd.COLUMN_TYPE_UNSPECIFIED:
+		return ColumnTypeInvalid, true
+	case indexpointersmd.COLUMN_TYPE_PATH:
+		return ColumnTypePath, true
+	case indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
+		return ColumnTypeMinTimestamp, true
+	case indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
+		return ColumnTypeMaxTimestamp, true
+	}
+	return ColumnTypeInvalid, false
+}

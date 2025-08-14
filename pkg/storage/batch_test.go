@@ -1658,7 +1658,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				ctx:      ctx,
 				pipeline: log.NewNoopPipeline(),
 			}
-			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+			it, err := b.buildMergeIterator(tc.input, from, from.Add(6*time.Millisecond), b.pipeline.ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
 			if err != nil {
 				t.Errorf("buildMergeIterator error = %v", err)
 				return
@@ -1822,5 +1822,5 @@ func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -464,7 +465,7 @@ type RuleDependencyController interface {
 type ruleDependencyController struct{}
 
 // AnalyseRules implements RuleDependencyController.
-func (c ruleDependencyController) AnalyseRules(rules []Rule) {
+func (ruleDependencyController) AnalyseRules(rules []Rule) {
 	depMap := buildDependencyMap(rules)
 
 	if depMap == nil {
@@ -484,7 +485,7 @@ type ConcurrentRules []int
 // Its purpose is to bound the amount of concurrency in rule evaluations to avoid overwhelming the Prometheus
 // server with additional query load. Concurrency is controlled globally, not on a per-group basis.
 type RuleConcurrencyController interface {
-	// SplitGroupIntoBatches returns an ordered slice of of ConcurrentRules, which are batches of rules that can be evaluated concurrently.
+	// SplitGroupIntoBatches returns an ordered slice of ConcurrentRules, which are batches of rules that can be evaluated concurrently.
 	// The rules are represented by their index from the input rule group.
 	SplitGroupIntoBatches(ctx context.Context, group *Group) []ConcurrentRules
 
@@ -508,11 +509,11 @@ func newRuleConcurrencyController(maxConcurrency int64) RuleConcurrencyControlle
 	}
 }
 
-func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
+func (c *concurrentRuleEvalController) Allow(context.Context, *Group, Rule) bool {
 	return c.sema.TryAcquire(1)
 }
 
-func (c *concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
+func (*concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
 	// Using the rule dependency controller information (rules being identified as having no dependencies or no dependants),
 	// we can safely run the following concurrent groups:
 	// 1. Concurrently, all rules that have no dependencies
@@ -548,7 +549,7 @@ func (c *concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, 
 	return order
 }
 
-func (c *concurrentRuleEvalController) Done(_ context.Context) {
+func (c *concurrentRuleEvalController) Done(context.Context) {
 	c.sema.Release(1)
 }
 
@@ -557,15 +558,15 @@ var _ RuleConcurrencyController = &sequentialRuleEvalController{}
 // sequentialRuleEvalController is a RuleConcurrencyController that runs every rule sequentially.
 type sequentialRuleEvalController struct{}
 
-func (c sequentialRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
+func (sequentialRuleEvalController) Allow(context.Context, *Group, Rule) bool {
 	return false
 }
 
-func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, _ *Group) []ConcurrentRules {
+func (sequentialRuleEvalController) SplitGroupIntoBatches(context.Context, *Group) []ConcurrentRules {
 	return nil
 }
 
-func (c sequentialRuleEvalController) Done(_ context.Context) {}
+func (sequentialRuleEvalController) Done(context.Context) {}
 
 // FromMaps returns new sorted Labels from the given maps, overriding each other in order.
 func FromMaps(maps ...map[string]string) labels.Labels {
@@ -578,4 +579,33 @@ func FromMaps(maps ...map[string]string) labels.Labels {
 	}
 
 	return labels.FromMap(mLables)
+}
+
+// ParseFiles parses the rule files corresponding to glob patterns.
+func ParseFiles(patterns []string) error {
+	files := map[string]string{}
+	for _, pat := range patterns {
+		fns, err := filepath.Glob(pat)
+		if err != nil {
+			return fmt.Errorf("failed retrieving rule files for %q: %w", pat, err)
+		}
+		for _, fn := range fns {
+			absPath, err := filepath.Abs(fn)
+			if err != nil {
+				absPath = fn
+			}
+			cleanPath, err := filepath.EvalSymlinks(absPath)
+			if err != nil {
+				return fmt.Errorf("failed evaluating rule file path %q (pattern: %q): %w", absPath, pat, err)
+			}
+			files[cleanPath] = pat
+		}
+	}
+	for fn, pat := range files {
+		_, errs := rulefmt.ParseFile(fn, false)
+		if len(errs) > 0 {
+			return fmt.Errorf("parse rules from file %q (pattern: %q): %w", fn, pat, errors.Join(errs...))
+		}
+	}
+	return nil
 }

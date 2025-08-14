@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
@@ -22,11 +23,11 @@ type catalog struct {
 
 // ResolveDataObj implements Catalog.
 func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(e, noShard, from, through)
+	return c.ResolveDataObjWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -99,35 +100,42 @@ func TestMockCatalog(t *testing.T) {
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, tt.shard, time.Now(), time.Now())
-			require.Equal(t, tt.expPaths, paths)
-			require.Equal(t, tt.expStreams, streams)
-			require.Equal(t, tt.expSections, sections)
+			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, time.Now(), time.Now())
+			require.ElementsMatch(t, tt.expPaths, paths)
+			require.ElementsMatch(t, tt.expStreams, streams)
+			require.ElementsMatch(t, tt.expSections, sections)
 		})
 	}
-
 }
 
-func locations(t *testing.T, nodes []Node) []string {
+func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, string(scan.Location))
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-		}
-		res = append(res, string(obj.Location))
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
 
-func sections(t *testing.T, nodes []Node) [][]int {
+func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, []int{scan.Section})
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-		}
-		res = append(res, []int{obj.Section})
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
@@ -203,9 +211,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
-
-			require.Equal(t, tt.expPaths, locations(t, nodes))
-			require.Equal(t, tt.expSections, sections(t, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }
@@ -235,7 +242,7 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
@@ -280,7 +287,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(

@@ -8,12 +8,10 @@ import (
 	"io"
 	"iter"
 	"maps"
-	"strconv"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
@@ -119,10 +117,11 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 func (r *RowReader) initReader(ctx context.Context) error {
 	dec := newDecoder(r.sec.reader)
 
-	columnDescs, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+		return fmt.Errorf("reading metadata: %w", err)
 	}
+	columnDescs := metadata.GetColumns()
 
 	dset, err := newColumnsDataset(r.sec.Columns())
 	if err != nil {
@@ -135,7 +134,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		predicates = append(predicates, streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs))
 	}
 
-	if p := translatePointersPredicate(r.predicate, columns); p != nil {
+	if p := translatePointersPredicate(r.predicate, columns, columnDescs); p != nil {
 		predicates = append(predicates, p)
 	}
 
@@ -215,32 +214,49 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 	}
 }
 
-func translatePointersPredicate(p RowPredicate, columns []dataset.Column) dataset.Predicate {
+func translatePointersPredicate(p RowPredicate, columns []dataset.Column, columnDescs []*pointersmd.ColumnDesc) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
 
-	var nameColumn dataset.Column
-	var bloomColumn dataset.Column
-	for _, desc := range columns {
-		if desc.ColumnInfo().Name == "column_name" {
-			nameColumn = desc
-		}
-		if desc.ColumnInfo().Name == "values_bloom_filter" {
-			bloomColumn = desc
-		}
-	}
+	nameColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
+		return desc.Type == pointersmd.COLUMN_TYPE_COLUMN_NAME
+	})
+
+	bloomColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
+		return desc.Type == pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER
+	})
+
+	startColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
+		return desc.Type == pointersmd.COLUMN_TYPE_MIN_TIMESTAMP
+	})
+
+	endColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
+		return desc.Type == pointersmd.COLUMN_TYPE_MAX_TIMESTAMP
+	})
 
 	switch p := p.(type) {
-	case BloomExistencePredicate:
-		return convertBloomExistencePredicate(p, nameColumn, bloomColumn)
-
+	case AndRowPredicate:
+		return dataset.AndPredicate{
+			Left:  translatePointersPredicate(p.Left, columns, columnDescs),
+			Right: translatePointersPredicate(p.Right, columns, columnDescs),
+		}
+	case BloomExistenceRowPredicate:
+		return convertBloomExistenceRowPredicate(p, nameColumn, bloomColumn)
+	case TimeRangeRowPredicate:
+		return convertTimeRangeRowPredicate(p, startColumn, endColumn)
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
 }
 
-func convertBloomExistencePredicate(p BloomExistencePredicate, nameColumn, bloomColumn dataset.Column) dataset.Predicate {
+func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn, bloomColumn dataset.Column) dataset.Predicate {
+	if nameColumn == nil && bloomColumn == nil {
+		// If there are no name or bloom columns present, it means this section doesn't have any relevant columns for this predicate.
+		// This can happen if a whole section only contains pointers of a different Kind.
+		return dataset.FalsePredicate{}
+	}
+
 	// TODO: Make this more efficient by not re-allocating the bloom filter each time
 	return dataset.AndPredicate{
 		Left: dataset.EqualPredicate{
@@ -251,13 +267,27 @@ func convertBloomExistencePredicate(p BloomExistencePredicate, nameColumn, bloom
 			Column: bloomColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				bloomBytes := value.ByteArray()
-				bf := bloom.New(100, 100) // Dummy values
+				bf := bloom.New(1, 1) // Dummy values
 				_, err := bf.ReadFrom(bytes.NewReader(bloomBytes))
 				if err != nil {
-					return false
+					// If the bloom filter is invalid, we assume it would pass.
+					return true
 				}
 				return bf.TestString(p.Value)
 			},
+		},
+	}
+}
+
+func convertTimeRangeRowPredicate(p TimeRangeRowPredicate, startColumn, endColumn dataset.Column) dataset.Predicate {
+	return dataset.AndPredicate{
+		Left: dataset.GreaterThanPredicate{
+			Column: startColumn,
+			Value:  dataset.Int64Value(p.Start.UnixNano() - 1),
+		},
+		Right: dataset.LessThanPredicate{
+			Column: endColumn,
+			Value:  dataset.Int64Value(p.End.UnixNano() + 1),
 		},
 	}
 }
@@ -269,19 +299,4 @@ func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check 
 		}
 	}
 	return nil
-}
-
-func valueToString(value dataset.Value) string {
-	switch value.Type() {
-	case datasetmd.VALUE_TYPE_UNSPECIFIED:
-		return ""
-	case datasetmd.VALUE_TYPE_INT64:
-		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.VALUE_TYPE_UINT64:
-		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		return unsafeString(value.ByteArray())
-	default:
-		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
-	}
 }

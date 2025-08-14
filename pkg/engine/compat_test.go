@@ -16,9 +16,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+
+	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/push"
-	"github.com/prometheus/prometheus/promql"
 )
 
 func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arrow.Record {
@@ -56,8 +59,8 @@ func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arro
 }
 
 func TestStreamsResultBuilder(t *testing.T) {
-	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)
-	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.String)
+	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
+	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
 
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
@@ -149,28 +152,39 @@ func TestStreamsResultBuilder(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 5, builder.Len())
 
-		result := builder.Build()
-		require.Equal(t, 3, result.Data.(logqlmodel.Streams).Len())
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		require.Equal(t, 5, result.Data.(logqlmodel.Streams).Len())
 
 		expected := logqlmodel.Streams{
 			push.Stream{
-				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-001").String(),
+				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-001", "traceID", "860e403fcf754312").String(),
 				Entries: []logproto.Entry{
-					{Line: "log line 1", Timestamp: time.Unix(0, 1620000000000000001), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "860e403fcf754312"))},
+					{Line: "log line 1", Timestamp: time.Unix(0, 1620000000000000001), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "860e403fcf754312")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
 				},
 			},
 			push.Stream{
-				Labels: labels.FromStrings("env", "prod", "namespace", "loki-prod-001").String(),
+				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-002", "traceID", "0cf883f112ad239b").String(),
 				Entries: []logproto.Entry{
-					{Line: "log line 2", Timestamp: time.Unix(0, 1620000000000000002), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "46ce02549441e41c"))},
-					{Line: "log line 4", Timestamp: time.Unix(0, 1620000000000000004), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "40e50221e284b9d2"))},
+					{Line: "log line 5", Timestamp: time.Unix(0, 1620000000000000005), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "0cf883f112ad239b")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
 				},
 			},
 			push.Stream{
-				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-002").String(),
+				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-002", "traceID", "61330481e1e59b18").String(),
 				Entries: []logproto.Entry{
-					{Line: "log line 3", Timestamp: time.Unix(0, 1620000000000000003), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "61330481e1e59b18"))},
-					{Line: "log line 5", Timestamp: time.Unix(0, 1620000000000000005), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "0cf883f112ad239b"))},
+					{Line: "log line 3", Timestamp: time.Unix(0, 1620000000000000003), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "61330481e1e59b18")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod", "namespace", "loki-prod-001", "traceID", "40e50221e284b9d2").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 4", Timestamp: time.Unix(0, 1620000000000000004), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "40e50221e284b9d2")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod", "namespace", "loki-prod-001", "traceID", "46ce02549441e41c").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 2", Timestamp: time.Unix(0, 1620000000000000002), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "46ce02549441e41c")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
 				},
 			},
 		}
@@ -179,13 +193,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 }
 
 func TestVectorResultBuilder(t *testing.T) {
-	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.String)
+	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
 
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
 				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
@@ -210,22 +224,23 @@ func TestVectorResultBuilder(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 3, builder.Len())
 
-		result := builder.Build()
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
 		vector := result.Data.(promql.Vector)
 		require.Equal(t, 3, len(vector))
 
 		// Check first sample
-		require.Equal(t, int64(1620000000000000000), vector[0].T)
+		require.Equal(t, int64(1620000000000), vector[0].T)
 		require.Equal(t, 42.0, vector[0].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9090", "job", "prometheus"), vector[0].Metric)
 
 		// Check second sample
-		require.Equal(t, int64(1620000000000000000), vector[1].T)
+		require.Equal(t, int64(1620000000000), vector[1].T)
 		require.Equal(t, 23.0, vector[1].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"), vector[1].Metric)
 
 		// Check third sample
-		require.Equal(t, int64(1620000000000000000), vector[2].T)
+		require.Equal(t, int64(1620000000000), vector[2].T)
 		require.Equal(t, 15.0, vector[2].F)
 		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "prometheus"), vector[2].Metric)
 	})
@@ -235,7 +250,7 @@ func TestVectorResultBuilder(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
 				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
 			nil,

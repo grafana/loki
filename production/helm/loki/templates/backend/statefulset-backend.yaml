@@ -51,6 +51,7 @@ spec:
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        kubectl.kubernetes.io/default-container: "loki"
       labels:
         {{- include "loki.backendLabels" . | nindent 8 }}
         {{- with merge (dict) .Values.loki.podLabels .Values.backend.podLabels }}
@@ -75,7 +76,63 @@ spec:
         {{- end }}
       {{- end }}
       containers:
-      {{- if .Values.sidecar.rules.enabled }}
+        - name: loki
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target={{ .Values.backend.targetModule }}
+            - -legacy-read-mode=false
+            {{- with (concat .Values.global.extraArgs .Values.backend.extraArgs) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: {{ .Values.loki.server.http_listen_port }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with (concat .Values.global.extraEnv .Values.backend.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.backend.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /var/loki
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end}}
+            {{- if .Values.sidecar.rules.enabled }}
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            {{- end}}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.backend.extraVolumeMounts) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
           {{- if .Values.sidecar.image.sha }}
           image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
@@ -94,6 +151,10 @@ spec:
             {{- end }}
             - name: FOLDER
               value: "{{ .Values.sidecar.rules.folder }}"
+            {{- if .Values.sidecar.rules.folderAnnotation }}
+            - name: FOLDER_ANNOTATION
+              value: "{{ .Values.sidecar.rules.folderAnnotation }}"
+            {{- end }}
             - name: RESOURCE
               value: {{ quote .Values.sidecar.rules.resource }}
             {{- if .Values.sidecar.enableUniqueFilenames }}
@@ -132,6 +193,10 @@ spec:
           readinessProbe:
           {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.startupProbe }}
+          startupProbe:
+          {{- toYaml .Values.sidecar.startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.resources }}
           resources:
           {{- toYaml .Values.sidecar.resources | nindent 12 }}
@@ -144,60 +209,6 @@ spec:
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}
-        - name: loki
-          image: {{ include "loki.image" . }}
-          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          args:
-            - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.backend.targetModule }}
-            - -legacy-read-mode=false
-            {{- with (concat .Values.global.extraArgs .Values.backend.extraArgs) | uniq }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          ports:
-            - name: http-metrics
-              containerPort: {{ .Values.loki.server.http_listen_port }}
-              protocol: TCP
-            - name: grpc
-              containerPort: {{ .Values.loki.server.grpc_listen_port }}
-              protocol: TCP
-            - name: http-memberlist
-              containerPort: 7946
-              protocol: TCP
-          {{- with (concat .Values.global.extraEnv .Values.backend.extraEnv) | uniq }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with (concat .Values.global.extraEnvFrom .Values.backend.extraEnvFrom) | uniq }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          securityContext:
-            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          volumeMounts:
-            - name: config
-              mountPath: /etc/loki/config
-            - name: runtime-config
-              mountPath: /etc/loki/runtime-config
-            - name: tmp
-              mountPath: /tmp
-            - name: data
-              mountPath: /var/loki
-            {{- if .Values.enterprise.enabled }}
-            - name: license
-              mountPath: /etc/loki/license
-            {{- end}}
-            {{- if .Values.sidecar.rules.enabled }}
-            - name: sc-rules-volume
-              mountPath: {{ .Values.sidecar.rules.folder | quote }}
-            {{- end}}
-            {{- with (concat .Values.global.extraVolumeMounts .Values.backend.extraVolumeMounts) | uniq }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          resources:
-            {{- toYaml .Values.backend.resources | nindent 12 }}
         {{- with .Values.backend.extraContainers }}
         {{- toYaml . | nindent 8}}
         {{- end }}
@@ -262,6 +273,10 @@ spec:
         name: data
         {{- with .Values.backend.persistence.annotations }}
         annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.backend.persistence.labels }}
+        labels:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:

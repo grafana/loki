@@ -216,7 +216,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			origLine := string(tt.line)
 
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
 			labels := b.LabelsResult().Labels()
@@ -670,7 +670,7 @@ func TestJSONExpressionParser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			j, err := NewJSONExpressionParser(tt.expressions)
 			require.NoError(t, err, "cannot create JSON expression parser")
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
@@ -756,7 +756,7 @@ func Benchmark_Parser(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
@@ -766,7 +766,7 @@ func Benchmark_Parser(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
 				for n := 0; n < b.N; n++ {
@@ -779,7 +779,7 @@ func Benchmark_Parser(b *testing.B) {
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -843,7 +843,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
@@ -881,7 +881,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
 				for n := 0; n < b.N; n++ {
@@ -915,7 +915,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
-				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
@@ -1054,7 +1054,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, _ = tt.parser.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
@@ -1275,7 +1275,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		p := NewLogfmtParser(false, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
 				_, _ = p.Process(0, tt.line, b)
 				require.Equal(t, tt.want, b.LabelsResult().Labels())
@@ -1287,7 +1287,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		p := NewLogfmtParser(true, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
 				_, _ = p.Process(0, tt.line, b)
 
@@ -1354,7 +1354,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
-					b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+					b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 					b.Reset()
 
 					p := NewLogfmtParser(strict, tt.keepEmpty)
@@ -1545,7 +1545,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			if err != nil {
 				t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
 			}
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, _ = l.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
@@ -1689,7 +1689,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		j := NewUnpackParser()
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			cp := string(tt.line)
 			l, _ := j.Process(0, tt.line, b)
@@ -1744,7 +1744,7 @@ func Test_PatternParser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			pp, err := NewPatternParser(tt.pattern)
 			require.NoError(t, err)

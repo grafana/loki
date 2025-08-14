@@ -3,25 +3,35 @@ package deletion
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"strconv"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
 	maxChunksPerJob              = 1000
-	storageUpdatesFilenameSuffix = `-storage-updates.json`
+	storageUpdatesFilenameSuffix = `-storage-updates.proto`
+
+	processManifestStageBuildJobs           = "build_jobs"
+	processManifestStageApplyStorageUpdates = "apply_storage_updates"
+	processManifestStageCleanupManifest     = "cleanup_manifest"
+
+	storageUpdateTypeDeleteChunk  = "delete_chunk"
+	storageUpdateTypeDeIndexChunk = "de_index_chunk"
+	storageUpdateTypeIndexChunk   = "index_chunk"
 )
 
 type StorageUpdatesIterator interface {
@@ -30,13 +40,6 @@ type StorageUpdatesIterator interface {
 	TableName() string
 	Err() error
 	ForEachSeries(callback func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error) error
-}
-
-type deletionJob struct {
-	TableName      string          `json:"table_name"`
-	UserID         string          `json:"user_id"`
-	ChunkIDs       []string        `json:"chunk_ids"`
-	DeleteRequests []DeleteRequest `json:"delete_requests"`
 }
 
 type jobDetails struct {
@@ -50,10 +53,10 @@ type manifestJobs struct {
 }
 
 type ApplyStorageUpdatesFunc func(ctx context.Context, iterator StorageUpdatesIterator) error
-type markRequestsAsProcessedFunc func(requests []DeleteRequest)
+type markRequestsAsProcessedFunc func(requests []deletionproto.DeleteRequest)
 
 type JobBuilder struct {
-	deletionStoreClient         client.ObjectClient
+	deletionManifestStoreClient client.ObjectClient
 	applyStorageUpdatesFunc     ApplyStorageUpdatesFunc
 	markRequestsAsProcessedFunc markRequestsAsProcessedFunc
 
@@ -62,16 +65,25 @@ type JobBuilder struct {
 	currentManifestMtx sync.RWMutex
 
 	currSegmentStorageUpdates *storageUpdatesCollection
+	metrics                   *jobBuilderMetrics
 }
 
-func NewJobBuilder(deletionStoreClient client.ObjectClient, applyStorageUpdatesFunc ApplyStorageUpdatesFunc, markRequestsAsProcessedFunc markRequestsAsProcessedFunc) *JobBuilder {
+func NewJobBuilder(
+	deletionManifestStoreClient client.ObjectClient,
+	applyStorageUpdatesFunc ApplyStorageUpdatesFunc,
+	markRequestsAsProcessedFunc markRequestsAsProcessedFunc,
+	r prometheus.Registerer,
+) *JobBuilder {
 	return &JobBuilder{
-		deletionStoreClient:         deletionStoreClient,
+		deletionManifestStoreClient: deletionManifestStoreClient,
 		applyStorageUpdatesFunc:     applyStorageUpdatesFunc,
 		markRequestsAsProcessedFunc: markRequestsAsProcessedFunc,
 		currSegmentStorageUpdates: &storageUpdatesCollection{
-			StorageUpdates: map[string]*storageUpdates{},
+			StorageUpdatesCollection: deletionproto.StorageUpdatesCollection{
+				StorageUpdates: map[string]deletionproto.StorageUpdates{},
+			},
 		},
+		metrics: newJobBuilderMetrics(r),
 	}
 }
 
@@ -82,7 +94,6 @@ func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) {
 
 	for {
 		if err := b.buildJobs(ctx, jobsChan); err != nil {
-			// ToDo(Sandeep): Add a metric for tracking failures in building jobs
 			level.Error(util_log.Logger).Log("msg", "error building jobs", "err", err)
 		}
 
@@ -103,30 +114,41 @@ func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) e
 		return err
 	}
 
+	if len(manifests) == 0 {
+		return nil
+	}
+
+	b.metrics.numManifestsLeftToProcess.Set(float64(len(manifests)))
+
 	// Process each manifest
 	for _, manifestPath := range manifests {
 		manifest, err := b.readManifest(ctx, manifestPath)
 		if err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageBuildJobs).Inc()
 			return err
 		}
 
 		if err := b.processManifest(ctx, manifest, manifestPath, jobsChan); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageBuildJobs).Inc()
 			return err
 		}
 
 		if err := b.applyStorageUpdates(ctx, manifest, manifestPath); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageApplyStorageUpdates).Inc()
 			return err
 		}
 
 		if err := b.cleanupManifest(ctx, manifest, manifestPath); err != nil {
+			b.metrics.processManifestFailuresTotal.WithLabelValues(processManifestStageCleanupManifest).Inc()
 			return err
 		}
+		b.metrics.numManifestsLeftToProcess.Dec()
 	}
 
 	return nil
 }
 
-func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, manifestPath string, jobsChan chan<- *grpc.Job) error {
+func (b *JobBuilder) processManifest(ctx context.Context, manifest *deletionproto.DeletionManifest, manifestPath string, jobsChan chan<- *grpc.Job) error {
 	level.Info(util_log.Logger).Log("msg", "starting manifest processing", "manifest", manifestPath)
 
 	// Initialize tracking for this manifest
@@ -138,20 +160,22 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		cancel:         cancel,
 	}
 	b.currentManifestMtx.Unlock()
+	b.metrics.numSegmentsLeftToProcess.Set(float64(manifest.SegmentsCount))
 
 	// Process segments sequentially
-	for segmentNum := 0; ctx.Err() == nil && segmentNum < manifest.SegmentsCount; segmentNum++ {
+	for segmentNum := int32(0); ctx.Err() == nil && segmentNum < manifest.SegmentsCount; segmentNum++ {
 		level.Info(util_log.Logger).Log("msg", "starting segment processing",
 			"manifest", manifestPath,
 			"segment", segmentNum)
 
-		segmentPath := path.Join(manifestPath, fmt.Sprintf("%d.json", segmentNum))
+		segmentPath := path.Join(manifestPath, fmt.Sprintf("%d.proto", segmentNum))
 
-		manifestExists, err := b.deletionStoreClient.ObjectExists(ctx, segmentPath)
+		manifestExists, err := objectExists(ctx, b.deletionManifestStoreClient, segmentPath)
 		if err != nil {
 			return err
 		}
 		if !manifestExists {
+			b.metrics.numSegmentsLeftToProcess.Dec()
 			level.Info(util_log.Logger).Log("msg", "manifest does not exist(likely processed already), skipping", "manifest", manifestPath)
 			continue
 		}
@@ -169,13 +193,13 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		b.currSegmentStorageUpdates.reset(segment.TableName, segment.UserID)
 
 		// Process each chunks group (same deletion query)
-		for i, group := range segment.ChunksGroups {
+		for _, group := range segment.ChunksGroups {
 			// Check if we should stop processing this manifest
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
 
-			if err := b.createJobsForChunksGroup(ctx, segment.TableName, segment.UserID, fmt.Sprintf("%d", i), group, jobsChan); err != nil {
+			if err := b.createJobsForChunksGroup(ctx, segment.TableName, segment.UserID, group, jobsChan); err != nil {
 				return err
 			}
 		}
@@ -191,7 +215,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		}
 
 		// Delete the processed segment
-		if err := b.deletionStoreClient.DeleteObject(ctx, segmentPath); err != nil {
+		if err := b.deletionManifestStoreClient.DeleteObject(ctx, segmentPath); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "failed to delete processed segment",
 				"segment", segmentPath,
 				"error", err)
@@ -200,6 +224,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 		level.Info(util_log.Logger).Log("msg", "finished segment processing",
 			"manifest", manifestPath,
 			"segment", segmentNum)
+		b.metrics.numSegmentsLeftToProcess.Dec()
 	}
 
 	level.Info(util_log.Logger).Log("msg", "finished manifest processing", "manifest", manifestPath)
@@ -208,12 +233,12 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *manifest, ma
 
 // uploadStorageUpdatesForCurrentSegment uploads the storage updates for the currently processed segment to the object storage
 func (b *JobBuilder) uploadStorageUpdatesForCurrentSegment(ctx context.Context, path string) error {
-	storageUpdatesJSON, err := b.currSegmentStorageUpdates.encode()
+	storageUpdatesProto, err := b.currSegmentStorageUpdates.encode()
 	if err != nil {
 		return err
 	}
 
-	return b.deletionStoreClient.PutObject(ctx, path, bytes.NewReader(storageUpdatesJSON))
+	return b.deletionManifestStoreClient.PutObject(ctx, path, bytes.NewReader(storageUpdatesProto))
 }
 
 func (b *JobBuilder) waitForSegmentCompletion(ctx context.Context) error {
@@ -237,7 +262,7 @@ func (b *JobBuilder) waitForSegmentCompletion(ctx context.Context) error {
 
 func (b *JobBuilder) listManifests(ctx context.Context) ([]string, error) {
 	// List all directories in the deletion store
-	_, commonPrefixes, err := b.deletionStoreClient.List(ctx, "", "/")
+	_, commonPrefixes, err := b.deletionManifestStoreClient.List(ctx, "", "/")
 	if err != nil {
 		return nil, err
 	}
@@ -250,14 +275,14 @@ func (b *JobBuilder) listManifests(ctx context.Context) ([]string, error) {
 			continue
 		}
 
-		// Check if manifest.json exists in this directory
+		// Check if manifest.proto exists in this directory
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := b.deletionStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(context.Background(), b.deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return nil, err
 		}
 		if !exists {
-			// Skip directories without manifest.json
+			// Skip directories without manifest.proto
 			continue
 		}
 
@@ -267,24 +292,30 @@ func (b *JobBuilder) listManifests(ctx context.Context) ([]string, error) {
 	return manifests, nil
 }
 
-func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*manifest, error) {
+func (b *JobBuilder) readManifest(ctx context.Context, manifestPath string) (*deletionproto.DeletionManifest, error) {
 	// Read manifest file
-	reader, _, err := b.deletionStoreClient.GetObject(ctx, path.Join(manifestPath, manifestFileName))
+	reader, _, err := b.deletionManifestStoreClient.GetObject(ctx, path.Join(manifestPath, manifestFileName))
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
 
-	var m manifest
-	if err := json.NewDecoder(reader).Decode(&m); err != nil {
+	manifestProto, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	var m deletionproto.DeletionManifest
+	if err := proto.Unmarshal(manifestProto, &m); err != nil {
 		return nil, err
 	}
 
 	return &m, nil
 }
 
-func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, userID, groupID string, group ChunksGroup, jobsChan chan<- *grpc.Job) error {
-	for labels, chunks := range group.Chunks {
+func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, userID string, group deletionproto.ChunksGroup, jobsChan chan<- *grpc.Job) error {
+	for labels := range group.Chunks {
+		chunks := group.Chunks[labels].IDs
 		// Split chunks into groups of maxChunksPerJob
 		for i := 0; i < len(chunks); i += maxChunksPerJob {
 			end := i + maxChunksPerJob
@@ -292,7 +323,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 				end = len(chunks)
 			}
 
-			payload, err := json.Marshal(&deletionJob{
+			payload, err := proto.Marshal(&deletionproto.DeletionJob{
 				TableName:      tableName,
 				UserID:         userID,
 				ChunkIDs:       chunks[i:end],
@@ -303,12 +334,20 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 			}
 
 			job := &grpc.Job{
-				Id:      fmt.Sprintf("%s_%d", groupID, i/maxChunksPerJob),
 				Type:    grpc.JOB_TYPE_DELETION,
 				Payload: payload,
 			}
 
 			b.currentManifestMtx.Lock()
+			var jobID string
+			for {
+				jobID = fmt.Sprintf("%d-%d", grpc.JOB_TYPE_DELETION, time.Now().UnixNano())
+				if _, ok := b.currentManifest.jobsInProgress[jobID]; !ok {
+					break
+				}
+				time.Sleep(time.Nanosecond)
+			}
+			job.Id = jobID
 			b.currentManifest.jobsInProgress[job.Id] = jobDetails{labels: labels}
 			b.currentManifestMtx.Unlock()
 
@@ -340,8 +379,8 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 		return nil
 	}
 
-	var updates storageUpdates
-	err := json.Unmarshal(response.Result, &updates)
+	var updates deletionproto.StorageUpdates
+	err := proto.Unmarshal(response.Result, &updates)
 	if err != nil {
 		b.currentManifest.cancel()
 		return err
@@ -354,32 +393,32 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 }
 
 // applyStorageUpdates applies all the storage updates accumulated while processing of the given manifest
-func (b *JobBuilder) applyStorageUpdates(ctx context.Context, manifest *manifest, manifestPath string) error {
-	storageUpdatesIterator := newStorageUpdatesIterator(ctx, manifestPath, manifest, b.deletionStoreClient)
+func (b *JobBuilder) applyStorageUpdates(ctx context.Context, manifest *deletionproto.DeletionManifest, manifestPath string) error {
+	storageUpdatesIterator := newStorageUpdatesIterator(ctx, manifestPath, manifest, b.deletionManifestStoreClient, b.metrics.storageUpdatesAppliedTotal)
 	return b.applyStorageUpdatesFunc(ctx, storageUpdatesIterator)
 }
 
 // cleanupManifest takes care of post-processing cleanup of given manifest which includes:
 // 1. Marking all the delete requests in manifest as processed.
 // 2. Removing all the object storage files from object storage related to the manifest.
-func (b *JobBuilder) cleanupManifest(ctx context.Context, manifest *manifest, manifestPath string) error {
+func (b *JobBuilder) cleanupManifest(ctx context.Context, manifest *deletionproto.DeletionManifest, manifestPath string) error {
 	// mark the delete requests as processed first so that we can move on to processing next requests
 	b.markRequestsAsProcessedFunc(append(manifest.Requests, manifest.DuplicateRequests...))
 
 	// delete the manifest file first so that even if we fail to remove other objects,
 	// the current manifest won't get processed again and should get cleaned up in the routine cleanup operation.
-	if err := b.deletionStoreClient.DeleteObject(ctx, path.Join(manifestPath, manifestFileName)); err != nil {
+	if err := b.deletionManifestStoreClient.DeleteObject(ctx, path.Join(manifestPath, manifestFileName)); err != nil {
 		return err
 	}
 
-	objects, _, err := b.deletionStoreClient.List(ctx, manifestPath, "/")
+	objects, _, err := b.deletionManifestStoreClient.List(ctx, manifestPath, "/")
 	if err != nil {
 		return err
 	}
 
 	// delete all the remaining objects
 	for _, object := range objects {
-		if err := b.deletionStoreClient.DeleteObject(ctx, object.Key); err != nil {
+		if err := b.deletionManifestStoreClient.DeleteObject(ctx, object.Key); err != nil {
 			level.Error(util_log.Logger).Log("msg", "failed to delete object", "object", object.Key)
 		}
 	}
@@ -387,33 +426,30 @@ func (b *JobBuilder) cleanupManifest(ctx context.Context, manifest *manifest, ma
 	return nil
 }
 
-func (b *JobBuilder) getSegment(ctx context.Context, segmentPath string) (*segment, error) {
-	reader, _, err := b.deletionStoreClient.GetObject(ctx, segmentPath)
+func (b *JobBuilder) getSegment(ctx context.Context, segmentPath string) (*deletionproto.Segment, error) {
+	reader, _, err := b.deletionManifestStoreClient.GetObject(ctx, segmentPath)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
 
-	var segment segment
-	if err := json.NewDecoder(reader).Decode(&segment); err != nil {
+	segmentProto, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	var segment deletionproto.Segment
+	if err := proto.Unmarshal(segmentProto, &segment); err != nil {
 		return nil, err
 	}
 
 	return &segment, nil
 }
 
-type storageUpdates struct {
-	ChunksToDelete  []string // List of chunks to be deleted from object storage and removed from the index of the current table
-	ChunksToDeIndex []string // List of chunks only to be removed from the index of the current table
-	ChunksToIndex   []chunk  // List of chunks to be indexed in the current table
-}
-
 // storageUpdatesCollection collects updates to be made to the storage for a single segment
 type storageUpdatesCollection struct {
-	TableName, UserID string
-
-	mtx            sync.Mutex
-	StorageUpdates map[string]*storageUpdates // labels -> storageUpdates mapping
+	mtx sync.Mutex
+	deletionproto.StorageUpdatesCollection
 }
 
 func (i *storageUpdatesCollection) reset(tableName, userID string) {
@@ -422,50 +458,57 @@ func (i *storageUpdatesCollection) reset(tableName, userID string) {
 
 	i.TableName = tableName
 	i.UserID = userID
-	i.StorageUpdates = make(map[string]*storageUpdates)
+	i.StorageUpdates = make(map[string]deletionproto.StorageUpdates)
 }
 
-func (i *storageUpdatesCollection) addUpdates(labels string, result storageUpdates) {
+func (i *storageUpdatesCollection) addUpdates(labels string, result deletionproto.StorageUpdates) {
+	if len(result.ChunksToIndex)+len(result.ChunksToDeIndex)+len(result.ChunksToDelete) == 0 {
+		return
+	}
+
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
 	updates, ok := i.StorageUpdates[labels]
 	if !ok {
-		updates = &storageUpdates{}
+		updates = deletionproto.StorageUpdates{}
 		i.StorageUpdates[labels] = updates
 	}
 
 	updates.ChunksToDelete = append(updates.ChunksToDelete, result.ChunksToDelete...)
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, result.ChunksToDeIndex...)
 	updates.ChunksToIndex = append(updates.ChunksToIndex, result.ChunksToIndex...)
+	i.StorageUpdates[labels] = updates
 }
 
 func (i *storageUpdatesCollection) encode() ([]byte, error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	return json.Marshal(i)
+	return proto.Marshal(i)
 }
 
 // storageUpdatesIterator helps with iterating through all the storage updates files built while processing of each segment in a manifest
 type storageUpdatesIterator struct {
-	ctx               context.Context
-	manifestPath      string
-	manifest          *manifest
-	deleteStoreClient client.ObjectClient
+	ctx                         context.Context
+	manifestPath                string
+	manifest                    *deletionproto.DeletionManifest
+	deletionManifestStoreClient client.ObjectClient
+	storageUpdatesTotal         *prometheus.CounterVec
 
-	currSegmentNum        int
+	currSegmentNum        int32
 	currUpdatesCollection *storageUpdatesCollection
 	err                   error
 }
 
-func newStorageUpdatesIterator(ctx context.Context, manifestPath string, manifest *manifest, deleteStoreClient client.ObjectClient) *storageUpdatesIterator {
+func newStorageUpdatesIterator(ctx context.Context, manifestPath string, manifest *deletionproto.DeletionManifest, deletionManifestStoreClient client.ObjectClient, storageUpdatesTotal *prometheus.CounterVec) *storageUpdatesIterator {
 	return &storageUpdatesIterator{
-		ctx:               ctx,
-		manifestPath:      manifestPath,
-		manifest:          manifest,
-		deleteStoreClient: deleteStoreClient,
-		currSegmentNum:    -1,
+		ctx:                         ctx,
+		manifestPath:                manifestPath,
+		manifest:                    manifest,
+		deletionManifestStoreClient: deletionManifestStoreClient,
+		currSegmentNum:              -1,
+		storageUpdatesTotal:         storageUpdatesTotal,
 	}
 }
 
@@ -505,14 +548,19 @@ func (i *storageUpdatesIterator) TableName() string {
 }
 
 func (i *storageUpdatesIterator) getStorageUpdates(filepath string) (*storageUpdatesCollection, error) {
-	reader, _, err := i.deleteStoreClient.GetObject(i.ctx, filepath)
+	reader, _, err := i.deletionManifestStoreClient.GetObject(i.ctx, filepath)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
 
+	storageUpdatesCollectionProto, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
 	var s storageUpdatesCollection
-	if err := json.NewDecoder(reader).Decode(&s); err != nil {
+	if err := proto.Unmarshal(storageUpdatesCollectionProto, &s); err != nil {
 		return nil, err
 	}
 
@@ -528,9 +576,16 @@ func (i *storageUpdatesIterator) Err() error {
 // It passes the labels for the series and updates to apply to the storage.
 func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error) error {
 	for labels, updates := range i.currUpdatesCollection.StorageUpdates {
-		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, *(*[]Chunk)(unsafe.Pointer(&updates.ChunksToIndex))); err != nil {
+		chunksToIndex := make([]Chunk, 0, len(updates.ChunksToIndex))
+		for i := range updates.ChunksToIndex {
+			chunksToIndex = append(chunksToIndex, &updates.ChunksToIndex[i])
+		}
+		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, chunksToIndex); err != nil {
 			return err
 		}
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeleteChunk).Add(float64(len(updates.ChunksToDelete)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeIndexChunk).Add(float64(len(updates.ChunksToDeIndex)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeIndexChunk).Add(float64(len(updates.ChunksToIndex)))
 	}
 
 	return nil

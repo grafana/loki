@@ -148,8 +148,14 @@ var defaultAzTokenProvider azTokenProvider = func(ctx context.Context, scopes []
 	cliCmd.Env = os.Environ()
 	var stderr bytes.Buffer
 	cliCmd.Stderr = &stderr
+	cliCmd.WaitDelay = 100 * time.Millisecond
 
-	output, err := cliCmd.Output()
+	stdout, err := cliCmd.Output()
+	if errors.Is(err, exec.ErrWaitDelay) && len(stdout) > 0 {
+		// The child process wrote to stdout and exited without closing it.
+		// Swallow this error and return stdout because it may contain a token.
+		return stdout, nil
+	}
 	if err != nil {
 		msg := stderr.String()
 		var exErr *exec.ExitError
@@ -162,7 +168,7 @@ var defaultAzTokenProvider azTokenProvider = func(ctx context.Context, scopes []
 		return nil, newCredentialUnavailableError(credNameAzureCLI, msg)
 	}
 
-	return output, nil
+	return stdout, nil
 }
 
 func (c *AzureCLICredential) createAccessToken(tk []byte) (azcore.AccessToken, error) {

@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"sort"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ func TestStore_SelectSeries(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -167,7 +166,7 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -235,7 +234,7 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger())
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -316,10 +315,10 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 }
 
 func labelsFromSeriesID(id logproto.SeriesIdentifier) string {
-	ls := make(labels.Labels, 0, len(id.Labels))
+	builder := labels.NewScratchBuilder(len(id.Labels))
 	for _, l := range id.Labels {
-		ls = append(ls, labels.Label{Name: l.Key, Value: l.Value})
+		builder.Add(l.Key, l.Value)
 	}
-	sort.Sort(ls)
-	return ls.String()
+	builder.Sort()
+	return builder.Labels().String()
 }

@@ -2,21 +2,22 @@
 memcached StatefulSet
 Params:
   ctx = . context
+  memcacheConfig = cache config
   valuesSection = name of the section in values.yaml
   component = name of the component
-valuesSection and component are specified separately because helm prefers camelcase for naming convetion and k8s components are named with snake case.
+valuesSection and component are specified separately because helm prefers camelcase for naming convention and k8s components are named with snake case.
 */}}
 {{- define "loki.memcached.statefulSet" -}}
-{{ with (index $.ctx.Values $.valuesSection) }}
+{{ with $.memcacheConfig }}
 {{- if and .enabled ($.ctx.Values.memcached.enabled) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.resourceName" (dict "ctx" $.ctx "component" $.component) }}
+  name: {{ include "loki.resourceName" (dict "ctx" $.ctx "component" $.component "suffix" .suffix) }}
   labels:
     {{- include "loki.labels" $.ctx | nindent 4 }}
-    app.kubernetes.io/component: "memcached-{{ $.component }}"
-    name: "memcached-{{ $.component }}"
+    app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+    name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   annotations:
     {{- toYaml .annotations | nindent 4 }}
   namespace: {{ $.ctx.Release.Namespace | quote }}
@@ -26,18 +27,17 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.selectorLabels" $.ctx | nindent 6 }}
-      app.kubernetes.io/component: "memcached-{{ $.component }}"
-      name: "memcached-{{ $.component }}"
+      app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+      name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   updateStrategy:
     {{- toYaml .statefulStrategy | nindent 4 }}
-  serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}
-
+  serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}
   template:
     metadata:
       labels:
         {{- include "loki.selectorLabels" $.ctx | nindent 8 }}
-        app.kubernetes.io/component: "memcached-{{ $.component }}"
-        name: "memcached-{{ $.component }}"
+        app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
+        name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
         {{- with $.ctx.Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -51,7 +51,6 @@ spec:
         {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-
     spec:
       serviceAccountName: {{ template "loki.serviceAccountName" $.ctx }}
       {{- if .priorityClassName }}
@@ -124,10 +123,6 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
-          {{- with $.ctx.Values.memcached.readinessProbe }}
-          readinessProbe: 
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
@@ -137,6 +132,14 @@ spec:
           {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
+          {{- end }}
+          {{- with $.ctx.Values.memcached.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcached.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
@@ -158,6 +161,14 @@ spec:
             {{- toYaml $.ctx.Values.memcachedExporter.resources | nindent 12 }}
           securityContext:
             {{- toYaml $.ctx.Values.memcachedExporter.containerSecurityContext | nindent 12 }}
+          {{- with $.ctx.Values.memcachedExporter.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcachedExporter.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .extraVolumeMounts }}
           volumeMounts:
             {{- toYaml .extraVolumeMounts | nindent 12 }}
@@ -169,6 +180,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .persistence.labels }}
+        labels:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- with .persistence.storageClass }}

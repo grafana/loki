@@ -20,6 +20,7 @@ spec:
       {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.adminApi.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}  
   template:
     metadata:
       labels:
@@ -96,8 +97,18 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
+          {{- with .Values.adminApi.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.adminApi.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.adminApi.resources | nindent 12 }}
           securityContext:
