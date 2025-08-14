@@ -31,11 +31,18 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Retrieve Anthropic API Key from Vault
+        id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760
+        with:
+          repo_secrets: |
+            ANTHROPIC_API_KEY=anthropic:api-key
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@8b2bd6d04f7b6ac4ba5523a3a573f7843ab4b4ba  # beta
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
 
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
           # model: "claude-opus-4-1-20250805"
