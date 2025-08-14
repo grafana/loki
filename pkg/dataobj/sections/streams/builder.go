@@ -13,9 +13,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
+	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // A Stream is an individual stream within a data object.
@@ -219,20 +220,21 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	var streamsEnc encoder
-	defer streamsEnc.Reset()
-	if err := b.encodeTo(&streamsEnc); err != nil {
+	var columnarEnc columnar.Encoder
+	defer columnarEnc.Reset()
+
+	if err := b.encodeTo(&columnarEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
-	n, err = streamsEnc.Flush(w)
+	n, err = columnarEnc.Flush(w)
 	if err == nil {
 		b.Reset()
 	}
 	return n, err
 }
 
-func (b *Builder) encodeTo(enc *encoder) error {
+func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -318,11 +320,11 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// encoding API.
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeStreamID, idBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRows, rowsCountBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedSize, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -333,7 +335,7 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		// of rows as the other columns (which is the number of streams).
 		labelBuilder.Backfill(len(b.ordered))
 
-		err := encodeColumn(enc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
+		err := encodeColumn(enc, ColumnTypeLabel, labelBuilder)
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
@@ -354,13 +356,33 @@ func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 	})
 }
 
-func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	columnEnc, err := enc.OpenColumn(columnType, &column.Info)
+	// TODO(rfratto): remove explicit conversion once [dataset.Dataset] is
+	// updated to use the v2 metadata.
+	desc := &columnar.ColumnDesc{
+		Type: columnar.ColumnType{
+			Physical: columnar.ConvertPhysicalType(datasetmd_v2.ToV2PhysicalType(column.Info.Type)),
+			Logical:  columnType.String(),
+		},
+		Tag: column.Info.Name,
+
+		Compression: datasetmd_v2.ToV2CompressionType(column.Info.Compression),
+
+		PagesCount:       column.Info.PagesCount,
+		RowsCount:        column.Info.RowsCount,
+		ValuesCount:      column.Info.ValuesCount,
+		CompressedSize:   column.Info.CompressedSize,
+		UncompressedSize: column.Info.UncompressedSize,
+
+		Statistics: datasetmd_v2.ToV2Statistics(column.Info.Statistics),
+	}
+
+	columnEnc, err := enc.OpenColumn(desc)
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -369,6 +391,10 @@ func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *datase
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	for _, page := range column.Pages {
 		err := columnEnc.AppendPage(page)

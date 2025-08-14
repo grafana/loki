@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -235,7 +236,16 @@ func (r *Reader) init() error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	dset, err := newColumnsDataset(r.opts.Columns)
+	var innerSection *columnar.Section
+	innerColumns := make([]*columnar.Column, len(r.opts.Columns))
+	for i, column := range r.opts.Columns {
+		if innerSection == nil {
+			innerSection = column.Section.inner
+		}
+		innerColumns[i] = column.inner
+	}
+
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(r.opts.Columns) {
