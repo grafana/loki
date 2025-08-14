@@ -349,7 +349,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 		TargetSectionSize:       32_000,
 		BufferSize:              8_000,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	for _, stream := range streams {

@@ -38,7 +38,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Add test streams with structured metadata
@@ -100,7 +100,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 
 func TestCalculator_Calculate(t *testing.T) {
 	t.Run("successful calculation", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig)
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)

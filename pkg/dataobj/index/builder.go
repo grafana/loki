@@ -16,7 +16,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,13 +27,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 type Config struct {
 	indexobj.BuilderConfig `yaml:",inline"`
-	EventsPerIndex         int                    `yaml:"events_per_index" experimental:"true"`
-	IndexStoragePrefix     string                 `yaml:"index_storage_prefix" experimental:"true"`
-	EnabledTenantIDs       flagext.StringSliceCSV `yaml:"enabled_tenant_ids" experimental:"true"`
+	EventsPerIndex         int `yaml:"events_per_index" experimental:"true"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -44,8 +42,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
-	f.StringVar(&cfg.IndexStoragePrefix, prefix+"storage-prefix", "index/v0/", "Experimental: A prefix to use for storing indexes in object storage. Used to separate the metastore & index files during initial testing.")
-	f.Var(&cfg.EnabledTenantIDs, prefix+"enabled-tenant-ids", "Experimental: A list of tenant IDs to enable index building for. If empty, all tenants will be enabled.")
 }
 
 type downloadedObject struct {
@@ -76,8 +72,9 @@ type Builder struct {
 	bufferedEvents map[string][]metastore.ObjectWrittenEvent
 
 	// Builder initialization
-	builderCfg indexobj.BuilderConfig
-	bucket     objstore.Bucket
+	builderCfg   indexobj.BuilderConfig
+	bucket       objstore.Bucket
+	scratchStore scratch.Store
 
 	// Metrics
 	metrics *indexBuilderMetrics
@@ -96,6 +93,7 @@ func NewIndexBuilder(
 	logger log.Logger,
 	instanceID string,
 	bucket objstore.Bucket,
+	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
 	kafkaCfg.AutoCreateTopicEnabled = true
@@ -126,7 +124,7 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig)
+	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
@@ -237,7 +235,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	level.Info(p.logger).Log("msg", "buffered new event for tenant", "count", len(p.bufferedEvents[event.Tenant]), "tenant", event.Tenant)
 
 	if len(p.bufferedEvents[event.Tenant]) >= p.cfg.EventsPerIndex {
-		if !slices.Contains(p.cfg.EnabledTenantIDs, event.Tenant) {
+		if !slices.Contains(p.mCfg.Storage.EnabledTenantIDs, event.Tenant) {
 			// TODO(benclive): Remove this check once builders handle multi-tenancy when building indexes.
 			level.Info(p.logger).Log("msg", "skipping index build for disabled tenant", "tenant", event.Tenant)
 			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
@@ -258,7 +256,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 }
 
 func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.cfg.IndexStoragePrefix)
+	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
 	start := time.Now()
 
@@ -325,11 +323,11 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(p.mCfg.Updater, indexStorageBucket, events[0].Tenant, p.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
 	if minTime.IsZero() || maxTime.IsZero() {
 		return errors.New("failed to get min/max timestamps")
 	}
-	if err := metastoreUpdater.Update(p.ctx, key, minTime, maxTime); err != nil {
+	if err := metastoreTocWriter.WriteEntry(p.ctx, key, minTime, maxTime); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 

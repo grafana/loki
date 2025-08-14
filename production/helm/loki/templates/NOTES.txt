@@ -157,7 +157,30 @@ http://{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.sv
 {{- end }}
 {{- end }}
 
+{{- if and .Values.enterprise.enabled .Values.enterprise.provisioner.enabled }}
 
+***********************************************************************
+Enterprise Provisioner
+***********************************************************************
+
+The provisioner job requires an admin token secret to be created manually.
+
+1. Generate an admin token using the Loki CLI:
+   docker run grafana/loki:{{ .Chart.AppVersion }} -target=tokengen -tokengen.token-file=/tmp/token
+   
+2. Create the admin token secret:
+   kubectl create secret generic {{ .Values.enterprise.adminToken.secret | default (printf "%s-admin-token" (include "loki.name" . )) }} \
+     --from-literal=token=<generated-token> -n {{ $.Release.Namespace }}
+
+3. After the provisioner job completes, retrieve tenant tokens from the logs:
+   kubectl logs -l job-name={{ include "enterprise-logs.provisionerFullname" . }} -n {{ $.Release.Namespace }}
+
+4. Create tenant secrets manually using the tokens from the provisioner output:
+   kubectl create secret generic <tenant-name> \
+     --from-literal=token-write=<write-token> \
+     --from-literal=token-read=<read-token>
+
+{{- end }}
 
 {{- if .Values.loki.auth_enabled }}
 

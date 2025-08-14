@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown, Activity } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Database, Zap, FileText, Hash, AlertCircle, AlertTriangle, ChevronDown, Activity, Rocket, Code2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useFeatureFlags } from "@/contexts/use-feature-flags";
@@ -222,6 +222,13 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                   <span>{formatDistanceToNow(new Date(query.sampledAt), { addSuffix: true })}</span>
                   <Badge variant="outline" className="text-xs">{query.tenantId}</Badge>
                   <Badge variant="secondary" className="text-xs">{query.queryType}</Badge>
+                  <Badge variant="outline" className="text-xs">{query.user}</Badge>
+                  {(query.cellAUsedNewEngine || query.cellBUsedNewEngine) && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Rocket className="h-3 w-3 mr-1" />
+                      New Engine
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {outcomeStatus === OUTCOME_MATCH ? (
@@ -400,6 +407,56 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                   </div>
                 </div>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Query Engine */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Query Engine</h4>
+              <div className="grid grid-cols-7 gap-4">
+                <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-2">
+                  <Rocket className="h-4 w-4" />
+                  <span>Engine Version</span>
+                </div>
+                <div className="col-span-2 text-right">
+                  <div className={cn("inline-flex items-center gap-1 text-sm", query.cellAUsedNewEngine ? "text-green-600" : "text-muted-foreground")}>
+                    {query.cellAUsedNewEngine ? (
+                      <>
+                        <Rocket className="h-4 w-4" />
+                        <span>New Engine</span>
+                      </>
+                    ) : (
+                      <>
+                        <Code2 className="h-4 w-4" />
+                        <span>Legacy Engine</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-1 text-center">
+                  {query.cellAUsedNewEngine === query.cellBUsedNewEngine ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600 mx-auto" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-orange-600 mx-auto" />
+                  )}
+                </div>
+                <div className="col-span-2 text-left">
+                  <div className={cn("inline-flex items-center gap-1 text-sm", query.cellBUsedNewEngine ? "text-green-600" : "text-muted-foreground")}>
+                    {query.cellBUsedNewEngine ? (
+                      <>
+                        <Rocket className="h-4 w-4" />
+                        <span>New Engine</span>
+                      </>
+                    ) : (
+                      <>
+                        <Code2 className="h-4 w-4" />
+                        <span>Legacy Engine</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <Separator />

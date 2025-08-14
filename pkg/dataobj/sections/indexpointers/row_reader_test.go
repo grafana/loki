@@ -36,7 +36,7 @@ func buildIndexPointersDecoder(t *testing.T, pageSize int) *Section {
 		s.Append(d.Path, d.StartTs, d.EndTs)
 	}
 
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
 	obj, closer, err := builder.Flush()

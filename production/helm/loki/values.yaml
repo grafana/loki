@@ -665,54 +665,13 @@ enterprise:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   adminToken:
-    # -- Alternative name for admin token secret, needed by tokengen and provisioner jobs
+    # -- Name of external secret containing the admin token for enterprise provisioner
+    # This secret must exist before deploying and must contain a key named 'token'
     secret: null
-    # -- Additional namespace to also create the token in. Useful if your Grafana instance
-    # is in a different namespace
-    additionalNamespaces: []
   # -- Alternative name of the secret to store token for the canary
   canarySecret: null
-  # -- Configuration for `tokengen` target
-  tokengen:
-    # -- Whether the job should be part of the deployment
-    enabled: true
-    # -- Comma-separated list of Loki modules to load for tokengen
-    targetModule: "tokengen"
-    # -- Name of the secret to store the admin token.
-    adminTokenSecret: null
-    # -- Additional CLI arguments for the `tokengen` target
-    extraArgs: []
-    # -- Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed
-    rbac:
-      create: true
-    # -- Additional Kubernetes environment
-    env: []
-    # -- Additional labels for the `tokengen` Job
-    labels: {}
-    # -- Additional annotations for the `tokengen` Job
-    annotations: {}
-    # -- Affinity for tokengen Pods
-    affinity: {}
-    # -- Node selector for tokengen Pods
-    nodeSelector: {}
-    # -- Tolerations for tokengen Job
-    tolerations: []
-    # -- Additional volumes for Pods
-    extraVolumes: []
-    # -- Additional volume mounts for Pods
-    extraVolumeMounts: []
-    # -- Run containers as user `enterprise-logs(uid=10001)`
-    securityContext:
-      runAsNonRoot: true
-      runAsGroup: 10001
-      runAsUser: 10001
-      fsGroup: 10001
-    # -- Environment variables from secrets or configmaps to add to the tokengen pods
-    extraEnvFrom: []
-    # -- The name of the PriorityClass for tokengen Pods
-    priorityClassName: ""
   # -- Configuration for `provisioner` target
-  # Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.
+  # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
   provisioner:
     # -- Whether the job should be part of the deployment
     enabled: true
@@ -765,18 +724,6 @@ enterprise:
     extraVolumeMounts: []
     # -- Additional volumes for Pods
     extraVolumes: []
-# -- kubetclImage is used in the enterprise provisioner and tokengen jobs
-kubectlImage:
-  # -- The Docker registry
-  registry: docker.io
-  # -- Docker image repository
-  repository: bitnami/kubectl
-  # -- Overrides the image tag whose default is the chart's appVersion
-  tag: null
-  # -- Overrides the image tag with an image digest
-  digest: null
-  # -- Docker image pull policy
-  pullPolicy: IfNotPresent
 ######################################################################################################################
 #
 # Chart Testing
@@ -1254,10 +1201,10 @@ gateway:
     # -- Allows appending custom configuration to the server block
     serverSnippet: ""
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
-    httpSnippet: >-
-      {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    httpSnippet: ""
     # -- Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.
-    locationSnippet: ""
+    locationSnippet: >-
+      {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
     # -- Allows customizing the `client_max_body_size` directive
     clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.

@@ -14,6 +14,14 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 - [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
+- [BREAKING] Remove tokengen job and kubectl dependency. Admin token secret must be created manually if using the enterprise provisioner. Last version with tokengen support: 6.35.1
+- [BREAKING] Remove `enterprise.tokengen` configuration section
+- [BREAKING] Remove `kubectlImage` configuration
+- [BREAKING] Remove `enterprise.adminToken.additionalNamespaces` as secrets are no longer automatically created
+- [BREAKING] Provisioner job no longer creates tenant secrets automatically. Tokens are output to stdout/logs and must be retrieved manually to create secrets
+- [CHANGE] `enterprise.adminToken.secret` now refers to an externally-created secret name (required when `enterprise.provisioner.enabled` is true)
+- [ENHANCEMENT] Add validation to ensure `enterprise.adminToken.secret` is set when provisioner is enabled
+- [BUGFIX] Websocket related proxy_set_header to locations back to resolve high CPU usage. [#18800](https://github.com/grafana/loki/pull/18800). **CAUTION**: Any customized proxy_set_header configuration are moved from `gateway.nginxConfig.httpSnippet` to `gateway.nginxConfig.locationSnippet`. Users that using different authentication methods (e.g. `mTLS`) in the gateway should check their configuration and update it accordingly.
 
 ## 6.35.1
 

@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package deletionproto;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto";
+
+message DeleteRequest {
+  string requestID = 1 [(gogoproto.jsontag) = "request_id"];
+  int64 startTime = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "start_time"
+  ];
+  int64 endTime = 3 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "end_time"
+  ];
+  string query = 4 [(gogoproto.jsontag) = "query"];
+  string status = 5 [
+    (gogoproto.customtype) = "DeleteRequestStatus",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "status"
+  ];
+  int64 createdAt = 6 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "created_at"
+  ];
+  string userID = 7 [(gogoproto.jsontag) = "user_id"];
+  int64 sequenceNum = 8 [(gogoproto.jsontag) = "-"];
+}
+
+// DeletionManifest represents the completion state and summary of chunks which needs processing for a set of delete requests.
+// It serves two purposes:
+// 1. Acts as a marker indicating all chunks for the given delete requests have been found
+// 2. Stores a summary of data stored in segments:
+//   - Original and duplicate deletion requests
+//   - Total number of segments and chunks to be processed
+//
+// Once all the segments are processed, Requests and DuplicateRequests in the manifest should be marked as processed.
+message DeletionManifest {
+  repeated DeleteRequest requests = 1 [(gogoproto.nullable) = false];
+  repeated DeleteRequest duplicateRequests = 2 [(gogoproto.nullable) = false];
+  int32 segmentsCount = 3;
+  int32 chunksCount = 4;
+}
+
+message ChunkIDs {
+  repeated string IDs = 1;
+}
+
+// ChunksGroup holds a group of chunks selected by the same set of requests
+message ChunksGroup {
+  repeated DeleteRequest requests = 1 [(gogoproto.nullable) = false];
+  map<string, ChunkIDs> chunks = 2 [(gogoproto.nullable) = false]; // mapping of series labels to a list of ChunkIDs
+}
+
+// segment holds limited chunks in ChunksGroup.
+// It also helps segregate chunks belonging to different users/tables.
+message Segment {
+  string tableName = 1;
+  string userID = 2;
+  repeated ChunksGroup chunksGroups = 3 [(gogoproto.nullable) = false];
+  int32 chunksCount = 4;
+}
+
+message DeletionJob {
+  string tableName = 1;
+  string userID = 2;
+  repeated string chunkIDs = 3;
+  repeated DeleteRequest deleteRequests = 4 [(gogoproto.nullable) = false];
+}
+
+message Chunk {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  uint64 fingerprint = 3;
+  uint32 checksum = 4;
+  uint32 KB = 5;
+  uint32 entries = 6;
+}
+
+message StorageUpdates {
+  repeated string chunksToDelete = 1;
+  repeated string chunksToDeIndex = 2;
+  repeated Chunk chunksToIndex = 3 [(gogoproto.nullable) = false];
+}
+
+// StorageUpdatesCollection collects updates to be made to the storage for a single Segment
+message StorageUpdatesCollection {
+  string tableName = 1;
+  string userID = 2;
+  map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false]; // labels -> storageUpdates mapping
+}
