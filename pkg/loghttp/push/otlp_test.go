@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -596,6 +597,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				log.NewNopLogger(),
 				streamResolver,
 				constants.OTLP,
+				otlptranslator.LabelNamer{},
 			)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
@@ -697,7 +699,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil, otlptranslator.LabelNamer{})
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, res)
 		})
@@ -806,7 +808,7 @@ func TestAttributesToLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lbls, err := attributesToLabels(tc.buildAttrs(), "")
+			lbls, err := attributesToLabels(tc.buildAttrs(), "", otlptranslator.LabelNamer{})
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, lbls)
 		})
@@ -936,7 +938,8 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
-		"otlp",
+		constants.OTLP,
+		otlptranslator.LabelNamer{},
 	)
 	require.NoError(t, err)
 
@@ -1040,6 +1043,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		log.NewNopLogger(),
 		streamResolver,
 		constants.OTLP,
+		otlptranslator.LabelNamer{},
 	)
 	require.NoError(t, err)
 
@@ -1226,6 +1230,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		log.NewNopLogger(),
 		streamResolver,
 		constants.OTLP,
+		otlptranslator.LabelNamer{},
 	)
 	require.NoError(t, err)
 

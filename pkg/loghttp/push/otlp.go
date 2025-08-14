@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,12 +43,13 @@ const (
 
 func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
+	labelNamer := otlptranslator.LabelNamer{}
 	otlpLogs, err := extractLogs(r, maxRecvMsgSize, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
+	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP, labelNamer)
 	return req, stats, err
 }
 
@@ -106,16 +108,13 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) (*logproto.PushRequest, error) {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string, labelNamer otlptranslator.LabelNamer) (*logproto.PushRequest, error) {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}, nil
 	}
 
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
-
-	// Track if request used the Loki OTLP exporter label
-	var usingLokiExporter bool
 
 	logServiceNameDiscovery := false
 	logPushRequestStreams := false
@@ -126,8 +125,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
-		sls := rls.At(i).ScopeLogs()
-		res := rls.At(i).Resource()
+		resourceLogs := rls.At(i)
+		sls := resourceLogs.ScopeLogs()
+		res := resourceLogs.Resource()
 		resAttrs := res.Attributes()
 
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
@@ -149,7 +149,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				return true
 			}
 
-			attributeAsLabels, err := attributeToLabels(k, v, "")
+			attributeAsLabels, err := attributeToLabels(k, v, "", labelNamer)
 			if err != nil {
 				rangeErr = err
 				return false
@@ -227,11 +227,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(lbs)
 
-		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
-		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
-			usingLokiExporter = true
-		}
-
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
@@ -266,7 +261,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					return true
 				}
 
-				attributeAsLabels, err := attributeToLabels(k, v, "")
+				attributeAsLabels, err := attributeToLabels(k, v, "", labelNamer)
 				if err != nil {
 					rangeErr = err
 					return false
@@ -296,7 +291,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			if scopeDroppedAttributesCount := scope.DroppedAttributesCount(); scopeDroppedAttributesCount != 0 {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
 					Name:  "scope_dropped_attributes_count",
-					Value: fmt.Sprintf("%d", scopeDroppedAttributesCount),
+					Value: strconv.FormatUint(uint64(scopeDroppedAttributesCount), 10),
 				})
 			}
 
@@ -309,7 +304,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				log := logs.At(k)
 
 				// Use the existing function that already handles log attributes properly
-				logLabels, entry, err := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels)
+				logLabels, entry, err := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels, labelNamer)
 				if err != nil {
 					return nil, err
 				}
@@ -368,6 +363,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[entryLabelsStr] = stream
 
+				// todo(shantanu): cache this for better performance - retention period and policy for labels calculated every time
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
 				entryPolicy := streamResolver.PolicyFor(entryLbs)
 
@@ -429,16 +425,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 	}
 
-	// Increment exporter streams metric once per request if seen
-	if usingLokiExporter {
-		otlpExporterStreams.WithLabelValues(userID).Inc()
-	}
-
 	return pr, nil
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
-func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry, error) {
+func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet, labelNamer otlptranslator.LabelNamer) (model.LabelSet, push.Entry, error) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
 	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
@@ -451,7 +442,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 			return true
 		}
 
-		attributeAsLabels, err := attributeToLabels(k, v, "")
+		attributeAsLabels, err := attributeToLabels(k, v, "", labelNamer)
 		if err != nil {
 			rangeErr = err
 			return false
@@ -479,14 +470,14 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  "observed_timestamp",
-			Value: fmt.Sprintf("%d", log.ObservedTimestamp().AsTime().UnixNano()),
+			Value: strconv.FormatInt(log.ObservedTimestamp().AsTime().UnixNano(), 10),
 		})
 	}
 
 	if severityNum := log.SeverityNumber(); severityNum != plog.SeverityNumberUnspecified {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  OTLPSeverityNumber,
-			Value: fmt.Sprintf("%d", severityNum),
+			Value: strconv.FormatUint(uint64(severityNum), 10),
 		})
 	}
 	if severityText := log.SeverityText(); severityText != "" {
@@ -508,13 +499,13 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	if droppedAttributesCount := log.DroppedAttributesCount(); droppedAttributesCount != 0 {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  "dropped_attributes_count",
-			Value: fmt.Sprintf("%d", droppedAttributesCount),
+			Value: strconv.FormatUint(uint64(droppedAttributesCount), 10),
 		})
 	}
 	if logRecordFlags := log.Flags(); logRecordFlags != 0 {
 		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
 			Name:  "flags",
-			Value: fmt.Sprintf("%d", logRecordFlags),
+			Value: strconv.FormatUint(uint64(logRecordFlags), 10),
 		})
 	}
 
@@ -538,7 +529,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	}, nil
 }
 
-func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
+func attributesToLabels(attrs pcommon.Map, prefix string, labelNamer otlptranslator.LabelNamer) (push.LabelsAdapter, error) {
 	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
 		return labelsAdapter, nil
@@ -546,7 +537,7 @@ func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, e
 
 	var rangeErr error
 	attrs.Range(func(k string, v pcommon.Value) bool {
-		lbls, err := attributeToLabels(k, v, prefix)
+		lbls, err := attributeToLabels(k, v, prefix, labelNamer)
 		if err != nil {
 			rangeErr = err
 			return false
@@ -558,7 +549,7 @@ func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, e
 	return labelsAdapter, rangeErr
 }
 
-func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAdapter, error) {
+func attributeToLabels(k string, v pcommon.Value, prefix string, labelNamer otlptranslator.LabelNamer) (push.LabelsAdapter, error) {
 	var labelsAdapter push.LabelsAdapter
 
 	keyWithPrefix := k
@@ -566,7 +557,6 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 		keyWithPrefix = prefix + "_" + k
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
 	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("symbolizer lookup: %w", err)
@@ -578,7 +568,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
 		var rangeErr error
 		mv.Range(func(k string, v pcommon.Value) bool {
-			lbls, err := attributeToLabels(k, v, keyWithPrefix)
+			lbls, err := attributeToLabels(k, v, keyWithPrefix, labelNamer)
 			if err != nil {
 				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
 				return false

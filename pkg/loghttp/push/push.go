@@ -58,12 +58,6 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant", "is_internal_stream", "policy", "format"})
 
-	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "distributor_otlp_exporter_streams_total",
-		Help:      "The total number of streams with exporter=OTLP label",
-	}, []string{"tenant"})
-
 	distributorLagByUserAgent = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_lag_ms_total",
