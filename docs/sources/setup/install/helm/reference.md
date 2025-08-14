@@ -367,6 +367,9 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
@@ -574,6 +577,17 @@ null
 			<td>Node selector for backend pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -1183,6 +1197,9 @@ null
     "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1376,6 +1393,17 @@ null
 			<td>List of the bloom-gateway PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -1583,6 +1611,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -1768,6 +1799,17 @@ null
 			<td>List of the bloom-planner PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -2802,6 +2844,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -2989,6 +3034,17 @@ null
 			<td>List of the compactor PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -5112,6 +5168,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
@@ -5282,6 +5341,17 @@ null
 			<td>Node selector for index-gateway pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -5517,6 +5587,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -5846,6 +5919,17 @@ null
 			<td>List of the ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -8581,6 +8665,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -8778,6 +8865,17 @@ null
 			<td>List of the pattern ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -10135,6 +10233,9 @@ false
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "labels": {},
@@ -10365,6 +10466,9 @@ false
 			<td>read.persistence is used only if legacyReadTarget is set to true</td>
 			<td><pre lang="json">
 {
+  "accessModes": [
+    "ReadWriteOnce"
+  ],
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
   "labels": {},
@@ -10372,6 +10476,17 @@ false
   "size": "10Gi",
   "storageClass": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -10988,6 +11103,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enabled": false,
     "labels": {},
@@ -11179,6 +11297,17 @@ null
 			<td>Node selector for ruler pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -11763,6 +11892,17 @@ null
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -12565,6 +12705,17 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
