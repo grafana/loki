@@ -1146,11 +1146,6 @@ dataobj:
     [events_per_index: <int> | default = 32]
 
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
-
     storage:
       # Experimental: A prefix to use for storing indexes in object storage.
       # Used to separate the metastore & index files during initial testing.

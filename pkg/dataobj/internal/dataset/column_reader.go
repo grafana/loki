@@ -8,7 +8,6 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type columnReader struct {
@@ -42,7 +41,6 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			return 0, err
 		}
 	}
-	statistics := stats.FromContext(ctx)
 
 	for n < len(v) {
 		// Make sure our reader is initialized to the right page for the row we
@@ -53,9 +51,6 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			page, pageIndex, err := cr.nextPage()
 			if err != nil {
 				return n, err
-			}
-			if pageIndex != cr.pageIndex {
-				statistics.AddPagesScanned(1)
 			}
 
 			switch cr.reader {

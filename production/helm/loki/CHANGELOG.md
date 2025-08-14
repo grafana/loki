@@ -12,16 +12,17 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+- [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.
 
-## Unreleased
+## 6.36.0
 
-- [BREAKING] Remove tokengen job and kubectl dependency. Admin token secret must be created manually if using the enterprise provisioner. Last version with tokengen support: 6.35.1
-- [BREAKING] Remove `enterprise.tokengen` configuration section
-- [BREAKING] Remove `kubectlImage` configuration
-- [BREAKING] Remove `enterprise.adminToken.additionalNamespaces` as secrets are no longer automatically created
-- [BREAKING] Provisioner job no longer creates tenant secrets automatically. Tokens are output to stdout/logs and must be retrieved manually to create secrets
-- [CHANGE] `enterprise.adminToken.secret` now refers to an externally-created secret name (required when `enterprise.provisioner.enabled` is true)
-- [ENHANCEMENT] Add validation to ensure `enterprise.adminToken.secret` is set when provisioner is enabled
+- [BREAKING] Remove tokengen job and kubectl dependency. Admin token secret must be created manually if using the enterprise provisioner. Last version with tokengen support: 6.35.1.[#18803](https://github.com/grafana/loki/pull/18803)
+- [BREAKING] Remove `enterprise.tokengen` configuration section. [#18803](https://github.com/grafana/loki/pull/18803)
+- [BREAKING] Remove `kubectlImage` configuration. [#18803](https://github.com/grafana/loki/pull/18803)
+- [BREAKING] Remove `enterprise.adminToken.additionalNamespaces` as secrets are no longer automatically created. [#18803](https://github.com/grafana/loki/pull/18803)
+- [BREAKING] Provisioner job no longer creates tenant secrets automatically. Tokens are output to stdout/logs and must be retrieved manually to create secrets. [#18803](https://github.com/grafana/loki/pull/18803)
+- [CHANGE] `enterprise.adminToken.secret` now refers to an externally-created secret name (required when `enterprise.provisioner.enabled` is true). [#18803](https://github.com/grafana/loki/pull/18803)
+- [ENHANCEMENT] Add validation to ensure `enterprise.adminToken.secret` is set when provisioner is enabled. [#18803](https://github.com/grafana/loki/pull/18803)
 - [BUGFIX] Websocket related proxy_set_header to locations back to resolve high CPU usage. [#18800](https://github.com/grafana/loki/pull/18800). **CAUTION**: Any customized proxy_set_header configuration are moved from `gateway.nginxConfig.httpSnippet` to `gateway.nginxConfig.locationSnippet`. Users that using different authentication methods (e.g. `mTLS`) in the gateway should check their configuration and update it accordingly.
 
 ## 6.35.1

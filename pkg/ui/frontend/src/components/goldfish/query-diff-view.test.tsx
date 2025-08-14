@@ -61,6 +61,8 @@ describe('QueryDiffView - Trace ID Display', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
     cellAUsedNewEngine: false,
     cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
@@ -74,6 +76,8 @@ describe('QueryDiffView - Trace ID Display', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
     };
 
     const { container } = render(<QueryDiffView query={queryWithTraceIDs} />);
@@ -83,8 +87,8 @@ describe('QueryDiffView - Trace ID Display', () => {
     if (trigger) await user.click(trigger);
 
     // Test that trace IDs are displayed
-    expect(screen.getByText('trace-123-abc')).toBeInTheDocument();
-    expect(screen.getByText('trace-456-def')).toBeInTheDocument();
+    expect(screen.getByText('span-abc-123')).toBeInTheDocument();
+    expect(screen.getByText('span-def-456')).toBeInTheDocument();
   });
 
   it('displays "N/A" when trace IDs are null', async () => {
@@ -108,6 +112,8 @@ describe('QueryDiffView - Trace ID Display', () => {
       ...baseQuery,
       cellATraceID: 'trace-only-a',
       cellBTraceID: null,
+      cellASpanID: 'span-only-a',
+      cellBSpanID: null,
       cellAUsedNewEngine: false,
       cellBUsedNewEngine: false,
     };
@@ -118,7 +124,7 @@ describe('QueryDiffView - Trace ID Display', () => {
     const trigger = container.querySelector('[type="button"]');
     if (trigger) await user.click(trigger);
 
-    expect(screen.getByText('trace-only-a')).toBeInTheDocument();
+    expect(screen.getByText('span-only-a')).toBeInTheDocument();
     // Should still have at least one N/A for Cell B
     expect(screen.getByText('N/A')).toBeInTheDocument();
   });
@@ -192,6 +198,8 @@ describe('QueryDiffView - Trace ID Links', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
     cellAUsedNewEngine: false,
     cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
@@ -205,6 +213,8 @@ describe('QueryDiffView - Trace ID Links', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
       cellATraceLink: 'https://grafana.example.com/explore?trace-123-abc',
       cellBTraceLink: 'https://grafana.example.com/explore?trace-456-def',
     };
@@ -216,8 +226,8 @@ describe('QueryDiffView - Trace ID Links', () => {
     if (trigger) await user.click(trigger);
 
     // Find the links by their text content
-    const cellALink = screen.getByText('trace-123-abc');
-    const cellBLink = screen.getByText('trace-456-def');
+    const cellALink = screen.getByText('span-abc-123');
+    const cellBLink = screen.getByText('span-def-456');
 
     // Test that they are wrapped in anchor tags
     expect(cellALink.closest('a')).toBeInTheDocument();
@@ -251,6 +261,8 @@ describe('QueryDiffView - Trace ID Links', () => {
       ...baseQuery,
       cellATraceID: 'trace-exists',
       cellBTraceID: null,
+      cellASpanID: 'span-exists',
+      cellBSpanID: null,
       cellAUsedNewEngine: false,
       cellBUsedNewEngine: false,
       cellATraceLink: 'https://grafana.example.com/explore?trace-exists',
@@ -264,7 +276,7 @@ describe('QueryDiffView - Trace ID Links', () => {
     if (trigger) await user.click(trigger);
 
     // The existing trace ID should be a link
-    const traceLink = screen.getByText('trace-exists');
+    const traceLink = screen.getByText('span-exists');
     expect(traceLink.closest('a')).toBeInTheDocument();
 
     // The N/A should not be a link
@@ -322,6 +334,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
     cellAUsedNewEngine: false,
     cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
@@ -335,6 +349,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
     };
 
     const { container } = render(<QueryDiffView query={queryWithTraceIDs} />);
@@ -357,6 +373,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
       cellATraceLink: 'https://grafana.example.com/explore?trace-123-abc',
       cellBTraceLink: 'https://grafana.example.com/explore?trace-456-def',
     };
@@ -367,7 +385,7 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
     const trigger = container.querySelector('[type="button"]');
     if (trigger) await user.click(trigger);
 
-    const traceLink = screen.getByText('trace-123-abc').closest('a');
+    const traceLink = screen.getByText('span-abc-123').closest('a');
     
     // Check that link has appropriate styling classes
     expect(traceLink).toHaveClass('text-blue-600');
@@ -412,6 +430,8 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
     cellBStatusCode: 200,
     cellATraceID: 'trace-123',
     cellBTraceID: 'trace-456',
+    cellASpanID: 'span-123',
+    cellBSpanID: 'span-456',
     cellAUsedNewEngine: false,
     cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
@@ -577,6 +597,8 @@ describe('QueryDiffView - New Engine Badge Display', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
     cellAUsedNewEngine: false,
     cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',

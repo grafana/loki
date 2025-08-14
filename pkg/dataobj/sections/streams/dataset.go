@@ -130,6 +130,7 @@ func newColumnDataset(dec *decoder, col *Column) *columnDataset {
 			Type:        info.ValueType,
 			Compression: info.Compression,
 
+			PagesCount:       int(info.PagesCount),
 			RowsCount:        int(info.RowsCount),
 			ValuesCount:      int(info.ValuesCount),
 			CompressedSize:   int(info.CompressedSize),

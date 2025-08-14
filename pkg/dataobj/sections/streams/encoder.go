@@ -33,7 +33,8 @@ var (
 //
 // The zero value of encoder is ready for use.
 type encoder struct {
-	data *bytes.Buffer
+	tenant string
+	data   *bytes.Buffer
 
 	columns   []*streamsmd.ColumnDesc // closed columns.
 	curColumn *streamsmd.ColumnDesc   // curColumn is the currently open column.
@@ -54,6 +55,7 @@ func (enc *encoder) OpenColumn(columnType streamsmd.ColumnType, info *dataset.Co
 		Info: &datasetmd.ColumnInfo{
 			Name:             info.Name,
 			ValueType:        info.Type,
+			PagesCount:       uint64(info.PagesCount),
 			RowsCount:        uint64(info.RowsCount),
 			ValuesCount:      uint64(info.ValuesCount),
 			Compression:      info.Compression,
@@ -115,7 +117,8 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes())
+	opts := &dataobj.WriteSectionOptions{Tenant: enc.tenant}
+	n, err := w.WriteSection(opts, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}
@@ -126,8 +129,14 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 // columns.
 func (enc *encoder) Reset() {
 	bufpool.PutUnsized(enc.data)
+	enc.tenant = ""
 	enc.data = nil
 	enc.curColumn = nil
+}
+
+// SetTenant sets the tenant who owns the streams section.
+func (enc *encoder) SetTenant(tenant string) {
+	enc.tenant = tenant
 }
 
 // append adds data and metadata to enc. append must only be called from child
