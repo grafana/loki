@@ -253,9 +253,7 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	// TODO(ashwanth): remove when global stats are updated by the executor.
-	if stats.IsPresent(ctx) {
-		r.stats.LinkGlobalStats(stats.FromContext(ctx))
-	}
+	r.stats.LinkGlobalStats(stats.FromContext(ctx))
 
 	innerOptions := dataset.ReaderOptions{
 		Dataset:         dset,
