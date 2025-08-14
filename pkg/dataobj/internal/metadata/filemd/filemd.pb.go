@@ -246,8 +246,8 @@ type SectionInfo struct {
 	//
 	// Sections containing data wholly owned by a single tenant must specify the
 	// owning tenant. If tenant_ref is 0, the section holds data owned by multiple
-	// tenants, usually with some mechanism to determine ownership (e.g., if the
-	// section does not contain cross-tenant aggregated data).
+	// tenants, usually with some other mechanism to determine ownership (e.g., if
+	// the section does not contain cross-tenant aggregated data).
 	TenantRef uint32 `protobuf:"varint,7,opt,name=tenant_ref,json=tenantRef,proto3" json:"tenant_ref,omitempty"`
 }
 
