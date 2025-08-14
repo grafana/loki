@@ -211,7 +211,7 @@ Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
-type: {{ .Values.loki.storage.object_store.type | quote }}
+backend: {{ .Values.loki.storage.object_store.type }}
 {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
 {{- else if .Values.minio.enabled -}}
 type: "s3"
@@ -316,6 +316,10 @@ backoff_config:
 sse:
 {{- toYaml . | nindent 4 }}
 {{- end }}
+{{- /* Backwards compatibility: render legacy single-URL form if provided */}}
+{{- with .s3 }}
+s3: {{ . }}
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -372,8 +376,10 @@ chunk_delimiter: {{ . }}
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
 ruler:
+  {{- if not .Values.loki.storage.use_thanos_objstore }}
   storage:
     {{- include "loki.rulerStorageConfig" . | nindent 4}}
+  {{- end }}
 {{- if (not (empty .Values.loki.rulerConfig)) }}
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
 {{- end }}
@@ -1226,7 +1232,18 @@ the thanos_storage_config model*/}}
 {{- with .ctx.Values.loki.storage.object_store }}
 {{- if eq .type "s3" }}
 s3:
-{{- toYaml ( mergeOverwrite .s3 (dict "bucket_name" $bucketName) ) | nindent 2 }}
+  {{- /* Auto-provision defaults when minio.enabled, allowing user values in .s3 to override */}}
+  {{- $base := dict "bucket_name" $bucketName -}}
+  {{- $auto := dict -}}
+  {{- if $.ctx.Values.minio.enabled -}}
+    {{- $_ := set $auto "endpoint" (printf "http://%s" (include "loki.minio" $.ctx)) -}}
+    {{- $_ := set $auto "insecure" true -}}
+    {{- $_ := set $auto "access_key_id" $.ctx.Values.minio.rootUser -}}
+    {{- $_ := set $auto "secret_access_key" $.ctx.Values.minio.rootPassword -}}
+    {{- $_ := set $auto "bucket_lookup_type" "path" -}}
+  {{- end -}}
+  {{- $merged := mergeOverwrite (dict) $base $auto .s3 -}}
+{{- toYaml $merged | nindent 2 }}
 {{- else if eq .type "gcs" }}
 gcs:
 {{- toYaml ( mergeOverwrite .gcs (dict "bucket_name" $bucketName ) ) | nindent 2 }}
@@ -1234,6 +1251,8 @@ gcs:
 azure:
 {{- toYaml ( mergeOverwrite .azure (dict "container_name" $bucketName ) ) | nindent 2 }}
 {{- end }}
-storage_prefix: {{ .storage_prefix }}
+{{- with .storage_prefix }}
+storage_prefix: {{ . }}
+{{- end }}
 {{- end }}
 {{- end }}
