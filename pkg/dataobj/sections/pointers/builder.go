@@ -206,6 +206,21 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
+	var pointerKindColumnIndex uint32
+	for i, column := range pointersEnc.columns {
+		if column.Type == pointersmd.COLUMN_TYPE_POINTER_KIND {
+			pointerKindColumnIndex = uint32(i)
+		}
+	}
+	pointersEnc.SetSortInfo(&datasetmd.SectionSortInfo{
+		ColumnSorts: []*datasetmd.SectionSortInfo_ColumnSort{
+			{
+				ColumnIndex: pointerKindColumnIndex,
+				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+			},
+		},
+	})
+
 	n, err = pointersEnc.Flush(w)
 	if err == nil {
 		b.Reset()
@@ -217,20 +232,11 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 func (b *Builder) sortPointerObjects() {
 	sort.Slice(b.pointers, func(i, j int) bool {
 		if b.pointers[i].PointerKind == PointerKindColumnIndex && b.pointers[j].PointerKind == PointerKindColumnIndex {
-			// A column index
-			if b.pointers[i].ColumnIndex == b.pointers[j].ColumnIndex {
-				return b.pointers[i].Section < b.pointers[j].Section
-			}
 			return b.pointers[i].ColumnIndex < b.pointers[j].ColumnIndex
 		} else if b.pointers[i].PointerKind == PointerKindStreamIndex && b.pointers[j].PointerKind == PointerKindStreamIndex {
-			// A stream
-			if b.pointers[i].StartTs.Equal(b.pointers[j].StartTs) {
-				return b.pointers[i].EndTs.Before(b.pointers[j].EndTs)
-			}
-			return b.pointers[i].StartTs.Before(b.pointers[j].StartTs)
+			return b.pointers[i].StreamID < b.pointers[j].StreamID
 		}
-		// They're different, just make sure all the streams are separate from the columns
-		return b.pointers[i].StreamID < b.pointers[j].StreamID
+		return int64(b.pointers[i].PointerKind) < int64(b.pointers[j].PointerKind)
 	})
 }
 

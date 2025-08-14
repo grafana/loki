@@ -111,6 +111,21 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
+	var minTimestampColumnIndex uint32
+	for i, column := range enc.columns {
+		if column.Type == indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP {
+			minTimestampColumnIndex = uint32(i)
+		}
+	}
+	enc.SetSortInfo(&datasetmd.SectionSortInfo{
+		ColumnSorts: []*datasetmd.SectionSortInfo_ColumnSort{
+			{
+				ColumnIndex: minTimestampColumnIndex,
+				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+			},
+		},
+	})
+
 	n, err = enc.Flush(w)
 	if err == nil {
 		b.Reset()
