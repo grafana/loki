@@ -2659,10 +2659,9 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of sub-workers to run for concurrent processing of jobs. Setting it
-  # to 0 will run a subworker per available CPU core.
+  # Number of sub-workers to run for concurrent processing of jobs.
   # CLI flag: -compactor.worker.num-sub-workers
-  [num_sub_workers: <int> | default = 0]
+  [num_sub_workers: <int> | default = 4]
 
 jobs_config:
   deletion:

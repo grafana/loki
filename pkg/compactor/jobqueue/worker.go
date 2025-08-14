@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -43,7 +42,7 @@ type WorkerConfig struct {
 }
 
 func (c *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&c.NumWorkers, prefix+"num-sub-workers", 0, "Number of sub-workers to run for concurrent processing of jobs. Setting it to 0 will run a subworker per available CPU core.")
+	f.IntVar(&c.NumWorkers, prefix+"num-sub-workers", 4, "Number of sub-workers to run for concurrent processing of jobs.")
 }
 
 func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -51,11 +50,8 @@ func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (c *WorkerConfig) Validate() error {
-	if c.NumWorkers < 0 {
-		return errors.New("num_workers must be >= 0")
-	}
-	if c.NumWorkers == 0 {
-		c.NumWorkers = runtime.GOMAXPROCS(0)
+	if c.NumWorkers <= 0 {
+		return errors.New("num_workers must be > 0")
 	}
 
 	return nil
