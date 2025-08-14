@@ -28,6 +28,7 @@ import (
 	"bytes"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
@@ -1329,6 +1330,38 @@ func compressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func createLz4CompressedProtobuf(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	protoBytes, err := req.MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithLz4(protoBytes)
+}
+
+func createLz4CompressedJSON(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	jsonBytes, err := req.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithLz4(jsonBytes)
+}
+
+func compressWithLz4(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := lz4.NewWriter(&buf)
+	_, err := writer.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	err = writer.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func createOTLPLogWithNestedAttributes() plog.Logs {
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
@@ -1345,7 +1378,7 @@ func createOTLPLogWithNestedAttributes() plog.Logs {
 	return ld
 }
 
-func TestZstdContentEncoding(t *testing.T) {
+func TestContentEncoding(t *testing.T) {
 	testCases := []struct {
 		name            string
 		contentType     string
@@ -1355,7 +1388,7 @@ func TestZstdContentEncoding(t *testing.T) {
 		expectedLogs    plog.Logs
 	}{
 		{
-			name:            "valid zstd compressed protobuf",
+			name:            "zstd_valid_protobuf",
 			contentType:     "application/x-protobuf",
 			contentEncoding: "zstd",
 			generateBody: func() ([]byte, error) {
@@ -1365,7 +1398,7 @@ func TestZstdContentEncoding(t *testing.T) {
 			expectedLogs:  simpleOTLPLogs(),
 		},
 		{
-			name:            "valid zstd compressed JSON",
+			name:            "zstd_valid_json",
 			contentType:     "application/json",
 			contentEncoding: "zstd",
 			generateBody: func() ([]byte, error) {
@@ -1375,7 +1408,7 @@ func TestZstdContentEncoding(t *testing.T) {
 			expectedLogs:  simpleOTLPLogs(),
 		},
 		{
-			name:            "invalid zstd compressed data",
+			name:            "zstd_invalid_data",
 			contentType:     "application/x-protobuf",
 			contentEncoding: "zstd",
 			generateBody: func() ([]byte, error) {
@@ -1384,9 +1417,8 @@ func TestZstdContentEncoding(t *testing.T) {
 			expectedError: true,
 			expectedLogs:  plog.NewLogs(),
 		},
-
 		{
-			name:            "zstd compression with nested attributes",
+			name:            "zstd_nested_attributes",
 			contentType:     "application/x-protobuf",
 			contentEncoding: "zstd",
 			generateBody: func() ([]byte, error) {
@@ -1394,6 +1426,36 @@ func TestZstdContentEncoding(t *testing.T) {
 			},
 			expectedError: false,
 			expectedLogs:  createOTLPLogWithNestedAttributes(),
+		},
+		{
+			name:            "lz4_valid_protobuf",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return createLz4CompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "lz4_valid_json",
+			contentType:     "application/json",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return createLz4CompressedJSON(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "lz4_invalid_data",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return []byte("invalid lz4 data"), nil
+			},
+			expectedError: true,
+			expectedLogs:  plog.NewLogs(),
 		},
 	}
 
