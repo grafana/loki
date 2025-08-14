@@ -278,6 +278,90 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
+			name: "non otlp with [debug] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[debug] this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [DEBUG] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[DEBUG] this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [critical] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[critical] this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [CRITICAL] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[CRITICAL] this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [info] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[info] this is an info message",
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "non otlp with [INFO] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[INFO] this is an info message",
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "non otlp with [warn] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[warn] this is a warning message",
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with [WARNING] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[WARNING] this is a warning message",
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with [error] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[error] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [ERROR] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[ERROR] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [err] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[err] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [ERR] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[ERR] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","level":"critical"}`,
@@ -509,6 +593,20 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 			name: "non otlp with CRITICAL: prefix in log line",
 			entry: logproto.Entry{
 				Line: "CRITICAL: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [debug] bracket pattern in custom test",
+			entry: logproto.Entry{
+				Line: "[debug] this is a debug message with custom fields",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [CRITICAL] bracket pattern in custom test",
+			entry: logproto.Entry{
+				Line: "[CRITICAL] this is a critical message with custom fields",
 			},
 			expectedLogLevel: constants.LogLevelCritical,
 		},
