@@ -5,7 +5,7 @@ import (
 
 	"github.com/axiomhq/hyperloglog"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 )
 
 // NB: https://engineering.fb.com/2018/12/13/data-infrastructure/hyperloglog/

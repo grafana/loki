@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -130,9 +130,12 @@ func (b *tableBuffer) StreamID(pageSize int) *dataset.ColumnBuilder {
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeStreamID.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
 			StoreCardinalityStats: true,
@@ -157,9 +160,12 @@ func (b *tableBuffer) Timestamp(pageSize int) *dataset.ColumnBuilder {
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeTimestamp.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -190,8 +196,11 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 	}
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		PageSizeHint: pageSize,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeMetadata.String(),
+		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
@@ -224,8 +233,11 @@ func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionO
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		PageSizeHint: pageSize,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeMessage.String(),
+		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
@@ -331,7 +343,7 @@ func (b *tableBuffer) Flush() (*table, error) {
 
 	// Sort metadata columns by name for consistency.
 	slices.SortFunc(metadatas, func(a, b *tableColumn) int {
-		return cmp.Compare(a.ColumnInfo().Name, b.ColumnInfo().Name)
+		return cmp.Compare(a.ColumnInfo().Tag, b.ColumnInfo().Tag)
 	})
 
 	return &table{

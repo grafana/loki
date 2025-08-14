@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
@@ -136,9 +135,12 @@ func (b *Builder) Reset() {
 func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	pathBuilder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypePath.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -149,9 +151,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 
 	minTimestampBuilder, err := dataset.NewColumnBuilder("min_timestamp", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeMinTimestamp.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -162,9 +167,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 
 	maxTimestampBuilder, err := dataset.NewColumnBuilder("max_timestamp", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeMaxTimestamp.String(),
+		},
+		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -174,7 +182,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	}
 
 	for i, pointer := range b.indexPointers {
-		_ = pathBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Path)))
+		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(pointer.StartTs.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(pointer.EndTs.UnixNano()))
 	}
@@ -202,27 +210,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	// TODO(rfratto): remove explicit conversion once [dataset.Dataset] is
-	// updated to use the v2 metadata.
-	desc := &columnar.ColumnDesc{
-		Type: columnar.ColumnType{
-			Physical: columnar.ConvertPhysicalType(datasetmd_v2.ToV2PhysicalType(column.Info.Type)),
-			Logical:  columnType.String(),
-		},
-		Tag: column.Info.Name,
-
-		Compression: datasetmd_v2.ToV2CompressionType(column.Info.Compression),
-
-		PagesCount:       column.Info.PagesCount,
-		RowsCount:        column.Info.RowsCount,
-		ValuesCount:      column.Info.ValuesCount,
-		CompressedSize:   column.Info.CompressedSize,
-		UncompressedSize: column.Info.UncompressedSize,
-
-		Statistics: datasetmd_v2.ToV2Statistics(column.Info.Statistics),
-	}
-
-	columnEnc, err := enc.OpenColumn(desc)
+	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}

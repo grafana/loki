@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 )
 
 func TestColumnBuilder_ReadWrite(t *testing.T) {
@@ -29,7 +29,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	opts := BuilderOptions{
 		// Set the size to 0 so each column has exactly one value.
 		PageSizeHint: 0,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -37,12 +37,12 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, s := range in {
-		require.NoError(t, b.Append(i, ByteArrayValue(s)))
+		require.NoError(t, b.Append(i, BinaryValue(s)))
 	}
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, col.Info.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
 	require.Equal(t, len(in), col.Info.RowsCount)
 	require.Equal(t, len(in)-2, col.Info.ValuesCount) // -2 for the empty strings
 	require.Greater(t, len(col.Pages), 1)
@@ -69,8 +69,8 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, []byte{})
 		} else {
-			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, val.Type())
-			actual = append(actual, val.ByteArray())
+			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, val.Type())
+			actual = append(actual, val.Binary())
 		}
 	}
 
@@ -111,7 +111,7 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 
@@ -123,29 +123,29 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, s := range in {
-		require.NoError(t, b.Append(i, ByteArrayValue([]byte(s))))
+		require.NoError(t, b.Append(i, BinaryValue([]byte(s))))
 	}
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, col.Info.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
 	require.NotNil(t, col.Info.Statistics)
 
 	columnMin, columnMax := getMinMax(t, col.Info.Statistics)
-	require.Equal(t, aString, string(columnMin.ByteArray()))
-	require.Equal(t, fString, string(columnMax.ByteArray()))
+	require.Equal(t, aString, string(columnMin.Binary()))
+	require.Equal(t, fString, string(columnMax.Binary()))
 
 	require.Len(t, col.Pages, 2)
 	require.Equal(t, 3, col.Pages[0].Info.ValuesCount)
 	require.Equal(t, 3, col.Pages[1].Info.ValuesCount)
 
 	page0Min, page0Max := getMinMax(t, col.Pages[0].Info.Stats)
-	require.Equal(t, aString, string(page0Min.ByteArray()))
-	require.Equal(t, cString, string(page0Max.ByteArray()))
+	require.Equal(t, aString, string(page0Min.Binary()))
+	require.Equal(t, cString, string(page0Max.Binary()))
 
 	page1Min, page1Max := getMinMax(t, col.Pages[1].Info.Stats)
-	require.Equal(t, dString, string(page1Min.ByteArray()))
-	require.Equal(t, fString, string(page1Max.ByteArray()))
+	require.Equal(t, dString, string(page1Min.Binary()))
+	require.Equal(t, fString, string(page1Max.Binary()))
 }
 
 func TestColumnBuilder_Cardinality(t *testing.T) {
@@ -174,7 +174,7 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 
@@ -186,12 +186,12 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 	require.NoError(t, err)
 
 	for i, s := range in {
-		require.NoError(t, b.Append(i, ByteArrayValue([]byte(s))))
+		require.NoError(t, b.Append(i, BinaryValue([]byte(s))))
 	}
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, col.Info.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
 	require.NotNil(t, col.Info.Statistics)
 	// we use sparse hyperloglog reprs until a certain cardinality is reached,
 	// so this should not be approximate at low counts.

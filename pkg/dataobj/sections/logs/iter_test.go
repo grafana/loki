@@ -31,9 +31,9 @@ func TestDecode(t *testing.T) {
 				Values: []dataset.Value{
 					dataset.Int64Value(123),
 					dataset.Int64Value(1234567890000000000),
-					dataset.ByteArrayValue([]byte("test-app")),
-					dataset.ByteArrayValue([]byte("prod")),
-					dataset.ByteArrayValue([]byte("test message")),
+					dataset.BinaryValue([]byte("test-app")),
+					dataset.BinaryValue([]byte("prod")),
+					dataset.BinaryValue([]byte("test message")),
 				},
 			},
 			expected: Record{
@@ -56,7 +56,7 @@ func TestDecode(t *testing.T) {
 					dataset.Int64Value(123),
 					dataset.Int64Value(1234567890000000000),
 					{},
-					dataset.ByteArrayValue([]byte("test message")),
+					dataset.BinaryValue([]byte("test message")),
 				},
 			},
 			expected: Record{
@@ -73,7 +73,7 @@ func TestDecode(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,
@@ -85,7 +85,7 @@ func TestDecode(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,

@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
@@ -211,7 +211,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeLabel: // Appends labels as byte arrays
-				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
 			case ColumnTypeRows: // Appends rows as int64
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypeUncompressedSize: // Appends uncompressed size as int64
@@ -348,12 +348,12 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		}
 
 		var valueSet dataset.ValueSet
-		switch col.ColumnInfo().Type {
-		case datasetmd.VALUE_TYPE_INT64:
+		switch col.ColumnInfo().Type.Physical {
+		case datasetmd.PHYSICAL_TYPE_INT64:
 			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_UINT64:
+		case datasetmd.PHYSICAL_TYPE_UINT64:
 			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+		case datasetmd.PHYSICAL_TYPE_BINARY:
 			valueSet = dataset.NewByteArrayValueSet(vals)
 		default:
 			panic("InPredicate not implemented for datatype")
@@ -404,7 +404,7 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	}
 }
 
-func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
+func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 	toType, ok := arrowconv.DatasetType(dtype)
 	if !ok {
 		panic(fmt.Sprintf("unsupported dataset type %s", dtype))

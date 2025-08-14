@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -32,7 +32,7 @@ func Test_table_metadataCleanup(t *testing.T) {
 	table, err = buf.Flush()
 	require.NoError(t, err)
 	require.Equal(t, 1, len(table.Metadatas))
-	require.Equal(t, "bar", table.Metadatas[0].Info.Name)
+	require.Equal(t, "bar", table.Metadatas[0].Info.Tag)
 }
 
 func initBuffer(buf *tableBuffer) {
@@ -88,9 +88,9 @@ func Test_mergeTables(t *testing.T) {
 
 		for _, row := range rows[:n] {
 			require.Len(t, row.Values, 3)
-			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, row.Values[2].Type())
+			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, row.Values[2].Type())
 
-			actual = append(actual, string(row.Values[2].ByteArray()))
+			actual = append(actual, string(row.Values[2].Binary()))
 		}
 	}
 

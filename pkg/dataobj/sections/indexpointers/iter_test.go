@@ -26,7 +26,7 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -46,7 +46,7 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("")),
+					dataset.BinaryValue([]byte("")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -62,7 +62,7 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(0),
 					dataset.Int64Value(1234567890000000000),
 				},
@@ -78,7 +78,7 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
 					dataset.Int64Value(0),
 				},
@@ -110,8 +110,8 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("invalid")),
 					dataset.Int64Value(1234567890000000000),
 				},
 			},
@@ -126,9 +126,9 @@ func TestDecodeRow(t *testing.T) {
 			},
 			row: dataset.Row{
 				Values: []dataset.Value{
-					dataset.ByteArrayValue([]byte("test-path")),
+					dataset.BinaryValue([]byte("test-path")),
 					dataset.Int64Value(1234567890000000000),
-					dataset.ByteArrayValue([]byte("invalid")),
+					dataset.BinaryValue([]byte("invalid")),
 				},
 			},
 			wantErr: true,

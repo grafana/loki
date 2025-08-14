@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/crc32"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
@@ -64,9 +64,9 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
-	valuesEnc, ok := newValueEncoder(opts.Value, opts.Encoding, valuesWriter)
+	valuesEnc, ok := newValueEncoder(opts.Type.Physical, opts.Encoding, valuesWriter)
 	if !ok {
-		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Value, opts.Encoding)
+		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Type.Physical, opts.Encoding)
 	}
 
 	return &pageBuilder{
@@ -185,16 +185,16 @@ func (b *pageBuilder) updateMinMax(value Value) {
 
 func valueSize(v Value) int {
 	switch v.Type() {
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		// Assuming that int64s are written as varints.
 		return streamio.VarintSize(v.Int64())
 
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		arr := v.ByteArray()
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		arr := v.Binary()
 		return binary.Size(len(arr)) + len(arr)
 	}
 

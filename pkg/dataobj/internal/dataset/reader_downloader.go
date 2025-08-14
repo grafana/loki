@@ -495,7 +495,7 @@ func newReaderColumn(dl *readerDownloader, col Column, primary bool) *readerColu
 	}
 }
 
-func (col *readerColumn) ColumnInfo() *ColumnInfo {
+func (col *readerColumn) ColumnInfo() *ColumnDesc {
 	// Implementations of Column are expected to cache ColumnInfo when the Column
 	// is built, so there's no need to cache it a second time here.
 	return col.inner.ColumnInfo()

@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -198,7 +198,7 @@ func translateStreamsPredicate(p RowPredicate, dsetColumns []dataset.Column, act
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
+			Value:  dataset.BinaryValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case LabelFilterRowPredicate:
@@ -294,14 +294,14 @@ func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*C
 
 func valueToString(value dataset.Value) string {
 	switch value.Type() {
-	case datasetmd.VALUE_TYPE_UNSPECIFIED:
+	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 		return ""
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		return unsafeString(value.ByteArray())
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		return unsafeString(value.Binary())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
 	}

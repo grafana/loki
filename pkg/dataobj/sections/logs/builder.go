@@ -249,27 +249,7 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 }
 
 func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {
-	// TODO(rfratto): remove explicit conversion once [dataset.Dataset] is
-	// updated to use the v2 metadata.
-	desc := &columnar.ColumnDesc{
-		Type: columnar.ColumnType{
-			Physical: columnar.ConvertPhysicalType(datasetmd_v2.ToV2PhysicalType(column.Info.Type)),
-			Logical:  columnType.String(),
-		},
-		Tag: column.Info.Name,
-
-		Compression: datasetmd_v2.ToV2CompressionType(column.Info.Compression),
-
-		PagesCount:       column.Info.PagesCount,
-		RowsCount:        column.Info.RowsCount,
-		ValuesCount:      column.Info.ValuesCount,
-		CompressedSize:   column.Info.CompressedSize,
-		UncompressedSize: column.Info.UncompressedSize,
-
-		Statistics: datasetmd_v2.ToV2Statistics(column.Info.Statistics),
-	}
-
-	columnEnc, err := enc.OpenColumn(desc)
+	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}

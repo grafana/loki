@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 )
 
 // columnReaderTestStrings contains enough strings to span multiple pages
@@ -107,14 +107,14 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
 		PageSizeHint: 128, // Small page size to force multiple pages
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	})
 	require.NoError(t, err)
 
 	for i, v := range values {
-		require.NoError(t, builder.Append(i, ByteArrayValue([]byte(v))))
+		require.NoError(t, builder.Append(i, BinaryValue([]byte(v))))
 	}
 
 	col, err := builder.Flush()

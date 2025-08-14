@@ -119,7 +119,7 @@ type DatasetColumn struct {
 	dec *Decoder
 
 	col  *Column
-	info *dataset.ColumnInfo
+	info *dataset.ColumnDesc
 }
 
 // MakeDatasetColumn returns a [DatasetColumn] from a decoder and a column.
@@ -129,10 +129,13 @@ func MakeDatasetColumn(dec *Decoder, col *Column) *DatasetColumn {
 	return &DatasetColumn{
 		dec: dec,
 		col: col,
-		info: &dataset.ColumnInfo{
-			Name:        col.Tag,
-			Type:        datasetmd.ToV1ValueType(info.Type.Physical),
-			Compression: datasetmd.ToV1CompressionType(info.Compression),
+		info: &dataset.ColumnDesc{
+			Type: dataset.ColumnType{
+				Physical: info.Type.Physical,
+				Logical:  col.Type.Logical,
+			},
+			Tag:         col.Tag,
+			Compression: info.Compression,
 
 			PagesCount:       int(info.PagesCount),
 			RowsCount:        int(info.RowsCount),
@@ -140,15 +143,15 @@ func MakeDatasetColumn(dec *Decoder, col *Column) *DatasetColumn {
 			CompressedSize:   int(info.CompressedSize),
 			UncompressedSize: int(info.UncompressedSize),
 
-			Statistics: datasetmd.ToV1Statistics(info.Statistics),
+			Statistics: info.Statistics,
 		},
 	}
 }
 
 var _ dataset.Column = (*DatasetColumn)(nil)
 
-// ColumnInfo returns the [dataset.ColumnInfo] for the column.
-func (ds *DatasetColumn) ColumnInfo() *dataset.ColumnInfo { return ds.info }
+// ColumnInfo returns the [dataset.ColumnDesc] for the column.
+func (ds *DatasetColumn) ColumnInfo() *dataset.ColumnDesc { return ds.info }
 
 // ListPages returns a sequence of pages for the column.
 func (ds *DatasetColumn) ListPages(ctx context.Context) result.Seq[dataset.Page] {
@@ -193,8 +196,8 @@ func MakeDatasetPage(dec *Decoder, desc *datasetmd.PageDesc) *DatasetPage {
 			RowCount:         int(desc.RowsCount),
 			ValuesCount:      int(desc.ValuesCount),
 
-			Encoding: datasetmd.ToV1Encoding(desc.Encoding),
-			Stats:    datasetmd.ToV1Statistics(desc.Statistics),
+			Encoding: desc.Encoding,
+			Stats:    desc.Statistics,
 		},
 	}
 }

@@ -250,12 +250,12 @@ func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn,
 	return dataset.AndPredicate{
 		Left: dataset.EqualPredicate{
 			Column: nameColumn,
-			Value:  dataset.ByteArrayValue([]byte(p.Name)),
+			Value:  dataset.BinaryValue([]byte(p.Name)),
 		},
 		Right: dataset.FuncPredicate{
 			Column: bloomColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				bloomBytes := value.ByteArray()
+				bloomBytes := value.Binary()
 				bf := bloom.New(1, 1) // Dummy values
 				_, err := bf.ReadFrom(bytes.NewReader(bloomBytes))
 				if err != nil {

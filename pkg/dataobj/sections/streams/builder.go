@@ -12,8 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -243,23 +242,23 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(b.pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(ColumnTypeRows, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -277,9 +276,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
 			PageSizeHint: b.pageSize,
-			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			Type: dataset.ColumnType{
+				Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+				Logical:  ColumnTypeLabel.String(),
+			},
+			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+			Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
 				StoreRangeStats: true,
 			},
@@ -307,7 +309,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
-			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
+			_ = builder.Append(i, dataset.BinaryValue([]byte(label.Value)))
 			return nil
 		})
 		if err != nil {
@@ -344,12 +346,15 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	return nil
 }
 
-func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(columnType ColumnType, pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  columnType.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -362,27 +367,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	// TODO(rfratto): remove explicit conversion once [dataset.Dataset] is
-	// updated to use the v2 metadata.
-	desc := &columnar.ColumnDesc{
-		Type: columnar.ColumnType{
-			Physical: columnar.ConvertPhysicalType(datasetmd_v2.ToV2PhysicalType(column.Info.Type)),
-			Logical:  columnType.String(),
-		},
-		Tag: column.Info.Name,
-
-		Compression: datasetmd_v2.ToV2CompressionType(column.Info.Compression),
-
-		PagesCount:       column.Info.PagesCount,
-		RowsCount:        column.Info.RowsCount,
-		ValuesCount:      column.Info.ValuesCount,
-		CompressedSize:   column.Info.CompressedSize,
-		UncompressedSize: column.Info.UncompressedSize,
-
-		Statistics: datasetmd_v2.ToV2Statistics(column.Info.Statistics),
-	}
-
-	columnEnc, err := enc.OpenColumn(desc)
+	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}

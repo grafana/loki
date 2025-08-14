@@ -3,16 +3,27 @@ package dataset
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 // Helper types.
 type (
-	// ColumnInfo describes a column.
-	ColumnInfo struct {
-		Name        string                    // Name of the column, if any.
-		Type        datasetmd.ValueType       // Type of values in the column.
+	// ColumnType represents the type of data stored in a column. Column types
+	// are represented as a tuple of a physical and logical type.
+	ColumnType struct {
+		// Physical is the type of values physically stored within the column.
+		Physical datasetmd.PhysicalType
+
+		// Logical is a custom string indicating how dataset-derived sections
+		// should interpret the physical type.
+		Logical string
+	}
+
+	// ColumnDesc describes a column.
+	ColumnDesc struct {
+		Type        ColumnType                // Type of values in the column.
+		Tag         string                    // Optional string to distinguish columns with the same type.
 		Compression datasetmd.CompressionType // Compression used for the column.
 
 		PagesCount       int // Total number of pages in the column.
@@ -30,7 +41,7 @@ type (
 // portion of the column at a time.
 type Column interface {
 	// ColumnInfo returns the metadata for the Column.
-	ColumnInfo() *ColumnInfo
+	ColumnInfo() *ColumnDesc
 
 	// ListPages returns the set of ordered pages in the column.
 	ListPages(ctx context.Context) result.Seq[Page]
@@ -38,14 +49,14 @@ type Column interface {
 
 // MemColumn holds a set of pages of a common type.
 type MemColumn struct {
-	Info  ColumnInfo // Information about the column.
+	Info  ColumnDesc // Information about the column.
 	Pages []*MemPage // The set of pages in the column.
 }
 
 var _ Column = (*MemColumn)(nil)
 
 // ColumnInfo implements [Column] and returns c.Info.
-func (c *MemColumn) ColumnInfo() *ColumnInfo { return &c.Info }
+func (c *MemColumn) ColumnInfo() *ColumnDesc { return &c.Info }
 
 // ListPages implements [Column] and iterates through c.Pages.
 func (c *MemColumn) ListPages(_ context.Context) result.Seq[Page] {

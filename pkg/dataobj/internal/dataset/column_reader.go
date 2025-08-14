@@ -55,9 +55,9 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 
 			switch cr.reader {
 			case nil:
-				cr.reader = newPageReader(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
+				cr.reader = newPageReader(page, cr.column.ColumnInfo().Type.Physical, cr.column.ColumnInfo().Compression)
 			default:
-				cr.reader.Reset(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
+				cr.reader.Reset(page, cr.column.ColumnInfo().Type.Physical, cr.column.ColumnInfo().Compression)
 			}
 
 			cr.pageIndex = pageIndex
@@ -189,7 +189,7 @@ func (cr *columnReader) Reset(column Column) {
 
 	if cr.reader != nil {
 		// Resetting takes the place of calling Close here.
-		cr.reader.Reset(nil, column.ColumnInfo().Type, column.ColumnInfo().Compression)
+		cr.reader.Reset(nil, column.ColumnInfo().Type.Physical, column.ColumnInfo().Compression)
 	}
 
 	cr.nextRow = 0

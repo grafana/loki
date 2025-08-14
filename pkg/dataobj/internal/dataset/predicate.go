@@ -202,7 +202,7 @@ type ByteArrayValueSet struct {
 func NewByteArrayValueSet(values []Value) ByteArrayValueSet {
 	valuesMap := make(map[string]Value, len(values))
 	for _, v := range values {
-		valuesMap[unsafeString(v.ByteArray())] = v
+		valuesMap[unsafeString(v.Binary())] = v
 	}
 	return ByteArrayValueSet{
 		values: valuesMap,
@@ -210,7 +210,7 @@ func NewByteArrayValueSet(values []Value) ByteArrayValueSet {
 }
 
 func (s ByteArrayValueSet) Contains(value Value) bool {
-	_, ok := s.values[unsafeString(value.ByteArray())]
+	_, ok := s.values[unsafeString(value.Binary())]
 	return ok
 }
 

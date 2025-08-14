@@ -10,8 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -237,9 +236,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 
 	pathBuilder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypePath.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -247,37 +249,37 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating path column: %w", err)
 	}
-	sectionBuilder, err := numberColumnBuilder(b.pageSize)
+	sectionBuilder, err := numberColumnBuilder(ColumnTypeSection, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating section column: %w", err)
 	}
-	pointerKindBuilder, err := numberColumnBuilder(b.pageSize)
+	pointerKindBuilder, err := numberColumnBuilder(ColumnTypePointerKind, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating pointer kind column: %w", err)
 	}
 
 	// Stream info
-	idBuilder, err := numberColumnBuilder(b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	streamIDRefBuilder, err := numberColumnBuilder(b.pageSize)
+	streamIDRefBuilder, err := numberColumnBuilder(ColumnTypeStreamIDRef, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating stream ID in object column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowCountBuilder, err := numberColumnBuilder(b.pageSize)
+	rowCountBuilder, err := numberColumnBuilder(ColumnTypeRowCount, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -285,9 +287,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// Column index info
 	columnNameBuilder, err := dataset.NewColumnBuilder("column_name", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeColumnName.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -296,16 +301,19 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		return fmt.Errorf("creating column name column: %w", err)
 	}
 
-	columnIndexBuilder, err := numberColumnBuilder(b.pageSize)
+	columnIndexBuilder, err := numberColumnBuilder(ColumnTypeColumnIndex, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating column index column: %w", err)
 	}
 
 	valuesBloomFilterBuilder, err := dataset.NewColumnBuilder("values_bloom_filter", dataset.BuilderOptions{
 		PageSizeHint: b.pageSize,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE, // TODO: is there a sensible compression algorithm for bloom filters?
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeValuesBloomFilter.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE, // TODO: is there a sensible compression algorithm for bloom filters?
 	})
 	if err != nil {
 		return fmt.Errorf("creating values bloom filter column: %w", err)
@@ -313,7 +321,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 
 	// Populate our column builders.
 	for i, pointer := range b.pointers {
-		_ = pathBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.Path)))
+		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
 		_ = sectionBuilder.Append(i, dataset.Int64Value(pointer.Section))
 		_ = pointerKindBuilder.Append(i, dataset.Int64Value(int64(pointer.PointerKind)))
 
@@ -328,9 +336,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		}
 
 		if pointer.PointerKind == PointerKindColumnIndex {
-			_ = columnNameBuilder.Append(i, dataset.ByteArrayValue([]byte(pointer.ColumnName)))
+			_ = columnNameBuilder.Append(i, dataset.BinaryValue([]byte(pointer.ColumnName)))
 			_ = columnIndexBuilder.Append(i, dataset.Int64Value(pointer.ColumnIndex))
-			_ = valuesBloomFilterBuilder.Append(i, dataset.ByteArrayValue(pointer.ValuesBloomFilter))
+			_ = valuesBloomFilterBuilder.Append(i, dataset.BinaryValue(pointer.ValuesBloomFilter))
 		}
 	}
 
@@ -360,12 +368,15 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	return nil
 }
 
-func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(logicalType ColumnType, pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  logicalType.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -378,27 +389,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	// TODO(rfratto): remove explicit conversion once [dataset.Dataset] is
-	// updated to use the v2 metadata.
-	desc := &columnar.ColumnDesc{
-		Type: columnar.ColumnType{
-			Physical: columnar.ConvertPhysicalType(datasetmd_v2.ToV2PhysicalType(column.Info.Type)),
-			Logical:  columnType.String(),
-		},
-		Tag: column.Info.Name,
-
-		Compression: datasetmd_v2.ToV2CompressionType(column.Info.Compression),
-
-		PagesCount:       column.Info.PagesCount,
-		RowsCount:        column.Info.RowsCount,
-		ValuesCount:      column.Info.ValuesCount,
-		CompressedSize:   column.Info.CompressedSize,
-		UncompressedSize: column.Info.UncompressedSize,
-
-		Statistics: datasetmd_v2.ToV2Statistics(column.Info.Statistics),
-	}
-
-	columnEnc, err := enc.OpenColumn(desc)
+	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -420,12 +411,12 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 	}
 
 	if columnType == ColumnTypePointerKind {
-		enc.SetSortInfo(&datasetmd_v2.SortInfo{
-			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{{
+		enc.SetSortInfo(&datasetmd.SortInfo{
+			ColumnSorts: []*datasetmd.SortInfo_ColumnSort{{
 				// NumColumns increases after calling Commit, so we can use the
 				// current value as the index.
 				ColumnIndex: uint32(enc.NumColumns()),
-				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
+				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 			}},
 		})
 	}

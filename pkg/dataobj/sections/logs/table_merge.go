@@ -117,7 +117,7 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+				columnBuilder := buf.Metadata(column.Info.Tag, pageSize, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
 			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)

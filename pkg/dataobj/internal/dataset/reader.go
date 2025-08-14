@@ -7,7 +7,7 @@ import (
 	"io"
 	"iter"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -326,7 +326,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 
 		value := row.Values[columnIndex]
-		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type {
+		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type.Physical {
 			return false
 		}
 		return p.Values.Contains(value)

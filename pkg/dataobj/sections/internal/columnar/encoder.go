@@ -64,14 +64,14 @@ func (enc *Encoder) NumColumns() int { return len(enc.columns) }
 
 // OpenColumn opens a new column in the section. OpenColumn fails if there is
 // another open column.
-func (enc *Encoder) OpenColumn(desc *ColumnDesc) (*ColumnEncoder, error) {
+func (enc *Encoder) OpenColumn(desc *dataset.ColumnDesc) (*ColumnEncoder, error) {
 	if enc.curColumn != nil {
 		return nil, errElementExist
 	}
 
 	enc.curColumn = &datasetmd.ColumnDesc{
 		Type: &datasetmd.ColumnType{
-			Physical:   desc.Type.Physical.Proto(),
+			Physical:   desc.Type.Physical,
 			LogicalRef: enc.getDictionaryRef(desc.Type.Logical),
 		},
 		TagRef:           enc.getDictionaryRef(desc.Tag),
@@ -286,12 +286,12 @@ func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 		Crc32:            page.Info.CRC32,
 		RowsCount:        uint64(page.Info.RowCount),
 		ValuesCount:      uint64(page.Info.ValuesCount),
-		Encoding:         datasetmd.ToV2Encoding(page.Info.Encoding),
+		Encoding:         page.Info.Encoding,
 
 		DataOffset: uint64(enc.dataOffset + enc.totalPageSize),
 		DataSize:   uint64(len(page.Data)),
 
-		Statistics: datasetmd.ToV2Statistics(page.Info.Stats),
+		Statistics: page.Info.Stats,
 	})
 
 	enc.memPages = append(enc.memPages, page)

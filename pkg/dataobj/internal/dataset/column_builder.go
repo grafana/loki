@@ -5,7 +5,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 )
 
 // BuilderOptions configures common settings for building pages.
@@ -15,8 +15,9 @@ type BuilderOptions struct {
 	// slightly larger or smaller.
 	PageSizeHint int
 
-	// Value is the value type of data to write.
-	Value datasetmd.ValueType
+	// Type is the type of data in the column. Type.Physical is used for
+	// encoding; Type.Logical is used as a hint to readers.
+	Type ColumnType
 
 	// Encoding is the encoding algorithm to use for values.
 	Encoding datasetmd.EncodingType
@@ -53,7 +54,7 @@ type CompressionOptions struct {
 // column. Values are accumulated into a buffer and then flushed into
 // [MemPage]s once the size of data exceeds a configurable limit.
 type ColumnBuilder struct {
-	name string
+	tag  string
 	opts BuilderOptions
 
 	rows int // Total number of rows in the column.
@@ -63,10 +64,10 @@ type ColumnBuilder struct {
 	pageBuilder  *pageBuilder
 }
 
-// NewColumnBuilder creates a new ColumnBuilder from the optional name and
+// NewColumnBuilder creates a new ColumnBuilder from the optional tag and
 // provided options. NewColumnBuilder returns an error if the options are
 // invalid.
-func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) {
+func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
 	builder, err := newPageBuilder(opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating page builder: %w", err)
@@ -78,7 +79,7 @@ func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) 
 	}
 
 	return &ColumnBuilder{
-		name: name,
+		tag:  tag,
 		opts: opts,
 
 		pageBuilder:  builder,
@@ -172,9 +173,9 @@ func (cb *ColumnBuilder) append(row int, value Value) bool {
 func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 	cb.flushPage()
 
-	info := ColumnInfo{
-		Name: cb.name,
-		Type: cb.opts.Value,
+	info := ColumnDesc{
+		Type: cb.opts.Type,
+		Tag:  cb.tag,
 
 		PagesCount:  len(cb.pages),
 		Compression: cb.opts.Compression,

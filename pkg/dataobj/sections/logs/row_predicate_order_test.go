@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 )
 
 func TestGetPredicateSelectivity(t *testing.T) {
@@ -390,8 +390,8 @@ type testColumn struct {
 
 func (c *testColumn) ToMemColumn(t *testing.T) *dataset.MemColumn {
 	return &dataset.MemColumn{
-		Info: dataset.ColumnInfo{
-			Name:             c.name,
+		Info: dataset.ColumnDesc{
+			Tag:              c.name,
 			RowsCount:        c.rowCount,
 			ValuesCount:      c.valueCount,
 			UncompressedSize: c.size,

@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -92,7 +92,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 		column := columns[columnIndex]
 		switch column.Type {
 		case ColumnTypePath:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
@@ -101,13 +101,13 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			}
 
 			if sym != nil {
-				pointer.Path = sym.Get(unsafeString(columnValue.ByteArray()))
+				pointer.Path = sym.Get(unsafeString(columnValue.Binary()))
 			} else {
-				pointer.Path = string(columnValue.ByteArray())
+				pointer.Path = string(columnValue.Binary())
 			}
 
 		case ColumnTypeMinTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
@@ -118,7 +118,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			pointer.StartTs = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMaxTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
