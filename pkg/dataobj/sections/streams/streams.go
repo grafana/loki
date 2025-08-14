@@ -20,6 +20,7 @@ func CheckSection(section *dataobj.Section) bool { return section.Type == sectio
 
 // Section represents an opened streams section.
 type Section struct {
+	tenant  string
 	reader  dataobj.SectionReader
 	columns []*Column
 }
@@ -62,8 +63,12 @@ func (s *Section) init(ctx context.Context) error {
 		})
 	}
 
+	s.tenant = metadata.Tenant
 	return nil
 }
+
+// Tenant returns the tenant that owns the section.
+func (s *Section) Tenant() string { return s.tenant }
 
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
