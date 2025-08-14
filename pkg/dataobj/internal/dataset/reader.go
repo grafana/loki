@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions configures how a [Reader] will read [Row]s.
@@ -67,17 +66,11 @@ func NewReader(opts ReaderOptions) *Reader {
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
-	r.stats.ReadCalls++
+	stats := StatsFromContext(ctx)
+	stats.AddReadCalls(1)
 
 	if len(s) == 0 {
 		return 0, nil
-	}
-	// Init stats object and use the context, otherwise we create a new one every time we increment a stat.
-	var statistics *stats.Context
-	if stats.IsPresent(ctx) {
-		statistics = stats.FromContext(ctx)
-	} else {
-		statistics, ctx = stats.NewContext(ctx)
 	}
 
 	if !r.ready {
@@ -153,21 +146,18 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		rowsRead = count
 		passCount = count
 
-		r.stats.PrimaryRowsRead += uint64(rowsRead)
-		statistics.AddPrePredicateDecompressedRows(int64(rowsRead))
+		stats.AddPrimaryRowsRead(uint64(rowsRead))
 		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
-		r.stats.PrimaryRowBytes += uint64(primaryColumnBytes)
-		statistics.AddPrePredicateDecompressedBytes(primaryColumnBytes)
+		stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
 	} else {
-		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], statistics)
+		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], stats)
 		if err != nil {
 			return n, err
 		}
 	}
-	statistics.AddPostPredicateRows(int64(passCount))
 
 	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
 		// Mask out any ranges that aren't in s[:passCount], so that filling in
@@ -193,9 +183,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		r.stats.SecondaryRowsRead += uint64(count)
-		r.stats.SecondaryRowBytes += uint64(totalBytesFilled)
-		statistics.AddPostPredicateDecompressedBytes(totalBytesFilled)
+		stats.AddSecondaryRowsRead(uint64(count))
+		stats.AddSecondaryRowBytes(uint64(totalBytesFilled))
 	}
 
 	n += passCount
@@ -214,7 +203,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 // the columns on the reduced row range.
 //
 // It returns the max rows read, rows that passed all the predicates, and any error
-func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *stats.Context) (int, int, error) {
+func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *ReaderStats) (int, int, error) {
 	var (
 		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
@@ -282,10 +271,8 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		readSize = passCount
 	}
 
-	stats.AddPrePredicateDecompressedRows(int64(rowsRead))
-	r.stats.PrimaryRowsRead += uint64(rowsRead)
-	stats.AddPrePredicateDecompressedBytes(primaryColumnBytes)
-	r.stats.PrimaryRowBytes += uint64(primaryColumnBytes)
+	stats.AddPrimaryRowsRead(uint64(rowsRead))
+	stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
 	return rowsRead, passCount, nil
 }
 
@@ -410,15 +397,6 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 	}
 }
 
-func (r *Reader) Stats() *ReaderStats {
-	if !r.ready {
-		return nil
-	}
-
-	r.stats.DownloadStats = r.dl.DownloadStats()
-	return &r.stats
-}
-
 // Close closes the Reader. Closed Readers can be reused by calling
 // [Reader.Reset].
 func (r *Reader) Close() error {
@@ -448,7 +426,6 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.row = 0
 	r.ranges = sliceclear.Clear(r.ranges)
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
-	r.stats.Reset()
 	r.ready = false
 }
 
@@ -536,17 +513,18 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
 
+	stats := StatsFromContext(ctx)
 	for i, column := range r.opts.Columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			r.stats.PrimaryColumns++
-			r.stats.PrimaryColumnPages += uint64(column.ColumnInfo().PagesCount)
+			stats.AddPrimaryColumns(1)
+			stats.AddPrimaryColumnPages(uint64(column.ColumnInfo().PagesCount))
 		} else {
-			r.stats.SecondaryColumns++
-			r.stats.SecondaryColumnPages += uint64(column.ColumnInfo().PagesCount)
+			stats.AddSecondaryColumns(1)
+			stats.AddSecondaryColumnPages(uint64(column.ColumnInfo().PagesCount))
 		}
 	}
 
@@ -579,11 +557,9 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	for _, column := range r.dl.AllColumns() {
 		rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
 	}
-	statistics := stats.FromContext(ctx)
-	statistics.AddTotalRowsAvailable(int64(rowsCount))
 
-	r.stats.MaxRows = rowsCount
-	r.stats.RowsToReadAfterPruning = ranges.TotalRowCount()
+	stats.AddTotalRowsAvailable(int64(rowsCount))
+	stats.AddRowsToReadAfterPruning(ranges.TotalRowCount())
 
 	return nil
 }

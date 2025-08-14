@@ -5,7 +5,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // readerDownloader is a utility for downloading pages in bulk from a
@@ -94,8 +93,6 @@ type readerDownloader struct {
 
 	readRange rowRange  // Current range being read.
 	rangeMask rowRanges // Inverse of dsetRanges: ranges to _exclude_ from download.
-
-	stats DownloadStats // Statistics about the page downloads.
 }
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
@@ -204,11 +201,6 @@ func (dl *readerDownloader) initColumnPages(ctx context.Context) error {
 	return nil
 }
 
-// DownloadStats returns the statistics about the page downloads.
-func (dl *readerDownloader) DownloadStats() DownloadStats {
-	return dl.stats
-}
-
 // downloadBatch downloads a batch of pages from the inner dataset.
 func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *readerPage) error {
 	for _, col := range dl.allColumns {
@@ -223,15 +215,16 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 		return err
 	}
 
+	stats := StatsFromContext(ctx)
 	for _, page := range batch {
 		if page.column.primary {
-			dl.stats.PrimaryColumnPages++
-			dl.stats.PrimaryColumnBytes += uint64(page.inner.PageInfo().CompressedSize)
-			dl.stats.PrimaryColumnUncompressedBytes += uint64(page.inner.PageInfo().UncompressedSize)
+			stats.AddPrimaryColumnPagesDownloaded(1)
+			stats.AddPrimaryColumnBytesDownloaded(uint64(page.inner.PageInfo().CompressedSize))
+			stats.AddPrimaryColumnUncompressedBytes(uint64(page.inner.PageInfo().UncompressedSize))
 		} else {
-			dl.stats.SecondaryColumnPages++
-			dl.stats.SecondaryColumnBytes += uint64(page.inner.PageInfo().CompressedSize)
-			dl.stats.SecondaryColumnUncompressedBytes += uint64(page.inner.PageInfo().UncompressedSize)
+			stats.AddSecondaryColumnPagesDownloaded(1)
+			stats.AddSecondaryColumnBytesDownloaded(uint64(page.inner.PageInfo().CompressedSize))
+			stats.AddSecondaryColumnUncompressedBytes(uint64(page.inner.PageInfo().UncompressedSize))
 		}
 	}
 
@@ -344,10 +337,6 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		batchSize += pageSize
 	}
 
-	statistics := stats.FromContext(ctx)
-	statistics.AddPageBatches(1)
-	statistics.AddPagesDownloaded(int64(len(pageBatch)))
-	statistics.AddPagesDownloadedBytes(int64(batchSize))
 	return pageBatch, nil
 }
 
@@ -486,7 +475,6 @@ func (dl *readerDownloader) Reset(dset Dataset, targetCacheSize int) {
 	// dl.dsetRanges isn't owned by the downloader, so we don't use
 	// sliceclear.Clear.
 	dl.dsetRanges = nil
-	dl.stats.Reset()
 }
 
 type readerColumn struct {
@@ -600,13 +588,14 @@ func (page *readerPage) PageInfo() *PageInfo {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
-	page.column.dl.stats.ReadPageCalls++
+	stats := StatsFromContext(ctx)
+	stats.AddPagesScanned(1)
 	if page.data != nil {
-		page.column.dl.stats.PagesFoundInCache++
+		stats.AddPagesFoundInCache(1)
 		return page.data, nil
 	}
 
-	page.column.dl.stats.BatchDownloadRequests++
+	stats.AddBatchDownloadRequests(1)
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}

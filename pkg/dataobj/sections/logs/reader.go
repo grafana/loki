@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -131,6 +132,7 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
+	stats dataset.ReaderStats
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -169,7 +171,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
 	if !r.ready {
-		err := r.init()
+		err := r.init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
@@ -181,7 +183,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
 	defer builder.Release()
 
-	n, readErr := r.inner.Read(ctx, r.buf)
+	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
@@ -224,15 +226,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	return builder.NewRecord(), readErr
 }
 
-func (r *Reader) Stats() *dataset.ReaderStats {
-	if !r.ready {
-		return nil
-	}
-
-	return r.inner.Stats()
-}
-
-func (r *Reader) init() error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
@@ -254,6 +248,11 @@ func (r *Reader) init() error {
 	preds, err := mapPredicates(r.opts.Predicates, columnLookup)
 	if err != nil {
 		return fmt.Errorf("mapping predicates: %w", err)
+	}
+
+	// TODO(ashwanth): remove when global stats are updated by the executor.
+	if stats.IsPresent(ctx) {
+		r.stats.LinkGlobalStats(stats.FromContext(ctx))
 	}
 
 	innerOptions := dataset.ReaderOptions{
@@ -411,6 +410,7 @@ func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.stats.Reset()
 
 	r.ready = false
 
@@ -419,6 +419,10 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
+}
+
+func (r *Reader) Stats() *dataset.ReaderStats {
+	return &r.stats
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers

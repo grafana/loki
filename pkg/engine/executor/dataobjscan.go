@@ -413,11 +413,9 @@ func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.st
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	// log reader stats before closing
-	if s.initialized {
-		if stats := s.reader.Stats(); stats != nil {
-			stats.LogSummary(s.logger, time.Since(s.initedAt))
-		}
+	if s.reader != nil {
+		// TODO(ashwanth): remove this once we have stats collection via executor
+		s.reader.Stats().LogSummary(s.logger, time.Since(s.initedAt))
 	}
 
 	if s.streams != nil {
