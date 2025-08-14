@@ -13,8 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## Unreleased
-
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [BREAKING] Remove tokengen job and kubectl dependency. Admin token secret must be created manually if using the enterprise provisioner. Last version with tokengen support: 6.35.1
 - [BREAKING] Remove `enterprise.tokengen` configuration section
 - [BREAKING] Remove `kubectlImage` configuration
