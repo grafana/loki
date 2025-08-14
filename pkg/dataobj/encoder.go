@@ -66,7 +66,7 @@ func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, da
 	}
 	if opts != nil {
 		si.Tenant = opts.Tenant
-		si.ExtensionData = opts.ExtensionData
+		si.ExtensionData = slices.Clone(opts.ExtensionData) // Avoid retaining references to caller memory.
 	}
 
 	enc.sections = append(enc.sections, si)
@@ -110,7 +110,7 @@ func (enc *encoder) initTypeRefs() {
 }
 
 func (enc *encoder) initDictionary() {
-	if enc.dictionaryLookup != nil {
+	if len(enc.dictionary) > 0 && len(enc.dictionaryLookup) > 0 {
 		return // Already initialized.
 	}
 
@@ -137,6 +137,8 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 }
 
 func (enc *encoder) Metadata() (proto.Message, error) {
+	enc.initDictionary()
+
 	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
 	offset := enc.startOffset
@@ -239,6 +241,7 @@ func (enc *encoder) Reset() {
 
 	enc.typesReady = false
 	enc.dictionary = nil
+	enc.dictionaryLookup = nil
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
 }
