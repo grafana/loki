@@ -2,7 +2,6 @@ package dataset
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -114,81 +113,81 @@ func (s *ReaderStats) LinkGlobalStats(stats *stats.Context) {
 }
 
 func (s *ReaderStats) AddReadCalls(count int) {
-	atomic.AddInt64(&s.ReadCalls, int64(count))
+	s.ReadCalls += int64(count)
 }
 
 func (s *ReaderStats) AddPrimaryColumns(count uint64) {
-	atomic.AddUint64(&s.PrimaryColumns, count)
+	s.PrimaryColumns += count
 }
 
 func (s *ReaderStats) AddSecondaryColumns(count uint64) {
-	atomic.AddUint64(&s.SecondaryColumns, count)
+	s.SecondaryColumns += count
 }
 
 func (s *ReaderStats) AddPrimaryColumnPages(count uint64) {
-	atomic.AddUint64(&s.PrimaryColumnPages, count)
+	s.PrimaryColumnPages += count
 }
 
 func (s *ReaderStats) AddSecondaryColumnPages(count uint64) {
-	atomic.AddUint64(&s.SecondaryColumnPages, count)
+	s.SecondaryColumnPages += count
 }
 
 func (s *ReaderStats) AddPrimaryRowsRead(count uint64) {
-	atomic.AddUint64(&s.PrimaryRowsRead, count)
+	s.PrimaryRowsRead += count
 	if s.globalStats != nil {
 		s.globalStats.AddPrePredicateDecompressedRows(int64(count))
 	}
 }
 
 func (s *ReaderStats) AddSecondaryRowsRead(count uint64) {
-	atomic.AddUint64(&s.SecondaryRowsRead, count)
+	s.SecondaryRowsRead += count
 	if s.globalStats != nil {
 		s.globalStats.AddPostPredicateRows(int64(count))
 	}
 }
 
 func (s *ReaderStats) AddPrimaryRowBytes(count uint64) {
-	atomic.AddUint64(&s.PrimaryRowBytes, count)
+	s.PrimaryRowBytes += count
 	if s.globalStats != nil {
 		s.globalStats.AddPrePredicateDecompressedBytes(int64(count))
 	}
 }
 
 func (s *ReaderStats) AddSecondaryRowBytes(count uint64) {
-	atomic.AddUint64(&s.SecondaryRowBytes, count)
+	s.SecondaryRowBytes += count
 	if s.globalStats != nil {
 		s.globalStats.AddPostPredicateDecompressedBytes(int64(count))
 	}
 }
 
 func (s *ReaderStats) AddMaxRows(count uint64) {
-	atomic.AddUint64(&s.MaxRows, count)
+	s.MaxRows += count
 }
 
 func (s *ReaderStats) AddRowsToReadAfterPruning(count uint64) {
-	atomic.AddUint64(&s.RowsToReadAfterPruning, count)
+	s.RowsToReadAfterPruning += count
 }
 
 func (s *ReaderStats) AddTotalRowsAvailable(count int64) {
-	atomic.AddUint64(&s.MaxRows, uint64(count))
+	s.MaxRows += uint64(count)
 	if s.globalStats != nil {
 		s.globalStats.AddTotalRowsAvailable(count)
 	}
 }
 
 func (s *ReaderStats) AddPagesScanned(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.PagesScanned, count)
+	s.DownloadStats.PagesScanned += count
 	if s.globalStats != nil {
 		s.globalStats.AddPagesScanned(int64(count))
 	}
 }
 
 func (s *ReaderStats) AddPagesFoundInCache(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.PagesFoundInCache, count)
+	s.DownloadStats.PagesFoundInCache += count
 }
 
 func (s *ReaderStats) AddBatchDownloadRequests(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.BatchDownloadRequests, count)
+	s.DownloadStats.BatchDownloadRequests += count
 
 	if s.globalStats != nil {
 		s.globalStats.AddPageBatches(int64(count))
@@ -196,7 +195,7 @@ func (s *ReaderStats) AddBatchDownloadRequests(count uint64) {
 }
 
 func (s *ReaderStats) AddPrimaryColumnPagesDownloaded(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.PrimaryColumnPages, count)
+	s.DownloadStats.PrimaryColumnPages += count
 	if s.globalStats != nil {
 		s.globalStats.AddPagesDownloaded(int64(count))
 
@@ -204,7 +203,7 @@ func (s *ReaderStats) AddPrimaryColumnPagesDownloaded(count uint64) {
 }
 
 func (s *ReaderStats) AddSecondaryColumnPagesDownloaded(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.SecondaryColumnPages, count)
+	s.DownloadStats.SecondaryColumnPages += count
 	if s.globalStats != nil {
 		s.globalStats.AddPagesDownloaded(int64(count))
 
@@ -212,25 +211,25 @@ func (s *ReaderStats) AddSecondaryColumnPagesDownloaded(count uint64) {
 }
 
 func (s *ReaderStats) AddPrimaryColumnBytesDownloaded(bytes uint64) {
-	atomic.AddUint64(&s.DownloadStats.PrimaryColumnBytes, bytes)
+	s.DownloadStats.PrimaryColumnBytes += bytes
 	if s.globalStats != nil {
 		s.globalStats.AddPagesDownloadedBytes(int64(bytes))
 	}
 }
 
 func (s *ReaderStats) AddSecondaryColumnBytesDownloaded(bytes uint64) {
-	atomic.AddUint64(&s.DownloadStats.SecondaryColumnBytes, bytes)
+	s.DownloadStats.SecondaryColumnBytes += bytes
 	if s.globalStats != nil {
 		s.globalStats.AddPagesDownloadedBytes(int64(bytes))
 	}
 }
 
 func (s *ReaderStats) AddPrimaryColumnUncompressedBytes(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.PrimaryColumnUncompressedBytes, count)
+	s.DownloadStats.PrimaryColumnUncompressedBytes += count
 }
 
 func (s *ReaderStats) AddSecondaryColumnUncompressedBytes(count uint64) {
-	atomic.AddUint64(&s.DownloadStats.SecondaryColumnUncompressedBytes, count)
+	s.DownloadStats.SecondaryColumnUncompressedBytes += count
 }
 
 func (s *ReaderStats) Reset() {
