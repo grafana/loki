@@ -1,7 +1,8 @@
 ---
 title: "XXXX: Template"
 description: "Template"
-draft: true
+draft: true  #Delete this line when you copy the template and publish your LID pull request.
+# For more information, see https://grafana.com/docs/writers-toolkit/write/front-matter/#draft
 ---
 
 # XXXX: Template
