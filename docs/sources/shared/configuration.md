@@ -1114,10 +1114,18 @@ dataobj:
       # CLI flag: -dataobj-consumer.sha-prefix-size
       [shaprefixsize: <int> | default = 2]
 
-    # The maximum amount of time to wait in seconds before flushing an object
-    # that is no longer receiving new writes
-    # CLI flag: -dataobj-consumer.idle-flush-timeout
-    [idle_flush_timeout: <duration> | default = 1h]
+    # The rate at which data objects are built. For example, if set to 15
+    # minutes, you can expect the consumer to build at least one data object per
+    # partition every 15 minutes. However, data objects can be built more often
+    # if the partition reaches the target object size before the flush interval.
+    # CLI flag: -dataobj-consumer.flush-interval
+    [flush_interval: <duration> | default = 1h]
+
+    # The maximum amount of time to wait before declaring a partition as idle.
+    # When a partition is marked as idle its in-progress data object will be
+    # flushed.
+    # CLI flag: -dataobj-consumer.idle-timeout
+    [idle_timeout: <duration> | default = 1h]
 
   index:
     # The size of the target page to use for the data object builder.
