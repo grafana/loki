@@ -228,6 +228,8 @@ describe('useGoldfishQueries', () => {
             cellBStatusCode: 200,
             cellATraceID: 'trace1',
             cellBTraceID: 'trace2',
+            cellASpanID: 'span1',
+            cellBSpanID: 'span2',
             sampledAt: '2023-01-01T02:00:00Z',
             createdAt: '2023-01-01T02:00:00Z',
             comparisonStatus: 'match',

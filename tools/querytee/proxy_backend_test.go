@@ -65,7 +65,8 @@ func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T
 			orig.SetBasicAuth(testData.clientUser, testData.clientPass)
 
 			b := NewProxyBackend("test", u, time.Second, false)
-			r := b.createBackendRequest(orig, nil)
+			r, span := b.createBackendRequest(orig, nil)
+			defer span.Finish()
 
 			actualUser, actualPass, _ := r.BasicAuth()
 			assert.Equal(t, testData.expectedUser, actualUser)
@@ -125,7 +126,8 @@ func Test_ProxyBackend_ForwardRequest_extractsTraceID(t *testing.T) {
 		assert.Equal(t, 200, response.status)
 		assert.Equal(t, []byte("test response"), response.body)
 
-		// Verify TraceID is empty when no trace context exists
-		assert.Equal(t, "", response.traceID)
+		// Even without an incoming trace context, a new trace is created
+		// for observability purposes, so TraceID should not be empty
+		assert.NotEmpty(t, response.traceID, "should have a trace ID even without parent context")
 	})
 }

@@ -93,10 +93,20 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
 			cell_a_trace_id, cell_b_trace_id,
+			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
+
+	// Convert empty span IDs to NULL for database storage
+	var cellASpanID, cellBSpanID any
+	if sample.CellASpanID != "" {
+		cellASpanID = sample.CellASpanID
+	}
+	if sample.CellBSpanID != "" {
+		cellBSpanID = sample.CellBSpanID
+	}
 
 	_, err := s.db.ExecContext(ctx, query,
 		sample.CorrelationID,
@@ -133,6 +143,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBStatusCode,
 		sample.CellATraceID,
 		sample.CellBTraceID,
+		cellASpanID,
+		cellBSpanID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
@@ -255,6 +267,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
 			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
 			sq.cell_a_trace_id, sq.cell_b_trace_id,
+			sq.cell_a_span_id, sq.cell_b_span_id,
 			sq.sampled_at, sq.created_at,
 			CASE
 				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
@@ -289,6 +302,8 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var stepDurationMs int64
 		var comparisonStatus string
 		var createdAt time.Time
+		// Use sql.NullString for nullable span ID columns
+		var cellASpanID, cellBSpanID sql.NullString
 
 		err := rows.Scan(
 			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
@@ -299,11 +314,20 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
 			&q.CellATraceID, &q.CellBTraceID,
+			&cellASpanID, &cellBSpanID,
 			&q.SampledAt, &createdAt,
 			&comparisonStatus,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		// Convert nullable strings to regular strings (empty string if NULL)
+		if cellASpanID.Valid {
+			q.CellASpanID = cellASpanID.String
+		}
+		if cellBSpanID.Valid {
+			q.CellBSpanID = cellBSpanID.String
 		}
 
 		// Convert step duration from milliseconds to Duration

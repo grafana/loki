@@ -255,10 +255,11 @@ func (p *Proxy) Start() error {
 	p.srvListener = listener
 	// Wrap router with tracing middleware
 	var handler http.Handler = router
-	// Always wrap with tracing middleware when tracing libraries are available
-	tracer := middleware.NewTracer(nil, false, nil)
+	// Configure tracing middleware to extract trace headers
+	// This ensures trace context is properly propagated from incoming requests
+	tracer := middleware.NewTracer(nil, true, nil) // true enables trace header extraction
 	handler = tracer.Wrap(router)
-	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled")
+	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled with header extraction")
 
 	p.srv = &http.Server{
 		ReadTimeout:  1 * time.Minute,

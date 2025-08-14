@@ -28,6 +28,8 @@ type QuerySample struct {
 	CellBStatusCode   int    `json:"cellBStatusCode"`
 	CellATraceID      string `json:"cellATraceID"`
 	CellBTraceID      string `json:"cellBTraceID"`
+	CellASpanID       string `json:"cellASpanID"`
+	CellBSpanID       string `json:"cellBSpanID"`
 
 	// Query engine version tracking
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine"`
