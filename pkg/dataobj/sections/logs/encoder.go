@@ -96,7 +96,6 @@ func (enc *encoder) Metadata() proto.Message {
 		columns = append(columns, enc.curColumn)
 	}
 	return &logsmd.Metadata{
-		Tenant:   enc.tenant,
 		Columns:  columns,
 		SortInfo: enc.sortInfo,
 	}
@@ -129,7 +128,8 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes(), nil)
+	opts := &dataobj.WriteSectionOptions{Tenant: enc.tenant}
+	n, err := w.WriteSection(opts, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}
