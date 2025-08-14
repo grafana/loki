@@ -319,6 +319,9 @@ func (p *partitionProcessor) flushAndCommit() error {
 // flush builds a complete data object from the builder, uploads it, records
 // it in the metastore, and emits an object written event to the events topic.
 func (p *partitionProcessor) flush() error {
+	// The time range must be read before the flush as the builder is reset
+	// at the end of each flush, resetting the time range.
+	minTime, maxTime := p.builder.TimeRange()
 	obj, closer, err := p.builder.Flush()
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
@@ -332,7 +335,6 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	minTime, maxTime := p.builder.TimeRange()
 	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
