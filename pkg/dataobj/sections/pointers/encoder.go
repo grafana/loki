@@ -98,7 +98,6 @@ func (enc *encoder) Metadata() proto.Message {
 	return &pointersmd.Metadata{
 		Columns:  columns,
 		SortInfo: enc.sortInfo,
-		Tenant:   enc.tenant,
 	}
 }
 

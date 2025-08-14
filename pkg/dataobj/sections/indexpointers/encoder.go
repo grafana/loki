@@ -98,7 +98,6 @@ func (enc *encoder) Metadata() proto.Message {
 	return &indexpointersmd.Metadata{
 		Columns:  columns,
 		SortInfo: enc.sortInfo,
-		Tenant:   enc.tenant,
 	}
 }
 
@@ -128,7 +127,8 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(nil, enc.data.Bytes(), metadataBuffer.Bytes())
+	opts := &dataobj.WriteSectionOptions{Tenant: enc.tenant}
+	n, err := w.WriteSection(opts, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}

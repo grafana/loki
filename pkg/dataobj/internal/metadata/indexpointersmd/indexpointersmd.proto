@@ -15,9 +15,6 @@ message Metadata {
 
   // Section sort information.
   dataobj.metadata.dataset.v1.SectionSortInfo sort_info = 2;
-
-  // The tenant who owns the pointers section.
-  string tenant = 3;
 }
 
 // ColumnDesc describes an individual column within the indexpointers table.
