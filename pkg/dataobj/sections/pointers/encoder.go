@@ -33,10 +33,12 @@ var (
 //
 // The zero value of encoder is ready for use.
 type encoder struct {
-	data *bytes.Buffer
+	tenant string
+	data   *bytes.Buffer
 
-	columns   []*pointersmd.ColumnDesc // closed columns.
-	curColumn *pointersmd.ColumnDesc   // curColumn is the currently open column.
+	columns   []*pointersmd.ColumnDesc   // closed columns.
+	curColumn *pointersmd.ColumnDesc     // curColumn is the currently open column.
+	sortInfo  *datasetmd.SectionSortInfo // sort info for the pointers section.
 }
 
 // OpenColumn opens a new column in the streams section. OpenColumn fails if
@@ -78,6 +80,12 @@ func (enc *encoder) size() int {
 	return enc.data.Len()
 }
 
+// SetSortInfo sets the sort order information for the logs section.
+// This should be called before committing the encoder.
+func (enc *encoder) SetSortInfo(info *datasetmd.SectionSortInfo) {
+	enc.sortInfo = info
+}
+
 // MetadataSize returns an estimate of the current size of the metadata for the
 // stream. MetadataSize includes an estimate for the currently open element.
 func (enc *encoder) MetadataSize() int { return proto.Size(enc.Metadata()) }
@@ -87,7 +95,10 @@ func (enc *encoder) Metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &pointersmd.Metadata{Columns: columns}
+	return &pointersmd.Metadata{
+		Columns:  columns,
+		SortInfo: enc.sortInfo,
+	}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush
@@ -116,7 +127,8 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(nil, enc.data.Bytes(), metadataBuffer.Bytes())
+	opts := &dataobj.WriteSectionOptions{Tenant: enc.tenant}
+	n, err := w.WriteSection(opts, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}
@@ -127,8 +139,10 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 // columns.
 func (enc *encoder) Reset() {
 	bufpool.PutUnsized(enc.data)
+	enc.tenant = ""
 	enc.data = nil
 	enc.curColumn = nil
+	enc.sortInfo = nil
 }
 
 // append adds data and metadata to enc. append must only be called from child
