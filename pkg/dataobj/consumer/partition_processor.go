@@ -224,37 +224,6 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
-func (p *partitionProcessor) flush() error {
-	minTime, maxTime := p.builder.TimeRange()
-
-	obj, closer, err := p.builder.Flush()
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-		return err
-	}
-	defer closer.Close()
-
-	objectPath, err := p.uploader.Upload(p.ctx, obj)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
-		return err
-	}
-
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
-		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-		return err
-	}
-
-	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
-		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
-		return err
-	}
-
-	p.lastFlush = p.clock.Now()
-
-	return nil
-}
-
 func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	if p.eventsProducerClient == nil {
 		return nil
@@ -317,13 +286,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.flush(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-			return
-		}
-
-		if err := p.commit(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to commit offset", "err", err)
+		if err := p.flushAndCommit(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
 			return
 		}
 
@@ -336,6 +300,52 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	p.lastRecord = record
 	p.lastModified = p.clock.Now()
+}
+
+// flushAndCommit flushes the builder and, if successful, commits the offset
+// of the last record processed. It expects that the last record processed
+// was also the last record appended to the builder. If not, data loss can
+// occur should the consumer restart or a partition rebalance occur
+func (p *partitionProcessor) flushAndCommit() error {
+	if err := p.flush(); err != nil {
+		return fmt.Errorf("failed to flush: %w", err)
+	}
+	if err := p.commit(); err != nil {
+		return fmt.Errorf("failed to commit offset: %w", err)
+	}
+	return nil
+}
+
+// flush builds a complete data object from the builder, uploads it, records
+// it in the metastore, and emits an object written event to the events topic.
+func (p *partitionProcessor) flush() error {
+	obj, closer, err := p.builder.Flush()
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+		return err
+	}
+	defer closer.Close()
+
+	objectPath, err := p.uploader.Upload(p.ctx, obj)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+		return err
+	}
+
+	minTime, maxTime := p.builder.TimeRange()
+	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
+		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+		return err
+	}
+
+	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
+		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
+		return err
+	}
+
+	p.lastFlush = p.clock.Now()
+
+	return nil
 }
 
 // commits the offset of the last record processed. It should be called after
@@ -373,11 +383,8 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
-	if err := p.flush(); err != nil {
-		return false, fmt.Errorf("failed to flush: %w", err)
-	}
-	if err := p.commit(); err != nil {
-		return false, fmt.Errorf("failed to commit offset: %w", err)
+	if err := p.flushAndCommit(); err != nil {
+		return false, err
 	}
 	return true, nil
 }
