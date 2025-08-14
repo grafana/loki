@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"sync"
@@ -321,10 +322,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		// It should never happen that the builder is full and last record
-		// is nil.
-		if err := p.commitRecords(p.lastRecord); err != nil {
-			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		if err := p.commit(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to commit offset", "err", err)
 			return
 		}
 
@@ -339,18 +338,22 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	p.lastModified = p.clock.Now()
 }
 
-func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
+// commits the offset of the last record processed. It should be called after
+// each successful flush to avoid duplicate data in consecutive data objects.
+func (p *partitionProcessor) commit() error {
+	if p.lastRecord == nil {
+		return errors.New("failed to commit offset, no records processed")
+	}
 	backoff := backoff.New(p.ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 20,
 	})
-
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.committer.CommitRecords(p.ctx, record)
+		err := p.committer.CommitRecords(p.ctx, p.lastRecord)
 		if err == nil {
 			return nil
 		}
@@ -371,7 +374,10 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 		return false, nil
 	}
 	if err := p.flush(); err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to flush: %w", err)
+	}
+	if err := p.commit(); err != nil {
+		return false, fmt.Errorf("failed to commit offset: %w", err)
 	}
 	return true, nil
 }
