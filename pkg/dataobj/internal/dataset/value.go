@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
 // InvalidTypeError is used as a panic value when using [Value] methods with

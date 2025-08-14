@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"

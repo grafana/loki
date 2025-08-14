@@ -13,7 +13,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 

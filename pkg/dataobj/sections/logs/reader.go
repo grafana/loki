@@ -13,7 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"

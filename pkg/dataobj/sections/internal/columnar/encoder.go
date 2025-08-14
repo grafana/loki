@@ -9,7 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
