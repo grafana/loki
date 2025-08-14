@@ -6,11 +6,19 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// mockBucket implements objstore.Bucket interface for testing
+// A mockBucket implements objstore.Bucket interface for tests.
 type mockBucket struct {
 	uploads map[string][]byte
 	mu      sync.Mutex
@@ -76,4 +84,64 @@ func (m *mockBucket) Provider() objstore.ObjProvider {
 }
 func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
 	return nil
+}
+
+type mockBuilder struct {
+	builder *logsobj.Builder
+	nextErr error
+}
+
+func (m *mockBuilder) Append(stream logproto.Stream) error {
+	if err := m.nextErr; err != nil {
+		m.nextErr = nil
+		return err
+	}
+	return m.builder.Append(stream)
+}
+func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
+	if err := m.nextErr; err != nil {
+		m.nextErr = nil
+		return nil, nil, err
+	}
+	return m.builder.Flush()
+}
+func (m *mockBuilder) TimeRange() (time.Time, time.Time) {
+	return m.builder.TimeRange()
+}
+func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
+	m.builder.UnregisterMetrics(r)
+}
+
+// A mockCommitter implements the committer interface for tests.
+type mockCommitter struct {
+	// We will need to change this when we add support for other methods like
+	// CommitOffsets and CommitOffsetsSync.
+	records []*kgo.Record
+}
+
+func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
+	m.records = append(m.records, records...)
+	return nil
+}
+
+type recordedTocEntry struct {
+	DataObjectPath string
+	MinTimestamp   time.Time
+	MaxTimestamp   time.Time
+}
+
+// A recordingTocWriter wraps a [metastore.TableOfContentsWriter] and records
+// all entries written to it.
+type recordingTocWriter struct {
+	entries []recordedTocEntry
+	*metastore.TableOfContentsWriter
+}
+
+func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+	m.entries = append(m.entries, recordedTocEntry{
+		DataObjectPath: dataobjPath,
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   maxTimestamp,
+	})
+	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, minTimestamp, maxTimestamp)
 }

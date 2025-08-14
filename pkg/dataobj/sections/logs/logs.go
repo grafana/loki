@@ -21,6 +21,7 @@ func CheckSection(section *dataobj.Section) bool { return section.Type == sectio
 
 // Section represents an opened logs section.
 type Section struct {
+	tenant   string
 	reader   dataobj.SectionReader
 	columns  []*Column
 	sortInfo *datasetmd.SectionSortInfo
@@ -34,7 +35,10 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
 
-	sec := &Section{reader: section.Reader}
+	sec := &Section{
+		tenant: section.Tenant,
+		reader: section.Reader,
+	}
 	if err := sec.init(ctx); err != nil {
 		return nil, fmt.Errorf("intializing section: %w", err)
 	}
@@ -67,6 +71,9 @@ func (s *Section) init(ctx context.Context) error {
 	s.sortInfo = metadata.SortInfo
 	return nil
 }
+
+// Tenant returns the tenant that owns the section.
+func (s *Section) Tenant() string { return s.tenant }
 
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
