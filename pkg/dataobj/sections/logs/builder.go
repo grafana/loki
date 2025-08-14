@@ -292,11 +292,11 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 	return columnEnc.Commit()
 }
 
-// Reset resets all state, allowing b to be reused.
+// Reset resets all state, allowing b to be reused. It does not reset
+// the tenant. If the builder is be used for a different tenant then you
+// must also set the new tenant with [SetTenant].
 func (b *Builder) Reset() {
 	b.metrics.recordCount.Set(0)
-
-	b.tenant = ""
 
 	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0

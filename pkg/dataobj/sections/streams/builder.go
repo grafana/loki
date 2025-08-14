@@ -388,7 +388,9 @@ func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *datase
 	return columnEnc.Commit()
 }
 
-// Reset resets all state, allowing Streams to be reused.
+// Reset resets all state, allowing b to be reused. It does not reset
+// the tenant. If the builder is be used for a different tenant then you
+// must also set the new tenant with [SetTenant].
 func (b *Builder) Reset() {
 	b.lastID.Store(0)
 	for _, stream := range b.ordered {
@@ -396,7 +398,6 @@ func (b *Builder) Reset() {
 	}
 	clear(b.lookup)
 	b.ordered = sliceclear.Clear(b.ordered)
-	b.tenant = ""
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}
 	b.globalMaxTimestamp = time.Time{}
