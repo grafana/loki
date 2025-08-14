@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -38,15 +39,26 @@ type JobRunner interface {
 }
 
 type WorkerConfig struct {
-	NumWorkers int `yaml:"num_workers"`
+	NumWorkers int `yaml:"num_sub_workers"`
 }
 
 func (c *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&c.NumWorkers, prefix+"num-workers", 4, "Number of workers to run for concurrent processing of jobs.")
+	f.IntVar(&c.NumWorkers, prefix+"num-sub-workers", 0, "Number of sub-workers to run for concurrent processing of jobs. Setting it to 0 will run a subworker per available CPU core.")
 }
 
 func (c *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *WorkerConfig) Validate() error {
+	if c.NumWorkers < 0 {
+		return errors.New("num_workers must be >= 0")
+	}
+	if c.NumWorkers == 0 {
+		c.NumWorkers = runtime.GOMAXPROCS(0)
+	}
+
+	return nil
 }
 
 type WorkerManager struct {

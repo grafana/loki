@@ -2,11 +2,11 @@
 package indexobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // ErrBuilderFull is returned by [Builder.Append] when the buffer is
@@ -138,7 +139,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig) (*Builder, error) {
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
-		builder:       dataobj.NewBuilder(),
+		builder:       dataobj.NewBuilder(scratchStore),
 		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
 		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
 		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),
@@ -243,18 +244,13 @@ func labelsEstimate(ls labels.Labels) int {
 	return keysSize + valuesSize/2
 }
 
-// RecordStreamRef records a reference to a stream from another object, as the stream IDs will be different between objects.
-func (b *Builder) RecordStreamRef(path string, streamIDInObject int64, streamID int64) {
-	b.pointers.RecordStreamRef(path, streamIDInObject, streamID)
-}
-
 // Append buffers a stream to be written to a data object. Append returns an
 // error if the stream labels cannot be parsed or [ErrBuilderFull] if the
 // builder is full.
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, ts time.Time, uncompressedSize int64) error {
+func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -271,7 +267,7 @@ func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject in
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	b.pointers.ObserveStream(path, section, streamIDInObject, ts, uncompressedSize)
+	b.pointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
@@ -334,27 +330,24 @@ func (b *Builder) estimatedSize() int {
 	return size
 }
 
-type FlushStats struct {
-	MinTimestamp time.Time
-	MaxTimestamp time.Time
+// TimeRange returns the time range of the data in the builder.
+func (b *Builder) TimeRange() (minTime, maxTime time.Time) {
+	return b.streams.TimeRange()
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
+// [Builder.Reset] is called after a successful Flush to discard any pending
+// data and allow new data to be appended.
+func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
-		return FlushStats{}, ErrBuilderEmpty
+		return nil, nil, ErrBuilderEmpty
 	}
 
 	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
-
-	// Appending sections resets them, so we need to load the time range before
-	// appending.
-	minTime, maxTime := b.streams.TimeRange()
 
 	// Flush sections one more time in case they have data.
 	var flushErrors []error
@@ -365,34 +358,20 @@ func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	sz, err := b.builder.Flush(output)
+	obj, closer, err := b.builder.Flush()
 	if err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(sz))
-
-	var (
-		// We don't know if output was empty before calling Flush, so we only start
-		// reading from where we know writing began.
-
-		objReader = bytes.NewReader(output.Bytes()[output.Len()-int(sz):])
-		objLength = sz
-	)
-	obj, err := dataobj.FromReaderAt(objReader, objLength)
-	if err != nil {
-		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("failed to create readable object: %w", err)
-	}
-
+	b.metrics.builtSize.Observe(float64(obj.Size()))
 	err = b.observeObject(context.Background(), obj)
 
 	b.Reset()
-	return FlushStats{MinTimestamp: minTime, MaxTimestamp: maxTime}, err
+	return obj, closer, err
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
@@ -436,7 +415,7 @@ func (b *Builder) Reset() {
 	b.pointers.Reset()
 	b.indexPointers.Reset()
 
-	//b.metrics.sizeEstimate.Set(0)
+	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }

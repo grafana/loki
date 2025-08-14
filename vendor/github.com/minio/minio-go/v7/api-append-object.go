@@ -127,6 +127,10 @@ func (c *Client) appendObjectDo(ctx context.Context, bucketName, objectName stri
 
 	if opts.checksumType.IsSet() {
 		reqMetadata.addCrc = &opts.checksumType
+		reqMetadata.customHeader.Set(amzChecksumAlgo, opts.checksumType.String())
+		if opts.checksumType.FullObjectRequested() {
+			reqMetadata.customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+		}
 	}
 
 	// Execute PUT an objectName.
@@ -183,8 +187,8 @@ func (c *Client) AppendObject(ctx context.Context, bucketName, objectName string
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	if oinfo.ChecksumMode != ChecksumFullObjectMode.String() {
-		return UploadInfo{}, fmt.Errorf("append API is not allowed on objects that are not full_object checksum type: %s", oinfo.ChecksumMode)
+	if oinfo.ChecksumMode != "" && oinfo.ChecksumMode != ChecksumFullObjectMode.String() {
+		return UploadInfo{}, fmt.Errorf("Append() is not allowed on objects that are not of FULL_OBJECT checksum type: %s", oinfo.ChecksumMode)
 	}
 	opts.setChecksumParams(oinfo)   // set the appropriate checksum params based on the existing object checksum metadata.
 	opts.setWriteOffset(oinfo.Size) // First append must set the current object size as the offset.

@@ -163,7 +163,7 @@ func (kvm keyValueMatcherTest) Matches(series labels.Labels, bloom filter.Checke
 
 	var (
 		combined    = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
-		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined)) // #nosec G103 -- we know the string is not mutated
+		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	)
 
 	return kvm.match(series, bloom, rawCombined)
@@ -199,7 +199,7 @@ func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker,
 // appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must
 // be greater than or equal to prefixLen+len(str) to avoid allocations.
 func appendToBuf(buf []byte, prefixLen int, str string) []byte {
-	rawString := unsafe.Slice(unsafe.StringData(str), len(str)) // #nosec G103 -- we know the string is not mutated
+	rawString := unsafe.Slice(unsafe.StringData(str), len(str)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	return append(buf[:prefixLen], rawString...)
 }
 

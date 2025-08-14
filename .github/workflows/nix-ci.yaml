@@ -40,14 +40,6 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix build --print-build-logs .#promtail
-        env:
-          GO_BUILD_TAGS: slicelabels
       - run: nix build --print-build-logs .#logcli
-        env:
-          GO_BUILD_TAGS: slicelabels
       - run: nix build --print-build-logs .#loki
-        env:
-          GO_BUILD_TAGS: slicelabels
       - run: nix build --print-build-logs .#loki-canary
-        env:
-          GO_BUILD_TAGS: slicelabels

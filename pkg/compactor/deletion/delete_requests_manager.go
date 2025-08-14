@@ -2,23 +2,26 @@ package deletion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -29,15 +32,21 @@ const (
 	statusSuccess = "success"
 	statusFail    = "fail"
 
-	seriesProgressFilename = "series_progress.json"
+	seriesProgressOldFilename = "series_progress.json"
+	seriesProgressFilename    = "series_progress.boltdb"
 
 	DeleteRequestsWithLineFilters    DeleteRequestsKind = "DeleteRequestsWithLineFilters"
 	DeleteRequestsWithoutLineFilters DeleteRequestsKind = "DeleteRequestsWithoutLineFilters"
 	DeleteRequestsAll                DeleteRequestsKind = "DeleteRequestsAll"
 )
 
+var (
+	seriesProgressVal = []byte("1")
+	boltdbBucketName  = []byte("series_progress")
+)
+
 type userDeleteRequests struct {
-	requests []*DeleteRequest
+	requests []*deleteRequest
 	// requestsInterval holds the earliest start time and latest end time considering all the delete requests
 	requestsInterval model.Interval
 }
@@ -63,13 +72,17 @@ type DeleteRequestsManager struct {
 	jobBuilder                  *JobBuilder
 	tablesManager               TablesManager
 
-	metrics            *deleteRequestsManagerMetrics
-	wg                 sync.WaitGroup
-	batchSize          int
-	limits             Limits
-	currentBatch       *deleteRequestBatch
-	processedSeries    map[string]struct{}
-	processedSeriesMtx sync.RWMutex
+	metrics      *deleteRequestsManagerMetrics
+	wg           sync.WaitGroup
+	batchSize    int
+	limits       Limits
+	currentBatch *deleteRequestBatch
+
+	// seriesProgress file reference could be nil when there are any unexpected issues since
+	// series progress tracking is done as best effort.
+	// It would also be nil when running compactor in horizontal scaling mode.
+	// All the usages should do a nil check.
+	seriesProgress *bbolt.DB
 }
 
 func NewDeleteRequestsManager(
@@ -91,31 +104,49 @@ func NewDeleteRequestsManager(
 		HSModeEnabled:               HSModeEnabled,
 		deletionManifestStoreClient: deletionManifestStoreClient,
 
-		metrics:         metrics,
-		batchSize:       batchSize,
-		limits:          limits,
-		processedSeries: map[string]struct{}{},
-		currentBatch:    newDeleteRequestBatch(metrics),
+		metrics:      metrics,
+		batchSize:    batchSize,
+		limits:       limits,
+		currentBatch: newDeleteRequestBatch(metrics),
+	}
+
+	// remove the old json series progress file
+	if err := os.Remove(filepath.Join(workingDir, seriesProgressOldFilename)); err != nil && !os.IsNotExist(err) {
+		level.Error(util_log.Logger).Log("msg", "failed to remove old json series progress file", "err", err)
 	}
 
 	return dm, nil
 }
 
-func (d *DeleteRequestsManager) Init(tablesManager TablesManager) error {
+func (d *DeleteRequestsManager) Init(tablesManager TablesManager, registerer prometheus.Registerer) error {
 	d.tablesManager = tablesManager
 
 	if d.HSModeEnabled {
-		d.jobBuilder = NewJobBuilder(d.deletionManifestStoreClient, tablesManager.ApplyStorageUpdates, func(requests []DeleteRequest) {
+		d.jobBuilder = NewJobBuilder(d.deletionManifestStoreClient, tablesManager.ApplyStorageUpdates, func(requests []deletionproto.DeleteRequest) {
 			for _, req := range requests {
-				d.markRequestAsProcessed(req)
+				d.markRequestAsProcessed(req, 0)
 			}
-		})
-	}
+		}, registerer)
 
-	var err error
-	d.processedSeries, err = loadSeriesProgress(d.workingDir)
-	if err != nil {
-		return err
+		// Remove the series progress file since it is only useful when not running compactor in horizontally scalable mode.
+		if err := os.Remove(filepath.Join(d.workingDir, seriesProgressFilename)); err != nil && !os.IsNotExist(err) {
+			level.Error(util_log.Logger).Log("msg", "failed to remove series progress file", "err", err)
+		}
+	} else {
+		// Open boltdb file for storing series progress.
+		db, err := util.SafeOpenBoltdbFile(filepath.Join(d.workingDir, seriesProgressFilename))
+		if err != nil {
+			return err
+		}
+
+		// Create the bucket for storing the KVs
+		if err := db.Update(func(tx *bbolt.Tx) error {
+			_, err := tx.CreateBucketIfNotExists(boltdbBucketName)
+			return err
+		}); err != nil {
+			return err
+		}
+		d.seriesProgress = db
 	}
 
 	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
@@ -137,8 +168,11 @@ func (d *DeleteRequestsManager) Start(ctx context.Context) {
 	}
 
 	d.wg.Wait()
-	if err := d.storeSeriesProgress(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to store series progress", "err", err)
+
+	if d.seriesProgress != nil {
+		if err := d.seriesProgress.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close series progress db", "err", err)
+		}
 	}
 }
 
@@ -157,10 +191,6 @@ func (d *DeleteRequestsManager) loop(ctx context.Context) {
 		case <-ticker.C:
 			if err := d.updateMetrics(); err != nil {
 				level.Error(util_log.Logger).Log("msg", "failed to update metrics", "err", err)
-			}
-
-			if err := d.storeSeriesProgress(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to store series progress", "err", err)
 			}
 		case <-ctx.Done():
 			return
@@ -231,6 +261,10 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 				return err
 			}
 
+			if iterator == nil {
+				continue
+			}
+
 			if err := iterator.ForEachSeries(ctx, func(series retention.Series) (err error) {
 				return deletionManifestBuilder.AddSeries(ctx, tableName, series)
 			}); err != nil {
@@ -249,27 +283,6 @@ func (d *DeleteRequestsManager) buildDeletionManifest(ctx context.Context) error
 		return err
 	}
 	d.metrics.chunksSelectedTotal.Add(float64(deletionManifestBuilder.overallChunksCount))
-
-	return nil
-}
-
-func (d *DeleteRequestsManager) storeSeriesProgress() error {
-	d.processedSeriesMtx.RLock()
-	defer d.processedSeriesMtx.RUnlock()
-
-	if len(d.processedSeries) == 0 {
-		return nil
-	}
-
-	data, err := json.Marshal(d.processedSeries)
-	if err != nil {
-		return errors.Wrap(err, "failed to json encode series progress")
-	}
-
-	err = os.WriteFile(filepath.Join(d.workingDir, seriesProgressFilename), data, 0640)
-	if err != nil {
-		return errors.Wrap(err, "failed to store series progress to the file")
-	}
 
 	return nil
 }
@@ -295,7 +308,7 @@ func (d *DeleteRequestsManager) updateMetrics() error {
 		}
 
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
-		if deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
+		if deleteRequest.Status != deletionproto.StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
 		}
 
@@ -326,7 +339,10 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 
 	reqCount := 0
 	for i := range deleteRequests {
-		deleteRequest := deleteRequests[i]
+		deleteRequest, err := newDeleteRequest(deleteRequests[i], d.metrics.deletedLinesTotal)
+		if err != nil {
+			return nil, err
+		}
 
 		if deleteRequest.logSelectorExpr == nil {
 			err := deleteRequest.SetQuery(deleteRequest.Query)
@@ -349,11 +365,11 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 					"delete_request_id", deleteRequest.RequestID,
 					"user", deleteRequest.UserID,
 				)
-				d.markRequestAsProcessed(deleteRequest)
+				d.markRequestAsProcessed(deleteRequest.DeleteRequest, 0)
 				continue
 			}
 		}
-		isDuplicate, err := batch.checkDuplicate(deleteRequest)
+		isDuplicate, err := batch.checkDuplicate(*deleteRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -371,14 +387,14 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess(kind DeleteRequestsK
 			"user", deleteRequest.UserID,
 		)
 
-		batch.addDeleteRequest(&deleteRequest)
+		batch.addDeleteRequest(deleteRequest)
 		reqCount++
 	}
 
 	return batch, nil
 }
 
-func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
+func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]deletionproto.DeleteRequest, error) {
 	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return nil, err
@@ -396,8 +412,8 @@ func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest,
 	return deleteRequests, nil
 }
 
-func (d *DeleteRequestsManager) filteredRequests(reqs []DeleteRequest) ([]DeleteRequest, error) {
-	filtered := make([]DeleteRequest, 0, len(reqs))
+func (d *DeleteRequestsManager) filteredRequests(reqs []deletionproto.DeleteRequest) ([]deletionproto.DeleteRequest, error) {
+	filtered := make([]deletionproto.DeleteRequest, 0, len(reqs))
 	for _, deleteRequest := range reqs {
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
 		if deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
@@ -427,7 +443,7 @@ func logBatchTruncation(size, total int) {
 	}
 }
 
-func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, error) {
+func (d *DeleteRequestsManager) shouldProcessRequest(dr deletionproto.DeleteRequest) (bool, error) {
 	mode, err := deleteModeFromLimits(d.limits, dr.UserID)
 	if err != nil {
 		level.Error(util_log.Logger).Log(
@@ -441,9 +457,6 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 }
 
 func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, _ model.Time, tableName string, _ model.Time) bool {
-	d.processedSeriesMtx.RLock()
-	defer d.processedSeriesMtx.RUnlock()
-
 	userIDStr := unsafeGetString(userID)
 
 	for _, deleteRequest := range d.currentBatch.getAllRequestsForUser(userIDStr) {
@@ -452,8 +465,9 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 			continue
 		}
 
+		seriesProcessed := d.isSeriesProcessed(buildProcessedSeriesKey(deleteRequest.RequestID, deleteRequest.StartTime, deleteRequest.EndTime, seriesID, tableName))
 		// The delete request touches the series. Do not skip if the series is not processed yet.
-		if _, ok := d.processedSeries[buildProcessedSeriesKey(deleteRequest.RequestID, deleteRequest.StartTime, deleteRequest.EndTime, seriesID, tableName)]; !ok {
+		if !seriesProcessed {
 			return false
 		}
 	}
@@ -462,13 +476,29 @@ func (d *DeleteRequestsManager) CanSkipSeries(userID []byte, lbls labels.Labels,
 }
 
 func (d *DeleteRequestsManager) Expired(userID []byte, chk retention.Chunk, lbls labels.Labels, seriesID []byte, tableName string, _ model.Time) (bool, filter.Func) {
-	return d.currentBatch.expired(userID, chk, lbls, func(request *DeleteRequest) bool {
-		d.processedSeriesMtx.RLock()
-		defer d.processedSeriesMtx.RUnlock()
-
-		_, ok := d.processedSeries[buildProcessedSeriesKey(request.RequestID, request.StartTime, request.EndTime, seriesID, tableName)]
-		return ok
+	return d.currentBatch.expired(userID, chk, lbls, func(request *deleteRequest) bool {
+		return d.isSeriesProcessed(buildProcessedSeriesKey(request.RequestID, request.StartTime, request.EndTime, seriesID, tableName))
 	})
+}
+
+// isSeriesProcessed checks if the series with given key is processed.
+// Returns false if the series progress file reference is nil.
+func (d *DeleteRequestsManager) isSeriesProcessed(seriesKey []byte) bool {
+	if d.seriesProgress == nil {
+		return false
+	}
+	seriesProcessed := false
+	if err := d.seriesProgress.View(func(tx *bbolt.Tx) error {
+		v := tx.Bucket(boltdbBucketName).Get(seriesKey)
+		if len(v) > 0 {
+			seriesProcessed = true
+		}
+		return nil
+	}); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error checking series progress", "err", err)
+	}
+
+	return seriesProcessed
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {
@@ -497,7 +527,7 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 	d.metrics.deletionFailures.WithLabelValues("timeout").Inc()
 }
 
-func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
+func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest deletionproto.DeleteRequest, deletedLines int32) {
 	if err := d.deleteRequestsStore.MarkShardAsProcessed(context.Background(), deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log(
 			"msg", "failed to mark delete request for user as processed",
@@ -505,7 +535,7 @@ func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteReque
 			"sequence_num", deleteRequest.SequenceNum,
 			"user", deleteRequest.UserID,
 			"err", err,
-			"deleted_lines", deleteRequest.DeletedLines,
+			"deleted_lines", deletedLines,
 		)
 	} else {
 		level.Info(util_log.Logger).Log(
@@ -513,7 +543,7 @@ func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteReque
 			"delete_request_id", deleteRequest.RequestID,
 			"sequence_num", deleteRequest.SequenceNum,
 			"user", deleteRequest.UserID,
-			"deleted_lines", deleteRequest.DeletedLines,
+			"deleted_lines", deletedLines,
 		)
 		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
 	}
@@ -530,7 +560,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			d.markRequestAsProcessed(*deleteRequest)
+			d.markRequestAsProcessed(deleteRequest.DeleteRequest, deleteRequest.DeletedLines)
 		}
 	}
 
@@ -540,21 +570,56 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 			"sequence_num", req.SequenceNum,
 			"user", req.UserID,
 		)
-		d.markRequestAsProcessed(req)
+		d.markRequestAsProcessed(req, 0)
 	}
 
 	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 
-	d.processedSeriesMtx.Lock()
-	defer d.processedSeriesMtx.Unlock()
-
-	d.processedSeries = map[string]struct{}{}
+	if !d.HSModeEnabled {
+		d.resetSeriesProgress()
+	}
 	d.currentBatch.reset()
+}
+
+// resetSeriesProgress removes the existing boltdb file for series progress and creates a new one.
+// We remove and recreate the file because boltdb does not reclaim the space when data is deleted.
+func (d *DeleteRequestsManager) resetSeriesProgress() {
+	// Clear the file reference so that we do not keep using the same file when any of the below cleanup operations fail.
+	// Otherwise, we will keep using the same file and end up using too much disk.
+	// We check the file reference before we read/write to d.seriesProgress.
+	seriesProgress := d.seriesProgress
+	d.seriesProgress = nil
+
+	if seriesProgress != nil {
+		if err := seriesProgress.Close(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to close series progress file", "err", err)
+			return
+		}
+	}
+
 	if err := os.Remove(filepath.Join(d.workingDir, seriesProgressFilename)); err != nil && !os.IsNotExist(err) {
 		level.Error(util_log.Logger).Log("msg", "failed to remove series progress file", "err", err)
+		return
 	}
+
+	db, err := util.SafeOpenBoltdbFile(filepath.Join(d.workingDir, seriesProgressFilename))
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to open series progress", "err", err)
+		return
+	}
+
+	err = db.Update(func(tx *bbolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(boltdbBucketName)
+		return err
+	})
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to create bucket in series progress boltdb file", "err", err)
+		return
+	}
+
+	d.seriesProgress = db
 }
 
 func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, userID string) bool {
@@ -569,14 +634,15 @@ func (d *DeleteRequestsManager) DropFromIndex(_ []byte, _ retention.Chunk, _ lab
 	return false
 }
 
+// MarkSeriesAsProcessed marks a series as processed. It ignores the operation if the series progress file reference is nil.
 func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error {
+	if d.seriesProgress == nil {
+		return nil
+	}
 	userIDStr := unsafeGetString(userID)
 	if d.currentBatch.requestCount() == 0 {
 		return nil
 	}
-
-	d.processedSeriesMtx.Lock()
-	defer d.processedSeriesMtx.Unlock()
 
 	for _, req := range d.currentBatch.getAllRequestsForUser(userIDStr) {
 		// if the delete request does not touch the series, do not waste space in storing the marker
@@ -584,14 +650,18 @@ func (d *DeleteRequestsManager) MarkSeriesAsProcessed(userID, seriesID []byte, l
 			continue
 		}
 		processedSeriesKey := buildProcessedSeriesKey(req.RequestID, req.StartTime, req.EndTime, seriesID, tableName)
-		d.processedSeries[processedSeriesKey] = struct{}{}
+		if err := d.seriesProgress.Update(func(tx *bbolt.Tx) error {
+			return tx.Bucket(boltdbBucketName).Put(processedSeriesKey, seriesProgressVal)
+		}); err != nil {
+			level.Error(util_log.Logger).Log("msg", "error storing series progress", "err", err)
+		}
 	}
 
 	return nil
 }
 
-func buildProcessedSeriesKey(requestID string, startTime, endTime model.Time, seriesID []byte, tableName string) string {
-	return fmt.Sprintf("%s/%d/%d/%s/%s", requestID, startTime, endTime, tableName, seriesID)
+func buildProcessedSeriesKey(requestID string, startTime, endTime model.Time, seriesID []byte, tableName string) []byte {
+	return unsafeGetBytes(fmt.Sprintf("%s/%d/%d/%s/%s", requestID, startTime, endTime, tableName, seriesID))
 }
 
 func getMaxRetentionInterval(userID string, limits Limits) time.Duration {
@@ -612,18 +682,6 @@ func getMaxRetentionInterval(userID string, limits Limits) time.Duration {
 	return time.Duration(maxRetention)
 }
 
-func loadSeriesProgress(workingDir string) (map[string]struct{}, error) {
-	data, err := os.ReadFile(filepath.Join(workingDir, seriesProgressFilename))
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	processedSeries := map[string]struct{}{}
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &processedSeries); err != nil {
-			return nil, err
-		}
-	}
-
-	return processedSeries, nil
+func unsafeGetBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

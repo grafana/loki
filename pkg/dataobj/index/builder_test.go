@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -42,7 +43,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 
 		BufferSize:              4 * 1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -54,11 +55,15 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(nil)
-	_, err = candidate.Flush(buf)
+	obj, closer, err := candidate.Flush()
 	require.NoError(t, err)
+	defer closer.Close()
 
-	err = bucket.Upload(context.Background(), path, buf)
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	defer reader.Close()
+
+	err = bucket.Upload(t.Context(), path, reader)
 	require.NoError(t, err)
 }
 
@@ -87,15 +92,19 @@ func TestIndexBuilder(t *testing.T) {
 				BufferSize:              4 * 1024 * 1024,
 				SectionStripeMergeLimit: 2,
 			},
-			EventsPerIndex:     3,
-			IndexStoragePrefix: indexPrefix,
-			EnabledTenantIDs:   []string{tenant},
+			EventsPerIndex: 3,
 		},
-		metastore.Config{},
+		metastore.Config{
+			Storage: metastore.StorageConfig{
+				IndexStoragePrefix: indexPrefix,
+				EnabledTenantIDs:   flagext.StringSliceCSV{tenant},
+			},
+		},
 		kafka.Config{},
 		log.NewNopLogger(),
 		"instance-id",
 		bucket,
+		nil,
 		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)

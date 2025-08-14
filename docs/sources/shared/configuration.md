@@ -146,6 +146,55 @@ ui:
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
 
+  goldfish:
+    # Enable the Goldfish query comparison feature.
+    # CLI flag: -ui.goldfish.enable
+    [enable: <boolean> | default = false]
+
+    # CloudSQL username for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-user
+    [cloudsql_user: <string> | default = ""]
+
+    # CloudSQL host for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-host
+    [cloudsql_host: <string> | default = "127.0.0.1"]
+
+    # CloudSQL port for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-port
+    [cloudsql_port: <int> | default = 3306]
+
+    # CloudSQL database name for Goldfish.
+    # CLI flag: -ui.goldfish.cloudsql-database
+    [cloudsql_database: <string> | default = "goldfish"]
+
+    # Maximum number of database connections for Goldfish.
+    # CLI flag: -ui.goldfish.max-connections
+    [max_connections: <int> | default = 10]
+
+    # Maximum idle time for database connections in seconds.
+    # CLI flag: -ui.goldfish.max-idle-time
+    [max_idle_time: <int> | default = 300]
+
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -863,6 +912,14 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.retain-for
   [retain_for: <duration> | default = 3h]
 
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1024,24 +1081,30 @@ kafka_config:
 dataobj:
   consumer:
     builderconfig:
-      # The size of the target page to use for the data object builder.
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The size of the target object to use for the data object builder.
-      # CLI flag: -dataobj-consumer.target-object-size
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj-consumer.target-builder-memory-limit
       [target_object_size: <int> | default = 1GiB]
 
-      # Configures a maximum size for sections, for sections that support it.
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
       [target_section_size: <int> | default = 128MiB]
 
-      # The size of the buffer to use for sorting logs.
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of stripes to merge into a section at once. Must be
-      # greater than 1.
+      # The maximum number of log section stripes to merge into a section at
+      # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
@@ -1082,21 +1145,17 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-index-builder.storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0/"]
-
-    # Experimental: A list of tenant IDs to enable index building for. If empty,
-    # all tenants will be enabled.
-    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
-    [enabled_tenant_ids: <string> | default = ""]
-
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
+    storage:
+      # Experimental: A prefix to use for storing indexes in object storage.
+      # Used to separate the metastore & index files during initial testing.
+      # CLI flag: -dataobj-metastore.index-storage-prefix
+      [index_storage_prefix: <string> | default = "index/v0/"]
+
+      # Experimental: A list of tenant IDs to enable index building for. If
+      # empty, all tenants will be enabled.
+      # CLI flag: -dataobj-metastore.enabled-tenant-ids
+      [enabled_tenant_ids: <string> | default = ""]
 
   querier:
     # Enable the dataobj querier.
@@ -1500,6 +1559,12 @@ ingest_limits_frontend_client:
 
 # Configuration for profiling options.
 [profiling: <profiling>]
+
+# List of limit fields to publish from the tenant limits endpoint. If empty, all
+# fields are returned. Use YAML field names (e.g., 'retention_period',
+# 'max_query_series').
+# CLI flag: -limits.tenant-limits-allow-publish
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -2387,6 +2452,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2580,17 +2649,20 @@ compactor_ring:
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
 
-# Supported modes - [disabled]: Keeps the horizontal scaling mode disabled.
-# Locally runs all the functions of the compactor.[main]: Runs all functions of
-# the compactor. Distributes work to workers where possible.[worker]: Runs the
-# compactor in worker mode, only working on jobs built by the main compactor.
+# Experimental: Configuration to turn on and run horizontally scalable
+# compactor. Supported modes - [disabled]: Keeps the horizontal scaling mode
+# disabled. Locally runs all the functions of the compactor.[main]: Runs all
+# functions of the compactor. Distributes work to workers where
+# possible.[worker]: Runs the compactor in worker mode, only working on jobs
+# built by the main compactor.
 # CLI flag: -compactor.horizontal-scaling-mode
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of workers to run for concurrent processing of jobs.
-  # CLI flag: -compactor.worker.num-workers
-  [num_workers: <int> | default = 4]
+  # Number of sub-workers to run for concurrent processing of jobs. Setting it
+  # to 0 will run a subworker per available CPU core.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 0]
 
 jobs_config:
   deletion:
@@ -2600,7 +2672,7 @@ jobs_config:
 
     # Maximum number of chunks to process concurrently in each worker.
     # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
-    [chunk_processing_concurrency: <int> | default = 5]
+    [chunk_processing_concurrency: <int> | default = 3]
 
     # Maximum time to wait for a job before considering it failed and retrying.
     # CLI flag: -compactor.jobs.deletion.timeout
@@ -4429,6 +4501,17 @@ otlp_config:
 # CLI flag: -limits.pattern-persistence-enabled
 [pattern_persistence_enabled: <boolean> | default = false]
 
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
+
+# Minimum pattern rate (samples per second) required for a pattern to be
+# persisted. Patterns with lower rates will be filtered out during persistence.
+# CLI flag: -limits.pattern-rate-threshold
+[pattern_rate_threshold: <float> | default = 1]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
@@ -4828,6 +4911,13 @@ engine:
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: Maximum total size of future pages for DataObjScan to download
+  # before they are needed, for roundtrip reduction to object storage. Setting
+  # to zero disables downloading future pages. Only used in the next generation
+  # query engine.
+  # CLI flag: -querier.engine.dataobjscan-page-cache-size
+  [dataobjscan_page_cache_size: <int> | default = 0B]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
@@ -5127,7 +5217,7 @@ The `ruler` block configures the Loki ruler.
 [datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
-[external_labels: <list of Labels>]
+external_labels:
 
 # The grpc_client block configures the gRPC client used to communicate between a
 # client and server component in Loki.
@@ -5856,7 +5946,7 @@ grpc_tls_config:
 
 # Comma separated list of headers to exclude from tracing spans. Only used if
 # server.trace-request-headers is true. The following headers are always
-# excluded: Authorization, Cookie, X-Csrf-Token.
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
 # CLI flag: -server.trace-request-headers-exclude-list
 [trace_request_exclude_headers_list: <string> | default = ""]
 
@@ -5897,6 +5987,11 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
 ```
 
 ### storage_config

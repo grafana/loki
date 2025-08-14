@@ -21,6 +21,7 @@ spec:
       {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.enterpriseGateway.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }} 
   template:
     metadata:
       labels:

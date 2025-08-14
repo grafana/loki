@@ -101,37 +101,41 @@ func TestMockCatalog(t *testing.T) {
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
 			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, time.Now(), time.Now())
-			require.Equal(t, tt.expPaths, paths)
-			require.Equal(t, tt.expStreams, streams)
-			require.Equal(t, tt.expSections, sections)
+			require.ElementsMatch(t, tt.expPaths, paths)
+			require.ElementsMatch(t, tt.expStreams, streams)
+			require.ElementsMatch(t, tt.expSections, sections)
 		})
 	}
 }
 
 func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, string(scan.Location))
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		for _, scan := range plan.Children(n) {
-			obj, ok := scan.(*DataObjScan)
-			if !ok {
-				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-			}
-			res = append(res, string(obj.Location))
-		}
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
 
 func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, []int{scan.Section})
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		for _, scan := range plan.Children(n) {
-			obj, ok := scan.(*DataObjScan)
-			if !ok {
-				t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-			}
-			res = append(res, []int{obj.Section})
-		}
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
@@ -207,8 +211,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
-			require.Equal(t, tt.expPaths, locations(t, planner.plan, nodes))
-			require.Equal(t, tt.expSections, sections(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }

@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"zombiezen.com/go/sqlite/sqlitex"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"zombiezen.com/go/sqlite/sqlitex"
+
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
 func TestDeleteRequestsStoreSQLite(t *testing.T) {
@@ -73,19 +74,19 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	_, err = tc.store.GetDeleteRequest(context.Background(), "user3", "na")
 	require.ErrorIs(t, err, ErrDeleteRequestNotFound)
 
-	var user1UnprocessedRequests []DeleteRequest
-	var user2UnprocessedRequests []DeleteRequest
+	var user1UnprocessedRequests []deletionproto.DeleteRequest
+	var user2UnprocessedRequests []deletionproto.DeleteRequest
 
 	// update some of the delete requests for both the users to processed
 	for i := 0; i < len(tc.user1Requests); i++ {
-		var request DeleteRequest
+		var request deletionproto.DeleteRequest
 		if i%2 != 0 {
 			user2UnprocessedRequests = append(user2UnprocessedRequests, tc.user2Requests[i])
-			tc.user1Requests[i].Status = StatusProcessed
+			tc.user1Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user1Requests[i]
 		} else {
 			user1UnprocessedRequests = append(user1UnprocessedRequests, tc.user1Requests[i])
-			tc.user2Requests[i].Status = StatusProcessed
+			tc.user2Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user2Requests[i]
 		}
 
@@ -123,15 +124,15 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	require.Equal(t, createGenNumber2, updateGenNumber2)
 
 	// delete the requests from the store updated previously
-	var remainingRequests []DeleteRequest
+	var remainingRequests []deletionproto.DeleteRequest
 	for i := 0; i < len(tc.user1Requests); i++ {
-		var request DeleteRequest
+		var request deletionproto.DeleteRequest
 		if i%2 != 0 {
-			tc.user1Requests[i].Status = StatusProcessed
+			tc.user1Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user1Requests[i]
 			remainingRequests = append(remainingRequests, tc.user2Requests[i])
 		} else {
-			tc.user2Requests[i].Status = StatusProcessed
+			tc.user2Requests[i].Status = deletionproto.StatusProcessed
 			request = tc.user2Requests[i]
 			remainingRequests = append(remainingRequests, tc.user1Requests[i])
 		}
@@ -294,7 +295,7 @@ func TestFixProcessedShardCount(t *testing.T) {
 	require.NoError(t, err)
 
 	// ensure that the current status of the request is not processed
-	require.NotEqual(t, StatusProcessed, after.Status)
+	require.NotEqual(t, deletionproto.StatusProcessed, after.Status)
 
 	// fixing the shard count should mark the request as processed
 	require.NoError(t, sqliteStore.fixProcessedShardCount(context.Background()))
@@ -302,5 +303,5 @@ func TestFixProcessedShardCount(t *testing.T) {
 	// verify that the request has been marked as processed in the db
 	after, err = tc.store.GetDeleteRequest(context.Background(), user1, reqID)
 	require.NoError(t, err)
-	require.Equal(t, StatusProcessed, after.Status)
+	require.Equal(t, deletionproto.StatusProcessed, after.Status)
 }

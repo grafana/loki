@@ -88,9 +88,9 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 func (r *RowReader) initReader(ctx context.Context) error {
 	dec := newDecoder(r.sec.reader)
 
-	columnDescs, err := dec.Columns(ctx)
+	metadata, err := dec.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
+		return fmt.Errorf("reading metadata: %w", err)
 	}
 
 	dset, err := newColumnsDataset(r.sec.Columns())
@@ -124,7 +124,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columnDesc = columnDescs
+	r.columnDesc = metadata.GetColumns()
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -185,18 +185,13 @@ func translateIndexPointersPredicate(p RowPredicate, columns []dataset.Column) d
 
 func convertTimeRangePredicate(p TimeRangeRowPredicate, minTimestampColumn, maxTimestampColumn dataset.Column) dataset.Predicate {
 	return dataset.AndPredicate{
-		Left: dataset.NotPredicate{
-			Inner: dataset.LessThanPredicate{
-				Column: minTimestampColumn,
-				Value:  dataset.Int64Value(p.Start.UnixNano()),
-			},
+		Left: dataset.GreaterThanPredicate{
+			Column: maxTimestampColumn,
+			Value:  dataset.Int64Value(p.Start.UnixNano() - 1),
 		},
-		Right: dataset.NotPredicate{
-			Inner: dataset.GreaterThanPredicate{
-				Column: maxTimestampColumn,
-				Value:  dataset.Int64Value(p.End.UnixNano()),
-			},
+		Right: dataset.LessThanPredicate{
+			Column: minTimestampColumn,
+			Value:  dataset.Int64Value(p.End.UnixNano() + 1),
 		},
 	}
-
 }

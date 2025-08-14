@@ -1,8 +1,8 @@
 package pointers
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -31,14 +31,14 @@ func TestAddingStreams(t *testing.T) {
 
 	tracker := NewBuilder(nil, 1024)
 	for _, tc := range tt {
-		tracker.RecordStreamRef(tc.path, tc.streamIDInObject, tc.streamID)
-		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.minTimestamp, tc.uncompressedSize)
+		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.streamID, tc.minTimestamp, tc.uncompressedSize)
 		// We Observe twice to track the max timestamp too. But we don't want to count the size twice.
-		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.maxTimestamp, 0)
+		tracker.ObserveStream(tc.path, tc.section, tc.streamIDInObject, tc.streamID, tc.maxTimestamp, 0)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
 	expect := []SectionPointer{
 		{
@@ -73,9 +73,6 @@ func TestAddingStreams(t *testing.T) {
 		},
 	}
 
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
-
 	var actual []SectionPointer
 	for result := range Iter(context.Background(), obj) {
 		pointer, err := result.Value()
@@ -106,8 +103,9 @@ func TestAddingColumnIndexes(t *testing.T) {
 		tracker.RecordColumnIndex(tc.path, tc.section, tc.columnName, tc.columnIndex, tc.valuesBloomFilter)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
 	expect := []SectionPointer{
 		{
@@ -140,9 +138,6 @@ func TestAddingColumnIndexes(t *testing.T) {
 		},
 	}
 
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
-
 	var actual []SectionPointer
 	for result := range Iter(context.Background(), obj) {
 		pointer, err := result.Value()
@@ -153,14 +148,10 @@ func TestAddingColumnIndexes(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
-func buildObject(st *Builder) ([]byte, error) {
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(st); err != nil {
-		return nil, err
-	} else if _, err := builder.Flush(&buf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return builder.Flush()
 }

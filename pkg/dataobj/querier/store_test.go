@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"os"
@@ -42,7 +41,7 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -134,19 +133,19 @@ func TestStore_SelectSamples(t *testing.T) {
 			end:      now.Add(time.Hour),
 			shards:   []string{"0_of_2"},
 			want: []sampleWithLabels{
+				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(8 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(18 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(38 * time.Second).UnixNano(), Value: 1}},
+
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(40 * time.Second).UnixNano(), Value: 1}},
+
 				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(42 * time.Second).UnixNano(), Value: 1}},
-
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
-
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
 		{
@@ -156,14 +155,14 @@ func TestStore_SelectSamples(t *testing.T) {
 			end:      now.Add(time.Hour),
 			shards:   []string{"1_of_2"},
 			want: []sampleWithLabels{
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(8 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(18 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(38 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
 
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(40 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
+				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
 			},
 		},
 		{
@@ -230,7 +229,7 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
@@ -315,19 +314,19 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
+
 				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
 				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
-
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
-
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
 		},
 		{
@@ -339,14 +338,14 @@ func TestStore_SelectLogs(t *testing.T) {
 			limit:     100,
 			direction: logproto.FORWARD,
 			want: []entryWithLabels{
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
 
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
 			},
 		},
 		{
@@ -511,7 +510,7 @@ type testDataBuilder struct {
 
 	tenantID string
 	builder  *logsobj.Builder
-	meta     *metastore.Updater
+	meta     *metastore.TableOfContentsWriter
 	uploader *uploader.Uploader
 }
 
@@ -531,10 +530,10 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		BufferSize:        1024 * 1024,      // 1MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
-	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
+	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
@@ -560,16 +559,17 @@ func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
 }
 
 func (b *testDataBuilder) flush() {
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
+	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := b.uploader.Upload(context.Background(), buf)
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()

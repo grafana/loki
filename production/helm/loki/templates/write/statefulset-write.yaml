@@ -108,8 +108,10 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.write.lifecycle }}
           lifecycle:
             {{- toYaml .Values.write.lifecycle | nindent 12 }}
@@ -189,6 +191,10 @@ spec:
         name: data
         {{- with .Values.write.persistence.annotations }}
         annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.write.persistence.labels }}
+        labels:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:

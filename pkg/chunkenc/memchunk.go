@@ -1297,7 +1297,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func (hb *headBlock) SampleIterator(
@@ -1621,7 +1621,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil), true
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if err != nil {
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
+		return 0, nil, labels.EmptyLabels(), false
+	}
+	return ts, si.buf[:lineSize], lbls, true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }

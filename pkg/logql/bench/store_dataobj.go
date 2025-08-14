@@ -28,17 +28,18 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	dir      string
-	tenantID string
-	builder  *logsobj.Builder
-	buf      *bytes.Buffer
-	uploader *uploader.Uploader
-	meta     *metastore.Updater
+	dir              string
+	tenantID         string
+	builder          *logsobj.Builder
+	buf              *bytes.Buffer
+	uploader         *uploader.Uploader
+	logsMetastoreToc *metastore.TableOfContentsWriter
 
 	bucket objstore.Bucket
 
+	// Index files have their own, separate, metastore directory, with their own table of contents.
 	indexWriterBucket objstore.Bucket
-	indexMetastore    *metastore.Updater
+	indexMetastoreToc *metastore.TableOfContentsWriter
 
 	logger log.Logger
 }
@@ -79,18 +80,18 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(metastore.UpdaterConfig{}, bucket, tenantID, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastore := metastore.NewUpdater(metastore.UpdaterConfig{}, indexWriterBucket, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, tenantID, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -98,11 +99,11 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		builder:           builder,
 		buf:               bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
 		uploader:          uploader,
-		meta:              meta,
+		logsMetastoreToc:  logsMetastoreToc,
 		bucket:            bucket,
 		logger:            logger,
 		indexWriterBucket: indexWriterBucket,
-		indexMetastore:    indexMetastore,
+		indexMetastoreToc: indexMetastoreToc,
 	}, nil
 }
 
@@ -126,27 +127,28 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(metastore.StorageConfig{}, s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {
 	// Reset the buffer
 	s.buf.Reset()
 
-	// Flush the builder to the buffer
-	stats, err := s.builder.Flush(s.buf)
+	minTime, maxTime := s.builder.TimeRange()
+	obj, closer, err := s.builder.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
 	}
+	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := s.uploader.Upload(context.Background(), s.buf)
+	path, err := s.uploader.Upload(context.Background(), obj)
 	if err != nil {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	// Update metastore with the new data object
-	err = s.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	// Update logs metastore's table of contents with the new data object
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, minTime, maxTime)
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
@@ -177,18 +179,30 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		s.buf.Reset()
-		stats, err := calculator.Flush(s.buf)
+		minTime, maxTime := calculator.TimeRange()
+		obj, closer, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
-		key := index.ObjectKey(s.tenantID, s.buf)
-		err = s.indexWriterBucket.Upload(context.Background(), key, s.buf)
+		defer closer.Close()
+
+		key, err := index.ObjectKey(context.Background(), s.tenantID, obj)
+		if err != nil {
+			return fmt.Errorf("failed to create object key: %w", err)
+		}
+
+		reader, err := obj.Reader(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to create reader for index object: %w", err)
+		}
+		defer reader.Close()
+
+		err = s.indexWriterBucket.Upload(context.Background(), key, reader)
 		if err != nil {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastore.Update(context.Background(), key, stats.MinTimestamp, stats.MaxTimestamp)
+		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, minTime, maxTime)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}
@@ -203,7 +217,7 @@ func (s *DataObjStore) buildIndex() error {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create index builder: %w", err)
 	}

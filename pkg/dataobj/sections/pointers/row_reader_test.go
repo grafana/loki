@@ -1,7 +1,6 @@
 package pointers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -37,24 +36,19 @@ func buildPointersDecoder(t *testing.T, pageSize int) *Section {
 	s := NewBuilder(nil, pageSize)
 	for _, d := range pointerTestData {
 		if d.PointerKind == PointerKindStreamIndex {
-			s.RecordStreamRef(d.Path, d.StreamIDRef, d.StreamID)
-			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StartTs, d.UncompressedSize)
-			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.EndTs, 0)
+			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StreamID, d.StartTs, d.UncompressedSize)
+			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StreamID, d.EndTs, 0)
 		} else {
 			s.RecordColumnIndex(d.Path, d.Section, d.ColumnName, d.ColumnIndex, d.ValuesBloomFilter)
 		}
 	}
 
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

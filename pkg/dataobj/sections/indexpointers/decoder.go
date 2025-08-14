@@ -23,9 +23,9 @@ type decoder struct {
 	sr dataobj.SectionReader
 }
 
-// Columns describes the set of columns in the section.
-func (rd *decoder) Columns(ctx context.Context) ([]*indexpointersmd.ColumnDesc, error) {
-	rc, err := rd.sr.Metadata(ctx)
+// Metadata returns the metadata for the index pointers section.
+func (rd *decoder) Metadata(ctx context.Context) (*indexpointersmd.Metadata, error) {
+	rc, err := rd.sr.MetadataRange(ctx, 0, rd.sr.MetadataSize())
 	if err != nil {
 		return nil, fmt.Errorf("reading pointers section metadata: %w", err)
 	}
@@ -34,11 +34,7 @@ func (rd *decoder) Columns(ctx context.Context) ([]*indexpointersmd.ColumnDesc, 
 	br := bufpool.GetReader(rc)
 	defer bufpool.PutReader(br)
 
-	md, err := decodeIndexPointersMetadata(br)
-	if err != nil {
-		return nil, err
-	}
-	return md.Columns, nil
+	return decodeIndexPointersMetadata(br)
 }
 
 // Pages retrieves the set of pages for the provided columns. The order of page
@@ -139,10 +135,13 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*indexpointersmd.PageD
 			if err != nil {
 				return fmt.Errorf("reading page data: %w", err)
 			}
-			data, err := readAndClose(rc, windowSize)
-			if err != nil {
+
+			buffer := bufpool.Get(int(windowSize))
+			if err := copyAndClose(buffer, rc); err != nil {
+				bufpool.Put(buffer)
 				return fmt.Errorf("read page data: %w", err)
 			}
+			data := buffer.Bytes()
 
 			for _, wp := range window {
 				// Find the slice in the data for this page.
@@ -153,8 +152,13 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*indexpointersmd.PageD
 
 				// wp.Index is the position of the page in the original pages slice;
 				// this retains the proper order of data in results.
-				results[wp.Index] = dataset.PageData(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize])
+				//
+				// We need to make a copy here of the slice since data is pooled (and
+				// we don't want to hold on to the entire window if we don't need to).
+				results[wp.Index] = dataset.PageData(bytes.Clone(data[dataOffset : dataOffset+wp.Data.GetInfo().DataSize]))
 			}
+
+			bufpool.Put(buffer)
 		}
 
 		for _, data := range results {
@@ -165,4 +169,15 @@ func (rd *decoder) ReadPages(ctx context.Context, pages []*indexpointersmd.PageD
 
 		return nil
 	})
+}
+
+// copyAndClose copies the data from rc into the destination writer w and then
+// closes rc.
+func copyAndClose(dst io.Writer, rc io.ReadCloser) error {
+	defer rc.Close()
+
+	if _, err := io.Copy(dst, rc); err != nil {
+		return fmt.Errorf("copying data: %w", err)
+	}
+	return nil
 }

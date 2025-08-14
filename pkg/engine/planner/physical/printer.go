@@ -31,8 +31,8 @@ func toTreeNode(n Node) *tree.Node {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
-			tree.NewProperty("stream_ids", true, toAnySlice(node.StreamIDs)...),
-			tree.NewProperty("section_id", true, node.Section),
+			tree.NewProperty("streams", false, len(node.StreamIDs)),
+			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
 			tree.NewProperty("direction", false, node.Direction),
 			tree.NewProperty("limit", false, node.Limit),
@@ -53,6 +53,8 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+	case *Merge:
+		// nothing to add
 	case *Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),
