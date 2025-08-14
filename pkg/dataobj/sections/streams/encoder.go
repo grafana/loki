@@ -88,10 +88,7 @@ func (enc *encoder) Metadata() proto.Message {
 	if enc.curColumn != nil {
 		columns = append(columns, enc.curColumn)
 	}
-	return &streamsmd.Metadata{
-		Tenant:  enc.tenant,
-		Columns: columns,
-	}
+	return &streamsmd.Metadata{Columns: columns}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush
@@ -120,7 +117,8 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes(), nil)
+	opts := &dataobj.WriteSectionOptions{Tenant: enc.tenant}
+	n, err := w.WriteSection(opts, enc.data.Bytes(), metadataBuffer.Bytes())
 	if err == nil {
 		enc.Reset()
 	}

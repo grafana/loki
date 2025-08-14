@@ -89,6 +89,15 @@ message SectionInfo {
   // Sections implementations are recommended to use the version field of
   // [SectionType] to determine how to interpret the payload.
   bytes extension_data = 6;
+
+  // An index into Metadata.dictionary specifying the owning tenant of this
+  // section.
+  //
+  // Sections containing data wholly owned by a single tenant must specify the
+  // owning tenant. If tenant_ref is 0, the section holds data owned by multiple
+  // tenants, usually with some other mechanism to determine ownership (e.g., if
+  // the section does not contain cross-tenant aggregated data).
+  uint32 tenant_ref = 7;
 }
 
 // SectionLayout describes the physical placement of the regions that form a

@@ -33,7 +33,10 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
 
-	sec := &Section{reader: section.Reader}
+	sec := &Section{
+		tenant: section.Tenant,
+		reader: section.Reader,
+	}
 	if err := sec.init(ctx); err != nil {
 		return nil, fmt.Errorf("intializing section: %w", err)
 	}
@@ -63,7 +66,6 @@ func (s *Section) init(ctx context.Context) error {
 		})
 	}
 
-	s.tenant = metadata.Tenant
 	return nil
 }
 

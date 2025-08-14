@@ -40,6 +40,10 @@ func (s Sections) Count(predicate func(*Section) bool) int {
 type Section struct {
 	Type   SectionType   // The type denoting the kind of data held in a section.
 	Reader SectionReader // The low-level reader for a Section.
+
+	// Tenant specifies the tenant that owns this section. Tenant is required
+	// for sections which wholly contain tenant-specific data.
+	Tenant string
 }
 
 // SectionType uniquely identifies a [Section] type.
@@ -135,12 +139,9 @@ type SectionWriter interface {
 	// from both input slices (0 <= n <= len(data)+len(metadata)) and any error
 	// encountered that caused the write to stop early.
 	//
-	// The extensionData slice is an optional field for section information to
-	// store at the file level. To minimize the cost of opening data objects,
-	// sections should only use this field for information that's required to
-	// start reading section metadata and to keep the payload as small as
-	// possible. Since the extensionData field is written to the file-wide
-	// metadata, its length does not impact the return value of n.
+	// The opts argument provides additional information about the section being
+	// written. If opts is nil, the section is written without any additional
+	// context.
 	//
 	// Implementations of WriteSection:
 	//
@@ -150,5 +151,24 @@ type SectionWriter interface {
 	//
 	// The physical layout of data and metadata is not defined: they may be
 	// written non-contiguously, interleaved, or in any order.
-	WriteSection(data, metadata []byte, extensionData []byte) (n int64, err error)
+	WriteSection(opts *WriteSectionOptions, data, metadata []byte) (n int64, err error)
+}
+
+// WriteSectionOptions provides additional options when writing sections.
+type WriteSectionOptions struct {
+	// Tenant that owns the written data and metadata. Tenant must be set for
+	// sections that are wholly owned by a single tenant.
+	Tenant string
+
+	// ExtensionData is an optional field for section information to store at
+	// the file level. To minimize the cost of opening data objects, sections
+	// should only use this field for information that's required to start
+	// reading section metadata and to keep the payload as small as possible.
+	//
+	// ExtensionData does not impact the return value of n in
+	// [SectionWriter.WriteSection].
+	//
+	// Implementations of [SectionWriter] must not retain references to this
+	// slice after WriteSection returns.
+	ExtensionData []byte
 }
