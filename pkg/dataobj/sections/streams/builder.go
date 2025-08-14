@@ -62,6 +62,10 @@ type Builder struct {
 	lastID   atomic.Int64
 	lookup   map[uint64][]*Stream
 
+	// The optional tenant. If specified, the section must only contain
+	// streams owned by the tenant.
+	tenant string
+
 	// Size of all label values across all streams; used for
 	// [Streams.EstimatedSize]. Resets on [Streams.Reset].
 	currentLabelsSize int
@@ -87,6 +91,9 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		ordered:  make([]*Stream, 0, 1024),
 	}
 }
+
+// SetTenant sets the (optional) tenant for the builder.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the streams builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -221,6 +228,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	var streamsEnc encoder
 	defer streamsEnc.Reset()
+	streamsEnc.SetTenant(b.tenant)
 	if err := b.encodeTo(&streamsEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
@@ -388,6 +396,7 @@ func (b *Builder) Reset() {
 	}
 	clear(b.lookup)
 	b.ordered = sliceclear.Clear(b.ordered)
+	b.tenant = ""
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}
 	b.globalMaxTimestamp = time.Time{}
