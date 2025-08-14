@@ -11,9 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // Iter iterates over indexpointers in the provided decoder. All indexpointers sections are
@@ -39,21 +39,10 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[IndexPointer] {
 
 func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer] {
 	return result.Iter(func(yield func(IndexPointer) bool) error {
-		dec := newDecoder(section.reader)
-
-		// We need to pull the columns twice: once from the dataset implementation
-		// and once for the metadata to retrieve column type.
-		//
-		// TODO(rfratto): find a way to expose this information from
-		// encoding.StreamsDataset to avoid the double call.
-		metadata, err := dec.Metadata(ctx)
+		columnarSection := section.inner
+		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
 		if err != nil {
-			return err
-		}
-
-		dset, err := newColumnsDataset(section.Columns())
-		if err != nil {
-			return fmt.Errorf("creating section dataset: %w", err)
+			return fmt.Errorf("creating columns dataset: %w", err)
 		}
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
@@ -80,7 +69,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 			var pointer IndexPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(metadata.GetColumns(), row, &pointer, sym); err != nil {
+				if err := decodeRow(section.Columns(), row, &pointer, sym); err != nil {
 					return err
 				}
 
@@ -98,11 +87,11 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 //
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*indexpointersmd.ColumnDesc, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 		switch column.Type {
-		case indexpointersmd.COLUMN_TYPE_PATH:
+		case ColumnTypePath:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
@@ -117,7 +106,7 @@ func decodeRow(columns []*indexpointersmd.ColumnDesc, row dataset.Row, pointer *
 				pointer.Path = string(columnValue.ByteArray())
 			}
 
-		case indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
+		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
@@ -128,7 +117,7 @@ func decodeRow(columns []*indexpointersmd.ColumnDesc, row dataset.Row, pointer *
 
 			pointer.StartTs = time.Unix(0, columnValue.Int64())
 
-		case indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
+		case ColumnTypeMaxTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
