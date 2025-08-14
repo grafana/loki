@@ -1,7 +1,6 @@
 package pointers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -44,16 +43,12 @@ func buildPointersDecoder(t *testing.T, pageSize int) *Section {
 		}
 	}
 
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

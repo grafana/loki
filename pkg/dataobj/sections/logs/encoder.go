@@ -33,7 +33,8 @@ var (
 //
 // The zero value of encoder is ready for use.
 type encoder struct {
-	data *bytes.Buffer
+	tenant string
+	data   *bytes.Buffer
 
 	columns   []*logsmd.ColumnDesc // closed columns.
 	curColumn *logsmd.ColumnDesc   // curColumn is the currently open column.
@@ -95,6 +96,7 @@ func (enc *encoder) Metadata() proto.Message {
 		columns = append(columns, enc.curColumn)
 	}
 	return &logsmd.Metadata{
+		Tenant:   enc.tenant,
 		Columns:  columns,
 		SortInfo: enc.sortInfo,
 	}
@@ -127,7 +129,7 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes())
+	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes(), nil)
 	if err == nil {
 		enc.Reset()
 	}
@@ -138,9 +140,15 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 // columns.
 func (enc *encoder) Reset() {
 	bufpool.PutUnsized(enc.data)
+	enc.tenant = ""
 	enc.data = nil
 	enc.curColumn = nil
 	enc.sortInfo = nil
+}
+
+// SetTenant sets the tenant who owns the streams section.
+func (enc *encoder) SetTenant(tenant string) {
+	enc.tenant = tenant
 }
 
 // append adds data and metadata to enc. append must only be called from child

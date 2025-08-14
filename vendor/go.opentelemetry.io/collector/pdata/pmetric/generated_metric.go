@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -83,11 +82,6 @@ func (ms Metric) Unit() string {
 func (ms Metric) SetUnit(v string) {
 	ms.state.AssertMutable()
 	ms.orig.Unit = v
-}
-
-// Metadata returns the Metadata associated with this Metric.
-func (ms Metric) Metadata() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Metadata, ms.state))
 }
 
 // Type returns the type of the data for this Metric.
@@ -238,86 +232,13 @@ func (ms Metric) SetEmptySummary() Summary {
 	return newSummary(val, ms.state)
 }
 
+// Metadata returns the Metadata associated with this Metric.
+func (ms Metric) Metadata() pcommon.Map {
+	return pcommon.Map(internal.NewMap(&ms.orig.Metadata, ms.state))
+}
+
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Metric) CopyTo(dest Metric) {
 	dest.state.AssertMutable()
-	copyOrigMetric(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Metric) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Name != "" {
-		dest.WriteObjectField("name")
-		dest.WriteString(ms.orig.Name)
-	}
-	if ms.orig.Description != "" {
-		dest.WriteObjectField("description")
-		dest.WriteString(ms.orig.Description)
-	}
-	if ms.orig.Unit != "" {
-		dest.WriteObjectField("unit")
-		dest.WriteString(ms.orig.Unit)
-	}
-	if len(ms.orig.Metadata) > 0 {
-		dest.WriteObjectField("metadata")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Metadata, ms.state), dest)
-	}
-	switch ov := ms.orig.Data.(type) {
-	case *otlpmetrics.Metric_Gauge:
-		dest.WriteObjectField("gauge")
-		newGauge(ov.Gauge, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Sum:
-		dest.WriteObjectField("sum")
-		newSum(ov.Sum, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Histogram:
-		dest.WriteObjectField("histogram")
-		newHistogram(ov.Histogram, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_ExponentialHistogram:
-		dest.WriteObjectField("exponentialHistogram")
-		newExponentialHistogram(ov.ExponentialHistogram, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Summary:
-		dest.WriteObjectField("summary")
-		newSummary(ov.Summary, ms.state).marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigMetric(dest, src *otlpmetrics.Metric) {
-	dest.Name = src.Name
-	dest.Description = src.Description
-	dest.Unit = src.Unit
-	dest.Metadata = internal.CopyOrigMap(dest.Metadata, src.Metadata)
-	switch t := src.Data.(type) {
-	case *otlpmetrics.Metric_Gauge:
-		gauge := &otlpmetrics.Gauge{}
-		copyOrigGauge(gauge, t.Gauge)
-		dest.Data = &otlpmetrics.Metric_Gauge{
-			Gauge: gauge,
-		}
-	case *otlpmetrics.Metric_Sum:
-		sum := &otlpmetrics.Sum{}
-		copyOrigSum(sum, t.Sum)
-		dest.Data = &otlpmetrics.Metric_Sum{
-			Sum: sum,
-		}
-	case *otlpmetrics.Metric_Histogram:
-		histogram := &otlpmetrics.Histogram{}
-		copyOrigHistogram(histogram, t.Histogram)
-		dest.Data = &otlpmetrics.Metric_Histogram{
-			Histogram: histogram,
-		}
-	case *otlpmetrics.Metric_ExponentialHistogram:
-		exponentialhistogram := &otlpmetrics.ExponentialHistogram{}
-		copyOrigExponentialHistogram(exponentialhistogram, t.ExponentialHistogram)
-		dest.Data = &otlpmetrics.Metric_ExponentialHistogram{
-			ExponentialHistogram: exponentialhistogram,
-		}
-	case *otlpmetrics.Metric_Summary:
-		summary := &otlpmetrics.Summary{}
-		copyOrigSummary(summary, t.Summary)
-		dest.Data = &otlpmetrics.Metric_Summary{
-			Summary: summary,
-		}
-	}
+	internal.CopyOrigMetric(dest.orig, ms.orig)
 }

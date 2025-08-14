@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/dskit/dns/godns"
 	"github.com/grafana/dskit/dns/miekgdns"
-	"github.com/grafana/dskit/dns/miekgdns2"
 	"github.com/grafana/dskit/multierror"
 )
 
@@ -38,9 +37,8 @@ type Provider struct {
 type ResolverType string
 
 const (
-	GolangResolverType    ResolverType = "golang"
-	MiekgdnsResolverType  ResolverType = "miekgdns"
-	MiekgdnsResolverType2 ResolverType = "miekgdns2"
+	GolangResolverType   ResolverType = "golang"
+	MiekgdnsResolverType ResolverType = "miekgdns"
 )
 
 func (t ResolverType) String() string {
@@ -49,7 +47,7 @@ func (t ResolverType) String() string {
 
 func (t *ResolverType) Set(v string) error {
 	switch ResolverType(v) {
-	case GolangResolverType, MiekgdnsResolverType, MiekgdnsResolverType2:
+	case GolangResolverType, MiekgdnsResolverType:
 		*t = ResolverType(v)
 		return nil
 	default:
@@ -63,10 +61,7 @@ func (t ResolverType) toResolver(logger log.Logger) ipLookupResolver {
 	case GolangResolverType:
 		r = &godns.Resolver{Resolver: net.DefaultResolver}
 	case MiekgdnsResolverType:
-		r = &miekgdns.Resolver{ResolvConf: miekgdns.DefaultResolvConfPath}
-	case MiekgdnsResolverType2:
-		level.Info(logger).Log("msg", "using experimental DNS resolver type", "type", t)
-		r = miekgdns2.NewResolver(miekgdns2.DefaultResolvConfPath, logger)
+		r = miekgdns.NewResolver(miekgdns.DefaultResolvConfPath, logger)
 	default:
 		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", t)
 		r = &godns.Resolver{Resolver: net.DefaultResolver}

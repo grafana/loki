@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,7 +161,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 
 	// Check the comparison result
 	result := storage.results[0]
-	assert.Equal(t, ComparisonStatusMatch, result.ComparisonStatus) // Same content = match
+	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus) // Same content = match
 	assert.Equal(t, sample.CorrelationID, result.CorrelationID)
 	assert.Equal(t, 50*time.Millisecond, result.PerformanceMetrics.CellAQueryTime)
 	assert.Equal(t, 55*time.Millisecond, result.PerformanceMetrics.CellBQueryTime)
@@ -273,7 +274,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
 
 	// Different hashes should result in mismatch
-	assert.Equal(t, ComparisonStatusMismatch, result.ComparisonStatus)
+	assert.Equal(t, goldfish.ComparisonStatusMismatch, result.ComparisonStatus)
 	assert.Contains(t, result.DifferenceDetails, "content_hash")
 }
 

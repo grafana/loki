@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -50,17 +51,10 @@ func (g *GRPCRequestHandler) GetDeleteRequests(ctx context.Context, req *grpc.Ge
 	})
 
 	resp := grpc.GetDeleteRequestsResponse{
-		DeleteRequests: make([]*grpc.DeleteRequest, len(deleteRequests)),
+		DeleteRequests: make([]*deletionproto.DeleteRequest, len(deleteRequests)),
 	}
-	for i, dr := range deleteRequests {
-		resp.DeleteRequests[i] = &grpc.DeleteRequest{
-			RequestID: dr.RequestID,
-			StartTime: int64(dr.StartTime),
-			EndTime:   int64(dr.EndTime),
-			Query:     dr.Query,
-			Status:    string(dr.Status),
-			CreatedAt: int64(dr.CreatedAt),
-		}
+	for i := range deleteRequests {
+		resp.DeleteRequests[i] = &deleteRequests[i]
 	}
 
 	return &resp, nil

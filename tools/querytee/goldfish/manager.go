@@ -12,8 +12,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+)
+
+const (
+	unknownUser      = "unknown"
+	unknownQueryType = "unknown"
 )
 
 // Manager coordinates Goldfish sampling and comparison operations.
@@ -21,7 +29,7 @@ import (
 type Manager struct {
 	config  Config
 	sampler *Sampler
-	storage Storage
+	storage goldfish.Storage
 	logger  log.Logger
 	metrics *metrics
 }
@@ -36,7 +44,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, storage Storage, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, storage goldfish.Storage, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -112,9 +120,10 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		endTime = time.Now()
 	}
 
-	sample := &QuerySample{
+	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           extractTenant(req),
+		User:               extractUserFromQueryTags(req, m.logger),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          getQueryType(req.URL.Path),
 		StartTime:          startTime,
@@ -128,6 +137,8 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CellBResponseSize:  cellBResp.Size,
 		CellAStatusCode:    cellAResp.StatusCode,
 		CellBStatusCode:    cellBResp.StatusCode,
+		CellATraceID:       cellAResp.TraceID,
+		CellBTraceID:       cellBResp.TraceID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
 		SampledAt:          time.Now(),
@@ -157,9 +168,15 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
+	// Log user extraction debug info
+	user := sample.User
+	if user != "" && user != unknownUser {
+		level.Info(m.logger).Log("msg", "captured user info", "correlation_id", correlationID, "user", user)
+	}
+
 	// Log comparison results with stats
 	logLevel := level.Info
-	if result.ComparisonStatus != ComparisonStatusMatch {
+	if result.ComparisonStatus != goldfish.ComparisonStatusMatch {
 		logLevel = level.Warn
 	}
 
@@ -247,14 +264,15 @@ type ResponseData struct {
 	Body          []byte
 	StatusCode    int
 	Duration      time.Duration
-	Stats         QueryStats
+	Stats         goldfish.QueryStats
 	Hash          string
 	Size          int64
 	UsedNewEngine bool
+	TraceID       string
 }
 
-// CaptureResponse captures response data for comparison
-func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData, error) {
+// CaptureResponse captures response data for comparison including trace ID
+func CaptureResponse(resp *http.Response, duration time.Duration, traceID string) (*ResponseData, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -264,7 +282,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Extract statistics if this is a successful response
-	var stats QueryStats
+	var stats goldfish.QueryStats
 	var hash string
 	var size int64
 	var usedNewEngine bool
@@ -286,6 +304,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration) (*ResponseData
 		Hash:          hash,
 		Size:          size,
 		UsedNewEngine: usedNewEngine,
+		TraceID:       traceID,
 	}, nil
 }
 
@@ -312,7 +331,7 @@ func getQueryType(path string) string {
 	case "/loki/api/v1/label":
 		return "label_values"
 	default:
-		return "unknown"
+		return unknownQueryType
 	}
 }
 
@@ -345,4 +364,45 @@ func parseDuration(s string) time.Duration {
 	}
 	d, _ := time.ParseDuration(s)
 	return d
+}
+
+func extractUserFromQueryTags(req *http.Request, logger log.Logger) string {
+	tags := httpreq.ExtractQueryTagsFromHTTP(req)
+
+	// Debug logging for user extraction
+	if tags != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "query-tags", tags)
+	}
+
+	// Also check for X-Grafana-User header directly
+	grafanaUser := req.Header.Get("X-Grafana-User")
+	if grafanaUser != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "x-grafana-user", grafanaUser)
+	}
+
+	// Log all headers for debugging
+	level.Debug(logger).Log("goldfish", "user-extraction", "all-headers", fmt.Sprintf("%v", req.Header))
+
+	kvs := httpreq.TagsToKeyValues(tags)
+
+	// Iterate through key-value pairs (keys at even indices, values at odd)
+	for i := 0; i < len(kvs); i += 2 {
+		if i+1 < len(kvs) {
+			key, keyOK := kvs[i].(string)
+			value, valueOK := kvs[i+1].(string)
+			if keyOK && valueOK && key == "user" {
+				level.Debug(logger).Log("goldfish", "user-extraction", "found-user-in-tags", value)
+				return value
+			}
+		}
+	}
+
+	// Fallback to X-Grafana-User if not found in query tags
+	if grafanaUser != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "using-x-grafana-user", grafanaUser)
+		return grafanaUser
+	}
+
+	level.Debug(logger).Log("goldfish", "user-extraction", "result", unknownUser)
+	return unknownUser
 }

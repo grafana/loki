@@ -149,7 +149,7 @@ func (iter *Iterator) ReadStringAsSlice() []byte {
 }
 
 // ReportError record a error in iterator instance with current position.
-func (iter *Iterator) ReportError(operation string, msg string) {
+func (iter *Iterator) ReportError(operation, msg string) {
 	iter.delegate.ReportError(operation, msg)
 }
 

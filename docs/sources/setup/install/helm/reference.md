@@ -3593,7 +3593,6 @@ null
     "enabled": true
   },
   "adminToken": {
-    "additionalNamespaces": [],
     "secret": null
   },
   "canarySecret": null,
@@ -3642,31 +3641,6 @@ null
     },
     "tolerations": []
   },
-  "tokengen": {
-    "adminTokenSecret": null,
-    "affinity": {},
-    "annotations": {},
-    "enabled": true,
-    "env": [],
-    "extraArgs": [],
-    "extraEnvFrom": [],
-    "extraVolumeMounts": [],
-    "extraVolumes": [],
-    "labels": {},
-    "nodeSelector": {},
-    "priorityClassName": "",
-    "rbac": {
-      "create": true
-    },
-    "securityContext": {
-      "fsGroup": 10001,
-      "runAsGroup": 10001,
-      "runAsNonRoot": true,
-      "runAsUser": 10001
-    },
-    "targetModule": "tokengen",
-    "tolerations": []
-  },
   "useExternalLicense": false,
   "version": "3.5.2"
 }
@@ -3685,18 +3659,9 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminToken.additionalNamespaces</td>
-			<td>list</td>
-			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
-			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
+			<td>Name of external secret containing the admin token for enterprise provisioner This secret must exist before deploying and must contain a key named 'token'</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3806,7 +3771,7 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
@@ -4035,190 +4000,6 @@ null
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for tokengen Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen</td>
-			<td>object</td>
-			<td>Configuration for `tokengen` target</td>
-			<td><pre lang="json">
-{
-  "adminTokenSecret": null,
-  "affinity": {},
-  "annotations": {},
-  "enabled": true,
-  "env": [],
-  "extraArgs": [],
-  "extraEnvFrom": [],
-  "extraVolumeMounts": [],
-  "extraVolumes": [],
-  "labels": {},
-  "nodeSelector": {},
-  "priorityClassName": "",
-  "rbac": {
-    "create": true
-  },
-  "securityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "targetModule": "tokengen",
-  "tolerations": []
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.adminTokenSecret</td>
-			<td>string</td>
-			<td>Name of the secret to store the admin token.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.affinity</td>
-			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.enabled</td>
-			<td>bool</td>
-			<td>Whether the job should be part of the deployment</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.env</td>
-			<td>list</td>
-			<td>Additional Kubernetes environment</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `tokengen` target</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the tokengen pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumeMounts</td>
-			<td>list</td>
-			<td>Additional volume mounts for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumes</td>
-			<td>list</td>
-			<td>Additional volumes for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.labels</td>
-			<td>object</td>
-			<td>Additional labels for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.priorityClassName</td>
-			<td>string</td>
-			<td>The name of the PriorityClass for tokengen Pods</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.rbac</td>
-			<td>object</td>
-			<td>Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed</td>
-			<td><pre lang="json">
-{
-  "create": true
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.securityContext</td>
-			<td>object</td>
-			<td>Run containers as user `enterprise-logs(uid=10001)`</td>
-			<td><pre lang="json">
-{
-  "fsGroup": 10001,
-  "runAsGroup": 10001,
-  "runAsNonRoot": true,
-  "runAsUser": 10001
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.targetModule</td>
-			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for tokengen</td>
-			<td><pre lang="json">
-"tokengen"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for tokengen Job</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4931,7 +4712,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+""
 </pre>
 </td>
 		</tr>
@@ -4940,7 +4721,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -6551,66 +6332,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>kubectlImage</td>
-			<td>object</td>
-			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
-			<td><pre lang="json">
-{
-  "digest": null,
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "bitnami/kubectl",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"bitnami/kubectl"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki</td>
 			<td>object</td>
 			<td>Configuration for running Loki</td>
@@ -6652,7 +6373,7 @@ See values.yaml
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
-  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
+  "compactor_grpc_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -6660,9 +6381,27 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.commonConfig.compactor_grpc_address</td>
+			<td>string</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td><pre lang="json">
+"{{ include \"loki.compactorAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.compactor</td>
 			<td>object</td>
 			<td>Optional compactor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.compactor_grpc_client</td>
+			<td>object</td>
+			<td>Optional compactor grpc client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6808,6 +6547,15 @@ null
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester_client</td>
+			<td>object</td>
+			<td>Optional ingester client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -7007,7 +6755,6 @@ null
     "userAssignedId": null
   },
   "filesystem": {
-    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -7492,6 +7239,23 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -7590,6 +7354,42 @@ true
 			<td></td>
 			<td><pre lang="json">
 "v0.15.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -11241,7 +11041,7 @@ null
 		<tr>
 			<td>ruler.directories</td>
 			<td>object</td>
-			<td>Directories containing rules files</td>
+			<td>Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.</td>
 			<td><pre lang="json">
 {}
 </pre>

@@ -226,7 +226,7 @@ For more information, see the [retention configuration](https://grafana.com/docs
 
 ## Examples
 
-### Single machine/local development (boltdb+filesystem)
+### Single machine/local development (tsdb+filesystem)
 
 [The repo contains a working example](https://github.com/grafana/loki/blob/main/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
 

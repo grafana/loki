@@ -62,6 +62,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -455,6 +456,7 @@ type Loki struct {
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
 	dataObjIndexBuilder       *dataobjindex.Builder
+	scratchStore              scratch.Store
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -798,6 +800,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -843,8 +846,9 @@ func (t *Loki) setupModuleManager() error {
 		BlockBuilder:             {PartitionRing, Store, Server, UI},
 		BlockScheduler:           {Server, UI},
 		DataObjExplorer:          {Server, UI},
-		DataObjConsumer:          {PartitionRing, Server, UI},
-		DataObjIndexBuilder:      {Server, UI},
+		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UI},
+		DataObjIndexBuilder:      {ScratchStore, Server, UI},
+		ScratchStore:             {},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},

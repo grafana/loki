@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"slices"
@@ -69,7 +68,7 @@ type testDataBuilder struct {
 	bucket objstore.Bucket
 
 	builder  *logsobj.Builder
-	meta     *Updater
+	meta     *TableOfContentsWriter
 	uploader *uploader.Uploader
 }
 
@@ -77,17 +76,16 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	err := b.builder.Append(stream)
 	require.NoError(b.t, err)
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
+	require.NoError(b.t, err)
+	defer closer.Close()
+
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	path, err := b.uploader.Upload(context.Background(), buf)
+	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
-
-	err = b.meta.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
-	require.NoError(b.t, err)
-
-	b.builder.Reset()
 }
 
 func TestStreamIDs(t *testing.T) {
@@ -255,7 +253,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -274,24 +272,26 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := builder.Flush(buf)
+	minTime, maxTime := builder.TimeRange()
+
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
 
 	bucket := objstore.NewInMemBucket()
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	path, err := uploader.Upload(context.Background(), buf)
+	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreUpdater := NewUpdater(UpdaterConfig{}, bucket, tenantID, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
 
-	err = metastoreUpdater.Update(context.Background(), path, stats.MinTimestamp, stats.MaxTimestamp)
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 
 	tests := []struct {
 		name       string
@@ -343,7 +343,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 		builder.addStreamAndFlush(stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	mstore := NewObjectMetastore(StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -362,13 +362,13 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 		TargetSectionSize:       1024 * 1024,      // 1MB
 		BufferSize:              1024 * 1024,      // 1MB
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewUpdater(UpdaterConfig{}, bucket, tenantID, logger)
+	meta := NewTableOfContentsWriter(Config{}, bucket, tenantID, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

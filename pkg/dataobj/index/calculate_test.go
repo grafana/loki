@@ -1,7 +1,6 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -39,7 +38,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Add test streams with structured metadata
@@ -92,19 +91,16 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(nil)
-	_, err = builder.Flush(buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	return obj
 }
 
 func TestCalculator_Calculate(t *testing.T) {
 	t.Run("successful calculation", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig)
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
@@ -117,17 +113,16 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		buf := bytes.NewBuffer(nil)
-		stats, err := calculator.Flush(buf)
+		minTime, maxTime := calculator.TimeRange()
+		obj, closer, err := calculator.Flush()
 		require.NoError(t, err)
-		require.Greater(t, buf.Len(), 0)
-		require.False(t, stats.MinTimestamp.IsZero())
-		require.Equal(t, stats.MinTimestamp, time.Unix(10, 0).UTC())
-		require.False(t, stats.MaxTimestamp.IsZero())
-		require.Equal(t, stats.MaxTimestamp, time.Unix(25, 0).UTC())
+		defer closer.Close()
 
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		require.NoError(t, err)
+		require.Greater(t, obj.Size(), int64(0))
+		require.False(t, minTime.IsZero())
+		require.Equal(t, minTime, time.Unix(10, 0).UTC())
+		require.False(t, maxTime.IsZero())
+		require.Equal(t, maxTime, time.Unix(25, 0).UTC())
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)

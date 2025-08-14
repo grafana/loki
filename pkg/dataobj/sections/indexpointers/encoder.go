@@ -116,7 +116,7 @@ func (enc *encoder) Flush(w dataobj.SectionWriter) (int64, error) {
 		return 0, err
 	}
 
-	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes())
+	n, err := w.WriteSection(enc.data.Bytes(), metadataBuffer.Bytes(), nil)
 	if err == nil {
 		enc.Reset()
 	}
