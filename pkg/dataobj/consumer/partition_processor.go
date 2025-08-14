@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,7 +42,7 @@ type committer interface {
 }
 
 type tocWriter interface {
-	WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error
+	WriteEntry(ctx context.Context, dataobjPath string, timeRanges multitenancy.TimeRangeSet) error
 }
 
 type partitionProcessor struct {
@@ -339,7 +340,13 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
+	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
+	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, multitenancy.TimeRangeSet{
+		string(p.tenantID): multitenancy.TimeRange{
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	}); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}
