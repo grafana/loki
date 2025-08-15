@@ -32,6 +32,16 @@ readinessProbe:
 {{- end }}
 
 {{/*
+pattern ingester liveness probe
+*/}}
+{{- define "loki.patternIngester.livenessProbe" }}
+{{- with .Values.patternIngester.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 pattern ingester priority class name
 */}}
 {{- define "loki.patternIngesterPriorityClassName" }}

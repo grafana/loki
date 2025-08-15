@@ -30,3 +30,23 @@ backend priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+backend readiness probe
+*/}}
+{{- define "loki.backend.readinessProbe" }}
+{{- with .Values.backend.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+backend liveness probe
+*/}}
+{{- define "loki.backend.livenessProbe" }}
+{{- with .Values.backend.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

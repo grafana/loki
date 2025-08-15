@@ -31,6 +31,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Fix incorrect context references in storage configuration templates for alibabacloud, swift, bos, and cos storage types. [#18740](https://github.com/grafana/loki/pull/18740)
 - [BUGFIX] only validate the ruler key exists under loki.storage.bucketNames when an object storage bucket is being used [#18665](https://github.com/grafana/loki/pull/18665)
 
+- [ENHANCEMENT] Standardize configuration for liveness and readiness probes for all helm chart components. [#18730](https://github.com/grafana/loki/pull/18730)
+
 ## 6.35.0
 
 - [CHANGE] Add `tpl()` support for `pattern_ingester`, `ingester_client` and `compactor_grpc_client` components. [#16759](https://github.com/grafana/loki/pull/16759)
@@ -55,7 +57,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
-- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
+- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680)
 
 ## 6.33.0
 

@@ -30,3 +30,23 @@ query-frontend priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+queryFrontend readiness probe
+*/}}
+{{- define "loki.queryFrontend.readinessProbe" }}
+{{- with .Values.queryFrontend.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+queryFrontend liveness probe
+*/}}
+{{- define "loki.queryFrontend.livenessProbe" }}
+{{- with .Values.queryFrontend.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

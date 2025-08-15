@@ -32,6 +32,16 @@ readinessProbe:
 {{- end }}
 
 {{/*
+bloom planner liveness probe
+*/}}
+{{- define "loki.bloomPlanner.livenessProbe" }}
+{{- with .Values.bloomPlanner.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 bloom planner priority class name
 */}}
 {{- define "loki.bloomPlannerPriorityClassName" }}

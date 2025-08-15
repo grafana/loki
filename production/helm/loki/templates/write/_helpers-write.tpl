@@ -30,3 +30,23 @@ write priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+write readiness probe
+*/}}
+{{- define "loki.write.readinessProbe" }}
+{{- with .Values.write.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+write liveness probe
+*/}}
+{{- define "loki.write.livenessProbe" }}
+{{- with .Values.write.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

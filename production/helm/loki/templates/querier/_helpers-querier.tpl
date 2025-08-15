@@ -30,3 +30,23 @@ querier priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+querier readiness probe
+*/}}
+{{- define "loki.querier.readinessProbe" }}
+{{- with .Values.querier.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+querier liveness probe
+*/}}
+{{- define "loki.querier.livenessProbe" }}
+{{- with .Values.querier.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

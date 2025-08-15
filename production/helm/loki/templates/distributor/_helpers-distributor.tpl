@@ -30,3 +30,23 @@ distributor priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+distributor readiness probe
+*/}}
+{{- define "loki.distributor.readinessProbe" }}
+{{- with .Values.distributor.readinessProbe | default .Values.loki.readinessProbe }}
+readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+distributor liveness probe
+*/}}
+{{- define "loki.distributor.livenessProbe" }}
+{{- with .Values.distributor.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
