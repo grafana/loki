@@ -19,20 +19,20 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TaintApplyConfiguration represents an declarative configuration of the Taint type for use
+// TaintApplyConfiguration represents a declarative configuration of the Taint type for use
 // with apply.
 type TaintApplyConfiguration struct {
-	Key       *string         `json:"key,omitempty"`
-	Value     *string         `json:"value,omitempty"`
-	Effect    *v1.TaintEffect `json:"effect,omitempty"`
-	TimeAdded *metav1.Time    `json:"timeAdded,omitempty"`
+	Key       *string             `json:"key,omitempty"`
+	Value     *string             `json:"value,omitempty"`
+	Effect    *corev1.TaintEffect `json:"effect,omitempty"`
+	TimeAdded *metav1.Time        `json:"timeAdded,omitempty"`
 }
 
-// TaintApplyConfiguration constructs an declarative configuration of the Taint type for use with
+// TaintApplyConfiguration constructs a declarative configuration of the Taint type for use with
 // apply.
 func Taint() *TaintApplyConfiguration {
 	return &TaintApplyConfiguration{}
@@ -57,7 +57,7 @@ func (b *TaintApplyConfiguration) WithValue(value string) *TaintApplyConfigurati
 // WithEffect sets the Effect field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Effect field is set to the value of the last call.
-func (b *TaintApplyConfiguration) WithEffect(value v1.TaintEffect) *TaintApplyConfiguration {
+func (b *TaintApplyConfiguration) WithEffect(value corev1.TaintEffect) *TaintApplyConfiguration {
 	b.Effect = &value
 	return b
 }

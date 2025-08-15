@@ -181,6 +181,18 @@ patterns in the spec.
 For a deeper discussion, see
 [this](https://github.com/open-telemetry/opentelemetry-specification/issues/165).
 
+## Tests
+
+Each functionality should be covered by tests.
+
+Performance-critical functionality should also be covered by benchmarks.
+
+- Pull requests adding a performance-critical functionality
+should have `go test -bench` output in their description.
+- Pull requests changing a performance-critical functionality
+should have [`benchstat`](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat)
+output in their description.
+
 ## Documentation
 
 Each (non-internal, non-test) package must be documented using
@@ -200,6 +212,16 @@ You can install and run a "local Go Doc site" in the following way:
 
 [`go.opentelemetry.io/otel/metric`](https://pkg.go.dev/go.opentelemetry.io/otel/metric)
 is an example of a very well-documented package.
+
+### README files
+
+Each (non-internal, non-test, non-documentation) package must contain a
+`README.md` file containing at least a title, and a `pkg.go.dev` badge.
+
+The README should not be a repetition of Go doc comments.
+
+You can verify the presence of all README files with the `make verify-readmes`
+command.
 
 ## Style Guide
 
@@ -560,12 +582,18 @@ functionality should be added, each one will need their own super-set
 interfaces and will duplicate the pattern. For this reason, the simple targeted
 interface that defines the specific functionality should be preferred.
 
+See also:
+[Keeping Your Modules Compatible: Working with interfaces](https://go.dev/blog/module-compatibility#working-with-interfaces).
+
 ### Testing
 
 The tests should never leak goroutines.
 
 Use the term `ConcurrentSafe` in the test name when it aims to verify the
-absence of race conditions.
+absence of race conditions. The top-level tests with this term will be run
+many times in the `test-concurrent-safe` CI job to increase the chance of
+catching concurrency issues. This does not apply to subtests when this term
+is not in their root name.
 
 ### Internal packages
 
@@ -591,32 +619,56 @@ this.
 
 [^3]: https://github.com/open-telemetry/opentelemetry-go/issues/3548
 
+### Ignoring context cancellation
+
+OpenTelemetry API implementations need to ignore the cancellation of the context that are
+passed when recording a value (e.g. starting a span, recording a measurement, emitting a log).
+Recording methods should not return an error describing the cancellation state of the context
+when they complete, nor should they abort any work.
+
+This rule may not apply if the OpenTelemetry specification defines a timeout mechanism for
+the method. In that case the context cancellation can be used for the timeout with the
+restriction that this behavior is documented for the method. Otherwise, timeouts
+are expected to be handled by the user calling the API, not the implementation.
+
+Stoppage of the telemetry pipeline is handled by calling the appropriate `Shutdown` method
+of a provider. It is assumed the context passed from a user is not used for this purpose.
+
+Outside of the direct recording of telemetry from the API (e.g. exporting telemetry,
+force flushing telemetry, shutting down a signal provider) the context cancellation
+should be honored. This means all work done on behalf of the user provided context
+should be canceled.
+
 ## Approvers and Maintainers
+
+### Triagers
+
+- [Cheng-Zhen Yang](https://github.com/scorpionknifes), Independent
 
 ### Approvers
 
-- [Evan Torrie](https://github.com/evantorrie), Verizon Media
-- [Sam Xie](https://github.com/XSAM), Cisco/AppDynamics
-- [David Ashpole](https://github.com/dashpole), Google
-- [Chester Cheung](https://github.com/hanyuancheung), Tencent
-- [Damien Mathieu](https://github.com/dmathieu), Elastic
-- [Anthony Mirabella](https://github.com/Aneurysm9), AWS
-
 ### Maintainers
 
-- [Aaron Clawson](https://github.com/MadVikingGod), LightStep
+- [Damien Mathieu](https://github.com/dmathieu), Elastic
+- [David Ashpole](https://github.com/dashpole), Google
 - [Robert Pająk](https://github.com/pellared), Splunk
+- [Sam Xie](https://github.com/XSAM), Cisco/AppDynamics
 - [Tyler Yahn](https://github.com/MrAlias), Splunk
 
 ### Emeritus
 
-- [Gustavo Silva Paiva](https://github.com/paivagustavo), LightStep
-- [Josh MacDonald](https://github.com/jmacd), LightStep
+- [Aaron Clawson](https://github.com/MadVikingGod)
+- [Anthony Mirabella](https://github.com/Aneurysm9)
+- [Chester Cheung](https://github.com/hanyuancheung)
+- [Evan Torrie](https://github.com/evantorrie)
+- [Gustavo Silva Paiva](https://github.com/paivagustavo)
+- [Josh MacDonald](https://github.com/jmacd)
+- [Liz Fong-Jones](https://github.com/lizthegrey)
 
 ### Become an Approver or a Maintainer
 
 See the [community membership document in OpenTelemetry community
-repo](https://github.com/open-telemetry/community/blob/main/community-membership.md).
+repo](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md).
 
 [Approver]: #approvers
 [Maintainer]: #maintainers

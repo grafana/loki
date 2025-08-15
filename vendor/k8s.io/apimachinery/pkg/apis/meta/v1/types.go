@@ -236,6 +236,8 @@ type ObjectMeta struct {
 	// +optional
 	// +patchMergeKey=uid
 	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=uid
 	OwnerReferences []OwnerReference `json:"ownerReferences,omitempty" patchStrategy:"merge" patchMergeKey:"uid" protobuf:"bytes,13,rep,name=ownerReferences"`
 
 	// Must be empty before the object is deleted from the registry. Each entry
@@ -253,6 +255,7 @@ type ObjectMeta struct {
 	// are not vulnerable to ordering changes in the list.
 	// +optional
 	// +patchStrategy=merge
+	// +listType=set
 	Finalizers []string `json:"finalizers,omitempty" patchStrategy:"merge" protobuf:"bytes,14,rep,name=finalizers"`
 
 	// Tombstone: ClusterName was a legacy field that was always cleared by
@@ -268,6 +271,7 @@ type ObjectMeta struct {
 	// workflow used when modifying the object.
 	//
 	// +optional
+	// +listType=atomic
 	ManagedFields []ManagedFieldsEntry `json:"managedFields,omitempty" protobuf:"bytes,17,rep,name=managedFields"`
 }
 
@@ -428,6 +432,29 @@ type ListOptions struct {
 	SendInitialEvents *bool `json:"sendInitialEvents,omitempty" protobuf:"varint,11,opt,name=sendInitialEvents"`
 }
 
+const (
+	// InitialEventsAnnotationKey the name of the key
+	// under which an annotation marking the end of
+	// a watchlist stream is stored.
+	//
+	// The annotation is added to a "Bookmark" event.
+	InitialEventsAnnotationKey = "k8s.io/initial-events-end"
+
+	// InitialEventsListBlueprintAnnotationKey is the name of the key
+	// where an empty, versioned list is encoded in the requested format
+	// (e.g., protobuf, JSON, CBOR), then base64-encoded and stored as a string.
+	//
+	// This encoding matches the request encoding format, which may be
+	// protobuf, JSON, CBOR, or others, depending on what the client requested.
+	// This ensures that the reconstructed list can be processed through the
+	// same decoder chain that would handle a standard LIST call response.
+	//
+	// The annotation is added to a "Bookmark" event and is used by clients
+	// to guarantee the format consistency when reconstructing
+	// the list during WatchList processing.
+	InitialEventsListBlueprintAnnotationKey = "kubernetes.io/initial-events-list-blueprint"
+)
+
 // resourceVersionMatch specifies how the resourceVersion parameter is applied. resourceVersionMatch
 // may only be set if resourceVersion is also set.
 //
@@ -531,7 +558,23 @@ type DeleteOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	// +optional
+	// +listType=atomic
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,5,rep,name=dryRun"`
+
+	// if set to true, it will trigger an unsafe deletion of the resource in
+	// case the normal deletion flow fails with a corrupt object error.
+	// A resource is considered corrupt if it can not be retrieved from
+	// the underlying storage successfully because of a) its data can
+	// not be transformed e.g. decryption failure, or b) it fails
+	// to decode into an object.
+	// NOTE: unsafe deletion ignores finalizer constraints, skips
+	// precondition checks, and removes the object from the storage.
+	// WARNING: This may potentially break the cluster if the workload
+	// associated with the resource being unsafe-deleted relies on normal
+	// deletion flow. Use only if you REALLY know what you are doing.
+	// The default value is false, and the user must opt in to enable it
+	// +optional
+	IgnoreStoreReadErrorWithClusterBreakingPotential *bool `json:"ignoreStoreReadErrorWithClusterBreakingPotential,omitempty" protobuf:"varint,6,opt,name=ignoreStoreReadErrorWithClusterBreakingPotential"`
 }
 
 const (
@@ -556,6 +599,7 @@ type CreateOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	// +optional
+	// +listType=atomic
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,1,rep,name=dryRun"`
 	// +k8s:deprecated=includeUninitialized,protobuf=2
 
@@ -600,6 +644,7 @@ type PatchOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	// +optional
+	// +listType=atomic
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,1,rep,name=dryRun"`
 
 	// Force is going to "force" Apply requests. It means user will
@@ -651,6 +696,7 @@ type ApplyOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	// +optional
+	// +listType=atomic
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,1,rep,name=dryRun"`
 
 	// Force is going to "force" Apply requests. It means user will
@@ -683,6 +729,7 @@ type UpdateOptions struct {
 	// request. Valid values are:
 	// - All: all dry run stages will be processed
 	// +optional
+	// +listType=atomic
 	DryRun []string `json:"dryRun,omitempty" protobuf:"bytes,1,rep,name=dryRun"`
 
 	// fieldManager is a name associated with the actor or entity
@@ -751,6 +798,7 @@ type Status struct {
 	// is not guaranteed to conform to any schema except that defined by
 	// the reason type.
 	// +optional
+	// +listType=atomic
 	Details *StatusDetails `json:"details,omitempty" protobuf:"bytes,5,opt,name=details"`
 	// Suggested HTTP return code for this status, 0 if not set.
 	// +optional
@@ -784,6 +832,7 @@ type StatusDetails struct {
 	// The Causes array includes more details associated with the StatusReason
 	// failure. Not all StatusReasons may provide detailed causes.
 	// +optional
+	// +listType=atomic
 	Causes []StatusCause `json:"causes,omitempty" protobuf:"bytes,4,rep,name=causes"`
 	// If specified, the time in seconds before the operation should be retried. Some errors may indicate
 	// the client must take an alternate action - for those errors this field may indicate how long to wait
@@ -881,6 +930,22 @@ const (
 	//   "retryAfterSeconds" int32 - the number of seconds before the operation should be retried
 	// Status code 500
 	StatusReasonServerTimeout StatusReason = "ServerTimeout"
+
+	// StatusReasonStoreReadError means that the server encountered an error while
+	// retrieving resources from the backend object store.
+	// This may be due to backend database error, or because processing of the read
+	// resource failed.
+	// Details:
+	//   "kind" string - the kind attribute of the resource being acted on.
+	//   "name" string - the prefix where the reading error(s) occurred
+	//   "causes" []StatusCause
+	//      - (optional):
+	//        - "type" CauseType - CauseTypeUnexpectedServerResponse
+	//        - "message" string - the error message from the store backend
+	//        - "field" string - the full path with the key of the resource that failed reading
+	//
+	// Status code 500
+	StatusReasonStoreReadError StatusReason = "StorageReadError"
 
 	// StatusReasonTimeout means that the request could not be completed within the given time.
 	// Clients can get this response only when they specified a timeout param in the request,
@@ -1047,6 +1112,7 @@ type List struct {
 type APIVersions struct {
 	TypeMeta `json:",inline"`
 	// versions are the api versions that are available.
+	// +listType=atomic
 	Versions []string `json:"versions" protobuf:"bytes,1,rep,name=versions"`
 	// a map of client CIDR to server address that is serving this group.
 	// This is to help clients reach servers in the most network-efficient way possible.
@@ -1055,6 +1121,7 @@ type APIVersions struct {
 	// The server returns only those CIDRs that it thinks that the client can match.
 	// For example: the master will return an internal IP CIDR only, if the client reaches the server using an internal IP.
 	// Server looks at X-Forwarded-For header or X-Real-Ip header or request.RemoteAddr (in that order) to get the client IP.
+	// +listType=atomic
 	ServerAddressByClientCIDRs []ServerAddressByClientCIDR `json:"serverAddressByClientCIDRs" protobuf:"bytes,2,rep,name=serverAddressByClientCIDRs"`
 }
 
@@ -1065,6 +1132,7 @@ type APIVersions struct {
 type APIGroupList struct {
 	TypeMeta `json:",inline"`
 	// groups is a list of APIGroup.
+	// +listType=atomic
 	Groups []APIGroup `json:"groups" protobuf:"bytes,1,rep,name=groups"`
 }
 
@@ -1077,6 +1145,7 @@ type APIGroup struct {
 	// name is the name of the group.
 	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
 	// versions are the versions supported in this group.
+	// +listType=atomic
 	Versions []GroupVersionForDiscovery `json:"versions" protobuf:"bytes,2,rep,name=versions"`
 	// preferredVersion is the version preferred by the API server, which
 	// probably is the storage version.
@@ -1090,6 +1159,7 @@ type APIGroup struct {
 	// For example: the master will return an internal IP CIDR only, if the client reaches the server using an internal IP.
 	// Server looks at X-Forwarded-For header or X-Real-Ip header or request.RemoteAddr (in that order) to get the client IP.
 	// +optional
+	// +listType=atomic
 	ServerAddressByClientCIDRs []ServerAddressByClientCIDR `json:"serverAddressByClientCIDRs,omitempty" protobuf:"bytes,4,rep,name=serverAddressByClientCIDRs"`
 }
 
@@ -1134,8 +1204,10 @@ type APIResource struct {
 	// update, patch, delete, deletecollection, and proxy)
 	Verbs Verbs `json:"verbs" protobuf:"bytes,4,opt,name=verbs"`
 	// shortNames is a list of suggested short names of the resource.
+	// +listType=atomic
 	ShortNames []string `json:"shortNames,omitempty" protobuf:"bytes,5,rep,name=shortNames"`
 	// categories is a list of the grouped resources this resource belongs to (e.g. 'all')
+	// +listType=atomic
 	Categories []string `json:"categories,omitempty" protobuf:"bytes,7,rep,name=categories"`
 	// The hash value of the storage version, the version this resource is
 	// converted to when written to the data store. Value must be treated
@@ -1168,6 +1240,7 @@ type APIResourceList struct {
 	// groupVersion is the group and version this APIResourceList is for.
 	GroupVersion string `json:"groupVersion" protobuf:"bytes,1,opt,name=groupVersion"`
 	// resources contains the name of the resources and if they are namespaced.
+	// +listType=atomic
 	APIResources []APIResource `json:"resources" protobuf:"bytes,2,rep,name=resources"`
 }
 
@@ -1175,6 +1248,7 @@ type APIResourceList struct {
 // For example: "/healthz", "/apis".
 type RootPaths struct {
 	// paths are the paths available at root.
+	// +listType=atomic
 	Paths []string `json:"paths" protobuf:"bytes,1,rep,name=paths"`
 }
 
@@ -1218,6 +1292,7 @@ type LabelSelector struct {
 	MatchLabels map[string]string `json:"matchLabels,omitempty" protobuf:"bytes,1,rep,name=matchLabels"`
 	// matchExpressions is a list of label selector requirements. The requirements are ANDed.
 	// +optional
+	// +listType=atomic
 	MatchExpressions []LabelSelectorRequirement `json:"matchExpressions,omitempty" protobuf:"bytes,2,rep,name=matchExpressions"`
 }
 
@@ -1234,6 +1309,7 @@ type LabelSelectorRequirement struct {
 	// the values array must be empty. This array is replaced during a strategic
 	// merge patch.
 	// +optional
+	// +listType=atomic
 	Values []string `json:"values,omitempty" protobuf:"bytes,3,rep,name=values"`
 }
 
@@ -1245,6 +1321,33 @@ const (
 	LabelSelectorOpNotIn        LabelSelectorOperator = "NotIn"
 	LabelSelectorOpExists       LabelSelectorOperator = "Exists"
 	LabelSelectorOpDoesNotExist LabelSelectorOperator = "DoesNotExist"
+)
+
+// FieldSelectorRequirement is a selector that contains values, a key, and an operator that
+// relates the key and values.
+type FieldSelectorRequirement struct {
+	// key is the field selector key that the requirement applies to.
+	Key string `json:"key" protobuf:"bytes,1,opt,name=key"`
+	// operator represents a key's relationship to a set of values.
+	// Valid operators are In, NotIn, Exists, DoesNotExist.
+	// The list of operators may grow in the future.
+	Operator FieldSelectorOperator `json:"operator" protobuf:"bytes,2,opt,name=operator,casttype=FieldSelectorOperator"`
+	// values is an array of string values.
+	// If the operator is In or NotIn, the values array must be non-empty.
+	// If the operator is Exists or DoesNotExist, the values array must be empty.
+	// +optional
+	// +listType=atomic
+	Values []string `json:"values,omitempty" protobuf:"bytes,3,rep,name=values"`
+}
+
+// A field selector operator is the set of operators that can be used in a selector requirement.
+type FieldSelectorOperator string
+
+const (
+	FieldSelectorOpIn           FieldSelectorOperator = "In"
+	FieldSelectorOpNotIn        FieldSelectorOperator = "NotIn"
+	FieldSelectorOpExists       FieldSelectorOperator = "Exists"
+	FieldSelectorOpDoesNotExist FieldSelectorOperator = "DoesNotExist"
 )
 
 // ManagedFieldsEntry is a workflow-id, a FieldSet and the group version of the resource
@@ -1335,8 +1438,10 @@ type Table struct {
 
 	// columnDefinitions describes each column in the returned items array. The number of cells per row
 	// will always match the number of column definitions.
+	// +listType=atomic
 	ColumnDefinitions []TableColumnDefinition `json:"columnDefinitions"`
 	// rows is the list of items in the table.
+	// +listType=atomic
 	Rows []TableRow `json:"rows"`
 }
 
@@ -1369,12 +1474,14 @@ type TableRow struct {
 	// cells will be as wide as the column definitions array and may contain strings, numbers (float64 or
 	// int64), booleans, simple maps, lists, or null. See the type field of the column definition for a
 	// more detailed description.
+	// +listType=atomic
 	Cells []interface{} `json:"cells"`
 	// conditions describe additional status of a row that are relevant for a human user. These conditions
 	// apply to the row, not to the object, and will be specific to table output. The only defined
 	// condition type is 'Completed', for a row that indicates a resource that has run to completion and
 	// can be given less visual priority.
 	// +optional
+	// +listType=atomic
 	Conditions []TableRowCondition `json:"conditions,omitempty"`
 	// This field contains the requested additional information about each object based on the includeObject
 	// policy when requesting the Table. If "None", this field is empty, if "Object" this will be the

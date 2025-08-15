@@ -55,7 +55,7 @@ type clusterResourceType struct {
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
 func (clusterResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, cluster, err := unmarshalClusterResource(resource)
+	name, cluster, err := unmarshalClusterResource(resource, opts.ServerConfig)
 	switch {
 	case name == "":
 		// Name is unset only when protobuf deserialization fails.
@@ -86,8 +86,8 @@ type ClusterResourceData struct {
 	Resource ClusterUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (c *ClusterResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (c *ClusterResourceData) RawEqual(other ResourceData) bool {
 	if c == nil && other == nil {
 		return true
 	}
@@ -111,7 +111,7 @@ func (c *ClusterResourceData) Raw() *anypb.Any {
 // corresponding to the cluster resource being watched.
 type ClusterWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ClusterResourceData)
+	OnUpdate(*ClusterResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -121,28 +121,28 @@ type ClusterWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingClusterWatcher struct {
 	watcher ClusterWatcher
 }
 
-func (d *delegatingClusterWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingClusterWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	c := data.(*ClusterResourceData)
-	d.watcher.OnUpdate(c)
+	d.watcher.OnUpdate(c, onDone)
 }
 
-func (d *delegatingClusterWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingClusterWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingClusterWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingClusterWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchCluster uses xDS to discover the configuration associated with the

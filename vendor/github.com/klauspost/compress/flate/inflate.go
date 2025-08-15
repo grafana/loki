@@ -120,8 +120,9 @@ func (h *huffmanDecoder) init(lengths []int) bool {
 	const sanity = false
 
 	if h.chunks == nil {
-		h.chunks = &[huffmanNumChunks]uint16{}
+		h.chunks = new([huffmanNumChunks]uint16)
 	}
+
 	if h.maxRead != 0 {
 		*h = huffmanDecoder{chunks: h.chunks, links: h.links}
 	}
@@ -175,6 +176,7 @@ func (h *huffmanDecoder) init(lengths []int) bool {
 	}
 
 	h.maxRead = min
+
 	chunks := h.chunks[:]
 	for i := range chunks {
 		chunks[i] = 0
@@ -202,8 +204,7 @@ func (h *huffmanDecoder) init(lengths []int) bool {
 			if cap(h.links[off]) < numLinks {
 				h.links[off] = make([]uint16, numLinks)
 			} else {
-				links := h.links[off][:0]
-				h.links[off] = links[:numLinks]
+				h.links[off] = h.links[off][:numLinks]
 			}
 		}
 	} else {
@@ -277,13 +278,33 @@ func (h *huffmanDecoder) init(lengths []int) bool {
 	return true
 }
 
-// The actual read interface needed by NewReader.
+// Reader is the actual read interface needed by NewReader.
 // If the passed in io.Reader does not also have ReadByte,
 // the NewReader will introduce its own buffering.
 type Reader interface {
 	io.Reader
 	io.ByteReader
 }
+
+type step uint8
+
+const (
+	copyData step = iota + 1
+	nextBlock
+	huffmanBytesBuffer
+	huffmanBytesReader
+	huffmanBufioReader
+	huffmanStringsReader
+	huffmanGenericReader
+)
+
+// flushMode tells decompressor when to return data
+type flushMode uint8
+
+const (
+	syncFlush    flushMode = iota // return data after sync flush block
+	partialFlush                  // return data after each block
+)
 
 // Decompress state.
 type decompressor struct {
@@ -303,7 +324,7 @@ type decompressor struct {
 
 	// Next step in the decompression,
 	// and decompression state.
-	step      func(*decompressor)
+	step      step
 	stepState int
 	err       error
 	toRead    []byte
@@ -319,6 +340,8 @@ type decompressor struct {
 
 	nb    uint
 	final bool
+
+	flushMode flushMode
 }
 
 func (f *decompressor) nextBlock() {
@@ -342,7 +365,7 @@ func (f *decompressor) nextBlock() {
 		// compressed, fixed Huffman tables
 		f.hl = &fixedHuffmanDecoder
 		f.hd = nil
-		f.huffmanBlockDecoder()()
+		f.huffmanBlockDecoder()
 		if debugDecode {
 			fmt.Println("predefinied huffman block")
 		}
@@ -353,7 +376,7 @@ func (f *decompressor) nextBlock() {
 		}
 		f.hl = &f.h1
 		f.hd = &f.h2
-		f.huffmanBlockDecoder()()
+		f.huffmanBlockDecoder()
 		if debugDecode {
 			fmt.Println("dynamic huffman block")
 		}
@@ -379,14 +402,16 @@ func (f *decompressor) Read(b []byte) (int, error) {
 		if f.err != nil {
 			return 0, f.err
 		}
-		f.step(f)
+
+		f.doStep()
+
 		if f.err != nil && len(f.toRead) == 0 {
 			f.toRead = f.dict.readFlush() // Flush what's left in case of error
 		}
 	}
 }
 
-// Support the io.WriteTo interface for io.Copy and friends.
+// WriteTo implements the io.WriteTo interface for io.Copy and friends.
 func (f *decompressor) WriteTo(w io.Writer) (int64, error) {
 	total := int64(0)
 	flushed := false
@@ -410,7 +435,7 @@ func (f *decompressor) WriteTo(w io.Writer) (int64, error) {
 			return total, f.err
 		}
 		if f.err == nil {
-			f.step(f)
+			f.doStep()
 		}
 		if len(f.toRead) == 0 && f.err != nil && !flushed {
 			f.toRead = f.dict.readFlush() // Flush what's left in case of error
@@ -603,7 +628,10 @@ func (f *decompressor) dataBlock() {
 	}
 
 	if n == 0 {
-		f.toRead = f.dict.readFlush()
+		if f.flushMode == syncFlush {
+			f.toRead = f.dict.readFlush()
+		}
+
 		f.finishBlock()
 		return
 	}
@@ -631,7 +659,7 @@ func (f *decompressor) copyData() {
 
 	if f.dict.availWrite() == 0 || f.copyLen > 0 {
 		f.toRead = f.dict.readFlush()
-		f.step = (*decompressor).copyData
+		f.step = copyData
 		return
 	}
 	f.finishBlock()
@@ -642,9 +670,34 @@ func (f *decompressor) finishBlock() {
 		if f.dict.availRead() > 0 {
 			f.toRead = f.dict.readFlush()
 		}
+
 		f.err = io.EOF
+	} else if f.flushMode == partialFlush && f.dict.availRead() > 0 {
+		f.toRead = f.dict.readFlush()
 	}
-	f.step = (*decompressor).nextBlock
+
+	f.step = nextBlock
+}
+
+func (f *decompressor) doStep() {
+	switch f.step {
+	case copyData:
+		f.copyData()
+	case nextBlock:
+		f.nextBlock()
+	case huffmanBytesBuffer:
+		f.huffmanBytesBuffer()
+	case huffmanBytesReader:
+		f.huffmanBytesReader()
+	case huffmanBufioReader:
+		f.huffmanBufioReader()
+	case huffmanStringsReader:
+		f.huffmanStringsReader()
+	case huffmanGenericReader:
+		f.huffmanGenericReader()
+	default:
+		panic("BUG: unexpected step state")
+	}
 }
 
 // noEOF returns err, unless err == io.EOF, in which case it returns io.ErrUnexpectedEOF.
@@ -747,10 +800,45 @@ func (f *decompressor) Reset(r io.Reader, dict []byte) error {
 		h1:       f.h1,
 		h2:       f.h2,
 		dict:     f.dict,
-		step:     (*decompressor).nextBlock,
+		step:     nextBlock,
 	}
 	f.dict.init(maxMatchOffset, dict)
 	return nil
+}
+
+type ReaderOpt func(*decompressor)
+
+// WithPartialBlock tells decompressor to return after each block,
+// so it can read data written with partial flush
+func WithPartialBlock() ReaderOpt {
+	return func(f *decompressor) {
+		f.flushMode = partialFlush
+	}
+}
+
+// WithDict initializes the reader with a preset dictionary
+func WithDict(dict []byte) ReaderOpt {
+	return func(f *decompressor) {
+		f.dict.init(maxMatchOffset, dict)
+	}
+}
+
+// NewReaderOpts returns new reader with provided options
+func NewReaderOpts(r io.Reader, opts ...ReaderOpt) io.ReadCloser {
+	fixedHuffmanDecoderInit()
+
+	var f decompressor
+	f.r = makeReader(r)
+	f.bits = new([maxNumLit + maxNumDist]int)
+	f.codebits = new([numCodes]int)
+	f.step = nextBlock
+	f.dict.init(maxMatchOffset, nil)
+
+	for _, opt := range opts {
+		opt(&f)
+	}
+
+	return &f
 }
 
 // NewReader returns a new ReadCloser that can be used
@@ -762,15 +850,7 @@ func (f *decompressor) Reset(r io.Reader, dict []byte) error {
 //
 // The ReadCloser returned by NewReader also implements Resetter.
 func NewReader(r io.Reader) io.ReadCloser {
-	fixedHuffmanDecoderInit()
-
-	var f decompressor
-	f.r = makeReader(r)
-	f.bits = new([maxNumLit + maxNumDist]int)
-	f.codebits = new([numCodes]int)
-	f.step = (*decompressor).nextBlock
-	f.dict.init(maxMatchOffset, nil)
-	return &f
+	return NewReaderOpts(r)
 }
 
 // NewReaderDict is like NewReader but initializes the reader
@@ -781,13 +861,5 @@ func NewReader(r io.Reader) io.ReadCloser {
 //
 // The ReadCloser returned by NewReader also implements Resetter.
 func NewReaderDict(r io.Reader, dict []byte) io.ReadCloser {
-	fixedHuffmanDecoderInit()
-
-	var f decompressor
-	f.r = makeReader(r)
-	f.bits = new([maxNumLit + maxNumDist]int)
-	f.codebits = new([numCodes]int)
-	f.step = (*decompressor).nextBlock
-	f.dict.init(maxMatchOffset, dict)
-	return &f
+	return NewReaderOpts(r, WithDict(dict))
 }

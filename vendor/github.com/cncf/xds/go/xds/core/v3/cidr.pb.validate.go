@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,35 +32,79 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on CidrRange with the rules defined in the
-// proto definition for this message. If any rules are violated, an error is returned.
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *CidrRange) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CidrRange with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CidrRangeMultiError, or nil
+// if none found.
+func (m *CidrRange) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CidrRange) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if utf8.RuneCountInString(m.GetAddressPrefix()) < 1 {
-		return CidrRangeValidationError{
+		err := CidrRangeValidationError{
 			field:  "AddressPrefix",
 			reason: "value length must be at least 1 runes",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	if wrapper := m.GetPrefixLen(); wrapper != nil {
 
 		if wrapper.GetValue() > 128 {
-			return CidrRangeValidationError{
+			err := CidrRangeValidationError{
 				field:  "PrefixLen",
 				reason: "value must be less than or equal to 128",
 			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
 		}
 
 	}
 
+	if len(errors) > 0 {
+		return CidrRangeMultiError(errors)
+	}
+
 	return nil
 }
+
+// CidrRangeMultiError is an error wrapping multiple validation errors returned
+// by CidrRange.ValidateAll() if the designated constraints aren't met.
+type CidrRangeMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CidrRangeMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CidrRangeMultiError) AllErrors() []error { return m }
 
 // CidrRangeValidationError is the validation error returned by
 // CidrRange.Validate if the designated constraints aren't met.

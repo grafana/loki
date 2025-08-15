@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc/internal/pretty"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -60,12 +60,12 @@ func securityConfigValidator(bc *bootstrap.Config, sc *SecurityConfig) error {
 		return nil
 	}
 	if sc.IdentityInstanceName != "" {
-		if _, ok := bc.CertProviderConfigs[sc.IdentityInstanceName]; !ok {
-			return fmt.Errorf("identitiy certificate provider instance name %q missing in bootstrap configuration", sc.IdentityInstanceName)
+		if _, ok := bc.CertProviderConfigs()[sc.IdentityInstanceName]; !ok {
+			return fmt.Errorf("identity certificate provider instance name %q missing in bootstrap configuration", sc.IdentityInstanceName)
 		}
 	}
 	if sc.RootInstanceName != "" {
-		if _, ok := bc.CertProviderConfigs[sc.RootInstanceName]; !ok {
+		if _, ok := bc.CertProviderConfigs()[sc.RootInstanceName]; !ok {
 			return fmt.Errorf("root certificate provider instance name %q missing in bootstrap configuration", sc.RootInstanceName)
 		}
 	}
@@ -118,8 +118,8 @@ type ListenerResourceData struct {
 	Resource ListenerUpdate
 }
 
-// Equal returns true if other is equal to l.
-func (l *ListenerResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to l.
+func (l *ListenerResourceData) RawEqual(other ResourceData) bool {
 	if l == nil && other == nil {
 		return true
 	}
@@ -144,7 +144,7 @@ func (l *ListenerResourceData) Raw() *anypb.Any {
 // events corresponding to the listener resource being watched.
 type ListenerWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ListenerResourceData)
+	OnUpdate(*ListenerResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -154,28 +154,28 @@ type ListenerWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingListenerWatcher struct {
 	watcher ListenerWatcher
 }
 
-func (d *delegatingListenerWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingListenerWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	l := data.(*ListenerResourceData)
-	d.watcher.OnUpdate(l)
+	d.watcher.OnUpdate(l, onDone)
 }
 
-func (d *delegatingListenerWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingListenerWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingListenerWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingListenerWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchListener uses xDS to discover the configuration associated with the
