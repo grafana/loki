@@ -20,142 +20,103 @@ package ringhash
 
 import (
 	"fmt"
+	"strings"
 
+	xxhash "github.com/cespare/xxhash/v2"
 	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/metadata"
 )
 
 type picker struct {
-	ring          *ring
-	logger        *grpclog.PrefixLogger
-	subConnStates map[*subConn]connectivity.State
-}
+	ring *ring
 
-func newPicker(ring *ring, logger *grpclog.PrefixLogger) *picker {
-	states := make(map[*subConn]connectivity.State)
-	for _, e := range ring.items {
-		states[e.sc] = e.sc.effectiveState()
-	}
-	return &picker{ring: ring, logger: logger, subConnStates: states}
-}
+	// endpointStates is a cache of endpoint states.
+	// The ringhash balancer stores endpoint states in a `resolver.EndpointMap`,
+	// with access guarded by `ringhashBalancer.mu`. The `endpointStates` cache
+	// in the picker helps avoid locking the ringhash balancer's mutex when
+	// reading the latest state at RPC time.
+	endpointStates map[string]endpointState // endpointState.hashKey -> endpointState
 
-// handleRICSResult is the return type of handleRICS. It's needed to wrap the
-// returned error from Pick() in a struct. With this, if the return values are
-// `balancer.PickResult, error, bool`, linter complains because error is not the
-// last return value.
-type handleRICSResult struct {
-	pr  balancer.PickResult
-	err error
-}
+	// requestHashHeader is the header key to look for the request hash. If it's
+	// empty, the request hash is expected to be set in the context via xDS.
+	// See gRFC A76.
+	requestHashHeader string
 
-// handleRICS generates pick result if the entry is in Ready, Idle, Connecting
-// or Shutdown. TransientFailure will be handled specifically after this
-// function returns.
-//
-// The first return value indicates if the state is in Ready, Idle, Connecting
-// or Shutdown. If it's true, the PickResult and error should be returned from
-// Pick() as is.
-func (p *picker) handleRICS(e *ringEntry) (handleRICSResult, bool) {
-	switch state := p.subConnStates[e.sc]; state {
-	case connectivity.Ready:
-		return handleRICSResult{pr: balancer.PickResult{SubConn: e.sc.sc}}, true
-	case connectivity.Idle:
-		// Trigger Connect() and queue the pick.
-		e.sc.queueConnect()
-		return handleRICSResult{err: balancer.ErrNoSubConnAvailable}, true
-	case connectivity.Connecting:
-		return handleRICSResult{err: balancer.ErrNoSubConnAvailable}, true
-	case connectivity.TransientFailure:
-		// Return ok==false, so TransientFailure will be handled afterwards.
-		return handleRICSResult{}, false
-	case connectivity.Shutdown:
-		// Shutdown can happen in a race where the old picker is called. A new
-		// picker should already be sent.
-		return handleRICSResult{err: balancer.ErrNoSubConnAvailable}, true
-	default:
-		// Should never reach this. All the connectivity states are already
-		// handled in the cases.
-		p.logger.Errorf("SubConn has undefined connectivity state: %v", state)
-		return handleRICSResult{err: status.Errorf(codes.Unavailable, "SubConn has undefined connectivity state: %v", state)}, true
-	}
+	// hasEndpointInConnectingState is true if any of the endpoints is in
+	// CONNECTING.
+	hasEndpointInConnectingState bool
+
+	randUint64 func() uint64
 }
 
 func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	e := p.ring.pick(getRequestHash(info.Ctx))
-	if hr, ok := p.handleRICS(e); ok {
-		return hr.pr, hr.err
+	usingRandomHash := false
+	var requestHash uint64
+	if p.requestHashHeader == "" {
+		var ok bool
+		if requestHash, ok = XDSRequestHash(info.Ctx); !ok {
+			return balancer.PickResult{}, fmt.Errorf("ringhash: expected xDS config selector to set the request hash")
+		}
+	} else {
+		md, ok := metadata.FromOutgoingContext(info.Ctx)
+		if !ok || len(md.Get(p.requestHashHeader)) == 0 {
+			requestHash = p.randUint64()
+			usingRandomHash = true
+		} else {
+			values := strings.Join(md.Get(p.requestHashHeader), ",")
+			requestHash = xxhash.Sum64String(values)
+		}
 	}
-	// ok was false, the entry is in transient failure.
-	return p.handleTransientFailure(e)
+
+	e := p.ring.pick(requestHash)
+	ringSize := len(p.ring.items)
+	if !usingRandomHash {
+		// Per gRFC A61, because of sticky-TF with PickFirst's auto reconnect on TF,
+		// we ignore all TF subchannels and find the first ring entry in READY,
+		// CONNECTING or IDLE.  If that entry is in IDLE, we need to initiate a
+		// connection. The idlePicker returned by the LazyLB or the new Pickfirst
+		// should do this automatically.
+		for i := 0; i < ringSize; i++ {
+			index := (e.idx + i) % ringSize
+			es := p.endpointState(p.ring.items[index])
+			switch es.state.ConnectivityState {
+			case connectivity.Ready, connectivity.Connecting, connectivity.Idle:
+				return es.state.Picker.Pick(info)
+			case connectivity.TransientFailure:
+			default:
+				panic(fmt.Sprintf("Found child balancer in unknown state: %v", es.state.ConnectivityState))
+			}
+		}
+	} else {
+		// If the picker has generated a random hash, it will walk the ring from
+		// this hash, and pick the first READY endpoint. If no endpoint is
+		// currently in CONNECTING state, it will trigger a connection attempt
+		// on at most one endpoint that is in IDLE state along the way. - A76
+		requestedConnection := p.hasEndpointInConnectingState
+		for i := 0; i < ringSize; i++ {
+			index := (e.idx + i) % ringSize
+			es := p.endpointState(p.ring.items[index])
+			if es.state.ConnectivityState == connectivity.Ready {
+				return es.state.Picker.Pick(info)
+			}
+			if !requestedConnection && es.state.ConnectivityState == connectivity.Idle {
+				requestedConnection = true
+				// If the SubChannel is in idle state, initiate a connection but
+				// continue to check other pickers to see if there is one in
+				// ready state.
+				es.balancer.ExitIdle()
+			}
+		}
+		if requestedConnection {
+			return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
+		}
+	}
+
+	// All children are in transient failure. Return the first failure.
+	return p.endpointState(e).state.Picker.Pick(info)
 }
 
-func (p *picker) handleTransientFailure(e *ringEntry) (balancer.PickResult, error) {
-	// Queue a connect on the first picked SubConn.
-	e.sc.queueConnect()
-
-	// Find next entry in the ring, skipping duplicate SubConns.
-	e2 := nextSkippingDuplicates(p.ring, e)
-	if e2 == nil {
-		// There's no next entry available, fail the pick.
-		return balancer.PickResult{}, fmt.Errorf("the only SubConn is in Transient Failure")
-	}
-
-	// For the second SubConn, also check Ready/Idle/Connecting as if it's the
-	// first entry.
-	if hr, ok := p.handleRICS(e2); ok {
-		return hr.pr, hr.err
-	}
-
-	// The second SubConn is also in TransientFailure. Queue a connect on it.
-	e2.sc.queueConnect()
-
-	// If it gets here, this is after the second SubConn, and the second SubConn
-	// was in TransientFailure.
-	//
-	// Loop over all other SubConns:
-	// - If all SubConns so far are all TransientFailure, trigger Connect() on
-	// the TransientFailure SubConns, and keep going.
-	// - If there's one SubConn that's not in TransientFailure, keep checking
-	// the remaining SubConns (in case there's a Ready, which will be returned),
-	// but don't not trigger Connect() on the other SubConns.
-	var firstNonFailedFound bool
-	for ee := nextSkippingDuplicates(p.ring, e2); ee != e; ee = nextSkippingDuplicates(p.ring, ee) {
-		scState := p.subConnStates[ee.sc]
-		if scState == connectivity.Ready {
-			return balancer.PickResult{SubConn: ee.sc.sc}, nil
-		}
-		if firstNonFailedFound {
-			continue
-		}
-		if scState == connectivity.TransientFailure {
-			// This will queue a connect.
-			ee.sc.queueConnect()
-			continue
-		}
-		// This is a SubConn in a non-failure state. We continue to check the
-		// other SubConns, but remember that there was a non-failed SubConn
-		// seen. After this, Pick() will never trigger any SubConn to Connect().
-		firstNonFailedFound = true
-		if scState == connectivity.Idle {
-			// This is the first non-failed SubConn, and it is in a real Idle
-			// state. Trigger it to Connect().
-			ee.sc.queueConnect()
-		}
-	}
-	return balancer.PickResult{}, fmt.Errorf("no connection is Ready")
-}
-
-// nextSkippingDuplicates finds the next entry in the ring, with a different
-// subconn from the given entry.
-func nextSkippingDuplicates(ring *ring, entry *ringEntry) *ringEntry {
-	for next := ring.next(entry); next != entry; next = ring.next(next) {
-		if next.sc != entry.sc {
-			return next
-		}
-	}
-	// There's no qualifying next entry.
-	return nil
+func (p *picker) endpointState(e *ringEntry) endpointState {
+	return p.endpointStates[e.hashKey]
 }
