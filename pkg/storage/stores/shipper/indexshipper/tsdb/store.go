@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -32,6 +33,7 @@ type store struct {
 	indexShipper indexshipper.IndexShipper
 	indexWriter  IndexWriter
 	logger       log.Logger
+	metrics      *Metrics
 	stopOnce     sync.Once
 }
 
@@ -65,6 +67,9 @@ func NewStore(
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+
+	// Initialize metrics
+	s.metrics = NewMetrics(reg)
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
@@ -108,7 +113,6 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 			return err
 		}
 
-		tsdbMetrics := NewMetrics(reg)
 		tsdbManager := NewTSDBManager(
 			name,
 			nodeName,
@@ -117,14 +121,14 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 			tableRange,
 			schemaCfg,
 			s.logger,
-			tsdbMetrics,
+			s.metrics,
 		)
 
 		headManager := NewHeadManager(
 			name,
 			s.logger,
 			indexShipperCfg.ActiveIndexDirectory,
-			tsdbMetrics,
+			s.metrics,
 			tsdbManager,
 		)
 		if err := headManager.Start(); err != nil {
@@ -156,22 +160,24 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
-	// Always write the index to benefit durability via replication factor.
-	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-	metas := tsdbindex.ChunkMetas{
-		{
-			Checksum: chk.ChunkRef.Checksum,
-			MinTime:  int64(chk.ChunkRef.From),
-			MaxTime:  int64(chk.ChunkRef.Through),
-			KB:       uint32(approxKB),
-			Entries:  uint32(chk.Data.Entries()),
-		},
-	}
-	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
-		return errors.Wrap(err, "writing index entry")
-	}
-	return nil
+func (s *store) IndexChunk(ctx context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
+	return instrument.CollectedRequest(ctx, "IndexChunk", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(context.Context) error {
+		// Always write the index to benefit durability via replication factor.
+		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+		metas := tsdbindex.ChunkMetas{
+			{
+				Checksum: chk.ChunkRef.Checksum,
+				MinTime:  int64(chk.ChunkRef.From),
+				MaxTime:  int64(chk.ChunkRef.Through),
+				KB:       uint32(approxKB),
+				Entries:  uint32(chk.Data.Entries()),
+			},
+		}
+		if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
+			return errors.Wrap(err, "writing index entry")
+		}
+		return nil
+	})
 }
 
 type failingIndexWriter struct{}
