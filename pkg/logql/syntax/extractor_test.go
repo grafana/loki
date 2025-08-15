@@ -160,8 +160,7 @@ func Test_MultiVariantExpr_Extractors(t *testing.T) {
 
 				seen := make(map[string]float64, len(samples))
 				for _, s := range samples {
-					lbls := s.Labels.Labels()
-					seen[lbls.String()] = s.Value
+					seen[s.Labels.String()] = s.Value
 				}
 
 				mvExpr, err := ParseSampleExpr(tc.variantQuery)
