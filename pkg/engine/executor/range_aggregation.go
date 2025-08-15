@@ -99,7 +99,8 @@ func (r *RangeAggregationPipeline) init() {
 		points[i] = w.endTs
 	}
 
-	r.aggregator.withBasePoints(points) // initialize aggregator with points to aggregate
+	// TODO: rethink if this is required. Uncommenting this breaks bench test
+	// r.aggregator.withBasePoints(points) // initialize aggregator with points to aggregate
 }
 
 // Read reads the next value into its state.

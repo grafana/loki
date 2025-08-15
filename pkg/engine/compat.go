@@ -27,6 +27,7 @@ type ResultBuilder interface {
 
 var _ ResultBuilder = &streamsResultBuilder{}
 var _ ResultBuilder = &vectorResultBuilder{}
+var _ ResultBuilder = &matrixResultBuilder{}
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
@@ -215,4 +216,113 @@ func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlm
 
 func (b *vectorResultBuilder) Len() int {
 	return len(b.data)
+}
+
+type matrixResultBuilder struct {
+	seriesIndex map[uint64]promql.Series
+	lblsBuilder *labels.Builder
+}
+
+func newMatrixResultBuilder() *matrixResultBuilder {
+	return &matrixResultBuilder{
+		seriesIndex: make(map[uint64]promql.Series),
+		lblsBuilder: labels.NewBuilder(labels.EmptyLabels()),
+	}
+}
+
+func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
+	for row := range int(rec.NumRows()) {
+		sample, ok := b.collectRow(rec, row)
+		if !ok {
+			continue
+		}
+
+		// Group samples by series (labels hash)
+		hash := labels.StableHash(sample.Metric)
+		series, exists := b.seriesIndex[hash]
+
+		if !exists {
+			// Create new series
+			series = promql.Series{
+				Metric: sample.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+		}
+
+		// Add the sample point to the series
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: sample.T,
+			F: sample.F,
+		})
+
+		b.seriesIndex[hash] = series
+	}
+}
+
+func (b *matrixResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+	var sample promql.Sample
+	b.lblsBuilder.Reset(labels.EmptyLabels())
+
+	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
+	for colIdx := range int(rec.NumCols()) {
+		col := rec.Column(colIdx)
+		colName := rec.ColumnName(colIdx)
+
+		field := rec.Schema().Field(colIdx)
+		colDataType, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
+		if !ok {
+			return promql.Sample{}, false
+		}
+
+		switch colName {
+		case types.ColumnNameBuiltinTimestamp:
+			if col.IsNull(i) {
+				return promql.Sample{}, false
+			}
+
+			// [promql.Sample] expects milliseconds as timestamp unit
+			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
+		case types.ColumnNameGeneratedValue:
+			if col.IsNull(i) {
+				return promql.Sample{}, false
+			}
+
+			col, ok := col.(*array.Int64)
+			if !ok {
+				return promql.Sample{}, false
+			}
+			sample.F = float64(col.Value(i))
+		default:
+			// allow any string columns
+			if colDataType == datatype.Loki.String.String() {
+				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
+			}
+		}
+	}
+
+	sample.Metric = b.lblsBuilder.Labels()
+	return sample, true
+}
+
+func (b *matrixResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	// Convert map to slice of series
+	series := make([]promql.Series, 0, len(b.seriesIndex))
+	for _, s := range b.seriesIndex {
+		series = append(series, s)
+	}
+
+	// Create matrix and sort it
+	result := promql.Matrix(series)
+	sort.Sort(result)
+
+	return logqlmodel.Result{
+		Data:       result,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
+	}
+}
+
+func (b *matrixResultBuilder) Len() int {
+	return len(b.seriesIndex)
 }
