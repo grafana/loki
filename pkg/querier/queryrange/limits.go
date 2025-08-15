@@ -445,7 +445,7 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 			}
 		}
 
-		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
+		hash, sl.buf = lbs.HashWithoutLabels(sl.buf)
 
 		// If there's a variant label, track it in the variant map
 		if variant != "" {
