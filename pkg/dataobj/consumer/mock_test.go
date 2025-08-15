@@ -298,10 +298,12 @@ type recordingTocWriter struct {
 }
 
 func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges multitenancy.TimeRangeSet) error {
-	m.entries = append(m.entries, recordedTocEntry{
-		DataObjectPath: dataobjPath,
-		MinTimestamp:   timeRanges["default"].MinTime,
-		MaxTimestamp:   timeRanges["default"].MaxTime,
-	})
+	for _, timeRange := range timeRanges {
+		m.entries = append(m.entries, recordedTocEntry{
+			DataObjectPath: dataobjPath,
+			MinTimestamp:   timeRange.MinTime,
+			MaxTimestamp:   timeRange.MaxTime,
+		})
+	}
 	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, timeRanges)
 }
