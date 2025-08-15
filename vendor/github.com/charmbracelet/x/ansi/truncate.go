@@ -10,8 +10,7 @@ import (
 
 // Cut the string, without adding any prefix or tail strings. This function is
 // aware of ANSI escape codes and will not break them, and accounts for
-// wide-characters (such as East-Asian characters and emojis). Note that the
-// [left] parameter is inclusive, while [right] isn't.
+// wide-characters (such as East-Asian characters and emojis).
 // This treats the text as a sequence of graphemes.
 func Cut(s string, left, right int) string {
 	return cut(GraphemeWidth, s, left, right)
@@ -19,8 +18,10 @@ func Cut(s string, left, right int) string {
 
 // CutWc the string, without adding any prefix or tail strings. This function is
 // aware of ANSI escape codes and will not break them, and accounts for
-// wide-characters (such as East-Asian characters and emojis). Note that the
-// [left] parameter is inclusive, while [right] isn't.
+// wide-characters (such as East-Asian characters and emojis).
+// Note that the [left] parameter is inclusive, while [right] isn't,
+// which is to say it'll return `[left, right)`.
+//
 // This treats the text as a sequence of wide characters and runes.
 func CutWc(s string, left, right int) string {
 	return cut(WcWidth, s, left, right)
@@ -41,7 +42,7 @@ func cut(m Method, s string, left, right int) string {
 	if left == 0 {
 		return truncate(s, right, "")
 	}
-	return truncateLeft(Truncate(s, right, ""), left, "")
+	return truncateLeft(truncate(s, right, ""), left, "")
 }
 
 // Truncate truncates a string to a given length, adding a tail to the end if
@@ -99,6 +100,7 @@ func truncate(m Method, s string, length int, tail string) string {
 
 			// increment the index by the length of the cluster
 			i += len(cluster)
+			curWidth += width
 
 			// Are we ignoring? Skip to the next byte
 			if ignoring {
@@ -107,16 +109,15 @@ func truncate(m Method, s string, length int, tail string) string {
 
 			// Is this gonna be too wide?
 			// If so write the tail and stop collecting.
-			if curWidth+width > length && !ignoring {
+			if curWidth > length && !ignoring {
 				ignoring = true
 				buf.WriteString(tail)
 			}
 
-			if curWidth+width > length {
+			if curWidth > length {
 				continue
 			}
 
-			curWidth += width
 			buf.Write(cluster)
 
 			// Done collecting, now we're back in the ground state.
@@ -141,6 +142,14 @@ func truncate(m Method, s string, length int, tail string) string {
 
 			// collects printable ASCII
 			curWidth++
+			fallthrough
+		case parser.ExecuteAction:
+			// execute action will be things like \n, which, if outside the cut,
+			// should be ignored.
+			if ignoring {
+				i++
+				continue
+			}
 			fallthrough
 		default:
 			buf.WriteByte(b[i])
@@ -214,12 +223,12 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 				buf.WriteString(prefix)
 			}
 
-			if ignoring {
-				continue
-			}
-
 			if curWidth > n {
 				buf.Write(cluster)
+			}
+
+			if ignoring {
+				continue
 			}
 
 			pstate = parser.GroundState
@@ -240,6 +249,14 @@ func truncateLeft(m Method, s string, n int, prefix string) string {
 				continue
 			}
 
+			fallthrough
+		case parser.ExecuteAction:
+			// execute action will be things like \n, which, if outside the cut,
+			// should be ignored.
+			if ignoring {
+				i++
+				continue
+			}
 			fallthrough
 		default:
 			buf.WriteByte(b[i])
