@@ -48,6 +48,13 @@ func (m *FilterStateMatcher) MarshalToSizedBufferVTStrict(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.Matcher.(*FilterStateMatcher_AddressMatch); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.Matcher.(*FilterStateMatcher_StringMatch); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -88,6 +95,29 @@ func (m *FilterStateMatcher_StringMatch) MarshalToSizedBufferVTStrict(dAtA []byt
 	}
 	return len(dAtA) - i, nil
 }
+func (m *FilterStateMatcher_AddressMatch) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *FilterStateMatcher_AddressMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.AddressMatch != nil {
+		size, err := m.AddressMatch.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *FilterStateMatcher) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -113,6 +143,20 @@ func (m *FilterStateMatcher_StringMatch) SizeVT() (n int) {
 	_ = l
 	if m.StringMatch != nil {
 		l = m.StringMatch.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
+func (m *FilterStateMatcher_AddressMatch) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.AddressMatch != nil {
+		l = m.AddressMatch.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	} else {
 		n += 2

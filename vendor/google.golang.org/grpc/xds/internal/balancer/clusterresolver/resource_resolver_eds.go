@@ -126,9 +126,7 @@ func (er *edsDiscoveryMechanism) OnResourceDoesNotExist(onDone xdsresource.OnDon
 		return
 	}
 
-	if er.logger.V(2) {
-		er.logger.Infof("EDS discovery mechanism for resource %q reported resource-does-not-exist error", er.nameToWatch)
-	}
+	er.logger.Warningf("EDS discovery mechanism for resource %q reported resource-does-not-exist error", er.nameToWatch)
 
 	// Report an empty update that would result in no priority child being
 	// created for this discovery mechanism. This would result in the priority

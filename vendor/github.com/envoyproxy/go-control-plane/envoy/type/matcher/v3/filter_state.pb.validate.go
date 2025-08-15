@@ -113,6 +113,48 @@ func (m *FilterStateMatcher) validate(all bool) error {
 			}
 		}
 
+	case *FilterStateMatcher_AddressMatch:
+		if v == nil {
+			err := FilterStateMatcherValidationError{
+				field:  "Matcher",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatcherPresent = true
+
+		if all {
+			switch v := interface{}(m.GetAddressMatch()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, FilterStateMatcherValidationError{
+						field:  "AddressMatch",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, FilterStateMatcherValidationError{
+						field:  "AddressMatch",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetAddressMatch()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return FilterStateMatcherValidationError{
+					field:  "AddressMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		_ = v // ensures v is used
 	}
