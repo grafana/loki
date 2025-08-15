@@ -14,8 +14,6 @@ import (
 )
 
 type producer struct {
-	inflight atomicI64 // high 16: # waiters, low 48: # inflight
-
 	// mu and c are used for flush and drain notifications; mu is used for
 	// a few other tight locks.
 	mu sync.Mutex
@@ -61,23 +59,10 @@ type producer struct {
 	idVersion int16
 
 	batchPromises ringBatchPromise
-	promisesMu    sync.Mutex
 
-	txnMu sync.Mutex
-	inTxn bool
-
-	// If using EndBeginTxnUnsafe, and any partitions are actually produced
-	// to, we issue an AddPartitionsToTxn at the end to re-add them to a
-	// new transaction. We have to due to logic races: the broker may not
-	// have handled the produce requests yet, and we want to ensure a new
-	// transaction is started.
-	//
-	// If the user stops producing, we want to ensure that our restarted
-	// transaction is actually ended. Thus, we set readded whenever we have
-	// partitions we actually restart. We issue EndTxn and reset readded in
-	// EndAndBegin; if nothing more was produced to, we ensure we finish
-	// the started txn.
-	readded bool
+	txnMu   sync.Mutex
+	inTxn   bool
+	tx890p2 bool
 }
 
 // BufferedProduceRecords returns the number of records currently buffered for
@@ -99,6 +84,83 @@ func (cl *Client) BufferedProduceBytes() int64 {
 	cl.producer.mu.Lock()
 	defer cl.producer.mu.Unlock()
 	return cl.producer.bufferedBytes + cl.producer.blockedBytes
+}
+
+// EnsureProduceConnectionIsOpen attempts to open a produce connection to all
+// specified brokers, or all brokers if `brokers` is empty or contains -1.
+//
+// This can be used in an attempt to reduce the latency when producing if your
+// application produces infrequently: you can force open a produce connection a
+// bit earlier than you intend to produce, rather than at the moment you
+// produce. In rare circumstances, it is possible that a connection that was
+// ensured to be open may close before you produce.
+//
+// This returns an errors.Join'd error that merges a message for all brokers
+// that failed to be opened as well as why.
+func (cl *Client) EnsureProduceConnectionIsOpen(ctx context.Context, brokers ...int32) error {
+	var (
+		keep = brokers[:0]
+		all  bool
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	for _, b := range brokers {
+		switch {
+		case b < -1:
+		case b == -1:
+			all = true
+		case b > -1:
+			keep = append(keep, b)
+		}
+	}
+	var toOpen []*broker
+	if all || len(brokers) == 0 {
+		cl.brokersMu.RLock()
+		toOpen = cl.brokers
+		if len(toOpen) == 0 {
+			cl.brokersMu.RUnlock()
+			if err := cl.fetchBrokerMetadata(ctx); err != nil {
+				return err
+			}
+			cl.brokersMu.RLock()
+			toOpen = cl.brokers
+		}
+		cl.brokersMu.RUnlock()
+	} else {
+		for _, b := range brokers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				br, err := cl.brokerOrErr(ctx, b, errUnknownBroker)
+
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					errs = append(errs, fmt.Errorf("%d: %w", b, err))
+					return
+				}
+				toOpen = append(toOpen, br)
+			}()
+		}
+		wg.Wait()
+	}
+
+	for _, br := range toOpen {
+		wg.Add(1)
+		br.do(ctx, &forceOpenReq{new(kmsg.ProduceRequest)}, func(_ kmsg.Response, err error) {
+			defer wg.Done()
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("%d: %w", br.meta.NodeID, err))
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+
+	return errors.Join(errs...)
 }
 
 type unknownTopicProduces struct {
@@ -394,7 +456,7 @@ func (cl *Client) produce(
 	if promise == nil {
 		promise = noPromise
 	}
-	if r.Topic == "" {
+	if r.Topic == "" || cl.cfg.defaultProduceTopicAlways {
 		r.Topic = cl.cfg.defaultProduceTopic
 	}
 
@@ -481,7 +543,7 @@ func (cl *Client) produce(
 
 		drainBuffered := func(err error) {
 			// The expected case here is that a context was
-			// canceled while we we waiting for space, so we are
+			// canceled while we waiting for space, so we are
 			// exiting and need to kill the goro above.
 			//
 			// However, it is possible that the goro above has
@@ -556,7 +618,6 @@ func (p *producer) finishPromises(b batchPromise) {
 		}
 	}()
 start:
-	p.promisesMu.Lock()
 	for i, pr := range b.recs {
 		pr.LeaderEpoch = 0
 		if b.baseOffset == -1 {
@@ -574,7 +635,6 @@ start:
 		broadcast = broadcast || recBroadcast
 		b.recs[i] = promisedRec{}
 	}
-	p.promisesMu.Unlock()
 	if cap(b.recs) > 4 {
 		cl.prsPool.put(b.recs)
 	}
@@ -863,7 +923,15 @@ func (cl *Client) doInitProducerID(ctxFn func() context.Context, lastID int64, l
 	}
 
 	ctx := ctxFn()
-	resp, err := req.RequestWith(ctx, cl)
+	var resp *kmsg.InitProducerIDResponse
+	err := cl.doWithConcurrentTransactions(ctx, "InitProducerID", func() error {
+		var err error
+		resp, err = req.RequestWith(ctx, cl)
+		if err != nil {
+			return err
+		}
+		return nil // resp.ErrorCode handled below
+	})
 	if err != nil {
 		if errors.Is(err, errUnknownRequestKey) || errors.Is(err, errBrokerTooOld) {
 			cl.cfg.logger.Log(LogLevelInfo, "unable to initialize a producer id because the broker is too old or the client is pinned to an old version, continuing without a producer id")
@@ -968,7 +1036,7 @@ func (cl *Client) addUnknownTopicRecord(pr promisedRec) {
 	}
 	unknown.buffered = append(unknown.buffered, pr)
 	if len(unknown.buffered) == 1 {
-		go cl.waitUnknownTopic(pr.ctx, pr.Record.Context, pr.Topic, unknown)
+		go cl.waitUnknownTopic(pr.ctx, pr.Context, pr.Topic, unknown)
 	}
 }
 
@@ -1019,7 +1087,7 @@ func (cl *Client) waitUnknownTopic(
 			}
 			cl.cfg.logger.Log(LogLevelInfo, "new topic metadata wait failed, retrying wait", "topic", topic, "err", retryableErr)
 			tries++
-			if int64(tries) >= cl.cfg.recordRetries {
+			if int64(tries) > cl.cfg.recordRetries {
 				err = fmt.Errorf("no partitions available after attempting to refresh metadata %d times, last err: %w", tries, retryableErr)
 			}
 			if cl.cfg.maxUnknownFailures >= 0 && errors.Is(retryableErr, kerr.UnknownTopicOrPartition) {
@@ -1118,60 +1186,6 @@ func (cl *Client) Flush(ctx context.Context) error {
 		p.mu.Unlock()
 		p.c.Broadcast()
 		return ctx.Err()
-	}
-}
-
-func (p *producer) pause(ctx context.Context) error {
-	p.inflight.Add(1 << 48)
-
-	quit := false
-	done := make(chan struct{})
-	go func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		defer close(done)
-		for !quit && p.inflight.Load()&((1<<48)-1) != 0 {
-			p.c.Wait()
-		}
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		p.mu.Lock()
-		quit = true
-		p.mu.Unlock()
-		p.c.Broadcast()
-		p.resume() // dec our inflight
-		return ctx.Err()
-	}
-}
-
-func (p *producer) resume() {
-	if p.inflight.Add(-1<<48) == 0 {
-		p.cl.allSinksAndSources(func(sns sinkAndSource) {
-			sns.sink.maybeDrain()
-		})
-	}
-}
-
-func (p *producer) maybeAddInflight() bool {
-	if p.inflight.Load()>>48 > 0 {
-		return false
-	}
-	if p.inflight.Add(1)>>48 > 0 {
-		p.decInflight()
-		return false
-	}
-	return true
-}
-
-func (p *producer) decInflight() {
-	if p.inflight.Add(-1)>>48 > 0 {
-		p.mu.Lock()
-		p.mu.Unlock() //nolint:gocritic,staticcheck // We use the lock as a barrier, unlocking immediately is safe.
-		p.c.Broadcast()
 	}
 }
 
