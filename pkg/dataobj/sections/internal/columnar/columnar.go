@@ -67,9 +67,6 @@ func (s *Section) Tenant() string { return s.tenant }
 
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
-//
-// Unrecognized columns (e.g., when running older code against newer sterams
-// sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
 // PrimarySortOrder returns the primary sort order information of the section

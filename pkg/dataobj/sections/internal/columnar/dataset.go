@@ -67,7 +67,7 @@ func (ds *Dataset) ListPages(ctx context.Context, columns []dataset.Column) resu
 		for i, column := range columns {
 			column, ok := column.(*DatasetColumn)
 			if !ok {
-				return fmt.Errorf("unexpected column type: got=%T want=*columnDataset", column)
+				return fmt.Errorf("unexpected column type: got=%T want=*DatasetColumn", column)
 			}
 			columnDescs[i] = column.col.desc
 		}
@@ -97,7 +97,7 @@ func (ds *Dataset) ReadPages(ctx context.Context, pages []dataset.Page) result.S
 		for i, page := range pages {
 			page, ok := page.(*DatasetPage)
 			if !ok {
-				return fmt.Errorf("unexpected page type: got=%T want=*datasetPage", page)
+				return fmt.Errorf("unexpected page type: got=%T want=*DatasetPage", page)
 			}
 			pageDescs[i] = page.desc
 		}

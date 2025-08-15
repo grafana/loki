@@ -127,12 +127,12 @@ func (enc *Encoder) dataSize() int {
 	return enc.data.Len()
 }
 
-// append adds column data and metadata to enc. append must only be called from
-// child elements on Close or Discard. Discard calls must pass nil for both data
-// and metadata to denote a discard.
+// appendColumn adds column data and metadata to enc. appendColumn must only be
+// called from the current child [ColumnEncoder] on Close or Discard. Discard
+// calls must pass nil for both data and metadata to denote a discard.
 //
-// enc *must never* retain data or metadata beyond the call to append.
-func (enc *Encoder) append(pages int, data, metadata []byte) error {
+// enc *must never* retain data or metadata beyond the call to appendColumn.
+func (enc *Encoder) appendColumn(pages int, data, metadata []byte) error {
 	if enc.curColumn == nil {
 		return errElementNoExist
 	}
@@ -168,13 +168,16 @@ func (enc *Encoder) initBuffers() {
 	enc.data = bufpool.GetUnsized()
 	enc.metadata = bufpool.GetUnsized()
 
-	// Initialize the metadata buffer with the format version. Section implementations
-	// will use the version stored in the SectionType, but we write the format
-	// version to the metadata anyway so that older versions of dataobj code
-	// (where the version was encoded in metadata) recognizes that it's a newer format.
+	// Initialize the metadata buffer with the format version. Section
+	// implementations will use the version stored in the SectionType, but we
+	// write the format version to the metadata anyway as the first byte so that
+	// older versions of dataobj readers (where the version was encoded in
+	// metadata) recognizes that it's a newer format and abort.
 	//
-	// TODO(rfratto): remove this check once we've fully rolled out the new
-	// format, and there's no more instances of Loki which are reading the v1 format.
+	// TODO(rfratto): remove this once we've fully rolled out the new format,
+	// and there's no more instances of Loki which are reading the v1 format.
+	// Since this byte is written but never read, it can be removed without
+	// needing a new format version or a breaking change.
 	_ = streamio.WriteUvarint(enc.metadata, FormatVersion) // [bytes.Buffer.WriteByte] never returns an error.
 }
 
@@ -325,7 +328,7 @@ func (enc *ColumnEncoder) Commit() error {
 		return err
 	}
 
-	return enc.parent.append(len(enc.memPages), columnData.Bytes(), columnMetadata.Bytes())
+	return enc.parent.appendColumn(len(enc.memPages), columnData.Bytes(), columnMetadata.Bytes())
 }
 
 // Discard discards the column, discarding any data written to it. After Discard
@@ -336,7 +339,7 @@ func (enc *ColumnEncoder) Discard() error {
 	}
 	enc.closed = true
 
-	return enc.parent.append(0, nil, nil) // Notify parent of discard.
+	return enc.parent.appendColumn(0, nil, nil) // Notify parent of discard.
 }
 
 // buildMetadata builds the metadata message for the column.
