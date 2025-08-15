@@ -32,8 +32,9 @@ type rangeAggregationOptions struct {
 //
 // Current version only supports counting for instant queries.
 type RangeAggregationPipeline struct {
-	state  state
-	inputs []Pipeline
+	state           state
+	inputs          []Pipeline
+	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
 	matchingTimeWindows func(t time.Time) ([]time.Time, bool) // function to find matching time windows for a given timestamp
@@ -107,6 +108,11 @@ func (r *RangeAggregationPipeline) init() {
 func (r *RangeAggregationPipeline) Read(ctx context.Context) error {
 	// if the state already has an error, do not attempt to read.
 	if r.state.err != nil {
+		return r.state.err
+	}
+
+	if r.inputsExhausted {
+		r.state = failureState(EOF)
 		return r.state.err
 	}
 
@@ -199,10 +205,7 @@ func (r *RangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 		}
 	}
 
-	if r.aggregator.NumOfPoints() == 0 {
-		return nil, EOF // no values to aggregate & reached EOF
-	}
-
+	r.inputsExhausted = true
 	return r.aggregator.buildRecord()
 }
 
