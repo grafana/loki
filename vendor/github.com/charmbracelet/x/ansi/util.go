@@ -10,7 +10,7 @@ import (
 )
 
 // colorToHexString returns a hex string representation of a color.
-func colorToHexString(c color.Color) string {
+func colorToHexString(c color.Color) string { //nolint:unused
 	if c == nil {
 		return ""
 	}
@@ -28,7 +28,7 @@ func colorToHexString(c color.Color) string {
 // rgbToHex converts red, green, and blue values to a hexadecimal value.
 //
 //	hex := rgbToHex(0, 0, 255) // 0x0000FF
-func rgbToHex(r, g, b uint32) uint32 {
+func rgbToHex(r, g, b uint32) uint32 { //nolint:unused
 	return r<<16 + g<<8 + b
 }
 
