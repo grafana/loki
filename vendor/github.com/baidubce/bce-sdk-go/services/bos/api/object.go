@@ -189,6 +189,55 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 	return strings.Trim(resp.Header(http.ETAG), "\""), jsonBody, nil
 }
 
+// OptionsObject - Get the options of the given object for CORS
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name of the object
+//   - object: the name of the object
+//   - args: the optional arguments of this api
+//
+// RETURNS:
+//   - result: the supported options of the given object
+//   - error: nil if ok otherwise the specific error
+func OptionsObject(cli bce.Client, bucket, object string, args *OptionsObjectArgs,
+	ctx *BosContext, options ...Option) (*OptionsObjectResult, error) {
+	req := &BosRequest{}
+	req.SetMethod(http.OPTIONS)
+	req.SetUri(getObjectUri(bucket, object))
+	req.SetBucket(bucket)
+	options = append(options, setHeader(http.ORIGIN, args.Origin))
+	options = append(options, setHeader(http.ACCESS_CONTROL_REQUEST_METHOD, args.RequestMethod))
+	options = append(options, setHeader(http.ACCESS_CONTROL_REQUEST_HEADERS, strings.Join(args.RequestHeaders, ",")))
+	// handle options to set the header/params of request
+	if err := handleOptions(req, options); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options error: %s", err))
+	}
+	resp := &BosResponse{}
+	if err := SendRequest(cli, req, resp, ctx); err != nil {
+		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
+	}
+	defer func() { resp.Body().Close() }()
+
+	//get header
+	result := &OptionsObjectResult{}
+	getOptions := []GetOption{
+		getHeader(http.ACCESS_CONTROL_ALLOW_CREDENTIALS, &result.AllowCredentials),
+		getHeader(http.ACCESS_CONTROL_ALLOW_HEADERS, &result.AllowHeaders),
+		getHeader(http.ACCESS_CONTROL_ALLOW_METHODS, &result.AllowMethods),
+		getHeader(http.ACCESS_CONTROL_ALLOW_ORIGIN, &result.AllowOrigin),
+		getHeader(http.ACCESS_CONTROL_EXPOSE_HEADERS, &result.ExposeHeaders),
+		getHeader(http.ACCESS_CONTROL_MAX_AGE, &result.MaxAge),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+	}
+	return result, nil
+}
+
 // PostObject - put the object by multipart/form-data
 //
 // PARAMS:

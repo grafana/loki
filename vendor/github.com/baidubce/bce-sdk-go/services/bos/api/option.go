@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -26,7 +27,7 @@ type (
 	}
 	// Set various options of HTTP request
 	Option    func(params map[string]optionValue) error
-	GetOption func(params map[string]*string) error
+	GetOption func(params map[string]interface{}) error
 )
 
 // An option to set Cache-Control header
@@ -419,8 +420,8 @@ func handlePostOptions(w *multipart.Writer, options []Option) error {
 	return nil
 }
 
-func getHeader(key string, value *string) GetOption {
-	return func(params map[string]*string) error {
+func getHeader(key string, value interface{}) GetOption {
+	return func(params map[string]interface{}) error {
 		if value == nil {
 			return nil
 		}
@@ -430,7 +431,7 @@ func getHeader(key string, value *string) GetOption {
 }
 
 func handleGetOptions(response *BosResponse, options []GetOption) error {
-	params := make(map[string]*string)
+	params := make(map[string]interface{})
 	for _, option := range options {
 		if option != nil {
 			if err := option(params); err != nil {
@@ -442,7 +443,19 @@ func handleGetOptions(response *BosResponse, options []GetOption) error {
 	headers := response.Headers()
 	for k, v := range params {
 		if val, ok := headers[toHttpHeaderKey(k)]; ok && v != nil {
-			*v = val
+			if vReal, ok := v.(*string); ok {
+				*vReal = val
+			}
+			if vReal, ok := v.(*bool); ok {
+				*vReal, _ = strconv.ParseBool(val)
+			}
+			if vReal, ok := v.(*int); ok {
+				vint, _ := strconv.ParseInt(val, 10, 64)
+				*vReal = int(vint)
+			}
+			if vReal, ok := v.(*[]string); ok {
+				*vReal = strings.Split(val, ",")
+			}
 		}
 	}
 	return nil
