@@ -367,7 +367,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}

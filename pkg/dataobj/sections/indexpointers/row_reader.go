@@ -156,10 +156,10 @@ func translateIndexPointersPredicate(p RowPredicate, columns []dataset.Column) d
 	var minTimestampColumn dataset.Column
 	var maxTimestampColumn dataset.Column
 	for _, desc := range columns {
-		if desc.ColumnInfo().Tag == "min_timestamp" {
+		if desc.ColumnDesc().Tag == "min_timestamp" {
 			minTimestampColumn = desc
 		}
-		if desc.ColumnInfo().Tag == "max_timestamp" {
+		if desc.ColumnDesc().Tag == "max_timestamp" {
 			maxTimestampColumn = desc
 		}
 	}

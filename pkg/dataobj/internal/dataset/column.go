@@ -40,8 +40,8 @@ type (
 // up across one or more [Page]s to limit the amount of memory needed to read a
 // portion of the column at a time.
 type Column interface {
-	// ColumnInfo returns the metadata for the Column.
-	ColumnInfo() *ColumnDesc
+	// ColumnDesc returns the metadata for the Column.
+	ColumnDesc() *ColumnDesc
 
 	// ListPages returns the set of ordered pages in the column.
 	ListPages(ctx context.Context) result.Seq[Page]
@@ -49,14 +49,14 @@ type Column interface {
 
 // MemColumn holds a set of pages of a common type.
 type MemColumn struct {
-	Info  ColumnDesc // Information about the column.
+	Desc  ColumnDesc // Description of the column.
 	Pages []*MemPage // The set of pages in the column.
 }
 
 var _ Column = (*MemColumn)(nil)
 
-// ColumnInfo implements [Column] and returns c.Info.
-func (c *MemColumn) ColumnInfo() *ColumnDesc { return &c.Info }
+// ColumnDesc implements [Column] and returns c.Desc.
+func (c *MemColumn) ColumnDesc() *ColumnDesc { return &c.Desc }
 
 // ListPages implements [Column] and iterates through c.Pages.
 func (c *MemColumn) ListPages(_ context.Context) result.Seq[Page] {

@@ -86,7 +86,7 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 
 		wg.Wait()
 
-		totalRead += page.Info.UncompressedSize
+		totalRead += page.Desc.UncompressedSize
 	}
 
 	b.ReportMetric(float64(totalRead)/1_000_000/b.Elapsed().Seconds(), "MBps/op")
@@ -154,11 +154,11 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	page, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, len(in), page.Info.RowCount)
-	require.Equal(t, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(in), page.Desc.RowCount)
+	require.Equal(t, len(in)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	var actual []string
 
@@ -202,9 +202,9 @@ func Test_pageBuilder_Fill(t *testing.T) {
 
 	page, err := buf.Flush()
 	require.NoError(t, err)
-	require.Equal(t, page.Info.UncompressedSize, page.Info.CompressedSize)
+	require.Equal(t, page.Desc.UncompressedSize, page.Desc.CompressedSize)
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
-	t.Log("Row count: ", page.Info.RowCount)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
+	t.Log("Row count: ", page.Desc.RowCount)
 }

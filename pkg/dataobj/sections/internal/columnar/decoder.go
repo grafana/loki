@@ -15,13 +15,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/windowing"
 )
 
-// A Decoder provides an interface on top of raw encoded dataset data.
+// A Decoder allows reading an encoded dataset-based section.
 type Decoder struct {
 	sr dataobj.SectionReader
 }
 
 // NewDecoder creates a new [Decoder] for the given [dataobj.SectionReader]. The
-// version argument must denote the format version of the data being decoded.
+// formatVersion argument must denote the format version of the data being
+// decoded.
 //
 // NewDecoder returns an error if the format version is not supported.
 func NewDecoder(reader dataobj.SectionReader, formatVersion uint32) (*Decoder, error) {

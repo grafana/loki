@@ -263,7 +263,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 	checksum := crc32.Checksum(finalData.Bytes(), checksumTable)
 
 	page := MemPage{
-		Info: PageInfo{
+		Desc: PageDesc{
 			UncompressedSize: headerSize + presenceSize + b.valuesWriter.BytesWritten(),
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,

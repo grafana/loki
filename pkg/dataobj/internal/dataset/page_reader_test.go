@@ -33,11 +33,11 @@ func Test_pageReader(t *testing.T) {
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	actualValues, err := readPage(pr, 4)
@@ -56,11 +56,11 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	_, err := readPage(pr, 4)
@@ -86,11 +86,11 @@ func Test_pageReader_Reset(t *testing.T) {
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	_, err := readPage(pr, 4)
@@ -115,11 +115,11 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 

@@ -9,8 +9,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// Dataset is a [dataset.Dataset] implementation that reads from a set
-// of [Columns].
+// Dataset is a [dataset.Dataset] implementation that reads from a slice of
+// [Column].
 type Dataset struct {
 	dec  *Decoder
 	cols []dataset.Column
@@ -41,8 +41,8 @@ func MakeDataset(section *Section, columns []*Column) (*Dataset, error) {
 }
 
 // Columns returns the set of [dataset.Column]s in the dataset. The order of
-// returned columns matches the order from [newColumnsDataset]. The returned
-// slice must not be modified.
+// returned columns matches the order from [MakeDataset]. The returned slice
+// must not be modified.
 func (ds *Dataset) Columns() []dataset.Column { return ds.cols }
 
 // ListColumns returns an iterator over the columns in the dataset.
@@ -90,7 +90,7 @@ func (ds *Dataset) ListPages(ctx context.Context, columns []dataset.Column) resu
 
 // ReadPages returns an iterator over page data for the given pages.
 func (ds *Dataset) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[dataset.PageData] {
-	// List with [columnsDataset.ListPages], we unwrap pages so we can pass them
+	// Like with [DatasetColumn.ListPages], we unwrap pages so we can pass them
 	// down to our decoder in a single batch.
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		pageDescs := make([]*datasetmd.PageDesc, len(pages))
@@ -119,7 +119,7 @@ type DatasetColumn struct {
 	dec *Decoder
 
 	col  *Column
-	info *dataset.ColumnDesc
+	desc *dataset.ColumnDesc
 }
 
 // MakeDatasetColumn returns a [DatasetColumn] from a decoder and a column.
@@ -129,7 +129,7 @@ func MakeDatasetColumn(dec *Decoder, col *Column) *DatasetColumn {
 	return &DatasetColumn{
 		dec: dec,
 		col: col,
-		info: &dataset.ColumnDesc{
+		desc: &dataset.ColumnDesc{
 			Type: dataset.ColumnType{
 				Physical: info.Type.Physical,
 				Logical:  col.Type.Logical,
@@ -150,8 +150,8 @@ func MakeDatasetColumn(dec *Decoder, col *Column) *DatasetColumn {
 
 var _ dataset.Column = (*DatasetColumn)(nil)
 
-// ColumnInfo returns the [dataset.ColumnDesc] for the column.
-func (ds *DatasetColumn) ColumnInfo() *dataset.ColumnDesc { return ds.info }
+// ColumnDesc returns the [dataset.ColumnDesc] for the column.
+func (ds *DatasetColumn) ColumnDesc() *dataset.ColumnDesc { return ds.desc }
 
 // ListPages returns a sequence of pages for the column.
 func (ds *DatasetColumn) ListPages(ctx context.Context) result.Seq[dataset.Page] {
@@ -179,7 +179,7 @@ type DatasetPage struct {
 	dec *Decoder
 
 	desc *datasetmd.PageDesc
-	info *dataset.PageInfo
+	info *dataset.PageDesc
 }
 
 var _ dataset.Page = (*DatasetPage)(nil)
@@ -189,7 +189,7 @@ func MakeDatasetPage(dec *Decoder, desc *datasetmd.PageDesc) *DatasetPage {
 	return &DatasetPage{
 		dec:  dec,
 		desc: desc,
-		info: &dataset.PageInfo{
+		info: &dataset.PageDesc{
 			UncompressedSize: int(desc.UncompressedSize),
 			CompressedSize:   int(desc.CompressedSize),
 			CRC32:            desc.Crc32,
@@ -202,8 +202,8 @@ func MakeDatasetPage(dec *Decoder, desc *datasetmd.PageDesc) *DatasetPage {
 	}
 }
 
-// PageInfo returns the page information.
-func (p *DatasetPage) PageInfo() *dataset.PageInfo { return p.info }
+// PageDesc returns the page description.
+func (p *DatasetPage) PageDesc() *dataset.PageDesc { return p.info }
 
 // ReadPage reads the page data.
 func (p *DatasetPage) ReadPage(ctx context.Context) (dataset.PageData, error) {

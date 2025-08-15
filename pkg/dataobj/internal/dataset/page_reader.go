@@ -184,7 +184,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 	}
 
 	memPage := &MemPage{
-		Info: *pr.page.PageInfo(),
+		Desc: *pr.page.PageDesc(),
 		Data: data,
 	}
 
@@ -200,11 +200,11 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	pr.valuesReader = pr.getValuesReader()
 	pr.valuesReader.Reset(valuesReader)
-	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Info.Encoding {
+	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Info.Encoding, pr.valuesReader)
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, pr.valuesReader)
 		if !ok {
-			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Info.Encoding)
+			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
 		pr.valuesDec.Reset(pr.valuesReader)
@@ -213,7 +213,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 	pr.ready = true
 	pr.closer = valuesReader
 	pr.lastPhysicalType = pr.physicalType
-	pr.lastEncoding = memPage.Info.Encoding
+	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
 	return nil
 }
@@ -252,7 +252,7 @@ func (pr *pageReader) Seek(offset int64, whence int) (int64, error) {
 		pr.nextRow += offset
 
 	case io.SeekEnd:
-		lastRow := int64(pr.page.PageInfo().RowCount)
+		lastRow := int64(pr.page.PageDesc().RowCount)
 		if lastRow+offset < 0 {
 			return 0, errors.New("invalid offset")
 		}

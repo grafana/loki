@@ -50,7 +50,7 @@ func DatasetType(arrowType arrow.DataType) (datasetmd.PhysicalType, bool) {
 //
 // - For [datasetmd.PHYSICAL_TYPE_INT64], s must be a [scalar.Int64] or [scalar.Timestamp].
 // - For [datasetmd.PHYSICAL_TYPE_UINT64], s must be a [scalar.Uint64].
-// - For [datasetmd.PHYSICAL_TYPE_BYTE_ARRAY], s must be a [scalar.Binary] or [scalar.String].
+// - For [datasetmd.PHYSICAL_TYPE_BINARY], s must be a [scalar.Binary] or [scalar.String].
 //
 // If s references allocated memory, FromScalar will hold a reference to that
 // memory. Callers are responsible for releasing the scalar after the returned

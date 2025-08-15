@@ -85,12 +85,12 @@ func (t *table) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[
 func (t *table) UncompressedSize() int {
 	var size int
 
-	size += t.StreamID.ColumnInfo().UncompressedSize
-	size += t.Timestamp.ColumnInfo().UncompressedSize
+	size += t.StreamID.ColumnDesc().UncompressedSize
+	size += t.Timestamp.ColumnDesc().UncompressedSize
 	for _, metadata := range t.Metadatas {
-		size += metadata.ColumnInfo().UncompressedSize
+		size += metadata.ColumnDesc().UncompressedSize
 	}
-	size += t.Message.ColumnInfo().UncompressedSize
+	size += t.Message.ColumnDesc().UncompressedSize
 
 	return size
 }
@@ -99,12 +99,12 @@ func (t *table) UncompressedSize() int {
 func (t *table) CompressedSize() int {
 	var size int
 
-	size += t.StreamID.ColumnInfo().CompressedSize
-	size += t.Timestamp.ColumnInfo().CompressedSize
+	size += t.StreamID.ColumnDesc().CompressedSize
+	size += t.Timestamp.ColumnDesc().CompressedSize
 	for _, metadata := range t.Metadatas {
-		size += metadata.ColumnInfo().CompressedSize
+		size += metadata.ColumnDesc().CompressedSize
 	}
-	size += t.Message.ColumnInfo().CompressedSize
+	size += t.Message.ColumnDesc().CompressedSize
 
 	return size
 }
@@ -343,7 +343,7 @@ func (b *tableBuffer) Flush() (*table, error) {
 
 	// Sort metadata columns by name for consistency.
 	slices.SortFunc(metadatas, func(a, b *tableColumn) int {
-		return cmp.Compare(a.ColumnInfo().Tag, b.ColumnInfo().Tag)
+		return cmp.Compare(a.ColumnDesc().Tag, b.ColumnDesc().Tag)
 	})
 
 	return &table{

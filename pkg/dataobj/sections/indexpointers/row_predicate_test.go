@@ -14,14 +14,14 @@ type fakeColumn struct{ dataset.Column }
 var (
 	fakeMinTimestampColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnDesc{
+			Desc: dataset.ColumnDesc{
 				Tag: "min_timestamp",
 			},
 		},
 	}
 	fakeMaxTimestampColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnDesc{
+			Desc: dataset.ColumnDesc{
 				Tag: "max_timestamp",
 			},
 		},

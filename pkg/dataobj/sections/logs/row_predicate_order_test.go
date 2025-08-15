@@ -390,7 +390,7 @@ type testColumn struct {
 
 func (c *testColumn) ToMemColumn(t *testing.T) *dataset.MemColumn {
 	return &dataset.MemColumn{
-		Info: dataset.ColumnDesc{
+		Desc: dataset.ColumnDesc{
 			Tag:              c.name,
 			RowsCount:        c.rowCount,
 			ValuesCount:      c.valueCount,

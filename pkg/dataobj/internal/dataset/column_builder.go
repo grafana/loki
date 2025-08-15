@@ -124,7 +124,7 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 func (cb *ColumnBuilder) EstimatedSize() int {
 	var size int
 	for _, p := range cb.pages {
-		size += p.Info.CompressedSize
+		size += p.Desc.CompressedSize
 	}
 	size += cb.pageBuilder.EstimatedSize()
 	return size
@@ -183,14 +183,14 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 	}
 
 	for _, page := range cb.pages {
-		info.RowsCount += page.Info.RowCount
-		info.ValuesCount += page.Info.ValuesCount
-		info.CompressedSize += page.Info.CompressedSize
-		info.UncompressedSize += page.Info.UncompressedSize
+		info.RowsCount += page.Desc.RowCount
+		info.ValuesCount += page.Desc.ValuesCount
+		info.CompressedSize += page.Desc.CompressedSize
+		info.UncompressedSize += page.Desc.UncompressedSize
 	}
 
 	column := &MemColumn{
-		Info:  info,
+		Desc:  info,
 		Pages: cb.pages,
 	}
 

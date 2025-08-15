@@ -109,7 +109,7 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMaxTimestamp, nil
 	}
 
-	return ColumnTypeInvalid, fmt.Errorf("invalid column type: %q", text)
+	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
 
 // String returns the human-readable name of ct.

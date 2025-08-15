@@ -32,7 +32,7 @@ func Test_table_metadataCleanup(t *testing.T) {
 	table, err = buf.Flush()
 	require.NoError(t, err)
 	require.Equal(t, 1, len(table.Metadatas))
-	require.Equal(t, "bar", table.Metadatas[0].Info.Tag)
+	require.Equal(t, "bar", table.Metadatas[0].Desc.Tag)
 }
 
 func initBuffer(buf *tableBuffer) {

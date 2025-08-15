@@ -45,7 +45,7 @@ func Test_columnReader_SeekAcrossPages(t *testing.T) {
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
 	// Find a position near the end of the first page
-	endFirstPage := col.Pages[0].PageInfo().RowCount - 2
+	endFirstPage := col.Pages[0].PageDesc().RowCount - 2
 
 	cr := newColumnReader(col)
 	_, err := cr.Seek(int64(endFirstPage), io.SeekStart)

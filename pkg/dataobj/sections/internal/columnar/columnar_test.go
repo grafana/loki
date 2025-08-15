@@ -140,7 +140,7 @@ func (b *columnarBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 	var enc columnar.Encoder
 
 	for _, column := range b.columns {
-		columnEnc, err := enc.OpenColumn(column.ColumnInfo())
+		columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 		require.NoError(b.t, err)
 
 		for _, page := range column.Pages {

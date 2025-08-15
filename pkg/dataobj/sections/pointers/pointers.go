@@ -147,7 +147,7 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeValuesBloomFilter, nil
 	}
 
-	return ColumnTypeInvalid, fmt.Errorf("invalid column type: %q", text)
+	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
 
 var columnTypeNames = map[ColumnType]string{

@@ -42,13 +42,13 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
-	require.Equal(t, len(in), col.Info.RowsCount)
-	require.Equal(t, len(in)-2, col.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.Equal(t, len(in), col.Desc.RowsCount)
+	require.Equal(t, len(in)-2, col.Desc.ValuesCount) // -2 for the empty strings
 	require.Greater(t, len(col.Pages), 1)
 
-	t.Log("Uncompressed size: ", col.Info.UncompressedSize)
-	t.Log("Compressed size: ", col.Info.CompressedSize)
+	t.Log("Uncompressed size: ", col.Desc.UncompressedSize)
+	t.Log("Compressed size: ", col.Desc.CompressedSize)
 	t.Log("Pages: ", len(col.Pages))
 
 	var actual [][]byte
@@ -128,22 +128,22 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
-	require.NotNil(t, col.Info.Statistics)
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.NotNil(t, col.Desc.Statistics)
 
-	columnMin, columnMax := getMinMax(t, col.Info.Statistics)
+	columnMin, columnMax := getMinMax(t, col.Desc.Statistics)
 	require.Equal(t, aString, string(columnMin.Binary()))
 	require.Equal(t, fString, string(columnMax.Binary()))
 
 	require.Len(t, col.Pages, 2)
-	require.Equal(t, 3, col.Pages[0].Info.ValuesCount)
-	require.Equal(t, 3, col.Pages[1].Info.ValuesCount)
+	require.Equal(t, 3, col.Pages[0].Desc.ValuesCount)
+	require.Equal(t, 3, col.Pages[1].Desc.ValuesCount)
 
-	page0Min, page0Max := getMinMax(t, col.Pages[0].Info.Stats)
+	page0Min, page0Max := getMinMax(t, col.Pages[0].Desc.Stats)
 	require.Equal(t, aString, string(page0Min.Binary()))
 	require.Equal(t, cString, string(page0Max.Binary()))
 
-	page1Min, page1Max := getMinMax(t, col.Pages[1].Info.Stats)
+	page1Min, page1Max := getMinMax(t, col.Pages[1].Desc.Stats)
 	require.Equal(t, dString, string(page1Min.Binary()))
 	require.Equal(t, fString, string(page1Max.Binary()))
 }
@@ -191,11 +191,11 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Info.Type)
-	require.NotNil(t, col.Info.Statistics)
+	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.NotNil(t, col.Desc.Statistics)
 	// we use sparse hyperloglog reprs until a certain cardinality is reached,
 	// so this should not be approximate at low counts.
-	require.Equal(t, uint64(3), col.Info.Statistics.CardinalityCount)
+	require.Equal(t, uint64(3), col.Desc.Statistics.CardinalityCount)
 }
 
 func getMinMax(t *testing.T, stats *datasetmd.Statistics) (minVal, maxVal Value) {

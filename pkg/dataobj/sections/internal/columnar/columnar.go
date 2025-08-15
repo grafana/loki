@@ -20,11 +20,9 @@ type Section struct {
 	sortInfo *datasetmd.SortInfo
 }
 
-// Open opens a [Section] from an underlying [Decoder]. The formatVersion
-// argument must denote the format version of the data being decoded.
+// Open opens a [Section] from an underlying [Decoder].
 //
-// Open returns an error if the format version is not supported, or if the
-// section metadata couldn't be read.
+// Open returns an error if the section metadata couldn't be read.
 func Open(ctx context.Context, tenant string, dec *Decoder) (*Section, error) {
 	sec := &Section{
 		tenant:  tenant,
@@ -39,7 +37,7 @@ func Open(ctx context.Context, tenant string, dec *Decoder) (*Section, error) {
 func (s *Section) init(ctx context.Context) error {
 	sectionMetadata, err := s.decoder.SectionMetadata(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to decode metadata: %w", err)
+		return fmt.Errorf("decoding metadata: %w", err)
 	}
 
 	for _, col := range sectionMetadata.GetColumns() {

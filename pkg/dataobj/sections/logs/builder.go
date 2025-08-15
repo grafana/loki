@@ -249,7 +249,7 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 }
 
 func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {
-	columnEnc, err := enc.OpenColumn(column.ColumnInfo())
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -277,7 +277,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableCol
 		}
 
 		memPage := &dataset.MemPage{
-			Info: *page.PageInfo(),
+			Desc: *page.PageDesc(),
 			Data: data,
 		}
 		if err := columnEnc.AppendPage(memPage); err != nil {

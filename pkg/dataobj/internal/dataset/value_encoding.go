@@ -57,7 +57,7 @@ var registry = map[registryKey]registryEntry{}
 
 type (
 	registryKey struct {
-		Value    datasetmd.PhysicalType
+		Physical datasetmd.PhysicalType
 		Encoding datasetmd.EncodingType
 	}
 
@@ -80,7 +80,7 @@ func registerValueEncoding(
 	newDecoder func(streamio.Reader) valueDecoder,
 ) {
 	key := registryKey{
-		Value:    physicalType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	if _, exist := registry[key]; exist {
@@ -98,7 +98,7 @@ func registerValueEncoding(
 // physicalType and encodingType, newValueEncoder returns nil and false.
 func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, w streamio.Writer) (valueEncoder, bool) {
 	key := registryKey{
-		Value:    physicalType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	entry, exist := registry[key]
@@ -113,7 +113,7 @@ func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 // physicalType and encodingType, newValueDecoder returns nil and false.
 func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
 	key := registryKey{
-		Value:    physicalType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	entry, exist := registry[key]

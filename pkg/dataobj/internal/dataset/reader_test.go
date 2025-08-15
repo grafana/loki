@@ -352,14 +352,14 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 
 	dset := FromMemory([]*MemColumn{
 		{
-			Info: ColumnDesc{
+			Desc: ColumnDesc{
 				Tag:       "stream",
 				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 300, // 0 - 299
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 1),
@@ -368,7 +368,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 700, // 300 - 999
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 2),
@@ -379,14 +379,14 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 			},
 		},
 		{
-			Info: ColumnDesc{
+			Desc: ColumnDesc{
 				Tag:       "timestamp",
 				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 250, // 0 - 249
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 0),
@@ -395,7 +395,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 500, // 249 - 749
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 200),
@@ -404,7 +404,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 250, // 750 - 999
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 800),
@@ -797,27 +797,27 @@ func Test_DatasetGenerator(t *testing.T) {
 
 	_, cols := g.Build(t, rand.Int63())
 	require.Equal(t, 2, len(cols))
-	require.Equal(t, g.RowCount, cols[0].ColumnInfo().RowsCount)
+	require.Equal(t, g.RowCount, cols[0].ColumnDesc().RowsCount)
 	// TODO: Row count is < expected. Must be a result of null values at the end.
 	// Remove this comment once the issue is fixed.
 	// require.Equal(t, g.RowCount, cols[1].ColumnInfo().RowsCount)
 
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.CardinalityCount)
-	require.NotNil(t, cols[1].ColumnInfo().Statistics.CardinalityCount)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.CardinalityCount)
+	require.NotNil(t, cols[1].ColumnDesc().Statistics.CardinalityCount)
 
-	t.Logf("timestamp column cardinality: %d", cols[0].ColumnInfo().Statistics.CardinalityCount)
-	t.Logf("label column cardinality: %d", cols[1].ColumnInfo().Statistics.CardinalityCount)
+	t.Logf("timestamp column cardinality: %d", cols[0].ColumnDesc().Statistics.CardinalityCount)
+	t.Logf("label column cardinality: %d", cols[1].ColumnDesc().Statistics.CardinalityCount)
 
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.MinValue)
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.MaxValue)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.MinValue)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.MaxValue)
 
 	var minValue, maxValue Value
-	require.NoError(t, minValue.UnmarshalBinary(cols[0].ColumnInfo().Statistics.MinValue))
-	require.NoError(t, maxValue.UnmarshalBinary(cols[0].ColumnInfo().Statistics.MaxValue))
+	require.NoError(t, minValue.UnmarshalBinary(cols[0].ColumnDesc().Statistics.MinValue))
+	require.NoError(t, maxValue.UnmarshalBinary(cols[0].ColumnDesc().Statistics.MaxValue))
 
 	t.Logf("timestamp column min: %d", minValue.Int64())
 	t.Logf("timestamp column max: %d", maxValue.Int64())
 
-	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnInfo().UncompressedSize)))
-	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnInfo().UncompressedSize)))
+	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnDesc().UncompressedSize)))
+	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnDesc().UncompressedSize)))
 }

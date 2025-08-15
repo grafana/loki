@@ -131,8 +131,10 @@ func (enc *Encoder) dataSize() int {
 // called from the current child [ColumnEncoder] on Close or Discard. Discard
 // calls must pass nil for both data and metadata to denote a discard.
 //
+// numPages specifies how many pages were encoded in the column.
+//
 // enc *must never* retain data or metadata beyond the call to appendColumn.
-func (enc *Encoder) appendColumn(pages int, data, metadata []byte) error {
+func (enc *Encoder) appendColumn(numPages int, data, metadata []byte) error {
 	if enc.curColumn == nil {
 		return errElementNoExist
 	}
@@ -147,7 +149,7 @@ func (enc *Encoder) appendColumn(pages int, data, metadata []byte) error {
 	enc.initBuffers()
 
 	// Update deferred fields now that we know their values.
-	enc.curColumn.PagesCount = uint64(pages)
+	enc.curColumn.PagesCount = uint64(numPages)
 	enc.curColumn.ColumnMetadataOffset = uint64(enc.metadata.Len())
 	enc.curColumn.ColumnMetadataLength = uint64(len(metadata))
 
@@ -284,17 +286,17 @@ func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	// NOTE(rfratto): The caller can pass invalid values for the page info, but
 	// these don't impact encoding so we don't provide any validation.
 	enc.pageDescs = append(enc.pageDescs, &datasetmd.PageDesc{
-		UncompressedSize: uint64(page.Info.UncompressedSize),
-		CompressedSize:   uint64(page.Info.CompressedSize),
-		Crc32:            page.Info.CRC32,
-		RowsCount:        uint64(page.Info.RowCount),
-		ValuesCount:      uint64(page.Info.ValuesCount),
-		Encoding:         page.Info.Encoding,
+		UncompressedSize: uint64(page.Desc.UncompressedSize),
+		CompressedSize:   uint64(page.Desc.CompressedSize),
+		Crc32:            page.Desc.CRC32,
+		RowsCount:        uint64(page.Desc.RowCount),
+		ValuesCount:      uint64(page.Desc.ValuesCount),
+		Encoding:         page.Desc.Encoding,
 
 		DataOffset: uint64(enc.dataOffset + enc.totalPageSize),
 		DataSize:   uint64(len(page.Data)),
 
-		Statistics: page.Info.Stats,
+		Statistics: page.Desc.Stats,
 	})
 
 	enc.memPages = append(enc.memPages, page)
@@ -302,8 +304,8 @@ func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	return nil
 }
 
-// Commit completes the column, committing the final column to the section. After
-// Commit is called, enc can no longer be used.
+// Commit completes the column, appending it to the section. After Commit is
+// called, enc can no longer be used.
 //
 // If no pages have been appnded, Commit appends an empty column to the section.
 func (enc *ColumnEncoder) Commit() error {

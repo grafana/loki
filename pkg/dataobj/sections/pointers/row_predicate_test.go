@@ -14,14 +14,14 @@ type fakeColumn struct{ dataset.Column }
 var (
 	fakePodColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnDesc{
+			Desc: dataset.ColumnDesc{
 				Tag: "values_bloom_filter",
 			},
 		},
 	}
 	fakeNameColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnDesc{
+			Desc: dataset.ColumnDesc{
 				Tag: "column_name",
 			},
 		},
