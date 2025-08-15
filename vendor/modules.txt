@@ -1070,6 +1070,8 @@ github.com/googleapis/gax-go/v2/internallog
 github.com/googleapis/gax-go/v2/internallog/grpclog
 github.com/googleapis/gax-go/v2/internallog/internal
 github.com/googleapis/gax-go/v2/iterator
+# github.com/gophercloud/gophercloud v1.13.0
+## explicit; go 1.14
 # github.com/gophercloud/gophercloud/v2 v2.7.0
 ## explicit; go 1.22
 github.com/gophercloud/gophercloud/v2
@@ -1691,7 +1693,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.305.1-0.20250806170547-208187eaa19b
+# github.com/prometheus/prometheus v0.305.0
 ## explicit; go 1.23.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -1764,6 +1766,8 @@ github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/treecache
 github.com/prometheus/prometheus/util/zeropool
 github.com/prometheus/prometheus/web/api/v1
+# github.com/prometheus/prometheus/v2 v2.35.0-retract
+## explicit; go 1.16
 # github.com/prometheus/sigv4 v0.2.1
 ## explicit; go 1.23.0
 github.com/prometheus/sigv4
