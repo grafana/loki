@@ -18,8 +18,9 @@ import (
 // It reads from the input pipeline, groups the data by specified columns,
 // and applies the aggregation function on each group.
 type VectorAggregationPipeline struct {
-	state  state
-	inputs []Pipeline
+	state           state
+	inputs          []Pipeline
+	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator *aggregator
 	evaluator  expressionEvaluator
@@ -57,6 +58,11 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 // Read reads the next value into its state.
 func (v *VectorAggregationPipeline) Read(ctx context.Context) error {
 	if v.state.err != nil {
+		return v.state.err
+	}
+
+	if v.inputsExhausted {
+		v.state = failureState(EOF)
 		return v.state.err
 	}
 
@@ -137,9 +143,7 @@ func (v *VectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 		}
 	}
 
-	if v.aggregator.NumOfPoints() == 0 {
-		return nil, EOF // no values to aggregate & reached EOF
-	}
+	v.inputsExhausted = true
 
 	return v.aggregator.buildRecord()
 }
