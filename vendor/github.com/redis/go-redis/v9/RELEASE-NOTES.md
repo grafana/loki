@@ -1,5 +1,117 @@
 # Release Notes
 
+# 9.12.1 (2025-08-11)
+## 🚀 Highlights
+In the last version (9.12.0) the client introduced bigger write and read buffer sized. The default value we set was 512KiB.
+However, users reported that this is too big for most use cases and can lead to high memory usage.
+In this version the default value is changed to 256KiB. The `README.md` was updated to reflect the
+correct default value and include a note that the default value can be changed.
+
+## 🐛 Bug Fixes
+
+- fix(options): Add buffer sizes to failover. Update README ([#3468](https://github.com/redis/go-redis/pull/3468))
+
+## 🧰 Maintenance
+
+- fix(options): Add buffer sizes to failover. Update README ([#3468](https://github.com/redis/go-redis/pull/3468))
+- chore: update & fix otel example ([#3466](https://github.com/redis/go-redis/pull/3466))
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@ndyakov](https://github.com/ndyakov) and [@vmihailenco](https://github.com/vmihailenco)
+
+# 9.12.0 (2025-08-05)
+
+## 🚀 Highlights
+
+- This release includes support for [Redis 8.2](https://redis.io/docs/latest/operate/oss_and_stack/stack-with-enterprise/release-notes/redisce/redisos-8.2-release-notes/).
+- Introduces an experimental Query Builders for `FTSearch`, `FTAggregate` and other search commands.
+- Adds support for `EPSILON` option in `FT.VSIM`.
+- Includes bug fixes and improvements contributed by the community related to ring and [redisotel](https://github.com/redis/go-redis/tree/master/extra/redisotel).
+
+## Changes
+- Improve stale issue workflow ([#3458](https://github.com/redis/go-redis/pull/3458))
+- chore(ci): Add 8.2 rc2 pre build for CI ([#3459](https://github.com/redis/go-redis/pull/3459))
+- Added new stream commands ([#3450](https://github.com/redis/go-redis/pull/3450))
+- feat: Add "skip_verify" to Sentinel ([#3428](https://github.com/redis/go-redis/pull/3428))
+- fix: `errors.Join` requires Go 1.20 or later ([#3442](https://github.com/redis/go-redis/pull/3442))
+- DOC-4344 document quickstart examples ([#3426](https://github.com/redis/go-redis/pull/3426))
+- feat(bitop): add support for the new bitop operations ([#3409](https://github.com/redis/go-redis/pull/3409))
+
+## 🚀 New Features
+
+- feat: recover addIdleConn may occur panic ([#2445](https://github.com/redis/go-redis/pull/2445))
+- feat(ring): specify custom health check func via HeartbeatFn option ([#2940](https://github.com/redis/go-redis/pull/2940))
+- Add Query Builder for RediSearch commands ([#3436](https://github.com/redis/go-redis/pull/3436))
+- add configurable buffer sizes for Redis connections ([#3453](https://github.com/redis/go-redis/pull/3453))
+- Add VAMANA vector type to RediSearch ([#3449](https://github.com/redis/go-redis/pull/3449))
+- VSIM add `EPSILON` option ([#3454](https://github.com/redis/go-redis/pull/3454))
+- Add closing support to otel metrics instrumentation ([#3444](https://github.com/redis/go-redis/pull/3444))
+
+## 🐛 Bug Fixes
+
+- fix(redisotel): fix buggy append in reportPoolStats ([#3122](https://github.com/redis/go-redis/pull/3122))
+- fix(search): return results even if doc is empty ([#3457](https://github.com/redis/go-redis/pull/3457))
+- [ISSUE-3402]: Ring.Pipelined return dial timeout error ([#3403](https://github.com/redis/go-redis/pull/3403))
+
+## 🧰 Maintenance
+
+- Merges stale issues jobs into one job with two steps ([#3463](https://github.com/redis/go-redis/pull/3463))
+- improve code readability ([#3446](https://github.com/redis/go-redis/pull/3446))
+- chore(release): 9.12.0-beta.1 ([#3460](https://github.com/redis/go-redis/pull/3460))
+- DOC-5472 time series doc examples ([#3443](https://github.com/redis/go-redis/pull/3443))
+- Add VAMANA compression algorithm tests ([#3461](https://github.com/redis/go-redis/pull/3461))
+- bumped redis 8.2 version used in the CI/CD ([#3451](https://github.com/redis/go-redis/pull/3451))
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@andy-stark-redis](https://github.com/andy-stark-redis), [@cxljs](https://github.com/cxljs), [@elena-kolevska](https://github.com/elena-kolevska), [@htemelski-redis](https://github.com/htemelski-redis), [@jouir](https://github.com/jouir), [@monkey92t](https://github.com/monkey92t), [@ndyakov](https://github.com/ndyakov), [@ofekshenawa](https://github.com/ofekshenawa), [@rokn](https://github.com/rokn), [@smnvdev](https://github.com/smnvdev), [@strobil](https://github.com/strobil) and [@wzy9607](https://github.com/wzy9607)
+
+## New Contributors
+* [@htemelski-redis](https://github.com/htemelski-redis) made their first contribution in [#3409](https://github.com/redis/go-redis/pull/3409)
+* [@smnvdev](https://github.com/smnvdev) made their first contribution in [#3403](https://github.com/redis/go-redis/pull/3403)
+* [@rokn](https://github.com/rokn) made their first contribution in [#3444](https://github.com/redis/go-redis/pull/3444)
+
+# 9.11.0 (2025-06-24)
+
+## 🚀 Highlights
+
+Fixes TxPipeline to work correctly in cluster scenarios, allowing execution of commands
+only in the same slot.
+
+# Changes
+
+## 🚀 New Features
+
+- Set cluster slot for `scan` commands, rather than random ([#2623](https://github.com/redis/go-redis/pull/2623))
+- Add CredentialsProvider field to UniversalOptions ([#2927](https://github.com/redis/go-redis/pull/2927))
+- feat(redisotel): add WithCallerEnabled option ([#3415](https://github.com/redis/go-redis/pull/3415))
+
+## 🐛 Bug Fixes
+
+- fix(txpipeline): keyless commands should take the slot of the keyed ([#3411](https://github.com/redis/go-redis/pull/3411))
+- fix(loading): cache the loaded flag for slave nodes ([#3410](https://github.com/redis/go-redis/pull/3410))
+- fix(txpipeline): should return error on multi/exec on multiple slots ([#3408](https://github.com/redis/go-redis/pull/3408))
+- fix: check if the shard exists to avoid returning nil ([#3396](https://github.com/redis/go-redis/pull/3396))
+
+## 🧰 Maintenance
+
+- feat: optimize connection pool waitTurn ([#3412](https://github.com/redis/go-redis/pull/3412))
+- chore(ci): update CI redis builds ([#3407](https://github.com/redis/go-redis/pull/3407))
+- chore: remove a redundant method from `Ring`, `Client` and `ClusterClient` ([#3401](https://github.com/redis/go-redis/pull/3401))
+- test: refactor TestBasicCredentials using table-driven tests ([#3406](https://github.com/redis/go-redis/pull/3406))
+- perf: reduce unnecessary memory allocation operations ([#3399](https://github.com/redis/go-redis/pull/3399))
+- fix: insert entry during iterating over a map ([#3398](https://github.com/redis/go-redis/pull/3398))
+- DOC-5229 probabilistic data type examples ([#3413](https://github.com/redis/go-redis/pull/3413))
+- chore(deps): bump rojopolis/spellcheck-github-actions from 0.49.0 to 0.51.0 ([#3414](https://github.com/redis/go-redis/pull/3414))
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@andy-stark-redis](https://github.com/andy-stark-redis), [@boekkooi-impossiblecloud](https://github.com/boekkooi-impossiblecloud), [@cxljs](https://github.com/cxljs), [@dcherubini](https://github.com/dcherubini), [@dependabot[bot]](https://github.com/apps/dependabot), [@iamamirsalehi](https://github.com/iamamirsalehi), [@ndyakov](https://github.com/ndyakov), [@pete-woods](https://github.com/pete-woods), [@twz915](https://github.com/twz915) and [dependabot[bot]](https://github.com/apps/dependabot)
+
 # 9.10.0 (2025-06-06)
 
 ## 🚀 Highlights
@@ -161,3 +273,139 @@ For a complete list of changes, see the [full changelog](https://github.com/redi
 We would like to thank all the contributors who made this release possible:
 
 [@alexander-menshchikov](https://github.com/alexander-menshchikov), [@EXPEbdodla](https://github.com/EXPEbdodla), [@afti](https://github.com/afti), [@dmaier-redislabs](https://github.com/dmaier-redislabs), [@four_leaf_clover](https://github.com/four_leaf_clover), [@alohaglenn](https://github.com/alohaglenn), [@gh73962](https://github.com/gh73962), [@justinmir](https://github.com/justinmir), [@LINKIWI](https://github.com/LINKIWI), [@liushuangbill](https://github.com/liushuangbill), [@golang88](https://github.com/golang88), [@gnpaone](https://github.com/gnpaone), [@ndyakov](https://github.com/ndyakov), [@nikolaydubina](https://github.com/nikolaydubina), [@oleglacto](https://github.com/oleglacto), [@andy-stark-redis](https://github.com/andy-stark-redis), [@rodneyosodo](https://github.com/rodneyosodo), [@dependabot](https://github.com/dependabot), [@rfyiamcool](https://github.com/rfyiamcool), [@frankxjkuang](https://github.com/frankxjkuang), [@fukua95](https://github.com/fukua95), [@soleymani-milad](https://github.com/soleymani-milad), [@ofekshenawa](https://github.com/ofekshenawa), [@khasanovbi](https://github.com/khasanovbi)
+
+
+# Old Changelog
+## Unreleased
+
+### Changed
+
+* `go-redis` won't skip span creation if the parent spans is not recording. ([#2980](https://github.com/redis/go-redis/issues/2980))
+  Users can use the OpenTelemetry sampler to control the sampling behavior.
+  For instance, you can use the `ParentBased(NeverSample())` sampler from `go.opentelemetry.io/otel/sdk/trace` to keep
+  a similar behavior (drop orphan spans) of `go-redis` as before.
+
+## [9.0.5](https://github.com/redis/go-redis/compare/v9.0.4...v9.0.5) (2023-05-29)
+
+
+### Features
+
+* Add ACL LOG ([#2536](https://github.com/redis/go-redis/issues/2536)) ([31ba855](https://github.com/redis/go-redis/commit/31ba855ddebc38fbcc69a75d9d4fb769417cf602))
+* add field protocol to setupClusterQueryParams ([#2600](https://github.com/redis/go-redis/issues/2600)) ([840c25c](https://github.com/redis/go-redis/commit/840c25cb6f320501886a82a5e75f47b491e46fbe))
+* add protocol option ([#2598](https://github.com/redis/go-redis/issues/2598)) ([3917988](https://github.com/redis/go-redis/commit/391798880cfb915c4660f6c3ba63e0c1a459e2af))
+
+
+
+## [9.0.4](https://github.com/redis/go-redis/compare/v9.0.3...v9.0.4) (2023-05-01)
+
+
+### Bug Fixes
+
+* reader float parser ([#2513](https://github.com/redis/go-redis/issues/2513)) ([46f2450](https://github.com/redis/go-redis/commit/46f245075e6e3a8bd8471f9ca67ea95fd675e241))
+
+
+### Features
+
+* add client info command ([#2483](https://github.com/redis/go-redis/issues/2483)) ([b8c7317](https://github.com/redis/go-redis/commit/b8c7317cc6af444603731f7017c602347c0ba61e))
+* no longer verify HELLO error messages ([#2515](https://github.com/redis/go-redis/issues/2515)) ([7b4f217](https://github.com/redis/go-redis/commit/7b4f2179cb5dba3d3c6b0c6f10db52b837c912c8))
+* read the structure to increase the judgment of the omitempty op… ([#2529](https://github.com/redis/go-redis/issues/2529)) ([37c057b](https://github.com/redis/go-redis/commit/37c057b8e597c5e8a0e372337f6a8ad27f6030af))
+
+
+
+## [9.0.3](https://github.com/redis/go-redis/compare/v9.0.2...v9.0.3) (2023-04-02)
+
+### New Features
+
+- feat(scan): scan time.Time sets the default decoding (#2413)
+- Add support for CLUSTER LINKS command (#2504)
+- Add support for acl dryrun command (#2502)
+- Add support for COMMAND GETKEYS & COMMAND GETKEYSANDFLAGS (#2500)
+- Add support for LCS Command (#2480)
+- Add support for BZMPOP (#2456)
+- Adding support for ZMPOP command (#2408)
+- Add support for LMPOP (#2440)
+- feat: remove pool unused fields (#2438)
+- Expiretime and PExpireTime (#2426)
+- Implement `FUNCTION` group of commands (#2475)
+- feat(zadd): add ZAddLT and ZAddGT (#2429)
+- Add: Support for COMMAND LIST command (#2491)
+- Add support for BLMPOP (#2442)
+- feat: check pipeline.Do to prevent confusion with Exec (#2517)
+- Function stats, function kill, fcall and fcall_ro (#2486)
+- feat: Add support for CLUSTER SHARDS command (#2507)
+- feat(cmd): support for adding byte,bit parameters to the bitpos command (#2498)
+
+### Fixed
+
+- fix: eval api cmd.SetFirstKeyPos (#2501)
+- fix: limit the number of connections created (#2441)
+- fixed #2462  v9 continue support dragonfly,  it's Hello command return "NOAUTH Authentication required" error (#2479)
+- Fix for internal/hscan/structmap.go:89:23: undefined: reflect.Pointer (#2458)
+- fix: group lag can be null (#2448)
+
+### Maintenance
+
+- Updating to the latest version of redis (#2508)
+- Allowing for running tests on a port other than the fixed 6380 (#2466)
+- redis 7.0.8 in tests (#2450)
+- docs: Update redisotel example for v9 (#2425)
+- chore: update go mod, Upgrade golang.org/x/net version to 0.7.0 (#2476)
+- chore: add Chinese translation (#2436)
+- chore(deps): bump github.com/bsm/gomega from 1.20.0 to 1.26.0 (#2421)
+- chore(deps): bump github.com/bsm/ginkgo/v2 from 2.5.0 to 2.7.0 (#2420)
+- chore(deps): bump actions/setup-go from 3 to 4 (#2495)
+- docs: add instructions for the HSet api (#2503)
+- docs: add reading lag field comment (#2451)
+- test: update go mod before testing(go mod tidy) (#2423)
+- docs: fix comment typo (#2505)
+- test: remove testify (#2463)
+- refactor: change ListElementCmd to KeyValuesCmd. (#2443)
+- fix(appendArg): appendArg case special type (#2489)
+
+## [9.0.2](https://github.com/redis/go-redis/compare/v9.0.1...v9.0.2) (2023-02-01)
+
+### Features
+
+* upgrade OpenTelemetry, use the new metrics API. ([#2410](https://github.com/redis/go-redis/issues/2410)) ([e29e42c](https://github.com/redis/go-redis/commit/e29e42cde2755ab910d04185025dc43ce6f59c65))
+
+## v9 2023-01-30
+
+### Breaking
+
+- Changed Pipelines to not be thread-safe any more.
+
+### Added
+
+- Added support for [RESP3](https://github.com/antirez/RESP3/blob/master/spec.md) protocol. It was
+  contributed by @monkey92t who has done the majority of work in this release.
+- Added `ContextTimeoutEnabled` option that controls whether the client respects context timeouts
+  and deadlines. See
+  [Redis Timeouts](https://redis.uptrace.dev/guide/go-redis-debugging.html#timeouts) for details.
+- Added `ParseClusterURL` to parse URLs into `ClusterOptions`, for example,
+  `redis://user:password@localhost:6789?dial_timeout=3&read_timeout=6s&addr=localhost:6790&addr=localhost:6791`.
+- Added metrics instrumentation using `redisotel.IstrumentMetrics`. See
+  [documentation](https://redis.uptrace.dev/guide/go-redis-monitoring.html)
+- Added `redis.HasErrorPrefix` to help working with errors.
+
+### Changed
+
+- Removed asynchronous cancellation based on the context timeout. It was racy in v8 and is
+  completely gone in v9.
+- Reworked hook interface and added `DialHook`.
+- Replaced `redisotel.NewTracingHook` with `redisotel.InstrumentTracing`. See
+  [example](example/otel) and
+  [documentation](https://redis.uptrace.dev/guide/go-redis-monitoring.html).
+- Replaced `*redis.Z` with `redis.Z` since it is small enough to be passed as value without making
+  an allocation.
+- Renamed the option `MaxConnAge` to `ConnMaxLifetime`.
+- Renamed the option `IdleTimeout` to `ConnMaxIdleTime`.
+- Removed connection reaper in favor of `MaxIdleConns`.
+- Removed `WithContext` since `context.Context` can be passed directly as an arg.
+- Removed `Pipeline.Close` since there is no real need to explicitly manage pipeline resources and
+  it can be safely reused via `sync.Pool` etc. `Pipeline.Discard` is still available if you want to
+  reset commands for some reason.
+
+### Fixed
+
+- Improved and fixed pipeline retries.
+- As usually, added support for more commands and fixed some bugs.
