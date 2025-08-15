@@ -23,24 +23,24 @@ type tocMetrics struct {
 func newTableOfContentsMetrics() *tocMetrics {
 	metrics := &tocMetrics{
 		tocReplayTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_dataobj_consumer_metastore_replay_seconds",
-			Help:                            "Time taken to replay existing metastore data into the in-memory builder in seconds",
+			Name:                            "loki_metastore_toc_replay_seconds",
+			Help:                            "Time taken to replay existing Table of Contents data into the new builder in seconds",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
 		tocEncodingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_dataobj_consumer_metastore_encoding_seconds",
-			Help:                            "Time taken to add the new metadata & encode the new metastore data object in seconds",
+			Name:                            "loki_metastore_toc_encoding_seconds",
+			Help:                            "Time taken to add the new entries & encode the a single Table of Contents metastore file in seconds",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
 		tocProcessingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_dataobj_consumer_metastore_processing_seconds",
-			Help:                            "Total time taken to update all metastores for a flushed dataobj in seconds",
+			Name:                            "loki_metastore_toc_processing_seconds",
+			Help:                            "Total time taken to update all Table of Contents files for a metastore WriteEntry operation in seconds",
 			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -86,7 +86,7 @@ func (p *tocMetrics) unregister(reg prometheus.Registerer) {
 	}
 }
 
-func (p *tocMetrics) incMetastoreWrites(status status) {
+func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
