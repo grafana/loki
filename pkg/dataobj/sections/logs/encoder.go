@@ -146,10 +146,8 @@ func (enc *encoder) Reset() {
 	enc.sortInfo = nil
 }
 
-// SetTenant sets the tenant who owns the streams section.
-func (enc *encoder) SetTenant(tenant string) {
-	enc.tenant = tenant
-}
+// SetTenant sets the (optional) tenant who owns the logs section.
+func (enc *encoder) SetTenant(tenant string) { enc.tenant = tenant }
 
 // append adds data and metadata to enc. append must only be called from child
 // elements on Close and Discard. Discard calls must pass nil for both data and

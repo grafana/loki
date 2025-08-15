@@ -47,6 +47,10 @@ type Builder struct {
 	metrics *Metrics
 	opts    BuilderOptions
 
+	// The optional tenant. If specified, the section must only contain logs
+	// owned by the tenant.
+	tenant string
+
 	// Sorting the entire set of logs is very expensive, so we need to break it
 	// up into smaller pieces:
 	//
@@ -85,6 +89,9 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 		opts:    opts,
 	}
 }
+
+// SetTenant sets the (optional) tenant for the builder.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -223,6 +230,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 			},
 		},
 	})
+	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
@@ -284,7 +292,9 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 	return columnEnc.Commit()
 }
 
-// Reset resets all state, allowing b to be reused.
+// Reset resets all state, allowing b to be reused. It does not reset
+// the tenant. If the builder is be used for a different tenant then you
+// must also set the new tenant with [SetTenant].
 func (b *Builder) Reset() {
 	b.metrics.recordCount.Set(0)
 
