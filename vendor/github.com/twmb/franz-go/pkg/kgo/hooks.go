@@ -13,7 +13,7 @@ import (
 
 // Hook is a hook to be called when something happens in kgo.
 //
-// The base Hook interface is useless, but wherever a hook can occur in kgo,
+// The base Hook interface is meaningless, but wherever a hook can occur in kgo,
 // the client checks if your hook implements an appropriate interface. If so,
 // your hook is called.
 //
@@ -56,8 +56,9 @@ type HookClientClosed interface {
 // HookBrokerConnect is called after a connection to a broker is opened.
 type HookBrokerConnect interface {
 	// OnBrokerConnect is passed the broker metadata, how long it took to
-	// dial, and either the dial's resulting net.Conn or error.
-	OnBrokerConnect(meta BrokerMetadata, dialDur time.Duration, conn net.Conn, err error)
+	// dial and initialize the connection (issue ApiVersions and run through
+	// any SASL flow), and either the dial's resulting net.Conn or any error.
+	OnBrokerConnect(meta BrokerMetadata, initDur time.Duration, conn net.Conn, err error)
 }
 
 // HookBrokerDisconnect is called when a connection to a broker is closed.
@@ -290,7 +291,7 @@ type FetchBatchMetrics struct {
 	CompressionType uint8
 }
 
-// HookFetchBatchRead is called whenever a batch if read within the client.
+// HookFetchBatchRead is called whenever a batch is read within the client.
 //
 // Note that this hook is called when processing, but a batch may be internally
 // discarded after processing in some uncommon specific circumstances.
