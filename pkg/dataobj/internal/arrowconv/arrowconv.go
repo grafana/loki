@@ -108,7 +108,7 @@ func FromScalar(s scalar.Scalar, toType datasetmd.PhysicalType) dataset.Value {
 //
 //   - For [arrow.INT64], v must be a [datasetmd.PHYSICAL_TYPE_INT64].
 //   - For [arrow.UINT64], v must be a [datasetmd.PHYSICAL_TYPE_UINT64].
-//   - For [arrow.TIMESTAMP], v must be a [datasetmd.VALUE_TYPE_INT64], which
+//   - For [arrow.TIMESTAMP], v must be a [datasetmd.PHYSICAL_TYPE_INT64], which
 //     will be converted into a nanosecond timestamp.
 //   - For [arrow.STRING], v must be a [datasetmd.PHYSICAL_TYPE_BINARY].
 //   - For [arrow.BINARY], v must be a [datasetmd.PHYSICAL_TYPE_BINARY].
