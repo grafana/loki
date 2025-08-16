@@ -1,0 +1,29 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+
+  storage:
+    use_thanos_objstore: true
+    bucketNames:
+        chunks: chunks_thanos
+        ruler: ruler_thanos
+        admin: admin_thanos
+    object_store:
+      type: s3
+
+deploymentMode: SingleBinary
+singleBinary:
+  replicas: 1
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+minio:
+  enabled: true
+
+
