@@ -107,19 +107,19 @@ local weeklyImageJobs = {
       changes: {
         'runs-on': 'ubuntu-latest',
         outputs: {
-          docs_or_helm_only: '${{ steps.filter.outputs.other != \'true\' && (steps.filter.outputs.docs == \'true\' || steps.filter.outputs.helm == \'true\') }}',
+          docs_or_helm_only: "${{ steps.filter.outputs.other != 'true' && (steps.filter.outputs.docs == 'true' || steps.filter.outputs.helm == 'true') }}",
         },
         steps: [
           {
             uses: 'actions/checkout@v4',
-            'with': {
+            with: {
               'persist-credentials': false,
             },
           },
           {
             id: 'filter',
             uses: 'dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36',
-            'with': {
+            with: {
               filters: |||
                 docs:
                   - 'docs/**'
@@ -138,9 +138,9 @@ local weeklyImageJobs = {
       },
       full: {
         needs: 'changes',
-        'if': '${{ needs.changes.outputs.docs_or_helm_only != \'true\' }}',
+        'if': "${{ needs.changes.outputs.docs_or_helm_only != 'true' }}",
         uses: checkTemplate,
-        'with': {
+        with: {
           build_image: buildImage,
           golang_ci_lint_version: golangCiLintVersion,
           release_lib_ref: releaseLibRef,
@@ -154,11 +154,11 @@ local weeklyImageJobs = {
         'runs-on': 'ubuntu-latest',
         steps: [
           {
-            'if': '${{ needs.changes.outputs.docs_or_helm_only == \'true\' }}',
+            'if': "${{ needs.changes.outputs.docs_or_helm_only == 'true' }}",
             run: 'echo "docs/helm-only; bypass source code check"',
           },
           {
-            'if': '${{ needs.changes.outputs.docs_or_helm_only != \'true\' }}',
+            'if': "${{ needs.changes.outputs.docs_or_helm_only != 'true' }}",
             run: 'test "${{ needs.full.result }}" = "success"',
           },
         ],
