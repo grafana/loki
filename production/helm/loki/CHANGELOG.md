@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.36.1
+- [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)
+
 ## 6.36.0
 
 - [BREAKING] Remove tokengen job and kubectl dependency. Admin token secret must be created manually if using the enterprise provisioner. Last version with tokengen support: 6.35.1.[#18803](https://github.com/grafana/loki/pull/18803)

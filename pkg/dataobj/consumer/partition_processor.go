@@ -64,7 +64,6 @@ type partitionProcessor struct {
 	builderOnce  sync.Once
 	builderCfg   logsobj.BuilderConfig
 	bucket       objstore.Bucket
-	bufPool      *sync.Pool
 	scratchStore scratch.Store
 
 	// Idle stream handling
@@ -103,7 +102,6 @@ func newPartitionProcessor(
 	partition int32,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	bufPool *sync.Pool,
 	idleFlushTimeout time.Duration,
 	eventsProducerClient *kgo.Client,
 ) *partitionProcessor {
@@ -151,7 +149,6 @@ func newPartitionProcessor(
 		metrics:              metrics,
 		uploader:             uploader,
 		metastoreTocWriter:   metastoreTocWriter,
-		bufPool:              bufPool,
 		idleFlushTimeout:     idleFlushTimeout,
 		eventsProducerClient: eventsProducerClient,
 		clock:                quartz.NewReal(),

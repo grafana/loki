@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -47,8 +46,6 @@ type Service struct {
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
-
-	bufPool *sync.Pool
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
@@ -61,11 +58,6 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
-		bufPool: &sync.Pool{
-			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 0, cfg.BuilderConfig.TargetObjectSize))
-			},
-		},
 	}
 
 	consumerClient, err := consumer.NewGroupClient(
@@ -120,7 +112,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, s.scratchStore, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, s.scratchStore, tenant, virtualShard, topic, partition, s.logger, s.reg, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
