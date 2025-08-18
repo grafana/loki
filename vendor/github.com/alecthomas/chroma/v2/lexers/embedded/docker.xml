@@ -3,10 +3,14 @@
     <name>Docker</name>
     <alias>docker</alias>
     <alias>dockerfile</alias>
+    <alias>containerfile</alias>
     <filename>Dockerfile</filename>
     <filename>Dockerfile.*</filename>
     <filename>*.Dockerfile</filename>
     <filename>*.docker</filename>
+    <filename>Containerfile</filename>
+    <filename>Containerfile.*</filename>
+    <filename>*.Containerfile</filename>
     <mime_type>text/x-dockerfile-config</mime_type>
     <case_insensitive>true</case_insensitive>
   </config>
@@ -40,9 +44,16 @@
           <using lexer="Bash" />
         </bygroups>
       </rule>
-      <rule pattern="((?:FROM|MAINTAINER|EXPOSE|WORKDIR|USER|STOPSIGNAL)|VOLUME)\b(.*)">
+      <rule
+        pattern="((?:FROM|MAINTAINER|EXPOSE|WORKDIR|USER|STOPSIGNAL)|VOLUME)\b(\s)([\S]*)\b(?:(\s)(AS)\b(\s)([\S]*))?\b"
+      >
         <bygroups>
           <token type="Keyword" />
+          <token type="TextWhitespace" />
+          <token type="LiteralString" />
+          <token type="TextWhitespace" />
+          <token type="Keyword" />
+          <token type="TextWhitespace" />
           <token type="LiteralString" />
         </bygroups>
       </rule>

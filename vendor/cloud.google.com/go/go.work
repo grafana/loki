@@ -29,6 +29,7 @@ use (
 	./batch
 	./beyondcorp
 	./bigquery
+	./bigquery/v2
 	./bigtable
 	./billing
 	./binaryauthorization
@@ -105,6 +106,7 @@ use (
 	./logging
 	./longrunning
 	./lustre
+	./maintenance
 	./managedidentities
 	./managedkafka
 	./maps
@@ -136,6 +138,7 @@ use (
 	./privilegedaccessmanager
 	./profiler
 	./pubsub
+	./pubsub/v2
 	./pubsublite
 	./rapidmigrationassessment
 	./recaptchaenterprise

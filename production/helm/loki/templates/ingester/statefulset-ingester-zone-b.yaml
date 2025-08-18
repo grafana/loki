@@ -11,6 +11,9 @@ metadata:
     app.kubernetes.io/part-of: memberlist
     name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
     rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
+    {{- with .Values.ingester.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
@@ -24,7 +27,7 @@ spec:
   replicas: {{ $replicas }}
 {{- end }}
   podManagementPolicy: Parallel
-  serviceName: {{ include "loki.ingesterFullname" . }}-zone-b
+  serviceName: {{ include "loki.ingesterFullname" . }}-zone-b-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*

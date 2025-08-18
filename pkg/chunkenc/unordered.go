@@ -271,7 +271,10 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata)
 			if !matches {
 				return nil
@@ -331,7 +334,10 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			structuredMetadata, err := hb.symbolizer.Lookup(structuredMetadataSymbols, labelsBuilder)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
 
 			for _, extractor := range extractor {
 				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
@@ -479,7 +485,11 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
+			lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+			if err != nil {
+				return fmt.Errorf("symbolizer lookup: %w", err)
+			}
+			_, err = out.Append(ts, line, lbls)
 			return err
 		},
 	)
@@ -619,7 +629,11 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 				}
 			}
 		}
-		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
+		lbls, err := hb.symbolizer.Lookup(structuredMetadataSymbols, nil)
+		if err != nil {
+			return fmt.Errorf("symbolizer lookup: %w", err)
+		}
+		if _, err := hb.Append(ts, line, lbls); err != nil {
 			return err
 		}
 	}

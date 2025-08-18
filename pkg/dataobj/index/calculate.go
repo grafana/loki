@@ -1,7 +1,6 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,27 +26,37 @@ import (
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
 	builderMtx      sync.Mutex
+
+	// indexStreamIDLookup is a mapping between the streamID in a logs object & a streamID in the index object.
+	indexStreamIDLookup map[int64]int64
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder, builderMtx: sync.Mutex{}}
+	return &Calculator{indexobjBuilder: indexobjBuilder, builderMtx: sync.Mutex{}, indexStreamIDLookup: make(map[int64]int64)}
 }
 
 func (c *Calculator) Reset() {
 	c.indexobjBuilder.Reset()
+	clear(c.indexStreamIDLookup)
 }
 
-func (c *Calculator) Flush(buffer *bytes.Buffer) (indexobj.FlushStats, error) {
-	return c.indexobjBuilder.Flush(buffer)
+func (c *Calculator) TimeRange() (minTime, maxTime time.Time) {
+	return c.indexobjBuilder.TimeRange()
+}
+
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
+	return c.indexobjBuilder.Flush()
 }
 
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
+// Calculate is not thread-safe.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
+	// The mapping must be unique for every logs object
+	clear(c.indexStreamIDLookup)
+
 	// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
-		sectionLogger := log.With(logger, "section", i)
-		level.Debug(sectionLogger).Log("msg", "processing streams section")
-		if err := c.processStreamsSection(ctx, section, objectPath); err != nil {
+		if err := c.processStreamsSection(ctx, section); err != nil {
 			return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 		}
 	}
@@ -58,7 +67,6 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
-			level.Debug(sectionLogger).Log("msg", "processing logs section")
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
 			if err := c.processLogsSection(ctx, sectionLogger, objectPath, section, int64(i)); err != nil {
@@ -73,7 +81,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, objectPath string) error {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) error {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)
@@ -94,7 +102,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			if err != nil {
 				return fmt.Errorf("failed to append to stream: %w", err)
 			}
-			c.indexobjBuilder.RecordStreamRef(objectPath, stream.ID, newStreamID)
+			c.indexStreamIDLookup[stream.ID] = newStreamID
 		}
 	}
 	return nil
@@ -126,7 +134,8 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
-		if !logs.IsMetadataColumn(column.Type) {
+		logsType, _ := logs.ParseColumnType(column.Type)
+		if logsType != logs.ColumnTypeMetadata {
 			continue
 		}
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
@@ -163,7 +172,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		// Lock the mutex once per read for perf reasons.
 		c.builderMtx.Lock()
 		for _, log := range logsInfo[:n] {
-			err = c.indexobjBuilder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, log.timestamp, log.length)
+			err = c.indexobjBuilder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, c.indexStreamIDLookup[log.streamID], log.timestamp, log.length)
 			if err != nil {
 				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to observe log line: %w", err)

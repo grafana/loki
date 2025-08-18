@@ -20,6 +20,11 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
+
+	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
+	_ "github.com/go-sql-driver/mysql" //nolint:revive
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
@@ -34,9 +39,10 @@ type Service struct {
 	client    *http.Client
 	localAddr string
 
-	cfg    Config
-	logger log.Logger
-	reg    prometheus.Registerer
+	cfg             Config
+	logger          log.Logger
+	reg             prometheus.Registerer
+	goldfishStorage goldfish.Storage
 }
 
 func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
@@ -85,6 +91,9 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 	}
 	svc.Service = services.NewBasicService(nil, svc.run, svc.stop)
 	if err := svc.initUIFs(); err != nil {
+		return nil, err
+	}
+	if err := svc.initGoldfishDB(); err != nil {
 		return nil, err
 	}
 	svc.RegisterHandler()
@@ -175,6 +184,9 @@ func (s *Service) stop(_ error) error {
 	if s.reg != nil {
 		s.reg.Unregister(s.node.Metrics())
 	}
+	if s.goldfishStorage != nil {
+		s.goldfishStorage.Close()
+	}
 	return s.node.Stop()
 }
 
@@ -205,4 +217,36 @@ func deadlineDuration(ctx context.Context) (d time.Duration, ok bool) {
 		return time.Until(t), true
 	}
 	return 0, false
+}
+
+// initGoldfishDB initializes the database connection for goldfish features
+func (s *Service) initGoldfishDB() error {
+	if !s.cfg.Goldfish.Enable {
+		level.Info(s.logger).Log("msg", "goldfish feature disabled, using noop storage")
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	// Create storage configuration
+	storageConfig := goldfish.StorageConfig{
+		Type:             "cloudsql",
+		CloudSQLHost:     s.cfg.Goldfish.CloudSQLHost,
+		CloudSQLPort:     s.cfg.Goldfish.CloudSQLPort,
+		CloudSQLDatabase: s.cfg.Goldfish.CloudSQLDatabase,
+		CloudSQLUser:     s.cfg.Goldfish.CloudSQLUser,
+		MaxConnections:   s.cfg.Goldfish.MaxConnections,
+		MaxIdleTime:      s.cfg.Goldfish.MaxIdleTime,
+	}
+
+	storage, err := goldfish.NewMySQLStorage(storageConfig, s.logger)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to create goldfish storage, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	s.goldfishStorage = storage
+	level.Info(s.logger).Log("msg", "goldfish storage initialized successfully")
+	return nil
 }

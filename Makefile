@@ -15,7 +15,15 @@ SHELL = /usr/bin/env bash -o pipefail
 # want to speed up development you can run make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable.
 BUILD_IN_CONTAINER ?= true
+NONINTERACTIVE     ?= false
 CI                 ?= false
+
+# Docker flags for container interaction
+ifeq ($(NONINTERACTIVE),true)
+DOCKER_INTERACTIVE_FLAGS :=
+else
+DOCKER_INTERACTIVE_FLAGS := --tty --interactive
+endif
 
 # Ensure you run `make release-workflows` after changing this
 GO_VERSION         := 1.24.4
@@ -92,10 +100,22 @@ MOUNT_FLAGS    := :delegated
 define run_in_container
 	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
 	@echo ">>> Running make $@ in container ..."
-	docker run --rm --tty --interactive \
+	$(eval GIT_MOUNT := $(shell \
+		if git rev-parse --git-dir >/dev/null 2>&1; then \
+			GIT_DIR=$$(git rev-parse --git-dir); \
+			if [ "$$GIT_DIR" != ".git" ]; then \
+				COMMON_DIR=$$(git rev-parse --git-common-dir 2>/dev/null || echo "$$GIT_DIR"); \
+				echo "-v $$GIT_DIR:$$GIT_DIR$(MOUNT_FLAGS) -v $$COMMON_DIR:$$COMMON_DIR$(MOUNT_FLAGS)"; \
+			else \
+				ABS_GIT_DIR=$$(cd $$GIT_DIR && pwd); \
+				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
+			fi; \
+		fi))
+	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
 		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(GIT_MOUNT) \
 		$(BUILD_IMAGE) -f Makefile $@;
 endef
 

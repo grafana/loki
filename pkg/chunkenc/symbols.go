@@ -93,9 +93,9 @@ func (s *symbolizer) add(lbl string) uint32 {
 }
 
 // Lookup coverts and returns labels pairs for the given symbols
-func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) labels.Labels {
+func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.Labels, error) {
 	if len(syms) == 0 {
-		return labels.EmptyLabels()
+		return labels.EmptyLabels(), nil
 	}
 
 	if buf == nil {
@@ -118,17 +118,23 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) labels.Lab
 		} else {
 			// If we haven't seen this name before, look it up and normalize it
 			name = s.lookup(symbol.Name)
-			normalized := labelNamer.Build(name)
-			s.mtx.Lock()
-			s.normalizedNames[symbol.Name] = normalized
-			s.mtx.Unlock()
-			name = normalized
+			// If we have a match for the symbol name, normalize it. Otherwise keep "" as the name.
+			if name != "" {
+				normalized, err := labelNamer.Build(name)
+				if err != nil {
+					return labels.EmptyLabels(), err
+				}
+				s.mtx.Lock()
+				s.normalizedNames[symbol.Name] = normalized
+				s.mtx.Unlock()
+				name = normalized
+			}
 		}
 
 		buf.Add(name, s.lookup(symbol.Value))
 	}
 
-	return buf.Labels()
+	return buf.Labels(), nil
 }
 
 func (s *symbolizer) lookup(idx uint32) string {

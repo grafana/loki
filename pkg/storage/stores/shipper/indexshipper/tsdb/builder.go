@@ -108,7 +108,7 @@ func (b *Builder) Build(
 	}
 
 	// First write tenant/index-bounds-random.staging
-	rng := rand.Int63() //#nosec G404 -- just generating a random filename in a slightly unidiomatic way. Collision resistance is not a concern.
+	rng := rand.Int63() //#nosec G404 -- just generating a random filename in a slightly unidiomatic way. Collision resistance is not a concern. -- nosemgrep: math-random-used
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 

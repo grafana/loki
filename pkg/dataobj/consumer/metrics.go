@@ -20,7 +20,7 @@ type partitionOffsetMetrics struct {
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
 
-	latestDelay     prometheus.Gauge     // Latest delta bewteen record timestamp and current time
+	latestDelay     prometheus.Gauge     // Latest delta between record timestamp and current time
 	processingDelay prometheus.Histogram // Processing delay histogram
 
 	// Data volume metrics

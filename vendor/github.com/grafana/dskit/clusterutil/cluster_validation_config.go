@@ -24,9 +24,9 @@ func (cfg *ClusterValidationConfig) RegisteredFlags() flagext.RegisteredFlags {
 
 type ServerClusterValidationConfig struct {
 	ClusterValidationConfig `yaml:",inline"`
-	GRPC                    ClusterValidationProtocolConfig                  `yaml:"grpc" category:"experimental"`
-	HTTP                    ClusterValidationProtocolWithExcludedPathsConfig `yaml:"http" category:"experimental"`
-	registeredFlags         flagext.RegisteredFlags                          `yaml:"-"`
+	GRPC                    ClusterValidationProtocolConfig        `yaml:"grpc" category:"experimental"`
+	HTTP                    ClusterValidationProtocolConfigForHTTP `yaml:"http" category:"experimental"`
+	registeredFlags         flagext.RegisteredFlags                `yaml:"-"`
 }
 
 func (cfg *ServerClusterValidationConfig) Validate() error {
@@ -75,12 +75,14 @@ func (cfg *ClusterValidationProtocolConfig) RegisterFlagsWithPrefix(prefix strin
 	f.BoolVar(&cfg.Enabled, enabledFlag, false, "When enabled, cluster label validation is executed: configured cluster validation label is compared with the cluster validation label received through the requests.")
 }
 
-type ClusterValidationProtocolWithExcludedPathsConfig struct {
+type ClusterValidationProtocolConfigForHTTP struct {
 	ClusterValidationProtocolConfig `yaml:",inline"`
 	ExcludedPaths                   flagext.StringSliceCSV `yaml:"excluded_paths" category:"experimental"`
+	ExcludedUserAgents              flagext.StringSliceCSV `yaml:"excluded_user_agents" category:"experimental"`
 }
 
-func (cfg *ClusterValidationProtocolWithExcludedPathsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *ClusterValidationProtocolConfigForHTTP) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.ClusterValidationProtocolConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.Var(&cfg.ExcludedPaths, prefix+"excluded-paths", "Comma-separated list of url paths that are excluded from the cluster validation check.")
+	f.Var(&cfg.ExcludedUserAgents, prefix+"excluded-user-agents", "Comma-separated list of user agents that are excluded from the cluster validation check.")
 }

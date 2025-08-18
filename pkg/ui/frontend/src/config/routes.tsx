@@ -14,6 +14,7 @@ import ComingSoon from "@/pages/coming-soon";
 import DeletesPage from "@/pages/deletes";
 import NewDeleteRequest from "@/pages/new-delete";
 import AnalyzeLabels from "@/pages/analyze-labels";
+import GoldfishPage from "@/pages/goldfish";
 
 type RouteObjectWithBreadcrumb = Omit<RouteObject, "children"> & {
   breadcrumb: string | BreadcrumbComponentType;
@@ -105,6 +106,11 @@ export const routes: RouteObjectWithBreadcrumb[] = [
     path: "/rules",
     breadcrumb: "Rules",
     element: <ComingSoon />,
+  },
+  {
+    path: "/goldfish",
+    breadcrumb: "Goldfish",
+    element: <GoldfishPage />,
   },
   {
     path: "/404",

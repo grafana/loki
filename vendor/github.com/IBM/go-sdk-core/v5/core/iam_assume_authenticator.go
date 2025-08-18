@@ -265,6 +265,7 @@ func (authenticator *IamAssumeAuthenticator) getClient() *http.Client {
 				transport := &http.Transport{
 					// #nosec G402
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+					Proxy:           http.ProxyFromEnvironment,
 				}
 				authenticator.client.Transport = transport
 			}

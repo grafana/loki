@@ -1,7 +1,6 @@
 package logs
 
 import (
-	"bytes"
 	"context"
 	"slices"
 	"testing"
@@ -50,15 +49,12 @@ func buildSection(t *testing.T) *Section {
 		Line:      []byte("test2"),
 	})
 
-	out := bytes.NewBuffer(nil)
-	b := dataobj.NewBuilder()
-	err := b.Append(logsBuilder)
-	require.NoError(t, err)
-	_, err = b.Flush(out)
-	require.NoError(t, err)
+	b := dataobj.NewBuilder(nil)
+	require.NoError(t, b.Append(logsBuilder))
 
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(out.Bytes()), int64(out.Len()))
+	obj, closer, err := b.Flush()
 	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	var logsSection *Section
 	for _, section := range obj.Sections() {

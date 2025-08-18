@@ -116,7 +116,8 @@ func DetectDefault(opts *DetectOptions) (*auth.Credentials, error) {
 
 	if OnGCE() {
 		metadataClient := metadata.NewWithOptions(&metadata.Options{
-			Logger: opts.logger(),
+			Logger:           opts.logger(),
+			UseDefaultClient: true,
 		})
 		return auth.NewCredentials(&auth.CredentialsOptions{
 			TokenProvider: computeTokenProvider(opts, metadataClient),

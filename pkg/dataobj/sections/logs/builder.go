@@ -12,8 +12,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
+	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // A Record is an individual log record within the logs section.
@@ -45,6 +46,10 @@ type BuilderOptions struct {
 type Builder struct {
 	metrics *Metrics
 	opts    BuilderOptions
+
+	// The optional tenant that owns the builder. If specified, the section
+	// must only contain logs owned by the tenant, and no other tenants.
+	tenant string
 
 	// Sorting the entire set of logs is very expensive, so we need to break it
 	// up into smaller pieces:
@@ -84,6 +89,13 @@ func NewBuilder(metrics *Metrics, opts BuilderOptions) *Builder {
 		opts:    opts,
 	}
 }
+
+// Tenant returns the optional tenant that owns the builder.
+func (b *Builder) Tenant() string { return b.tenant }
+
+// SetTenant sets the tenant that owns the builder. A builder can be made
+// multi-tenant by passing an empty string.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -202,10 +214,27 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
 
-	var logsEnc encoder
+	var logsEnc columnar.Encoder
 	if err := b.encodeSection(&logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
+
+	// The first two columns of each row are *always* stream ID and timestamp.
+	//
+	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
+	logsEnc.SetSortInfo(&datasetmd_v2.SortInfo{
+		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+			{
+				ColumnIndex: 1, // timestamp
+				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
+			},
+			{
+				ColumnIndex: 0, // stream ID
+				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
+			},
+		},
+	})
+	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
 	if err == nil {
@@ -214,15 +243,15 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	return n, err
 }
 
-func (b *Builder) encodeSection(enc *encoder, section *table) error {
+func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	{
 		errs := make([]error, 0, len(section.Metadatas)+3)
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		errs = append(errs, encodeColumn(enc, ColumnTypeStreamID, section.StreamID))
+		errs = append(errs, encodeColumn(enc, ColumnTypeTimestamp, section.Timestamp))
 		for _, md := range section.Metadatas {
-			errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_METADATA, md))
+			errs = append(errs, encodeColumn(enc, ColumnTypeMetadata, md))
 		}
-		errs = append(errs, encodeColumn(enc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMessage, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -231,8 +260,8 @@ func (b *Builder) encodeSection(enc *encoder, section *table) error {
 	return nil
 }
 
-func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Column) error {
-	columnEnc, err := enc.OpenColumn(columnType, column.ColumnInfo())
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -241,6 +270,10 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	// Our column is in memory, so we don't need a "real" context in the calls
 	// below.
@@ -256,7 +289,7 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 		}
 
 		memPage := &dataset.MemPage{
-			Info: *page.PageInfo(),
+			Desc: *page.PageDesc(),
 			Data: data,
 		}
 		if err := columnEnc.AppendPage(memPage); err != nil {
@@ -270,6 +303,8 @@ func encodeColumn(enc *encoder, columnType logsmd.ColumnType, column dataset.Col
 // Reset resets all state, allowing b to be reused.
 func (b *Builder) Reset() {
 	b.metrics.recordCount.Set(0)
+
+	b.tenant = ""
 
 	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0

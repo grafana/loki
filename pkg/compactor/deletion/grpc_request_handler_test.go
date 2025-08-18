@@ -5,12 +5,10 @@ import (
 	"errors"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -18,6 +16,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	compactor_client_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 )
 
@@ -55,26 +54,10 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 	return client, closer
 }
 
-func grpcDeleteRequestsToDeleteRequests(requests []*compactor_client_grpc.DeleteRequest) []DeleteRequest {
-	resp := make([]DeleteRequest, len(requests))
-	for i, grpcReq := range requests {
-		resp[i] = DeleteRequest{
-			RequestID: grpcReq.RequestID,
-			StartTime: model.Time(grpcReq.StartTime),
-			EndTime:   model.Time(grpcReq.EndTime),
-			Query:     grpcReq.Query,
-			Status:    DeleteRequestStatus(grpcReq.Status),
-			CreatedAt: model.Time(grpcReq.CreatedAt),
-		}
-	}
-
-	return resp
-}
-
 func TestGRPCGetDeleteRequests(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1", Status: StatusReceived}, {RequestID: "test-request-2", Status: StatusReceived}}
+		store.getAllResult = []deletionproto.DeleteRequest{{RequestID: "test-request-1", Status: deletionproto.StatusReceived}, {RequestID: "test-request-2", Status: deletionproto.StatusReceived}}
 		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
@@ -86,61 +69,10 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 
 		resp, err := grpcClient.GetDeleteRequests(ctx, &compactor_client_grpc.GetDeleteRequestsRequest{})
 		require.NoError(t, err)
-		require.ElementsMatch(t, store.getAllResult, grpcDeleteRequestsToDeleteRequests(resp.DeleteRequests))
-	})
-
-	t.Run("it merges requests with the same requestID", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now, EndTime: now.Add(time.Hour)},
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(2 * time.Hour), EndTime: now.Add(3 * time.Hour)},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
-			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(time.Hour), EndTime: now.Add(2 * time.Hour)},
+		require.Len(t, resp.DeleteRequests, len(store.getAllResult))
+		for i := range store.getAllResult {
+			require.True(t, requestsAreEqual(store.getAllResult[i], *resp.DeleteRequests[i]))
 		}
-		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
-		grpcClient, closer := server(t, h)
-		t.Cleanup(closer)
-
-		ctx, _ := user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), user1))
-		orgID, err := tenant.TenantID(ctx)
-		require.NoError(t, err)
-		require.Equal(t, user1, orgID)
-
-		resp, err := grpcClient.GetDeleteRequests(ctx, &compactor_client_grpc.GetDeleteRequestsRequest{})
-		require.NoError(t, err)
-		require.ElementsMatch(t, []DeleteRequest{
-			{RequestID: "test-request-1", Status: StatusReceived, CreatedAt: now, StartTime: now, EndTime: now.Add(3 * time.Hour)},
-			{RequestID: "test-request-2", Status: StatusReceived, CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
-		}, grpcDeleteRequestsToDeleteRequests(resp.DeleteRequests))
-	})
-
-	t.Run("it only considers a request processed if all it's subqueries are processed", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-3", CreatedAt: now.Add(2 * time.Minute), Status: StatusReceived},
-		}
-		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
-		grpcClient, closer := server(t, h)
-		t.Cleanup(closer)
-
-		ctx, _ := user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), user1))
-		orgID, err := tenant.TenantID(ctx)
-		require.NoError(t, err)
-		require.Equal(t, user1, orgID)
-
-		resp, err := grpcClient.GetDeleteRequests(ctx, &compactor_client_grpc.GetDeleteRequestsRequest{})
-		require.NoError(t, err)
-		require.ElementsMatch(t, []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: "66% Complete"},
-			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
-			{RequestID: "test-request-3", CreatedAt: now.Add(2 * time.Minute), Status: StatusReceived},
-		}, grpcDeleteRequestsToDeleteRequests(resp.DeleteRequests))
 	})
 
 	t.Run("error getting from store", func(t *testing.T) {
