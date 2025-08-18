@@ -189,9 +189,6 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			// time.Unix(30, 0)
 			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": int64(2)},
 			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
-
-			// time.Unix(40, 0)
-			{"timestamp": time.Unix(40, 0).UTC(), "env": nil, "service": nil, "value": nil},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -254,9 +251,6 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			// time.Unix(35, 0)
 			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app2", "value": int64(1)},
 			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
-
-			// time.Unix(40, 0)
-			{"timestamp": time.Unix(40, 0).UTC(), "env": nil, "service": nil, "value": nil},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -304,9 +298,6 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			// time.Unix(30, 0)
 			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": int64(1)},
 			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
-
-			// time.Unix(40, 0)
-			{"timestamp": time.Unix(40, 0).UTC(), "env": nil, "service": nil, "value": nil},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
