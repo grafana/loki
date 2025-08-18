@@ -92,7 +92,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 	return s
 }
 
-func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
+func (s *Service) handlePartitionsAssigned(ctx context.Context, _ *kgo.Client, partitions map[string][]int32) {
 	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
