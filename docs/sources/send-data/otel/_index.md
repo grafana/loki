@@ -129,7 +129,8 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 ### Changing the default mapping of OTLP to Loki Format
 
 Loki supports [per tenant](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) OTLP config which lets you change the default mapping of OTLP to Loki format for each tenant.
-It currently only supports changing the storage of Attributes. Here is how the config looks like:
+It currently only supports changing the storage of Attributes.
+Here is what the configuration looks like:
 
 ```yaml
 # OTLP log ingestion configurations
@@ -166,6 +167,10 @@ limits_config:
     # altogether
     [regex: <Regexp>]
 ```
+
+{{< admonition type="note" >}}
+If you are a Grafana Cloud customer, open a support escalation listing the Attributes you want to promote to indexed labels, and any additional context.
+{{< /admonition >}}
 
 Here are some example configs to change the default mapping of OTLP to Loki format:
 

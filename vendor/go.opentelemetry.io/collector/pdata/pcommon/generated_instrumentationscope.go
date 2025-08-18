@@ -70,7 +70,7 @@ func (ms InstrumentationScope) SetVersion(v string) {
 
 // Attributes returns the Attributes associated with this InstrumentationScope.
 func (ms InstrumentationScope) Attributes() Map {
-	return Map(internal.NewMap(&ms.getOrig().Attributes, internal.GetInstrumentationScopeState(internal.InstrumentationScope(ms))))
+	return Map(internal.NewMap(&ms.getOrig().Attributes, ms.getState()))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this InstrumentationScope.

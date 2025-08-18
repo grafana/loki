@@ -20,9 +20,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -30,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -1050,7 +1049,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	require.NoError(t, err)
 
 	delGetter := &mockDeleteGettter{
-		results: []deletion.DeleteRequest{
+		results: []deletionproto.DeleteRequest{
 			{Query: `0`, StartTime: 0, EndTime: 100},
 			{Query: `1`, StartTime: 200, EndTime: 400},
 			{Query: `2`, StartTime: 400, EndTime: 500},
@@ -1118,7 +1117,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 	require.NoError(t, err)
 
 	delGetter := &mockDeleteGettter{
-		results: []deletion.DeleteRequest{
+		results: []deletionproto.DeleteRequest{
 			{Query: `0`, StartTime: 0, EndTime: 100},
 			{Query: `1`, StartTime: 200, EndTime: 400},
 			{Query: `2`, StartTime: 400, EndTime: 500},

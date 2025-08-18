@@ -8,32 +8,39 @@ const QUERY_OPTIONS = {
   gcTime: 10 * 60 * 1000, // 10 minutes
 };
 
-export function useGoldfishQueries(page: number, pageSize: number, selectedOutcome: OutcomeFilter) {
+export function useGoldfishQueries(
+  page: number, 
+  pageSize: number, 
+  selectedOutcome: OutcomeFilter,
+  tenant?: string,
+  user?: string,
+  newEngine?: boolean
+) {
   // Main query always fetches all data
   const mainQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ALL),
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine),
     ...QUERY_OPTIONS,
   });
 
   // Background queries for specific filters
   const matchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MATCH),
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_MATCH,
     ...QUERY_OPTIONS,
   });
 
   const mismatchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH),
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_MISMATCH,
     ...QUERY_OPTIONS,
   });
 
   const errorQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ERROR),
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_ERROR,
     ...QUERY_OPTIONS,
   });
@@ -45,30 +52,30 @@ export function useGoldfishQueries(page: number, pageSize: number, selectedOutco
 
   // Prefetch next page for main query
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL),
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine),
     enabled: totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
 
   // Prefetch next page for specific filter outcomes
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH),
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_MATCH && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
 
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH),
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_MISMATCH && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
 
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR),
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
+    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine),
     enabled: selectedOutcome === OUTCOME_ERROR && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });

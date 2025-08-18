@@ -201,7 +201,7 @@ func inspectIndexPointersSection(ctx context.Context, ty dataobj.SectionType, se
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,
@@ -249,7 +249,7 @@ func inspectPointersSection(ctx context.Context, ty dataobj.SectionType, sec *po
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,
@@ -296,7 +296,7 @@ func inspectLogsSection(ctx context.Context, ty dataobj.SectionType, sec *logs.S
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,
@@ -346,7 +346,7 @@ func inspectStreamsSection(ctx context.Context, ty dataobj.SectionType, sec *str
 		colMeta := ColumnWithPages{
 			Name:             col.Name,
 			Type:             col.Type,
-			ValueType:        strings.TrimPrefix(col.ValueType, "VALUE_TYPE_"),
+			ValueType:        strings.TrimPrefix(col.ValueType, "PHYSICAL_TYPE_"),
 			RowsCount:        col.RowsCount,
 			Compression:      strings.TrimPrefix(col.Compression, "COMPRESSION_TYPE_"),
 			UncompressedSize: col.UncompressedSize,

@@ -191,6 +191,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			// Basic selector
 			addBidirectional(selector, g.logGenCfg.StartTime, end)
 
+			// With line filter
+			addBidirectional(selector+` |= "level"`, g.logGenCfg.StartTime, end)
+
 			// With structured metadata filters
 			addBidirectional(selector+` | detected_level="error"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | detected_level="warn"`, g.logGenCfg.StartTime, end)
@@ -209,6 +212,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		baseRangeAggregationQueries := []string{
 			fmt.Sprintf(`count_over_time(%s[%s])`, selector, rangeInterval),
 			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
+			fmt.Sprintf(`count_over_time(%s |= "level" [%s])`, selector, rangeInterval),
 			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 		}
 

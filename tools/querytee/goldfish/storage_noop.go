@@ -34,7 +34,7 @@ func (s *NoOpStorage) StoreComparisonResult(_ context.Context, result *goldfish.
 }
 
 // GetSampledQueries returns empty results
-func (s *NoOpStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ string) (*goldfish.APIResponse, error) {
+func (s *NoOpStorage) GetSampledQueries(_ context.Context, page, pageSize int, _ goldfish.QueryFilter) (*goldfish.APIResponse, error) {
 	return &goldfish.APIResponse{
 		Queries:  []goldfish.QuerySample{},
 		Total:    0,

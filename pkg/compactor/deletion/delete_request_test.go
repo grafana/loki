@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -45,16 +46,18 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 
 	for _, tc := range []struct {
 		name          string
-		deleteRequest DeleteRequest
+		deleteRequest deleteRequest
 		expectedResp  resp
 	}{
 		{
 			name: "whole chunk deleted",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -62,11 +65,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with line filter present",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithLineFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     lblWithLineFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -81,11 +86,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with structured metadata filter present",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithStructuredMetadataFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     lblWithStructuredMetadataFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -100,11 +107,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with line and structured metadata filter present",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithLineAndStructuredMetadataFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     lblWithLineAndStructuredMetadataFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -119,11 +128,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from beginning",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-2 * time.Hour),
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-2 * time.Hour),
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -138,11 +149,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now,
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -157,11 +170,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with filter",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now,
-				Query:     lblWithLineFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
+					Query:     lblWithLineFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -176,11 +191,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with structured metadata filter present",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now,
-				Query:     lblWithStructuredMetadataFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
+					Query:     lblWithStructuredMetadataFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -195,11 +212,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with line and structured metadata filter present",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now,
-				Query:     lblWithLineAndStructuredMetadataFilter,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-2 * time.Hour),
+					EndTime:   now,
+					Query:     lblWithLineAndStructuredMetadataFilter,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -214,11 +233,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted in the middle",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
-				EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
+					EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -233,11 +254,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "delete request out of range",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -245,11 +268,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "request not matching due to matchers",
-			deleteRequest: DeleteRequest{
-				UserID:    "user1",
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     `{foo1="bar"}`,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    "user1",
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     `{foo1="bar"}`,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -257,11 +282,13 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "request for a different user",
-			deleteRequest: DeleteRequest{
-				UserID:    "user2",
-				StartTime: now.Add(-3 * time.Hour),
-				EndTime:   now.Add(-time.Hour),
-				Query:     lbl,
+			deleteRequest: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					UserID:    "user2",
+					StartTime: now.Add(-3 * time.Hour),
+					EndTime:   now.Add(-time.Hour),
+					Query:     lbl,
+				},
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -309,12 +336,14 @@ func mustParseLabel(input string) labels.Labels {
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
 	t.Run("one line matching with line filter", func(t *testing.T) {
-		dr := DeleteRequest{
-			Query:                   `{foo="bar"} |= "some"`,
+		dr := deleteRequest{
+			DeleteRequest: deletionproto.DeleteRequest{
+				Query:     `{foo="bar"} |= "some"`,
+				StartTime: 0,
+				EndTime:   math.MaxInt64,
+			},
 			DeletedLines:            0,
 			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-			StartTime:               0,
-			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -332,12 +361,14 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	})
 
 	t.Run("one line matching with structured metadata filter", func(t *testing.T) {
-		dr := DeleteRequest{
-			Query:                   `{foo="bar"} | ping="pong"`,
+		dr := deleteRequest{
+			DeleteRequest: deletionproto.DeleteRequest{
+				Query:     `{foo="bar"} | ping="pong"`,
+				StartTime: 0,
+				EndTime:   math.MaxInt64,
+			},
 			DeletedLines:            0,
 			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-			StartTime:               0,
-			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -355,12 +386,14 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	})
 
 	t.Run("one line matching with line and structured metadata filter", func(t *testing.T) {
-		dr := DeleteRequest{
-			Query:                   `{foo="bar"} | ping="pong" |= "some"`,
+		dr := deleteRequest{
+			DeleteRequest: deletionproto.DeleteRequest{
+				Query:     `{foo="bar"} | ping="pong" |= "some"`,
+				StartTime: 0,
+				EndTime:   math.MaxInt64,
+			},
 			DeletedLines:            0,
 			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-			StartTime:               0,
-			EndTime:                 math.MaxInt64,
 		}
 
 		lblStr := lblFooBar
@@ -379,11 +412,13 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 	})
 
 	t.Run("labels not matching", func(t *testing.T) {
-		dr := DeleteRequest{
-			Query:                   `{foo="bar"} |= "some"`,
+		dr := deleteRequest{
+			DeleteRequest: deletionproto.DeleteRequest{
+				Query:  `{foo="bar"} |= "some"`,
+				UserID: "tenant1",
+			},
 			DeletedLines:            0,
 			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-			UserID:                  "tenant1",
 		}
 
 		lblStr := `{foo2="buzz"}`
@@ -403,12 +438,14 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 
 	t.Run("no line filter", func(t *testing.T) {
 		now := model.Now()
-		dr := DeleteRequest{
-			Query:                   `{namespace="default"}`,
+		dr := deleteRequest{
+			DeleteRequest: deletionproto.DeleteRequest{
+				Query:     `{namespace="default"}`,
+				StartTime: now.Add(-time.Hour),
+				EndTime:   now,
+			},
 			DeletedLines:            0,
 			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-			StartTime:               now.Add(-time.Hour),
-			EndTime:                 now,
 		}
 
 		lblStr := `{namespace="default"}`
@@ -435,129 +472,157 @@ func TestDeleteRequest_IsDuplicate(t *testing.T) {
 
 	for _, tc := range []struct {
 		name           string
-		req1, req2     DeleteRequest
+		req1, req2     deleteRequest
 		expIsDuplicate bool
 	}{
 		{
 			name: "not duplicate - different user id",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "1",
-				UserID:    user2,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user2,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
 			expIsDuplicate: false,
 		},
 		{
 			name: "not duplicate - same request id",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
 			expIsDuplicate: false,
 		},
 		{
 			name: "not duplicate - different start time",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "2",
-				UserID:    user1,
-				StartTime: now.Add(-13 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "2",
+					UserID:    user1,
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
 		},
 		{
 			name: "not duplicate - different end time",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "2",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-11 * time.Hour),
-				Query:     query1,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "2",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-11 * time.Hour),
+					Query:     query1,
+				},
 			},
 		},
 		{
 			name: "not duplicate - different labels",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "2",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query2,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "2",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query2,
+				},
 			},
 		},
 		{
 			name: "duplicate - same request",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "2",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "2",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
 			expIsDuplicate: true,
 		},
 		{
 			name: "duplicate - same request with irregularities in query",
-			req1: DeleteRequest{
-				RequestID: "1",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     query1,
+			req1: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "1",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     query1,
+				},
 			},
-			req2: DeleteRequest{
-				RequestID: "2",
-				UserID:    user1,
-				StartTime: now.Add(-12 * time.Hour),
-				EndTime:   now.Add(-10 * time.Hour),
-				Query:     "{foo=\"bar\",      fizz=`buzz`}     |=     `foo`",
+			req2: deleteRequest{
+				DeleteRequest: deletionproto.DeleteRequest{
+					RequestID: "2",
+					UserID:    user1,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-10 * time.Hour),
+					Query:     "{foo=\"bar\",      fizz=`buzz`}     |=     `foo`",
+				},
 			},
 			expIsDuplicate: true,
 		},

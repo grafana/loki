@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -20,16 +21,8 @@ type timeInterval struct {
 	start, end time.Time
 }
 
-type DeleteRequest struct {
-	RequestID string              `json:"request_id"`
-	StartTime model.Time          `json:"start_time"`
-	EndTime   model.Time          `json:"end_time"`
-	Query     string              `json:"query"`
-	Status    DeleteRequestStatus `json:"status"`
-	CreatedAt model.Time          `json:"created_at"`
-
-	UserID          string                 `json:"user_id,omitempty"`
-	SequenceNum     int64                  `json:"sequence_num,omitempty"`
+type deleteRequest struct {
+	deletionproto.DeleteRequest
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 	timeInterval    *timeInterval          `json:"-"`
@@ -38,7 +31,20 @@ type DeleteRequest struct {
 	DeletedLines            int32                  `json:"-"`
 }
 
-func (d *DeleteRequest) SetQuery(logQL string) error {
+func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMetric *prometheus.CounterVec) (*deleteRequest, error) {
+	d := deleteRequest{
+		DeleteRequest:           protoReq,
+		TotalLinesDeletedMetric: totalLinesDeletedMetric,
+	}
+
+	if err := d.SetQuery(d.Query); err != nil {
+		return nil, err
+	}
+
+	return &d, nil
+}
+
+func (d *deleteRequest) SetQuery(logQL string) error {
 	d.Query = logQL
 	logSelectorExpr, err := parseDeletionQuery(logQL)
 	if err != nil {
@@ -50,7 +56,7 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 }
 
 // FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
-func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
+func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
 	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
 	// without having to do conversion of timestamps for each log line we check.
 	if d.timeInterval == nil {
@@ -108,7 +114,7 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 }
 
 // IsDeleted checks if the given chunk entry would have data requested for deletion.
-func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) bool {
+func (d *deleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) bool {
 	if d.UserID != unsafeGetString(userID) {
 		return false
 	}
@@ -145,7 +151,7 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 
 // GetChunkFilter tells whether the chunk is covered by the DeleteRequest and
 // optionally returns a filter.Func if the chunk is supposed to be deleted partially or the delete request has line filters.
-func (d *DeleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+func (d *deleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
 	if !d.IsDeleted(userID, lbls, chunk) {
 		return false, nil
 	}
@@ -171,7 +177,7 @@ func (d *DeleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk 
 	return true, ff
 }
 
-func (d *DeleteRequest) IsDuplicate(o *DeleteRequest) (bool, error) {
+func (d *deleteRequest) IsDuplicate(o *deleteRequest) (bool, error) {
 	// we would never have duplicates from same request
 	if d.RequestID == o.RequestID {
 		return false, nil
@@ -207,7 +213,7 @@ func intervalsOverlap(interval1, interval2 model.Interval) bool {
 }
 
 // GetMatchers returns the string representation of the matchers
-func (d *DeleteRequest) GetMatchers() string {
+func (d *deleteRequest) GetMatchers() string {
 	if len(d.matchers) == 0 {
 		return ""
 	}
