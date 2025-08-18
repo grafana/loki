@@ -77,8 +77,13 @@ func (r *RangeAggregationPipeline) init() {
 		cur = cur.Add(r.opts.step)
 	}
 
+	var (
+		lowerbound = r.opts.startTs.Add(-r.opts.rangeInterval)
+		upperbound = r.opts.endTs
+	)
+
 	r.matchingTimeWindows = func(t time.Time) ([]time.Time, bool) {
-		if t.Compare(r.opts.startTs.Add(-r.opts.rangeInterval)) <= 0 && t.Compare(r.opts.endTs) > 0 {
+		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
 			return nil, false // out of range
 		}
 
