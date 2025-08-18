@@ -215,6 +215,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
 	})
 	merge := &Merge{}
+	p.plan.addNode(merge)
 	var currentGroup []FilteredShardDescriptor
 	var groupRange TimeRange
 	for i := range filteredShardDescriptors {
@@ -238,7 +239,6 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
 		return nil, err
 	}
-	p.plan.addNode(merge)
 	nodes := make([]Node, 0)
 	nodes = append(nodes, merge)
 
