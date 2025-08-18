@@ -224,6 +224,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		} else {
 			if groupRange.Overlaps(filteredShardDescriptors[i].TimeRange) {
 				currentGroup = append(currentGroup, filteredShardDescriptors[i])
+				groupRange = groupRange.Merge(filteredShardDescriptors[i].TimeRange)
 			} else {
 				if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
 					return nil, err
