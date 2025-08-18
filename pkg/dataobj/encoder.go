@@ -38,6 +38,19 @@ type encoder struct {
 	typeRefLookup    map[SectionType]uint32
 }
 
+type sectionInfo struct {
+	Type SectionType
+
+	Data     sectionRegion
+	Metadata sectionRegion
+
+	Tenant string // Owning tenant of the section, if any.
+
+	// ExtensionData holds additional encoded info about the section, written to
+	// the file-level metadata.
+	ExtensionData []byte
+}
+
 // newEncoder creates a new Encoder which writes a data object to the provided
 // writer.
 func newEncoder(store scratch.Store) *encoder {
@@ -58,11 +71,8 @@ func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, da
 	si := sectionInfo{
 		Type: typ,
 
-		Data:     dataHandle,
-		Metadata: metadataHandle,
-
-		DataSize:     len(data),
-		MetadataSize: len(metadata),
+		Data:     sectionRegion{Handle: dataHandle, Size: len(data)},
+		Metadata: sectionRegion{Handle: metadataHandle, Size: len(metadata)},
 	}
 	if opts != nil {
 		si.Tenant = opts.Tenant
@@ -144,19 +154,19 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 	offset := enc.startOffset
 
 	for i, info := range enc.sections {
-		dataOffset := offset                     // Data starts at the current total offset
-		metaOffset := dataOffset + info.DataSize // Metadata starts right after data
+		dataOffset := offset                      // Data starts at the current total offset
+		metaOffset := dataOffset + info.Data.Size // Metadata starts right after data
 
 		sections[i] = &filemd.SectionInfo{
 			TypeRef: enc.getTypeRef(info.Type),
 			Layout: &filemd.SectionLayout{
 				Data: &filemd.Region{
 					Offset: uint64(dataOffset),
-					Length: uint64(info.DataSize),
+					Length: uint64(info.Data.Size),
 				},
 				Metadata: &filemd.Region{
 					Offset: uint64(metaOffset),
-					Length: uint64(info.MetadataSize),
+					Length: uint64(info.Metadata.Size),
 				},
 			},
 
@@ -164,7 +174,7 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
-		offset += info.DataSize + info.MetadataSize
+		offset += info.Data.Size + info.Metadata.Size
 	}
 
 	return &filemd.Metadata{
@@ -219,10 +229,20 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
+	// Convert our sections into regions for the snapshot to use. The order of
+	// regions *must* match the order of offset+length written in
+	// [encoder.Metadata].
+	regions := make([]sectionRegion, 0, len(enc.sections)*2)
+	for _, sec := range enc.sections {
+		// The metadata region follows the data region.
+		regions = append(regions, sec.Data)
+		regions = append(regions, sec.Metadata)
+	}
+
 	snapshot, err := newSnapshot(
 		enc.store,
 		magic, // header
-		slices.Clone(enc.sections),
+		regions,
 		tailerBuffer.Bytes(), // tailer
 	)
 	if err != nil {
