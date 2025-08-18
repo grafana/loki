@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // SummaryDataPointValueAtQuantile is a quantile value within a Summary data point.
@@ -75,24 +74,5 @@ func (ms SummaryDataPointValueAtQuantile) SetValue(v float64) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SummaryDataPointValueAtQuantile) CopyTo(dest SummaryDataPointValueAtQuantile) {
 	dest.state.AssertMutable()
-	copyOrigSummaryDataPointValueAtQuantile(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SummaryDataPointValueAtQuantile) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Quantile != float64(0.0) {
-		dest.WriteObjectField("quantile")
-		dest.WriteFloat64(ms.orig.Quantile)
-	}
-	if ms.orig.Value != float64(0.0) {
-		dest.WriteObjectField("value")
-		dest.WriteFloat64(ms.orig.Value)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigSummaryDataPointValueAtQuantile(dest, src *otlpmetrics.SummaryDataPoint_ValueAtQuantile) {
-	dest.Quantile = src.Quantile
-	dest.Value = src.Value
+	internal.CopyOrigSummaryDataPoint_ValueAtQuantile(dest.orig, ms.orig)
 }

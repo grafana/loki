@@ -1,6 +1,10 @@
 package logs
 
-import "github.com/apache/arrow-go/v18/arrow/scalar"
+import (
+	"fmt"
+
+	"github.com/apache/arrow-go/v18/arrow/scalar"
+)
 
 // Predicate is an expression used to filter column values in a [Reader].
 type Predicate interface{ isPredicate() }
@@ -115,4 +119,53 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	}
 
 	fn(nil)
+}
+
+// predicateColumns returns a slice of all columns referenced in the given predicates.
+// It ensures that each column is only included once, even if it appears in multiple predicates.
+func predicateColumns(predicates []Predicate) []*Column {
+	exists := make(map[*Column]struct{})
+	columns := make([]*Column, 0, len(predicates))
+
+	// append column if it is not a duplicate.
+	appendColumn := func(c *Column) {
+		if _, ok := exists[c]; ok {
+			return
+		}
+
+		columns = append(columns, c)
+		exists[c] = struct{}{}
+	}
+
+	for _, p := range predicates {
+		walkPredicate(p, func(p Predicate) bool {
+			switch p := p.(type) {
+			case nil: // End of walk; nothing to do.
+
+			case AndPredicate: // Nothing to do.
+			case OrPredicate: // Nothing to do.
+			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
+			case FalsePredicate: // Nothing to do.
+
+			case EqualPredicate:
+				appendColumn(p.Column)
+			case InPredicate:
+				appendColumn(p.Column)
+			case GreaterThanPredicate:
+				appendColumn(p.Column)
+			case LessThanPredicate:
+				appendColumn(p.Column)
+			case FuncPredicate:
+				appendColumn(p.Column)
+
+			default:
+				panic(fmt.Sprintf("logs.predicateColumns: unsupported predicate type %T", p))
+			}
+
+			return true
+		})
+	}
+
+	return columns
 }

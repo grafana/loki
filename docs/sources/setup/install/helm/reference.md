@@ -3593,7 +3593,6 @@ null
     "enabled": true
   },
   "adminToken": {
-    "additionalNamespaces": [],
     "secret": null
   },
   "canarySecret": null,
@@ -3642,31 +3641,6 @@ null
     },
     "tolerations": []
   },
-  "tokengen": {
-    "adminTokenSecret": null,
-    "affinity": {},
-    "annotations": {},
-    "enabled": true,
-    "env": [],
-    "extraArgs": [],
-    "extraEnvFrom": [],
-    "extraVolumeMounts": [],
-    "extraVolumes": [],
-    "labels": {},
-    "nodeSelector": {},
-    "priorityClassName": "",
-    "rbac": {
-      "create": true
-    },
-    "securityContext": {
-      "fsGroup": 10001,
-      "runAsGroup": 10001,
-      "runAsNonRoot": true,
-      "runAsUser": 10001
-    },
-    "targetModule": "tokengen",
-    "tolerations": []
-  },
   "useExternalLicense": false,
   "version": "3.5.2"
 }
@@ -3685,18 +3659,9 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminToken.additionalNamespaces</td>
-			<td>list</td>
-			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
-			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
+			<td>Name of external secret containing the admin token for enterprise provisioner This secret must exist before deploying and must contain a key named 'token'</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3806,7 +3771,7 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
@@ -4035,190 +4000,6 @@ null
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for tokengen Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen</td>
-			<td>object</td>
-			<td>Configuration for `tokengen` target</td>
-			<td><pre lang="json">
-{
-  "adminTokenSecret": null,
-  "affinity": {},
-  "annotations": {},
-  "enabled": true,
-  "env": [],
-  "extraArgs": [],
-  "extraEnvFrom": [],
-  "extraVolumeMounts": [],
-  "extraVolumes": [],
-  "labels": {},
-  "nodeSelector": {},
-  "priorityClassName": "",
-  "rbac": {
-    "create": true
-  },
-  "securityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "targetModule": "tokengen",
-  "tolerations": []
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.adminTokenSecret</td>
-			<td>string</td>
-			<td>Name of the secret to store the admin token.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.affinity</td>
-			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.enabled</td>
-			<td>bool</td>
-			<td>Whether the job should be part of the deployment</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.env</td>
-			<td>list</td>
-			<td>Additional Kubernetes environment</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `tokengen` target</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the tokengen pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumeMounts</td>
-			<td>list</td>
-			<td>Additional volume mounts for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumes</td>
-			<td>list</td>
-			<td>Additional volumes for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.labels</td>
-			<td>object</td>
-			<td>Additional labels for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.priorityClassName</td>
-			<td>string</td>
-			<td>The name of the PriorityClass for tokengen Pods</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.rbac</td>
-			<td>object</td>
-			<td>Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed</td>
-			<td><pre lang="json">
-{
-  "create": true
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.securityContext</td>
-			<td>object</td>
-			<td>Run containers as user `enterprise-logs(uid=10001)`</td>
-			<td><pre lang="json">
-{
-  "fsGroup": 10001,
-  "runAsGroup": 10001,
-  "runAsNonRoot": true,
-  "runAsUser": 10001
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.targetModule</td>
-			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for tokengen</td>
-			<td><pre lang="json">
-"tokengen"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for tokengen Job</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4931,7 +4712,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+""
 </pre>
 </td>
 		</tr>
@@ -4940,7 +4721,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -6545,66 +6326,6 @@ null
 			<td>kubeVersionOverride</td>
 			<td>string</td>
 			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage</td>
-			<td>object</td>
-			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
-			<td><pre lang="json">
-{
-  "digest": null,
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "bitnami/kubectl",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"bitnami/kubectl"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>

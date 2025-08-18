@@ -3,34 +3,35 @@ package deletion
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 // tableUpdatesRecorder collects all the storage updates we get post processing of a manifest
 type tableUpdatesRecorder struct {
-	updates map[string]map[string]map[string]storageUpdates
+	updates map[string]map[string]map[string]deletionproto.StorageUpdates
 }
 
 func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
 	if _, ok := t.updates[tableName]; !ok {
-		t.updates[tableName] = map[string]map[string]storageUpdates{
+		t.updates[tableName] = map[string]map[string]deletionproto.StorageUpdates{
 			userID: {
 				labels: {},
 			},
 		}
 	}
 	if _, ok := t.updates[tableName][userID]; !ok {
-		t.updates[tableName][userID] = map[string]storageUpdates{
+		t.updates[tableName][userID] = map[string]deletionproto.StorageUpdates{
 			labels: {},
 		}
 	}
@@ -40,7 +41,7 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 	updates.ChunksToDelete = append(updates.ChunksToDelete, chunksToDelete...)
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
 	for i := range chunksToIndex {
-		updates.ChunksToIndex = append(updates.ChunksToIndex, chunksToIndex[i].(chunk))
+		updates.ChunksToIndex = append(updates.ChunksToIndex, *chunksToIndex[i].(*deletionproto.Chunk))
 	}
 
 	t.updates[tableName][userID][labels] = updates
@@ -53,22 +54,23 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 	for _, tc := range []struct {
 		name                 string
-		setupManifest        func(client client.ObjectClient) []DeleteRequest
+		setupManifest        func(client client.ObjectClient) []deletionproto.DeleteRequest
 		expectedJobs         []grpc.Job
-		expectedTableUpdates map[string]map[string]map[string]storageUpdates
+		expectedTableUpdates map[string]map[string]map[string]deletionproto.StorageUpdates
 	}{
 		{
 			name: "no manifests in storage",
-			setupManifest: func(_ client.ObjectClient) []DeleteRequest {
-				return []DeleteRequest{}
+			setupManifest: func(_ client.ObjectClient) []deletionproto.DeleteRequest {
+				return []deletionproto.DeleteRequest{}
 			},
-			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{},
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{},
 		},
 		{
 			name: "one manifest in storage with less than maxChunksPerJob",
-			setupManifest: func(client client.ObjectClient) []DeleteRequest {
-				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-				requestsToAdd := []DeleteRequest{
+			setupManifest: func(client client.ObjectClient) []deletionproto.DeleteRequest {
+				metrics := newDeleteRequestsManagerMetrics(nil)
+				deleteRequestBatch := newDeleteRequestBatch(metrics)
+				requestsToAdd := []deletionproto.DeleteRequest{
 					{
 						RequestID: req1,
 						UserID:    user1,
@@ -79,8 +81,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}
 
 				for i := range requestsToAdd {
-					req := requestsToAdd[i]
-					deleteRequestBatch.addDeleteRequest(&req)
+					req, err := newDeleteRequest(requestsToAdd[i], metrics.deletedLinesTotal)
+					require.NoError(t, err)
+					deleteRequestBatch.addDeleteRequest(req)
 				}
 				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
@@ -98,11 +101,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob-1)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								RequestID: req1,
 								UserID:    user1,
@@ -114,7 +117,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
 						lblFooBar: buildStorageUpdates(0, 1),
@@ -124,9 +127,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		},
 		{
 			name: "one manifest in storage with more than maxChunksPerJob",
-			setupManifest: func(client client.ObjectClient) []DeleteRequest {
+			setupManifest: func(client client.ObjectClient) []deletionproto.DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-				requestsToAdd := []DeleteRequest{
+				requestsToAdd := []deletionproto.DeleteRequest{
 					{
 						RequestID: req1,
 						UserID:    user1,
@@ -137,7 +140,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}
 				for i := range requestsToAdd {
 					req := requestsToAdd[i]
-					deleteRequestBatch.addDeleteRequest(&req)
+					deleteRequestBatch.addDeleteRequest(&deleteRequest{DeleteRequest: req})
 				}
 				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
@@ -155,11 +158,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, maxChunksPerJob)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								RequestID: req1,
 								UserID:    user1,
@@ -172,11 +175,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(maxChunksPerJob, 1)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								RequestID: req1,
 								UserID:    user1,
@@ -188,7 +191,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
 						lblFooBar: buildStorageUpdates(0, 2),
@@ -198,9 +201,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		},
 		{
 			name: "one manifest in storage with multiple groups",
-			setupManifest: func(client client.ObjectClient) []DeleteRequest {
+			setupManifest: func(client client.ObjectClient) []deletionproto.DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-				requestsToAdd := []DeleteRequest{
+				requestsToAdd := []deletionproto.DeleteRequest{
 					{
 						UserID:    user1,
 						RequestID: req1,
@@ -218,7 +221,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}
 				for i := range requestsToAdd {
 					req := requestsToAdd[i]
-					deleteRequestBatch.addDeleteRequest(&req)
+					deleteRequestBatch.addDeleteRequest(&deleteRequest{DeleteRequest: req})
 				}
 				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
@@ -236,11 +239,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(25, 25)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								UserID:    user1,
 								RequestID: req1,
@@ -253,11 +256,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(50, 25)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								UserID:    user1,
 								RequestID: req1,
@@ -276,7 +279,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
 						lblFizzBuzzAndFooBar: buildStorageUpdates(0, 2),
@@ -286,9 +289,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		},
 		{
 			name: "one manifest in storage with multiple segments due to multiple tables",
-			setupManifest: func(client client.ObjectClient) []DeleteRequest {
+			setupManifest: func(client client.ObjectClient) []deletionproto.DeleteRequest {
 				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
-				requestsToAdd := []DeleteRequest{
+				requestsToAdd := []deletionproto.DeleteRequest{
 					{
 						RequestID: req1,
 						UserID:    user1,
@@ -299,7 +302,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}
 				for i := range requestsToAdd {
 					req := requestsToAdd[i]
-					deleteRequestBatch.addDeleteRequest(&req)
+					deleteRequestBatch.addDeleteRequest(&deleteRequest{DeleteRequest: req})
 				}
 				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
 				require.NoError(t, err)
@@ -322,11 +325,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table1,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, 100)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								RequestID: req1,
 								UserID:    user1,
@@ -339,11 +342,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				},
 				{
 					Type: grpc.JOB_TYPE_DELETION,
-					Payload: mustMarshalPayload(&deletionJob{
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
 						TableName: table2,
 						UserID:    user1,
 						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(100, 100)),
-						DeleteRequests: []DeleteRequest{
+						DeleteRequests: []deletionproto.DeleteRequest{
 							{
 								RequestID: req1,
 								UserID:    user1,
@@ -355,7 +358,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					}),
 				},
 			},
-			expectedTableUpdates: map[string]map[string]map[string]storageUpdates{
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
 						lblFooBar: buildStorageUpdates(0, 1),
@@ -375,9 +378,9 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			})
 			require.NoError(t, err)
 			addedRequests := tc.setupManifest(objectClient)
-			requestsMarkedAsProcessed := []DeleteRequest{}
+			requestsMarkedAsProcessed := []deletionproto.DeleteRequest{}
 			tableUpdatesRecorder := &tableUpdatesRecorder{
-				updates: map[string]map[string]map[string]storageUpdates{},
+				updates: map[string]map[string]map[string]deletionproto.StorageUpdates{},
 			}
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
@@ -390,7 +393,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				}
 
 				return iterator.Err()
-			}, func(requests []DeleteRequest) {
+			}, func(requests []deletionproto.DeleteRequest) {
 				requestsMarkedAsProcessed = requests
 			}, nil)
 			jobsChan := make(chan *grpc.Job)
@@ -411,10 +414,11 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					// while comparing jobs built vs expected, do not compare the job IDs
 					job.Id = ""
 					jobsBuilt = append(jobsBuilt, *job)
+					storageUpdates := buildStorageUpdates(cnt, 1)
 					err := builder.OnJobResponse(&grpc.JobResult{
 						JobId:   jobID,
 						JobType: job.Type,
-						Result:  mustMarshal(t, buildStorageUpdates(cnt, 1)),
+						Result:  mustMarshal(t, &storageUpdates),
 					})
 					require.NoError(t, err)
 					cnt++
@@ -429,7 +433,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 			// verify operations and data post-processing of the manifests
 			require.Equal(t, tc.expectedTableUpdates, tableUpdatesRecorder.updates)
-			slices.SortFunc(requestsMarkedAsProcessed, func(a, b DeleteRequest) int {
+			slices.SortFunc(requestsMarkedAsProcessed, func(a, b deletionproto.DeleteRequest) int {
 				if len(a.RequestID) < len(b.RequestID) {
 					return -1
 				} else if len(a.RequestID) > len(b.RequestID) {
@@ -456,7 +460,7 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 	}{
 		{
 			name:      "all jobs succeeded",
-			jobResult: []byte(`{}`),
+			jobResult: []byte(``),
 		}, {
 			name:               "job failure should fail the manifest processing",
 			jobProcessingError: "job processing failed",
@@ -470,33 +474,33 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, _ StorageUpdatesIterator) error {
 				return nil
-			}, func(_ []DeleteRequest) {}, nil)
+			}, func(_ []deletionproto.DeleteRequest) {}, nil)
 
 			// Create a test manifest
-			manifest := &manifest{
+			manifest := &deletionproto.DeletionManifest{
 				SegmentsCount: 1,
 			}
-			manifestData, err := json.Marshal(manifest)
+			manifestData, err := proto.Marshal(manifest)
 			require.NoError(t, err)
-			err = objectClient.PutObject(context.Background(), "test-manifest/manifest.json", bytes.NewReader(manifestData))
+			err = objectClient.PutObject(context.Background(), "test-manifest/manifest.proto", bytes.NewReader(manifestData))
 			require.NoError(t, err)
 
 			// Create a test segment
-			segment := &segment{
+			segment := &deletionproto.Segment{
 				UserID:    "user1",
 				TableName: "table1",
-				ChunksGroups: []ChunksGroup{
+				ChunksGroups: []deletionproto.ChunksGroup{
 					{
-						Chunks: map[string][]string{"": {"chunk1", "chunk2"}},
-						Requests: []DeleteRequest{
+						Chunks: map[string]deletionproto.ChunkIDs{"": {IDs: []string{"chunk1", "chunk2"}}},
+						Requests: []deletionproto.DeleteRequest{
 							{Query: "{job=\"test\"}"},
 						},
 					},
 				},
 			}
-			segmentData, err := json.Marshal(segment)
+			segmentData, err := proto.Marshal(segment)
 			require.NoError(t, err)
-			err = objectClient.PutObject(context.Background(), "test-manifest/0.json", bytes.NewReader(segmentData))
+			err = objectClient.PutObject(context.Background(), "test-manifest/0.proto", bytes.NewReader(segmentData))
 			require.NoError(t, err)
 
 			jobsChan := make(chan *grpc.Job)
@@ -522,8 +526,8 @@ func TestJobBuilder_ProcessManifest(t *testing.T) {
 	}
 }
 
-func mustMarshalPayload(job *deletionJob) []byte {
-	payload, err := json.Marshal(job)
+func mustMarshalPayload(job *deletionproto.DeletionJob) []byte {
+	payload, err := proto.Marshal(job)
 	if err != nil {
 		panic(err)
 	}
@@ -531,13 +535,13 @@ func mustMarshalPayload(job *deletionJob) []byte {
 	return payload
 }
 
-func buildStorageUpdates(jobNumStart, numJobs int) storageUpdates {
-	s := storageUpdates{}
+func buildStorageUpdates(jobNumStart, numJobs int) deletionproto.StorageUpdates {
+	s := deletionproto.StorageUpdates{}
 	for i := 0; i < numJobs; i++ {
 		jobNum := jobNumStart + i
 		s.ChunksToDelete = append(s.ChunksToDelete, fmt.Sprintf("%d-d", jobNum))
 		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
-		s.ChunksToIndex = append(s.ChunksToIndex, chunk{
+		s.ChunksToIndex = append(s.ChunksToIndex, deletionproto.Chunk{
 			From:        model.Time(jobNum),
 			Through:     model.Time(jobNum),
 			Fingerprint: uint64(jobNum),

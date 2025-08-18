@@ -12,7 +12,6 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // SpanEventSlice logically represents a slice of SpanEvent.
@@ -130,6 +129,7 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			(*es.orig)[i] = nil
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,7 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		(*es.orig)[i] = nil
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,7 +147,7 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SpanEventSlice) CopyTo(dest SpanEventSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = copyOrigSpanEventSlice(*dest.orig, *es.orig)
+	*dest.orig = internal.CopyOrigSpan_EventSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the SpanEvent elements within SpanEventSlice given the
@@ -155,41 +156,4 @@ func (es SpanEventSlice) CopyTo(dest SpanEventSlice) {
 func (es SpanEventSlice) Sort(less func(a, b SpanEvent) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms SpanEventSlice) marshalJSONStream(dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		ms.At(0).marshalJSONStream(dest)
-	}
-	for i := 1; i < len(*ms.orig); i++ {
-		dest.WriteMore()
-		ms.At(i).marshalJSONStream(dest)
-	}
-	dest.WriteArrayEnd()
-}
-
-// unmarshalJSONIter unmarshals all properties from the current struct from the source iterator.
-func (ms SpanEventSlice) unmarshalJSONIter(iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, &otlptrace.Span_Event{})
-		ms.At(ms.Len() - 1).unmarshalJSONIter(iter)
-		return true
-	})
-}
-
-func copyOrigSpanEventSlice(dest, src []*otlptrace.Span_Event) []*otlptrace.Span_Event {
-	if cap(dest) < len(src) {
-		dest = make([]*otlptrace.Span_Event, len(src))
-		data := make([]otlptrace.Span_Event, len(src))
-		for i := range src {
-			dest[i] = &data[i]
-		}
-	}
-	dest = dest[:len(src)]
-	for i := range src {
-		copyOrigSpanEvent(dest[i], src[i])
-	}
-	return dest
 }

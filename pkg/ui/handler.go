@@ -235,18 +235,44 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 			}
 		}
 
-		outcome := goldfish.OutcomeAll // default value
+		// Build filter from query parameters
+		filter := goldfish.QueryFilter{
+			Outcome: goldfish.OutcomeAll, // default value
+		}
+
 		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
 			switch strings.ToLower(outcomeStr) {
 			case goldfish.OutcomeAll, goldfish.OutcomeMatch, goldfish.OutcomeMismatch, goldfish.OutcomeError:
-				outcome = outcomeStr
+				filter.Outcome = outcomeStr
 			default:
-				outcome = goldfish.OutcomeAll
+				filter.Outcome = goldfish.OutcomeAll
+			}
+		}
+
+		// Parse tenant filter
+		if tenant := r.URL.Query().Get("tenant"); tenant != "" {
+			filter.Tenant = tenant
+		}
+
+		// Parse user filter
+		if user := r.URL.Query().Get("user"); user != "" {
+			filter.User = user
+		}
+
+		// Parse new engine filter
+		if newEngine := r.URL.Query().Get("newEngine"); newEngine != "" {
+			switch newEngine {
+			case "true":
+				val := true
+				filter.UsedNewEngine = &val
+			case "false":
+				val := false
+				filter.UsedNewEngine = &val
 			}
 		}
 
 		// Get sampled queries
-		response, err := s.GetSampledQueries(page, pageSize, outcome)
+		response, err := s.GetSampledQueries(page, pageSize, filter)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to retrieve sampled queries")

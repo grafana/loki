@@ -27,7 +27,7 @@ func NewValue(orig *otlpcommon.AnyValue, state *State) Value {
 	return Value{orig: orig, state: state}
 }
 
-func CopyOrigValue(dest, src *otlpcommon.AnyValue) {
+func CopyOrigAnyValue(dest, src *otlpcommon.AnyValue) {
 	switch sv := src.Value.(type) {
 	case *otlpcommon.AnyValue_KvlistValue:
 		dv, ok := dest.Value.(*otlpcommon.AnyValue_KvlistValue)
@@ -39,7 +39,7 @@ func CopyOrigValue(dest, src *otlpcommon.AnyValue) {
 			dv.KvlistValue = nil
 			return
 		}
-		dv.KvlistValue.Values = CopyOrigMap(dv.KvlistValue.Values, sv.KvlistValue.Values)
+		dv.KvlistValue.Values = CopyOrigKeyValueSlice(dv.KvlistValue.Values, sv.KvlistValue.Values)
 	case *otlpcommon.AnyValue_ArrayValue:
 		dv, ok := dest.Value.(*otlpcommon.AnyValue_ArrayValue)
 		if !ok {
@@ -50,7 +50,7 @@ func CopyOrigValue(dest, src *otlpcommon.AnyValue) {
 			dv.ArrayValue = nil
 			return
 		}
-		dv.ArrayValue.Values = CopyOrigSlice(dv.ArrayValue.Values, sv.ArrayValue.Values)
+		dv.ArrayValue.Values = CopyOrigAnyValueSlice(dv.ArrayValue.Values, sv.ArrayValue.Values)
 	case *otlpcommon.AnyValue_BytesValue:
 		bv, ok := dest.Value.(*otlpcommon.AnyValue_BytesValue)
 		if !ok {
@@ -65,22 +65,17 @@ func CopyOrigValue(dest, src *otlpcommon.AnyValue) {
 	}
 }
 
-func FillTestValue(dest Value) {
-	dest.orig.Value = &otlpcommon.AnyValue_StringValue{StringValue: "v"}
-}
-
 func GenerateTestValue() Value {
 	var orig otlpcommon.AnyValue
+	FillOrigTestAnyValue(&orig)
 	state := StateMutable
-	ms := NewValue(&orig, &state)
-	FillTestValue(ms)
-	return ms
+	return NewValue(&orig, &state)
 }
 
-// MarshalJSONStreamValue marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamValue(ms Value, dest *json.Stream) {
+// MarshalJSONOrigAnyValue marshals all properties from the current struct to the destination stream.
+func MarshalJSONOrigAnyValue(orig *otlpcommon.AnyValue, dest *json.Stream) {
 	dest.WriteObjectStart()
-	switch v := ms.orig.Value.(type) {
+	switch v := orig.Value.(type) {
 	case nil:
 		// Do nothing, return an empty object.
 	case *otlpcommon.AnyValue_StringValue:
@@ -97,54 +92,73 @@ func MarshalJSONStreamValue(ms Value, dest *json.Stream) {
 		dest.WriteFloat64(v.DoubleValue)
 	case *otlpcommon.AnyValue_BytesValue:
 		dest.WriteObjectField("bytesValue")
-		MarshalJSONStreamByteSlice(NewByteSlice(&v.BytesValue, ms.state), dest)
+		dest.WriteBytes(v.BytesValue)
 	case *otlpcommon.AnyValue_ArrayValue:
 		dest.WriteObjectField("arrayValue")
 		dest.WriteObjectStart()
-		dest.WriteObjectField("values")
-		MarshalJSONStreamSlice(NewSlice(&v.ArrayValue.Values, ms.state), dest)
+		values := v.ArrayValue.Values
+		if len(values) > 0 {
+			dest.WriteObjectField("values")
+			dest.WriteArrayStart()
+			MarshalJSONOrigAnyValue(&values[0], dest)
+			for i := 1; i < len(values); i++ {
+				dest.WriteMore()
+				MarshalJSONOrigAnyValue(&values[i], dest)
+			}
+			dest.WriteArrayEnd()
+		}
 		dest.WriteObjectEnd()
 	case *otlpcommon.AnyValue_KvlistValue:
 		dest.WriteObjectField("kvlistValue")
 		dest.WriteObjectStart()
-		dest.WriteObjectField("values")
-		MarshalJSONStreamMap(NewMap(&v.KvlistValue.Values, ms.state), dest)
+		values := v.KvlistValue.Values
+		if len(values) > 0 {
+			dest.WriteObjectField("values")
+			dest.WriteArrayStart()
+			MarshalJSONOrigKeyValue(&values[0], dest)
+			for i := 1; i < len(values); i++ {
+				dest.WriteMore()
+				MarshalJSONOrigKeyValue(&values[i], dest)
+			}
+			dest.WriteArrayEnd()
+		}
 		dest.WriteObjectEnd()
 	default:
-		dest.ReportError(fmt.Errorf("invalid value type in the passed attribute value: %T", ms.orig.Value))
+		dest.ReportError(fmt.Errorf("invalid value type in the passed attribute value: %T", orig.Value))
 	}
 	dest.WriteObjectEnd()
 }
 
-// UnmarshalJSONIterValue Unmarshal JSON data and return otlpcommon.AnyValue
-func UnmarshalJSONIterValue(val Value, iter *json.Iterator) {
+// UnmarshalJSONOrigAnyValue Unmarshal JSON data and return otlpcommon.AnyValue
+func UnmarshalJSONOrigAnyValue(orig *otlpcommon.AnyValue, iter *json.Iterator) {
 	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
 		switch f {
 		case "stringValue", "string_value":
-			val.orig.Value = &otlpcommon.AnyValue_StringValue{
+			orig.Value = &otlpcommon.AnyValue_StringValue{
 				StringValue: iter.ReadString(),
 			}
 		case "boolValue", "bool_value":
-			val.orig.Value = &otlpcommon.AnyValue_BoolValue{
+			orig.Value = &otlpcommon.AnyValue_BoolValue{
 				BoolValue: iter.ReadBool(),
 			}
 		case "intValue", "int_value":
-			val.orig.Value = &otlpcommon.AnyValue_IntValue{
+			orig.Value = &otlpcommon.AnyValue_IntValue{
 				IntValue: iter.ReadInt64(),
 			}
 		case "doubleValue", "double_value":
-			val.orig.Value = &otlpcommon.AnyValue_DoubleValue{
+			orig.Value = &otlpcommon.AnyValue_DoubleValue{
 				DoubleValue: iter.ReadFloat64(),
 			}
 		case "bytesValue", "bytes_value":
-			val.orig.Value = &otlpcommon.AnyValue_BytesValue{}
-			UnmarshalJSONIterByteSlice(NewByteSlice(&val.orig.Value.(*otlpcommon.AnyValue_BytesValue).BytesValue, val.state), iter)
+			orig.Value = &otlpcommon.AnyValue_BytesValue{
+				BytesValue: UnmarshalJSONOrigByteSlice(iter),
+			}
 		case "arrayValue", "array_value":
-			val.orig.Value = &otlpcommon.AnyValue_ArrayValue{
+			orig.Value = &otlpcommon.AnyValue_ArrayValue{
 				ArrayValue: readArray(iter),
 			}
 		case "kvlistValue", "kvlist_value":
-			val.orig.Value = &otlpcommon.AnyValue_KvlistValue{
+			orig.Value = &otlpcommon.AnyValue_KvlistValue{
 				KvlistValue: readKvlistValue(iter),
 			}
 		default:
@@ -159,7 +173,7 @@ func readArray(iter *json.Iterator) *otlpcommon.ArrayValue {
 	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
 		switch f {
 		case "values":
-			UnmarshalJSONIterSlice(NewSlice(&v.Values, nil), iter)
+			v.Values = UnmarshalJSONOrigAnyValueSlice(iter)
 		default:
 			iter.Skip()
 		}
@@ -173,11 +187,24 @@ func readKvlistValue(iter *json.Iterator) *otlpcommon.KeyValueList {
 	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
 		switch f {
 		case "values":
-			UnmarshalJSONIterMap(NewMap(&v.Values, nil), iter)
+			v.Values = UnmarshalJSONOrigKeyValueSlice(iter)
 		default:
 			iter.Skip()
 		}
 		return true
 	})
 	return v
+}
+
+func FillOrigTestAnyValue(orig *otlpcommon.AnyValue) {
+	orig.Value = &otlpcommon.AnyValue_StringValue{StringValue: "v"}
+}
+
+func SizeProtoOrigAnyValue(orig *otlpcommon.AnyValue) int {
+	return orig.Size()
+}
+
+func MarshalProtoOrigAnyValue(orig *otlpcommon.AnyValue, buf []byte) int {
+	size, _ := orig.MarshalToSizedBuffer(buf)
+	return size
 }

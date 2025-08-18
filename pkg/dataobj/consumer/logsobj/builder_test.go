@@ -72,7 +72,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
+		builder, err := NewBuilder(testBuilderConfig, nil)
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
@@ -93,7 +93,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig)
+	builder, err := NewBuilder(testBuilderConfig, nil)
 	require.NoError(t, err)
 
 	for {
