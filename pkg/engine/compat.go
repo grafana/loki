@@ -158,48 +158,7 @@ func (b *vectorResultBuilder) CollectRecord(rec arrow.Record) {
 }
 
 func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
-	var sample promql.Sample
-	b.lblsBuilder.Reset(labels.EmptyLabels())
-
-	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
-	for colIdx := range int(rec.NumCols()) {
-		col := rec.Column(colIdx)
-		colName := rec.ColumnName(colIdx)
-
-		field := rec.Schema().Field(colIdx)
-		colDataType, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
-		if !ok {
-			return promql.Sample{}, false
-		}
-
-		switch colName {
-		case types.ColumnNameBuiltinTimestamp:
-			if col.IsNull(i) {
-				return promql.Sample{}, false
-			}
-
-			// [promql.Sample] expects milliseconds as timestamp unit
-			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
-		case types.ColumnNameGeneratedValue:
-			if col.IsNull(i) {
-				return promql.Sample{}, false
-			}
-
-			col, ok := col.(*array.Int64)
-			if !ok {
-				return promql.Sample{}, false
-			}
-			sample.F = float64(col.Value(i))
-		default:
-			// allow any string columns
-			if colDataType == datatype.Loki.String.String() {
-				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
-			}
-		}
-	}
-
-	sample.Metric = b.lblsBuilder.Labels()
-	return sample, true
+	return collectSamplesFromRow(b.lblsBuilder, rec, i)
 }
 
 func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
@@ -237,6 +196,8 @@ func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
 			continue
 		}
 
+		// TODO(ashwanth): apply query series limits.
+
 		// Group samples by series (labels hash)
 		hash := labels.StableHash(sample.Metric)
 		series, exists := b.seriesIndex[hash]
@@ -249,7 +210,6 @@ func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
 			}
 		}
 
-		// Add the sample point to the series
 		series.Floats = append(series.Floats, promql.FPoint{
 			T: sample.T,
 			F: sample.F,
@@ -260,8 +220,39 @@ func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
 }
 
 func (b *matrixResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+	return collectSamplesFromRow(b.lblsBuilder, rec, i)
+}
+
+func (b *matrixResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	series := make([]promql.Series, 0, len(b.seriesIndex))
+	for _, s := range b.seriesIndex {
+		series = append(series, s)
+	}
+
+	// Create matrix and sort it
+	result := promql.Matrix(series)
+	sort.Sort(result)
+
+	return logqlmodel.Result{
+		Data:       result,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
+	}
+}
+
+func (b *matrixResultBuilder) Len() int {
+	total := 0
+	for _, series := range b.seriesIndex {
+		total += len(series.Floats) + len(series.Histograms)
+	}
+
+	return total
+}
+
+func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (promql.Sample, bool) {
 	var sample promql.Sample
-	b.lblsBuilder.Reset(labels.EmptyLabels())
+	builder.Reset(labels.EmptyLabels())
 
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
@@ -295,40 +286,11 @@ func (b *matrixResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 		default:
 			// allow any string columns
 			if colDataType == datatype.Loki.String.String() {
-				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
+				builder.Set(colName, col.(*array.String).Value(i))
 			}
 		}
 	}
 
-	sample.Metric = b.lblsBuilder.Labels()
+	sample.Metric = builder.Labels()
 	return sample, true
-}
-
-func (b *matrixResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
-	// Convert map to slice of series
-	series := make([]promql.Series, 0, len(b.seriesIndex))
-	for _, s := range b.seriesIndex {
-		series = append(series, s)
-	}
-
-	// Create matrix and sort it
-	result := promql.Matrix(series)
-	sort.Sort(result)
-
-	return logqlmodel.Result{
-		Data:       result,
-		Statistics: s,
-		Headers:    md.Headers(),
-		Warnings:   md.Warnings(),
-	}
-}
-
-func (b *matrixResultBuilder) Len() int {
-	total := 0
-	for _, series := range b.seriesIndex {
-		total += len(series.Floats)
-		total += len(series.Histograms)
-	}
-
-	return total
 }
