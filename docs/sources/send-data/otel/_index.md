@@ -34,10 +34,8 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-address>/otlp
+    endpoint: http://<loki-addr>:3100/otlp
 ```
-
-For Grafana Cloud users, refer to [https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/](https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/).
 
 And enable it in `service.pipelines`:
 
@@ -63,7 +61,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>/otlp
+    endpoint: http://<loki-addr>:3100/otlp
 
 service:
   extensions: [basicauth/otlp]
@@ -176,7 +174,7 @@ If you are a Grafana Cloud customer, open a support escalation listing the Attri
 
 Here are some example configs to change the default mapping of OTLP to Loki format:
 
-#### Example 1
+#### Example 1:
 
 ```yaml
 limits_config:
@@ -189,12 +187,11 @@ limits_config:
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
-
 * Store all 17 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 2
+#### Example 2:
 
 ```yaml
 limits_config:
@@ -207,12 +204,11 @@ limits_config:
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
-
 * **Only** store `service.group` Resource Attribute as index labels.
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 3
+#### Example 3:
 
 ```yaml
 limits_config:
@@ -234,7 +230,6 @@ limits_config:
 ```
 
 With the example config, here is how various kinds of Attributes would be stored:
-
 * Store all 17 Resource Attributes mentioned earlier and `service.group` Resource Attribute as index labels.
 * Store remaining Resource Attributes as Structured Metadata.
 * Drop Scope Attribute named `method.name` and store all other Scope Attributes as Structured Metadata.
