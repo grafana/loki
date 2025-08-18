@@ -207,6 +207,7 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.
 			idx := len(index)
 			index[filteredDescriptor.Location] = idx
 			filteredDescriptor.Streams = []int64{}
+			filteredDescriptor.Sections = []int{}
 		}
 
 		if int(desc.SectionIdx)%int(shard.Of) == int(shard.Shard) {
