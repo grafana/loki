@@ -149,24 +149,21 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 func (enc *encoder) Metadata() (proto.Message, error) {
 	enc.initDictionary()
 
-	sections := make([]*filemd.SectionInfo, len(enc.sections))
-
 	offset := enc.startOffset
 
-	for i, info := range enc.sections {
-		dataOffset := offset                      // Data starts at the current total offset
-		metaOffset := dataOffset + info.Data.Size // Metadata starts right after data
+	// The data regions and metadata regions of all sections are encoded
+	// contiguously. To represent this in the SectionInfo headers, we update
+	// them in two passes, once for the data and once for the metadata.
+	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
+	// Determine data region locations.
+	for i, info := range enc.sections {
 		sections[i] = &filemd.SectionInfo{
 			TypeRef: enc.getTypeRef(info.Type),
 			Layout: &filemd.SectionLayout{
 				Data: &filemd.Region{
-					Offset: uint64(dataOffset),
+					Offset: uint64(offset),
 					Length: uint64(info.Data.Size),
-				},
-				Metadata: &filemd.Region{
-					Offset: uint64(metaOffset),
-					Length: uint64(info.Metadata.Size),
 				},
 			},
 
@@ -174,7 +171,19 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
-		offset += info.Data.Size + info.Metadata.Size
+		offset += info.Data.Size
+	}
+
+	// Determine metadta region location.
+	for i, info := range enc.sections {
+		// sections[i] is initialized in the previous loop, so we can directly
+		// update the layout to include the metadata region.
+		sections[i].Layout.Metadata = &filemd.Region{
+			Offset: uint64(offset),
+			Length: uint64(info.Metadata.Size),
+		}
+
+		offset += info.Metadata.Size
 	}
 
 	return &filemd.Metadata{
@@ -231,11 +240,13 @@ func (enc *encoder) Flush() (*snapshot, error) {
 
 	// Convert our sections into regions for the snapshot to use. The order of
 	// regions *must* match the order of offset+length written in
-	// [encoder.Metadata].
+	// [encoder.Metadata]: all the data regions, followed by all the metadata
+	// regions.
 	regions := make([]sectionRegion, 0, len(enc.sections)*2)
 	for _, sec := range enc.sections {
-		// The metadata region follows the data region.
 		regions = append(regions, sec.Data)
+	}
+	for _, sec := range enc.sections {
 		regions = append(regions, sec.Metadata)
 	}
 
