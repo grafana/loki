@@ -37,24 +37,19 @@ type Service struct {
 	eventsProducerClient *kgo.Client
 	eventConsumerClient  *kgo.Client
 
-	cfg          Config
-	mCfg         metastore.Config
-	bucket       objstore.Bucket
-	scratchStore scratch.Store
-	codec        distributor.TenantPrefixCodec
+	cfg   Config
+	codec distributor.TenantPrefixCodec
 
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
+	processorFactory  *partitionProcessorFactory
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
-		mCfg:              mCfg,
-		bucket:            bucket,
-		scratchStore:      scratchStore,
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
@@ -90,6 +85,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 	s.client = consumerClient
 	s.eventsProducerClient = eventsProducerClient
 
+	s.processorFactory = newPartitionProcessorFactory(
+		cfg, mCfg, consumerClient.Client, eventsProducerClient, bucket, scratchStore, logger, reg)
+
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
@@ -112,7 +110,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.mCfg, s.bucket, s.scratchStore, tenant, virtualShard, topic, partition, s.logger, s.reg, s.cfg.IdleFlushTimeout, s.eventsProducerClient)
+			processor := s.processorFactory.New(ctx, tenant, virtualShard, topic, partition)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
