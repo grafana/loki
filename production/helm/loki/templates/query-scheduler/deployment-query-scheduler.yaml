@@ -49,6 +49,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.queryScheduler.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.queryScheduler.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}

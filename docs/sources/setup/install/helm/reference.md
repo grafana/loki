@@ -51,6 +51,7 @@ This is the generated reference for the Loki Helm Chart values.
     },
     "readOnlyRootFilesystem": true
   },
+  "dnsConfig": {},
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
@@ -106,6 +107,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for `admin-api` pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -849,6 +859,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -993,6 +1004,15 @@ null
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1218,6 +1238,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1300,6 +1321,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1653,6 +1683,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1735,6 +1766,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2128,6 +2168,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether memcached based chunks-cache should be enabled</td>
@@ -2212,6 +2261,7 @@ true
   "batchSize": 4,
   "connectionLimit": 16384,
   "defaultValidity": "0s",
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": {},
   "extraContainers": [],
@@ -2318,6 +2368,15 @@ true
 			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
 			<td><pre lang="json">
 "0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2925,6 +2984,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -3009,6 +3069,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for compactor pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3393,6 +3462,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -3541,6 +3611,15 @@ null
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for distributor pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5320,6 +5399,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5386,6 +5466,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for index-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5755,6 +5844,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5966,6 +6056,15 @@ null
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for ingester pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8574,6 +8673,7 @@ false
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": [],
   "extraContainers": [],
@@ -8631,6 +8731,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for overrides-exporter</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8883,6 +8992,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -8968,6 +9078,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10183,6 +10302,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -10229,6 +10349,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for query-scheduler</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11029,6 +11158,15 @@ null
 			<td>Specify how long cached results should be stored in the results-cache before being expired</td>
 			<td><pre lang="json">
 "12h"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for results-cache</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

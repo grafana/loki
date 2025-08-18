@@ -56,6 +56,10 @@ spec:
       {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomPlanner.hostUsers) }}
       hostUsers: {{ .Values.bloomPlanner.hostUsers }}
       {{- end }}
+      {{- with .Values.bloomPlanner.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- include "loki.bloomPlannerPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
