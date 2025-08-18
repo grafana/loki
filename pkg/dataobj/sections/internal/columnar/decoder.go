@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -74,6 +75,10 @@ func (dec *Decoder) getSectionInfo() (*datasetmd.SectionInfoExtension, error) {
 // first slice corresponds to the first column, and so on.
 func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) result.Seq[[]*datasetmd.PageDesc] {
 	return result.Iter(func(yield func([]*datasetmd.PageDesc) bool) error {
+		stats := dataset.StatsFromContext(ctx)
+		startTime := time.Now()
+		defer func() { stats.AddPageDownloadTime(time.Since(startTime)) }()
+
 		results := make([][]*datasetmd.PageDesc, len(columns))
 
 		columnInfo := func(c *datasetmd.ColumnDesc) (uint64, uint64) {
@@ -145,6 +150,10 @@ func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
 // error is emitted from the sequence and iteration stops.
 func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
+		stats := dataset.StatsFromContext(ctx)
+		startTime := time.Now()
+		defer func() { stats.AddPageDownloadTime(time.Since(startTime)) }()
+
 		results := make([]dataset.PageData, len(pages))
 
 		pageInfo := func(p *datasetmd.PageDesc) (uint64, uint64) {

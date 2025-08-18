@@ -23,6 +23,8 @@ type DownloadStats struct {
 	PagesFoundInCache     uint64
 	BatchDownloadRequests uint64
 
+	PageDownloadTime time.Duration // Total time taken for downloading paga data or metadata.
+
 	PrimaryColumnPages               uint64 // Number of pages downloaded for primary columns
 	SecondaryColumnPages             uint64 // Number of pages downloaded for secondary columns
 	PrimaryColumnBytes               uint64 // Total bytes downloaded for primary columns
@@ -35,6 +37,8 @@ func (ds *DownloadStats) Reset() {
 	ds.PagesScanned = 0
 	ds.PagesFoundInCache = 0
 	ds.BatchDownloadRequests = 0
+
+	ds.PageDownloadTime = 0
 
 	ds.PrimaryColumnPages = 0
 	ds.SecondaryColumnPages = 0
@@ -188,6 +192,15 @@ func (s *ReaderStats) AddBatchDownloadRequests(count uint64) {
 	}
 }
 
+// AddPageDownloadTime adds the given duration into the total download time for
+// page metadata and data.
+func (s *ReaderStats) AddPageDownloadTime(duration time.Duration) {
+	s.DownloadStats.PageDownloadTime += duration
+	if s.globalStats != nil {
+		s.globalStats.AddPageDownloadTime(duration)
+	}
+}
+
 func (s *ReaderStats) AddPrimaryColumnPagesDownloaded(count uint64) {
 	s.DownloadStats.PrimaryColumnPages += count
 	if s.globalStats != nil {
@@ -269,6 +282,8 @@ func (s *ReaderStats) LogSummary(logger log.Logger, execDuration time.Duration) 
 		"total_pages_read", s.DownloadStats.PagesScanned,
 		"pages_found_in_cache", s.DownloadStats.PagesFoundInCache,
 		"batch_download_requests", s.DownloadStats.BatchDownloadRequests,
+
+		"total_download_time", s.DownloadStats.PageDownloadTime,
 
 		"primary_pages_downloaded", s.DownloadStats.PrimaryColumnPages,
 		"secondary_pages_downloaded", s.DownloadStats.SecondaryColumnPages,
