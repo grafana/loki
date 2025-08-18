@@ -46,7 +46,8 @@ type DataObjStore struct {
 
 // NewDataObjStore creates a new DataObjStore
 func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
-	// Create store-specific directory
+	// NOTE(rfratto): DataObjStore should use a dataobj subdirectory to imitate
+	// production setup: a dataobj subdirectory in the location used for chunks.
 	storeDir := filepath.Join(dir, "dataobj")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)

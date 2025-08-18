@@ -60,8 +60,8 @@ type builderSectionWriter struct {
 	enc *encoder
 }
 
-func (w builderSectionWriter) WriteSection(data, metadata []byte, extension []byte) (n int64, err error) {
-	w.enc.AppendSection(w.typ, data, metadata, extension)
+func (w builderSectionWriter) WriteSection(opts *WriteSectionOptions, data, metadata []byte) (n int64, err error) {
+	w.enc.AppendSection(w.typ, opts, data, metadata)
 	return int64(len(data) + len(metadata)), nil
 }
 

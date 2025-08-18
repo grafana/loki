@@ -26,40 +26,40 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// ValueType represents the valid types that values within a column can have.
-type ValueType int32
+// PhysicalType represents the type that the column is encoded as.
+type PhysicalType int32
 
 const (
-	// Invalid value type.
-	VALUE_TYPE_UNSPECIFIED ValueType = 0
-	// VALUE_TYPE_INT64 is a column containing 64-bit integer values.
-	VALUE_TYPE_INT64 ValueType = 1
-	// VALUE_TYPE_UINT64 is a column containing 64-bit unsigned integer values.
-	VALUE_TYPE_UINT64 ValueType = 2
-	// VALUE_TYPE_BYTE_ARRAY is a column containing bytes with no specific type.
-	VALUE_TYPE_BYTE_ARRAY ValueType = 4
+	// Invalid PhysicalType.
+	PHYSICAL_TYPE_UNSPECIFIED PhysicalType = 0
+	// PHYSICAL_TYPE_INT64 holds 64-bit integer values.
+	PHYSICAL_TYPE_INT64 PhysicalType = 1
+	// PHYSICAL_TYPE_UINT64 holds 64-bit unsigned integer values.
+	PHYSICAL_TYPE_UINT64 PhysicalType = 2
+	// PHYSICAL_TYPE_BINARY holds binary data of variable length.
+	PHYSICAL_TYPE_BINARY PhysicalType = 3
 )
 
-var ValueType_name = map[int32]string{
-	0: "VALUE_TYPE_UNSPECIFIED",
-	1: "VALUE_TYPE_INT64",
-	2: "VALUE_TYPE_UINT64",
-	4: "VALUE_TYPE_BYTE_ARRAY",
+var PhysicalType_name = map[int32]string{
+	0: "PHYSICAL_TYPE_UNSPECIFIED",
+	1: "PHYSICAL_TYPE_INT64",
+	2: "PHYSICAL_TYPE_UINT64",
+	3: "PHYSICAL_TYPE_BINARY",
 }
 
-var ValueType_value = map[string]int32{
-	"VALUE_TYPE_UNSPECIFIED": 0,
-	"VALUE_TYPE_INT64":       1,
-	"VALUE_TYPE_UINT64":      2,
-	"VALUE_TYPE_BYTE_ARRAY":  4,
+var PhysicalType_value = map[string]int32{
+	"PHYSICAL_TYPE_UNSPECIFIED": 0,
+	"PHYSICAL_TYPE_INT64":       1,
+	"PHYSICAL_TYPE_UINT64":      2,
+	"PHYSICAL_TYPE_BINARY":      3,
 }
 
-func (ValueType) EnumDescriptor() ([]byte, []int) {
+func (PhysicalType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_7ab9d5b21b743868, []int{0}
 }
 
-// CompressionType represents the valid compression types that can be used for
-// compressing values in a page.
+// CompressionType represents valid compression types that can be used for
+// compressing content within pages.
 type CompressionType int32
 
 const (
@@ -103,7 +103,7 @@ const (
 	// Delta encoding. The first value within the page is stored as-is, and
 	// subsequent values are stored as the delta from the previous value.
 	ENCODING_TYPE_DELTA EncodingType = 2
-	// Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
+	// Bitmap encoding. Bitmaps efficiently store repeating sequences of unsigned
 	// integers using a combination of run-length encoding and bitpacking.
 	ENCODING_TYPE_BITMAP EncodingType = 3
 )
@@ -154,46 +154,28 @@ func (SortDirection) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_7ab9d5b21b743868, []int{3}
 }
 
-// ColumnInfo describes an individual column within a data set.
-type ColumnInfo struct {
-	// Optional name of the column.
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Type of values stored within the column.
-	ValueType ValueType `protobuf:"varint,2,opt,name=value_type,json=valueType,proto3,enum=dataobj.metadata.dataset.v1.ValueType" json:"value_type,omitempty"`
-	// Total number of rows in the entire column.
-	RowsCount uint64 `protobuf:"varint,3,opt,name=rows_count,json=rowsCount,proto3" json:"rows_count,omitempty"`
-	// Compression type used for all pages.
-	Compression CompressionType `protobuf:"varint,4,opt,name=compression,proto3,enum=dataobj.metadata.dataset.v1.CompressionType" json:"compression,omitempty"`
-	// Total uncompressed size of all pages in the column.
-	UncompressedSize uint64 `protobuf:"varint,5,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size,omitempty"`
-	// Total compressed size of all pages in the column. Compressed size may
-	// match uncompressed size if no compression is used.
-	CompressedSize uint64 `protobuf:"varint,6,opt,name=compressed_size,json=compressedSize,proto3" json:"compressed_size,omitempty"`
-	// Byte offset relative to the start of the section to the column's metadata.
-	//
-	// In older versions of dataobjs, this was an absolute offset from the start
-	// of the data object. For backwards compatibility, interpret this offset as
-	// absolute if filemd.SectionLayout is unset for a section.
-	MetadataOffset uint64 `protobuf:"varint,7,opt,name=metadata_offset,json=metadataOffset,proto3" json:"metadata_offset,omitempty"`
-	// Size of the column's metadata in bytes.
-	MetadataSize uint64 `protobuf:"varint,8,opt,name=metadata_size,json=metadataSize,proto3" json:"metadata_size,omitempty"`
-	// Statistics for the column.
-	Statistics *Statistics `protobuf:"bytes,9,opt,name=statistics,proto3" json:"statistics,omitempty"`
-	// Total number of non-NULL values in the entire column.
-	ValuesCount uint64 `protobuf:"varint,10,opt,name=values_count,json=valuesCount,proto3" json:"values_count,omitempty"`
+// SectionInfoExtension holds basic information about how to read this section.
+// It is encoded into the extension data field of
+// [github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd.FileMetadata].
+type SectionInfoExtension struct {
+	// Byte offset relative to the start of the section's metadata region where
+	// SectionMetadata for this section is stored.
+	SectionMetadataOffset uint64 `protobuf:"varint,1,opt,name=section_metadata_offset,json=sectionMetadataOffset,proto3" json:"section_metadata_offset,omitempty"`
+	// Length of the SectionMetadata for this column in bytes.
+	SectionMetadataLength uint64 `protobuf:"varint,2,opt,name=section_metadata_length,json=sectionMetadataLength,proto3" json:"section_metadata_length,omitempty"`
 }
 
-func (m *ColumnInfo) Reset()      { *m = ColumnInfo{} }
-func (*ColumnInfo) ProtoMessage() {}
-func (*ColumnInfo) Descriptor() ([]byte, []int) {
+func (m *SectionInfoExtension) Reset()      { *m = SectionInfoExtension{} }
+func (*SectionInfoExtension) ProtoMessage() {}
+func (*SectionInfoExtension) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7ab9d5b21b743868, []int{0}
 }
-func (m *ColumnInfo) XXX_Unmarshal(b []byte) error {
+func (m *SectionInfoExtension) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ColumnInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SectionInfoExtension) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ColumnInfo.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SectionInfoExtension.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -203,86 +185,477 @@ func (m *ColumnInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ColumnInfo) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ColumnInfo.Merge(m, src)
+func (m *SectionInfoExtension) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SectionInfoExtension.Merge(m, src)
 }
-func (m *ColumnInfo) XXX_Size() int {
+func (m *SectionInfoExtension) XXX_Size() int {
 	return m.Size()
 }
-func (m *ColumnInfo) XXX_DiscardUnknown() {
-	xxx_messageInfo_ColumnInfo.DiscardUnknown(m)
+func (m *SectionInfoExtension) XXX_DiscardUnknown() {
+	xxx_messageInfo_SectionInfoExtension.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ColumnInfo proto.InternalMessageInfo
+var xxx_messageInfo_SectionInfoExtension proto.InternalMessageInfo
 
-func (m *ColumnInfo) GetName() string {
+func (m *SectionInfoExtension) GetSectionMetadataOffset() uint64 {
 	if m != nil {
-		return m.Name
+		return m.SectionMetadataOffset
 	}
-	return ""
+	return 0
 }
 
-func (m *ColumnInfo) GetValueType() ValueType {
+func (m *SectionInfoExtension) GetSectionMetadataLength() uint64 {
 	if m != nil {
-		return m.ValueType
+		return m.SectionMetadataLength
 	}
-	return VALUE_TYPE_UNSPECIFIED
+	return 0
 }
 
-func (m *ColumnInfo) GetRowsCount() uint64 {
+// SectionMetadata holds the entrypoint metadata for the overall section.
+// SectionMetadata points to the offset of per-column ColumnMetadata which can
+// be retrieved on demand.
+type SectionMetadata struct {
+	// The list of columns in the dataset.
+	Columns []*ColumnDesc `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	// Dictionary for deduplicating logical types and column tags. The first
+	// element (index zero) is reserved for invalid strings ("").
+	Dictionary []string `protobuf:"bytes,2,rep,name=dictionary,proto3" json:"dictionary,omitempty"`
+	// Sort information about the columns.
+	SortInfo *SortInfo `protobuf:"bytes,3,opt,name=sort_info,json=sortInfo,proto3" json:"sort_info,omitempty"`
+}
+
+func (m *SectionMetadata) Reset()      { *m = SectionMetadata{} }
+func (*SectionMetadata) ProtoMessage() {}
+func (*SectionMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{1}
+}
+func (m *SectionMetadata) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SectionMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SectionMetadata.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SectionMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SectionMetadata.Merge(m, src)
+}
+func (m *SectionMetadata) XXX_Size() int {
+	return m.Size()
+}
+func (m *SectionMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_SectionMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SectionMetadata proto.InternalMessageInfo
+
+func (m *SectionMetadata) GetColumns() []*ColumnDesc {
+	if m != nil {
+		return m.Columns
+	}
+	return nil
+}
+
+func (m *SectionMetadata) GetDictionary() []string {
+	if m != nil {
+		return m.Dictionary
+	}
+	return nil
+}
+
+func (m *SectionMetadata) GetSortInfo() *SortInfo {
+	if m != nil {
+		return m.SortInfo
+	}
+	return nil
+}
+
+// ColumnDesc describes an individual column within a data set.
+type ColumnDesc struct {
+	// Type holds the type of data in the column.
+	Type *ColumnType `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// Tag is an optional string that can be used to distinguish between
+	// different columns with the same type.
+	//
+	// For example, there may be two columns with the type (uint64.timestamp)
+	// but with different tags ("start_time" and "end_time").
+	//
+	// Columns are uniquely named based on the combination of their type and
+	// optional tag, separated by a "/" when a tag is present:
+	//
+	//   - uint64.timestamp/start_time
+	//   - uint64.timestamp/end_time
+	//   - uint64.stream_id (no tag)
+	//
+	// The tag string can be retrieved from the dictionary field in
+	// SectionMetadata, using the tag_ref value as the index.
+	TagRef uint32 `protobuf:"varint,2,opt,name=tag_ref,json=tagRef,proto3" json:"tag_ref,omitempty"`
+	// Total number of pages in the column.
+	PagesCount uint64 `protobuf:"varint,3,opt,name=pages_count,json=pagesCount,proto3" json:"pages_count,omitempty"`
+	// Total number of rows (values + nulls) in the column across all pages.
+	RowsCount uint64 `protobuf:"varint,4,opt,name=rows_count,json=rowsCount,proto3" json:"rows_count,omitempty"`
+	// Total number of non-NULL values in this column across all pages. The
+	// number of NULL values is rows_count - values_count.
+	ValuesCount uint64 `protobuf:"varint,5,opt,name=values_count,json=valuesCount,proto3" json:"values_count,omitempty"`
+	// Compression type used for all pages.
+	Compression CompressionType `protobuf:"varint,6,opt,name=compression,proto3,enum=dataobj.metadata.dataset.v2.CompressionType" json:"compression,omitempty"`
+	// Total uncompressed size of all pages in the column in bytes.
+	UncompressedSize uint64 `protobuf:"varint,7,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size,omitempty"`
+	// Total compressed size of all pages in the column. If no compression is
+	// used, compressed_size matches uncompressed_size.
+	CompressedSize uint64 `protobuf:"varint,8,opt,name=compressed_size,json=compressedSize,proto3" json:"compressed_size,omitempty"`
+	// Byte offset relative to the start of the section's metadata region where
+	// ColumnMetadata for this column is stored.
+	ColumnMetadataOffset uint64 `protobuf:"varint,9,opt,name=column_metadata_offset,json=columnMetadataOffset,proto3" json:"column_metadata_offset,omitempty"`
+	// Length of the ColumnMetadata for this column in bytes.
+	ColumnMetadataLength uint64 `protobuf:"varint,10,opt,name=column_metadata_length,json=columnMetadataLength,proto3" json:"column_metadata_length,omitempty"`
+	// Statistics for this column.
+	Statistics *Statistics `protobuf:"bytes,11,opt,name=statistics,proto3" json:"statistics,omitempty"`
+}
+
+func (m *ColumnDesc) Reset()      { *m = ColumnDesc{} }
+func (*ColumnDesc) ProtoMessage() {}
+func (*ColumnDesc) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{2}
+}
+func (m *ColumnDesc) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ColumnDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ColumnDesc.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ColumnDesc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ColumnDesc.Merge(m, src)
+}
+func (m *ColumnDesc) XXX_Size() int {
+	return m.Size()
+}
+func (m *ColumnDesc) XXX_DiscardUnknown() {
+	xxx_messageInfo_ColumnDesc.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ColumnDesc proto.InternalMessageInfo
+
+func (m *ColumnDesc) GetType() *ColumnType {
+	if m != nil {
+		return m.Type
+	}
+	return nil
+}
+
+func (m *ColumnDesc) GetTagRef() uint32 {
+	if m != nil {
+		return m.TagRef
+	}
+	return 0
+}
+
+func (m *ColumnDesc) GetPagesCount() uint64 {
+	if m != nil {
+		return m.PagesCount
+	}
+	return 0
+}
+
+func (m *ColumnDesc) GetRowsCount() uint64 {
 	if m != nil {
 		return m.RowsCount
 	}
 	return 0
 }
 
-func (m *ColumnInfo) GetCompression() CompressionType {
+func (m *ColumnDesc) GetValuesCount() uint64 {
+	if m != nil {
+		return m.ValuesCount
+	}
+	return 0
+}
+
+func (m *ColumnDesc) GetCompression() CompressionType {
 	if m != nil {
 		return m.Compression
 	}
 	return COMPRESSION_TYPE_UNSPECIFIED
 }
 
-func (m *ColumnInfo) GetUncompressedSize() uint64 {
+func (m *ColumnDesc) GetUncompressedSize() uint64 {
 	if m != nil {
 		return m.UncompressedSize
 	}
 	return 0
 }
 
-func (m *ColumnInfo) GetCompressedSize() uint64 {
+func (m *ColumnDesc) GetCompressedSize() uint64 {
 	if m != nil {
 		return m.CompressedSize
 	}
 	return 0
 }
 
-func (m *ColumnInfo) GetMetadataOffset() uint64 {
+func (m *ColumnDesc) GetColumnMetadataOffset() uint64 {
 	if m != nil {
-		return m.MetadataOffset
+		return m.ColumnMetadataOffset
 	}
 	return 0
 }
 
-func (m *ColumnInfo) GetMetadataSize() uint64 {
+func (m *ColumnDesc) GetColumnMetadataLength() uint64 {
 	if m != nil {
-		return m.MetadataSize
+		return m.ColumnMetadataLength
 	}
 	return 0
 }
 
-func (m *ColumnInfo) GetStatistics() *Statistics {
+func (m *ColumnDesc) GetStatistics() *Statistics {
 	if m != nil {
 		return m.Statistics
 	}
 	return nil
 }
 
-func (m *ColumnInfo) GetValuesCount() uint64 {
+// ColumnType represents the type of data in a column, combined from its
+// physical layout and logical interpretation.
+//
+// A ColumnType is usually described by concatenating its physical and logical
+// type with a ".", such as "uint64.timestamp" or "binary.label".
+type ColumnType struct {
+	// Physical is the physical type of the column.
+	Physical PhysicalType `protobuf:"varint,1,opt,name=physical,proto3,enum=dataobj.metadata.dataset.v2.PhysicalType" json:"physical,omitempty"`
+	// Logical is a section-specified string indicating how to interpret the
+	// physical type. Section implementations are responsible for interpreting
+	// this value.
+	//
+	// The string can be retrieved from the dictionary field in SectionMetadata,
+	// using the logical_ref value as the index.
+	LogicalRef uint32 `protobuf:"varint,3,opt,name=logical_ref,json=logicalRef,proto3" json:"logical_ref,omitempty"`
+}
+
+func (m *ColumnType) Reset()      { *m = ColumnType{} }
+func (*ColumnType) ProtoMessage() {}
+func (*ColumnType) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{3}
+}
+func (m *ColumnType) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ColumnType) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ColumnType.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ColumnType) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ColumnType.Merge(m, src)
+}
+func (m *ColumnType) XXX_Size() int {
+	return m.Size()
+}
+func (m *ColumnType) XXX_DiscardUnknown() {
+	xxx_messageInfo_ColumnType.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ColumnType proto.InternalMessageInfo
+
+func (m *ColumnType) GetPhysical() PhysicalType {
+	if m != nil {
+		return m.Physical
+	}
+	return PHYSICAL_TYPE_UNSPECIFIED
+}
+
+func (m *ColumnType) GetLogicalRef() uint32 {
+	if m != nil {
+		return m.LogicalRef
+	}
+	return 0
+}
+
+// ColumnMetadata holds additional metadata for an individual column.
+// ColumnMetadata is stored within the metadata region of a section, and its
+// offset and size is retrieved from within [ColumnDesc].
+type ColumnMetadata struct {
+	// Pages within the column.
+	Pages []*PageDesc `protobuf:"bytes,1,rep,name=pages,proto3" json:"pages,omitempty"`
+}
+
+func (m *ColumnMetadata) Reset()      { *m = ColumnMetadata{} }
+func (*ColumnMetadata) ProtoMessage() {}
+func (*ColumnMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{4}
+}
+func (m *ColumnMetadata) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ColumnMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ColumnMetadata.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ColumnMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ColumnMetadata.Merge(m, src)
+}
+func (m *ColumnMetadata) XXX_Size() int {
+	return m.Size()
+}
+func (m *ColumnMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_ColumnMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ColumnMetadata proto.InternalMessageInfo
+
+func (m *ColumnMetadata) GetPages() []*PageDesc {
+	if m != nil {
+		return m.Pages
+	}
+	return nil
+}
+
+// PageDesc describes an individual page within a column.
+type PageDesc struct {
+	// Uncompressed size of the page in bytes.
+	UncompressedSize uint64 `protobuf:"varint,1,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size,omitempty"`
+	// Compressed size of the page in bytes.
+	CompressedSize uint64 `protobuf:"varint,2,opt,name=compressed_size,json=compressedSize,proto3" json:"compressed_size,omitempty"`
+	// CRC32 checksum of the page data.
+	Crc32 uint32 `protobuf:"varint,3,opt,name=crc32,proto3" json:"crc32,omitempty"`
+	// Total number of rows (values + nulls) in the page.
+	RowsCount uint64 `protobuf:"varint,4,opt,name=rows_count,json=rowsCount,proto3" json:"rows_count,omitempty"`
+	// Total number of non-NULL values in the page. The number of NULL values is
+	// rows_count - values_count.
+	ValuesCount uint64 `protobuf:"varint,5,opt,name=values_count,json=valuesCount,proto3" json:"values_count,omitempty"`
+	// Encoding used for values in the page.
+	Encoding EncodingType `protobuf:"varint,6,opt,name=encoding,proto3,enum=dataobj.metadata.dataset.v2.EncodingType" json:"encoding,omitempty"`
+	// Byte offset relative to the start of the section's data region where the
+	// page is stored.
+	DataOffset uint64 `protobuf:"varint,7,opt,name=data_offset,json=dataOffset,proto3" json:"data_offset,omitempty"`
+	// Size of the page's data in bytes.
+	DataSize uint64 `protobuf:"varint,8,opt,name=data_size,json=dataSize,proto3" json:"data_size,omitempty"`
+	// Optional statistics for the page.
+	Statistics *Statistics `protobuf:"bytes,9,opt,name=statistics,proto3" json:"statistics,omitempty"`
+}
+
+func (m *PageDesc) Reset()      { *m = PageDesc{} }
+func (*PageDesc) ProtoMessage() {}
+func (*PageDesc) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{5}
+}
+func (m *PageDesc) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PageDesc) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PageDesc.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PageDesc) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PageDesc.Merge(m, src)
+}
+func (m *PageDesc) XXX_Size() int {
+	return m.Size()
+}
+func (m *PageDesc) XXX_DiscardUnknown() {
+	xxx_messageInfo_PageDesc.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PageDesc proto.InternalMessageInfo
+
+func (m *PageDesc) GetUncompressedSize() uint64 {
+	if m != nil {
+		return m.UncompressedSize
+	}
+	return 0
+}
+
+func (m *PageDesc) GetCompressedSize() uint64 {
+	if m != nil {
+		return m.CompressedSize
+	}
+	return 0
+}
+
+func (m *PageDesc) GetCrc32() uint32 {
+	if m != nil {
+		return m.Crc32
+	}
+	return 0
+}
+
+func (m *PageDesc) GetRowsCount() uint64 {
+	if m != nil {
+		return m.RowsCount
+	}
+	return 0
+}
+
+func (m *PageDesc) GetValuesCount() uint64 {
 	if m != nil {
 		return m.ValuesCount
 	}
 	return 0
+}
+
+func (m *PageDesc) GetEncoding() EncodingType {
+	if m != nil {
+		return m.Encoding
+	}
+	return ENCODING_TYPE_UNSPECIFIED
+}
+
+func (m *PageDesc) GetDataOffset() uint64 {
+	if m != nil {
+		return m.DataOffset
+	}
+	return 0
+}
+
+func (m *PageDesc) GetDataSize() uint64 {
+	if m != nil {
+		return m.DataSize
+	}
+	return 0
+}
+
+func (m *PageDesc) GetStatistics() *Statistics {
+	if m != nil {
+		return m.Statistics
+	}
+	return nil
 }
 
 // Statistics about a column or a page. All statistics are optional and are
@@ -310,7 +683,7 @@ type Statistics struct {
 func (m *Statistics) Reset()      { *m = Statistics{} }
 func (*Statistics) ProtoMessage() {}
 func (*Statistics) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7ab9d5b21b743868, []int{1}
+	return fileDescriptor_7ab9d5b21b743868, []int{6}
 }
 func (m *Statistics) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -360,44 +733,29 @@ func (m *Statistics) GetCardinalityCount() uint64 {
 	return 0
 }
 
-// Page describes an individual page within a column.
-type PageInfo struct {
-	// Uncompressed size of the page within the data object.
-	UncompressedSize uint64 `protobuf:"varint,1,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size,omitempty"`
-	// Compressed size of the page within the data object. Compression size
-	// will match uncompressed size if no compression is used.
-	CompressedSize uint64 `protobuf:"varint,2,opt,name=compressed_size,json=compressedSize,proto3" json:"compressed_size,omitempty"`
-	// CRC32 checksum of the page data.
-	Crc32 uint32 `protobuf:"varint,3,opt,name=crc32,proto3" json:"crc32,omitempty"`
-	// Number of rows in the page.
-	RowsCount uint64 `protobuf:"varint,4,opt,name=rows_count,json=rowsCount,proto3" json:"rows_count,omitempty"`
-	// Encoding type used for the page.
-	Encoding EncodingType `protobuf:"varint,5,opt,name=encoding,proto3,enum=dataobj.metadata.dataset.v1.EncodingType" json:"encoding,omitempty"`
-	// Byte offset relative to the start of the section to the page's data
+// SortInfo holds sort order information for rows in the section.
+type SortInfo struct {
+	// The list of column sorts. The length of this depends on how many columns
+	// are used for sorting.
 	//
-	// In older versions of dataobjs, this was an absolute offset from the start
-	// of the data object. For backwards compatibility, interpret this offset as
-	// absolute if filemd.SectionLayout is unset for a section.
-	DataOffset uint64 `protobuf:"varint,6,opt,name=data_offset,json=dataOffset,proto3" json:"data_offset,omitempty"`
-	// Size of the page's data in bytes.
-	DataSize uint64 `protobuf:"varint,7,opt,name=data_size,json=dataSize,proto3" json:"data_size,omitempty"`
-	// Optional statistics for the page.
-	Statistics *Statistics `protobuf:"bytes,8,opt,name=statistics,proto3" json:"statistics,omitempty"`
-	// Total number of non-NULL values in the page.
-	ValuesCount uint64 `protobuf:"varint,9,opt,name=values_count,json=valuesCount,proto3" json:"values_count,omitempty"`
+	// If the section has no sorting at all, this field will be empty. If the
+	// section is sorted based on the value of a single column, this field will
+	// contain a single element. Otherwise, this field will contain multiple
+	// elements when compound sorting is used.
+	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
 }
 
-func (m *PageInfo) Reset()      { *m = PageInfo{} }
-func (*PageInfo) ProtoMessage() {}
-func (*PageInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7ab9d5b21b743868, []int{2}
+func (m *SortInfo) Reset()      { *m = SortInfo{} }
+func (*SortInfo) ProtoMessage() {}
+func (*SortInfo) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{7}
 }
-func (m *PageInfo) XXX_Unmarshal(b []byte) error {
+func (m *SortInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *PageInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SortInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_PageInfo.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SortInfo.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -407,148 +765,43 @@ func (m *PageInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *PageInfo) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_PageInfo.Merge(m, src)
+func (m *SortInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SortInfo.Merge(m, src)
 }
-func (m *PageInfo) XXX_Size() int {
+func (m *SortInfo) XXX_Size() int {
 	return m.Size()
 }
-func (m *PageInfo) XXX_DiscardUnknown() {
-	xxx_messageInfo_PageInfo.DiscardUnknown(m)
+func (m *SortInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_SortInfo.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_PageInfo proto.InternalMessageInfo
+var xxx_messageInfo_SortInfo proto.InternalMessageInfo
 
-func (m *PageInfo) GetUncompressedSize() uint64 {
-	if m != nil {
-		return m.UncompressedSize
-	}
-	return 0
-}
-
-func (m *PageInfo) GetCompressedSize() uint64 {
-	if m != nil {
-		return m.CompressedSize
-	}
-	return 0
-}
-
-func (m *PageInfo) GetCrc32() uint32 {
-	if m != nil {
-		return m.Crc32
-	}
-	return 0
-}
-
-func (m *PageInfo) GetRowsCount() uint64 {
-	if m != nil {
-		return m.RowsCount
-	}
-	return 0
-}
-
-func (m *PageInfo) GetEncoding() EncodingType {
-	if m != nil {
-		return m.Encoding
-	}
-	return ENCODING_TYPE_UNSPECIFIED
-}
-
-func (m *PageInfo) GetDataOffset() uint64 {
-	if m != nil {
-		return m.DataOffset
-	}
-	return 0
-}
-
-func (m *PageInfo) GetDataSize() uint64 {
-	if m != nil {
-		return m.DataSize
-	}
-	return 0
-}
-
-func (m *PageInfo) GetStatistics() *Statistics {
-	if m != nil {
-		return m.Statistics
-	}
-	return nil
-}
-
-func (m *PageInfo) GetValuesCount() uint64 {
-	if m != nil {
-		return m.ValuesCount
-	}
-	return 0
-}
-
-// SectionSortInfo represents the sort order information for the records
-// in a section.
-//
-// Records can be sorted by one or more columns. The order of the
-// ColumnSort entries determines the sort precedence. They are sorted by
-// the first column, then by the second column to break ties, and so on.
-type SectionSortInfo struct {
-	ColumnSorts []*SectionSortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
-}
-
-func (m *SectionSortInfo) Reset()      { *m = SectionSortInfo{} }
-func (*SectionSortInfo) ProtoMessage() {}
-func (*SectionSortInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7ab9d5b21b743868, []int{3}
-}
-func (m *SectionSortInfo) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *SectionSortInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_SectionSortInfo.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *SectionSortInfo) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SectionSortInfo.Merge(m, src)
-}
-func (m *SectionSortInfo) XXX_Size() int {
-	return m.Size()
-}
-func (m *SectionSortInfo) XXX_DiscardUnknown() {
-	xxx_messageInfo_SectionSortInfo.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_SectionSortInfo proto.InternalMessageInfo
-
-func (m *SectionSortInfo) GetColumnSorts() []*SectionSortInfo_ColumnSort {
+func (m *SortInfo) GetColumnSorts() []*SortInfo_ColumnSort {
 	if m != nil {
 		return m.ColumnSorts
 	}
 	return nil
 }
 
-type SectionSortInfo_ColumnSort struct {
+type SortInfo_ColumnSort struct {
 	// Index of the column in the columns list.
 	ColumnIndex uint32 `protobuf:"varint,1,opt,name=column_index,json=columnIndex,proto3" json:"column_index,omitempty"`
 	// Sort direction of the column.
-	Direction SortDirection `protobuf:"varint,2,opt,name=direction,proto3,enum=dataobj.metadata.dataset.v1.SortDirection" json:"direction,omitempty"`
+	Direction SortDirection `protobuf:"varint,2,opt,name=direction,proto3,enum=dataobj.metadata.dataset.v2.SortDirection" json:"direction,omitempty"`
 }
 
-func (m *SectionSortInfo_ColumnSort) Reset()      { *m = SectionSortInfo_ColumnSort{} }
-func (*SectionSortInfo_ColumnSort) ProtoMessage() {}
-func (*SectionSortInfo_ColumnSort) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7ab9d5b21b743868, []int{3, 0}
+func (m *SortInfo_ColumnSort) Reset()      { *m = SortInfo_ColumnSort{} }
+func (*SortInfo_ColumnSort) ProtoMessage() {}
+func (*SortInfo_ColumnSort) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7ab9d5b21b743868, []int{7, 0}
 }
-func (m *SectionSortInfo_ColumnSort) XXX_Unmarshal(b []byte) error {
+func (m *SortInfo_ColumnSort) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *SectionSortInfo_ColumnSort) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SortInfo_ColumnSort) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_SectionSortInfo_ColumnSort.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SortInfo_ColumnSort.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -558,26 +811,26 @@ func (m *SectionSortInfo_ColumnSort) XXX_Marshal(b []byte, deterministic bool) (
 		return b[:n], nil
 	}
 }
-func (m *SectionSortInfo_ColumnSort) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SectionSortInfo_ColumnSort.Merge(m, src)
+func (m *SortInfo_ColumnSort) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SortInfo_ColumnSort.Merge(m, src)
 }
-func (m *SectionSortInfo_ColumnSort) XXX_Size() int {
+func (m *SortInfo_ColumnSort) XXX_Size() int {
 	return m.Size()
 }
-func (m *SectionSortInfo_ColumnSort) XXX_DiscardUnknown() {
-	xxx_messageInfo_SectionSortInfo_ColumnSort.DiscardUnknown(m)
+func (m *SortInfo_ColumnSort) XXX_DiscardUnknown() {
+	xxx_messageInfo_SortInfo_ColumnSort.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_SectionSortInfo_ColumnSort proto.InternalMessageInfo
+var xxx_messageInfo_SortInfo_ColumnSort proto.InternalMessageInfo
 
-func (m *SectionSortInfo_ColumnSort) GetColumnIndex() uint32 {
+func (m *SortInfo_ColumnSort) GetColumnIndex() uint32 {
 	if m != nil {
 		return m.ColumnIndex
 	}
 	return 0
 }
 
-func (m *SectionSortInfo_ColumnSort) GetDirection() SortDirection {
+func (m *SortInfo_ColumnSort) GetDirection() SortDirection {
 	if m != nil {
 		return m.Direction
 	}
@@ -585,15 +838,19 @@ func (m *SectionSortInfo_ColumnSort) GetDirection() SortDirection {
 }
 
 func init() {
-	proto.RegisterEnum("dataobj.metadata.dataset.v1.ValueType", ValueType_name, ValueType_value)
-	proto.RegisterEnum("dataobj.metadata.dataset.v1.CompressionType", CompressionType_name, CompressionType_value)
-	proto.RegisterEnum("dataobj.metadata.dataset.v1.EncodingType", EncodingType_name, EncodingType_value)
-	proto.RegisterEnum("dataobj.metadata.dataset.v1.SortDirection", SortDirection_name, SortDirection_value)
-	proto.RegisterType((*ColumnInfo)(nil), "dataobj.metadata.dataset.v1.ColumnInfo")
-	proto.RegisterType((*Statistics)(nil), "dataobj.metadata.dataset.v1.Statistics")
-	proto.RegisterType((*PageInfo)(nil), "dataobj.metadata.dataset.v1.PageInfo")
-	proto.RegisterType((*SectionSortInfo)(nil), "dataobj.metadata.dataset.v1.SectionSortInfo")
-	proto.RegisterType((*SectionSortInfo_ColumnSort)(nil), "dataobj.metadata.dataset.v1.SectionSortInfo.ColumnSort")
+	proto.RegisterEnum("dataobj.metadata.dataset.v2.PhysicalType", PhysicalType_name, PhysicalType_value)
+	proto.RegisterEnum("dataobj.metadata.dataset.v2.CompressionType", CompressionType_name, CompressionType_value)
+	proto.RegisterEnum("dataobj.metadata.dataset.v2.EncodingType", EncodingType_name, EncodingType_value)
+	proto.RegisterEnum("dataobj.metadata.dataset.v2.SortDirection", SortDirection_name, SortDirection_value)
+	proto.RegisterType((*SectionInfoExtension)(nil), "dataobj.metadata.dataset.v2.SectionInfoExtension")
+	proto.RegisterType((*SectionMetadata)(nil), "dataobj.metadata.dataset.v2.SectionMetadata")
+	proto.RegisterType((*ColumnDesc)(nil), "dataobj.metadata.dataset.v2.ColumnDesc")
+	proto.RegisterType((*ColumnType)(nil), "dataobj.metadata.dataset.v2.ColumnType")
+	proto.RegisterType((*ColumnMetadata)(nil), "dataobj.metadata.dataset.v2.ColumnMetadata")
+	proto.RegisterType((*PageDesc)(nil), "dataobj.metadata.dataset.v2.PageDesc")
+	proto.RegisterType((*Statistics)(nil), "dataobj.metadata.dataset.v2.Statistics")
+	proto.RegisterType((*SortInfo)(nil), "dataobj.metadata.dataset.v2.SortInfo")
+	proto.RegisterType((*SortInfo_ColumnSort)(nil), "dataobj.metadata.dataset.v2.SortInfo.ColumnSort")
 }
 
 func init() {
@@ -601,65 +858,75 @@ func init() {
 }
 
 var fileDescriptor_7ab9d5b21b743868 = []byte{
-	// 860 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x55, 0x4d, 0x73, 0xda, 0x46,
-	0x18, 0x66, 0x81, 0xa4, 0xe8, 0x05, 0xdb, 0xf2, 0xd6, 0x6e, 0x64, 0x3b, 0x51, 0xa9, 0x3b, 0xd3,
-	0x50, 0xd2, 0x81, 0x29, 0xee, 0x34, 0x67, 0x0c, 0x6a, 0xaa, 0x19, 0x47, 0x30, 0x92, 0x92, 0x19,
-	0xfb, 0xa2, 0x91, 0x85, 0x4c, 0xd5, 0xa0, 0x5d, 0x46, 0x5a, 0x5c, 0x93, 0x53, 0x4f, 0x39, 0xf7,
-	0x67, 0xf4, 0xa7, 0xf4, 0xe8, 0x63, 0x8e, 0x35, 0x9e, 0xe9, 0xe4, 0x98, 0x9f, 0xd0, 0xd1, 0x0a,
-	0x81, 0xf8, 0x28, 0x93, 0x43, 0x6f, 0xbb, 0xef, 0xf3, 0xbc, 0x1f, 0xec, 0xf3, 0xf0, 0x0a, 0x9e,
-	0x0f, 0xdf, 0xf4, 0xeb, 0x3d, 0x9b, 0xd9, 0xf4, 0xf2, 0xd7, 0xba, 0x47, 0x98, 0x1b, 0x10, 0x7b,
-	0x50, 0xf7, 0x5d, 0x66, 0x47, 0x41, 0x8e, 0x84, 0x2e, 0xf3, 0x7b, 0xf3, 0x53, 0x6d, 0x18, 0x50,
-	0x46, 0xf1, 0xd1, 0x34, 0xa9, 0x96, 0x70, 0x6b, 0x53, 0x46, 0xed, 0xfa, 0xfb, 0xe3, 0x7f, 0x72,
-	0x00, 0x2d, 0x3a, 0x18, 0xf9, 0x44, 0x25, 0x57, 0x14, 0x63, 0xc8, 0x13, 0xdb, 0x77, 0x25, 0x54,
-	0x46, 0x15, 0x41, 0xe7, 0x67, 0xac, 0x00, 0x5c, 0xdb, 0x83, 0x91, 0x6b, 0xb1, 0xf1, 0xd0, 0x95,
-	0xb2, 0x65, 0x54, 0xd9, 0x6e, 0x7c, 0x53, 0xdb, 0x50, 0xb4, 0xf6, 0x3a, 0xa2, 0x9b, 0xe3, 0xa1,
-	0xab, 0x0b, 0xd7, 0xc9, 0x11, 0x3f, 0x01, 0x08, 0xe8, 0x6f, 0xa1, 0xe5, 0xd0, 0x11, 0x61, 0x52,
-	0xae, 0x8c, 0x2a, 0x79, 0x5d, 0x88, 0x22, 0xad, 0x28, 0x80, 0x35, 0x28, 0x3a, 0xd4, 0x1f, 0x06,
-	0x6e, 0x18, 0x7a, 0x94, 0x48, 0x79, 0xde, 0xe6, 0xbb, 0x8d, 0x6d, 0x5a, 0x73, 0x3e, 0x6f, 0x96,
-	0x2e, 0x80, 0x9f, 0xc1, 0xee, 0x88, 0x24, 0x01, 0xb7, 0x67, 0x85, 0xde, 0x5b, 0x57, 0x7a, 0xc0,
-	0xbb, 0x8a, 0x69, 0xc0, 0xf0, 0xde, 0xba, 0xf8, 0x29, 0xec, 0x2c, 0x53, 0x1f, 0x72, 0xea, 0xf6,
-	0x2a, 0x31, 0x99, 0xc4, 0xa2, 0x57, 0x57, 0xa1, 0xcb, 0xa4, 0xcf, 0x62, 0x62, 0x12, 0xee, 0xf0,
-	0x28, 0xfe, 0x1a, 0xb6, 0x66, 0x44, 0x5e, 0xaf, 0xc0, 0x69, 0xa5, 0x24, 0xc8, 0xab, 0xbd, 0x00,
-	0x08, 0x99, 0xcd, 0xbc, 0x90, 0x79, 0x4e, 0x28, 0x09, 0x65, 0x54, 0x29, 0x36, 0x9e, 0x6e, 0xfc,
-	0xc9, 0xc6, 0x8c, 0xae, 0xa7, 0x52, 0xf1, 0x57, 0x50, 0xe2, 0x0f, 0x9d, 0xbc, 0x2e, 0xf0, 0x66,
-	0xc5, 0x38, 0xc6, 0xdf, 0xf7, 0x38, 0x04, 0x98, 0x27, 0xe3, 0x23, 0x10, 0x7c, 0x8f, 0x58, 0x9c,
-	0xc0, 0xc5, 0x2e, 0xe9, 0x05, 0xdf, 0x23, 0x5c, 0x38, 0x0e, 0xda, 0x37, 0x53, 0x30, 0x3b, 0x05,
-	0xed, 0x9b, 0x18, 0x7c, 0x06, 0xbb, 0x8e, 0x1d, 0xf4, 0x3c, 0x62, 0x0f, 0x3c, 0x36, 0x5e, 0x50,
-	0x53, 0x4c, 0x01, 0x71, 0xd3, 0x77, 0x39, 0x28, 0x74, 0xed, 0xbe, 0xcb, 0xbd, 0xb5, 0x56, 0x11,
-	0xf4, 0xe9, 0x8a, 0x64, 0xd7, 0x2a, 0xb2, 0x07, 0x0f, 0x9c, 0xc0, 0x39, 0x69, 0xf0, 0x19, 0xb6,
-	0xf4, 0xf8, 0xb2, 0x64, 0xb6, 0xfc, 0xb2, 0xd9, 0x14, 0x28, 0xb8, 0xc4, 0xa1, 0x3d, 0x8f, 0xf4,
-	0xb9, 0x27, 0xb6, 0x1b, 0xdf, 0x6e, 0x7c, 0x76, 0x65, 0x4a, 0xe6, 0x36, 0x9b, 0xa5, 0xe2, 0x2f,
-	0xa1, 0x98, 0x76, 0x42, 0x6c, 0x19, 0x48, 0xb9, 0xe0, 0x08, 0x84, 0xb9, 0x03, 0x62, 0xa3, 0x14,
-	0xfe, 0x43, 0xfd, 0xc2, 0xff, 0xa7, 0xbe, 0xb0, 0xaa, 0xfe, 0x07, 0x04, 0x3b, 0x86, 0xeb, 0x30,
-	0x8f, 0x12, 0x83, 0x06, 0x8c, 0xeb, 0x71, 0x01, 0x25, 0x87, 0xff, 0xf3, 0xad, 0x90, 0x06, 0x2c,
-	0x94, 0x50, 0x39, 0x57, 0x29, 0x36, 0x9e, 0x6f, 0x9e, 0x60, 0xb1, 0x46, 0x2d, 0x5e, 0x1d, 0xd1,
-	0x35, 0xfa, 0xf7, 0x25, 0xe7, 0xf0, 0x70, 0x9c, 0x6c, 0x95, 0xe8, 0x1a, 0x0d, 0x38, 0xed, 0xe4,
-	0x91, 0x9e, 0x7b, 0xc3, 0x45, 0xdf, 0x4a, 0x12, 0xd4, 0x28, 0x84, 0x7f, 0x06, 0xa1, 0xe7, 0x05,
-	0x71, 0xf5, 0xe9, 0x8e, 0xa9, 0x6e, 0x9e, 0x84, 0x06, 0xac, 0x9d, 0x64, 0xe8, 0xf3, 0xe4, 0xea,
-	0x08, 0x84, 0xd9, 0xfe, 0xc1, 0x87, 0xf0, 0xc5, 0xeb, 0xe6, 0xd9, 0x2b, 0xc5, 0x32, 0xcf, 0xbb,
-	0x8a, 0xf5, 0x4a, 0x33, 0xba, 0x4a, 0x4b, 0xfd, 0x49, 0x55, 0xda, 0x62, 0x06, 0xef, 0x81, 0x98,
-	0xc2, 0x54, 0xcd, 0xfc, 0xf1, 0x07, 0x11, 0xe1, 0x7d, 0xd8, 0x4d, 0x67, 0xc4, 0xe1, 0x2c, 0x3e,
-	0x80, 0xfd, 0x54, 0xf8, 0xf4, 0xdc, 0x54, 0xac, 0xa6, 0xae, 0x37, 0xcf, 0xc5, 0xfc, 0x71, 0xbe,
-	0x90, 0x13, 0x73, 0xd5, 0x77, 0x08, 0x76, 0x96, 0x16, 0x12, 0x2e, 0xc3, 0xe3, 0x56, 0xe7, 0x65,
-	0x57, 0x57, 0x0c, 0x43, 0xed, 0x68, 0xeb, 0x66, 0x38, 0x80, 0xfd, 0x15, 0x86, 0xd6, 0xd1, 0x14,
-	0x11, 0xe1, 0x23, 0x78, 0xb4, 0x02, 0x19, 0x5a, 0xb3, 0xdb, 0x3d, 0x8f, 0xc7, 0x59, 0x01, 0x2f,
-	0x0c, 0xb3, 0x2d, 0xe6, 0xaa, 0x63, 0x28, 0xa5, 0xed, 0x8a, 0x9f, 0xc0, 0x81, 0xa2, 0xb5, 0x3a,
-	0x6d, 0x55, 0x7b, 0xb1, 0x6e, 0x82, 0x47, 0xf0, 0xf9, 0x22, 0xdc, 0x3d, 0x6b, 0xaa, 0x9a, 0x88,
-	0x56, 0x81, 0xb6, 0x72, 0x66, 0x36, 0xc5, 0x2c, 0x96, 0x60, 0x6f, 0x11, 0x38, 0x55, 0xcd, 0x97,
-	0xcd, 0xae, 0x98, 0xab, 0x0e, 0x60, 0x6b, 0x41, 0x16, 0x2c, 0xc3, 0xa1, 0xd1, 0xd1, 0x4d, 0xab,
-	0xad, 0xea, 0x4a, 0xcb, 0x8c, 0x26, 0x5d, 0x6c, 0xfe, 0x18, 0xa4, 0x25, 0xbc, 0x69, 0xb4, 0x14,
-	0x2d, 0x2a, 0x2d, 0xa2, 0x68, 0xf2, 0x25, 0xb4, 0xad, 0xcc, 0xe0, 0xec, 0xe9, 0xcd, 0xed, 0x9d,
-	0x9c, 0x79, 0x7f, 0x27, 0x67, 0x3e, 0xde, 0xc9, 0xe8, 0xf7, 0x89, 0x8c, 0xfe, 0x9c, 0xc8, 0xe8,
-	0xaf, 0x89, 0x8c, 0x6e, 0x27, 0x32, 0xfa, 0x7b, 0x22, 0xa3, 0x0f, 0x13, 0x39, 0xf3, 0x71, 0x22,
-	0xa3, 0x3f, 0xee, 0xe5, 0xcc, 0xed, 0xbd, 0x9c, 0x79, 0x7f, 0x2f, 0x67, 0x2e, 0x4e, 0xfb, 0x1e,
-	0xfb, 0x65, 0x74, 0x59, 0x73, 0xa8, 0x5f, 0xef, 0x07, 0xf6, 0x95, 0x4d, 0xec, 0xfa, 0x80, 0xbe,
-	0xf1, 0xea, 0xd7, 0x27, 0xf5, 0x4f, 0xfc, 0xc2, 0x5e, 0x3e, 0xe4, 0x1f, 0xd6, 0x93, 0x7f, 0x03,
-	0x00, 0x00, 0xff, 0xff, 0x2a, 0x2b, 0x5b, 0xb1, 0x93, 0x07, 0x00, 0x00,
+	// 1018 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0xcb, 0x6e, 0xdb, 0x46,
+	0x14, 0xd5, 0x48, 0x7e, 0x48, 0x57, 0x7e, 0x30, 0x53, 0xa7, 0x66, 0xe2, 0x84, 0x55, 0x05, 0x14,
+	0x71, 0x9d, 0x42, 0x2a, 0xe4, 0x20, 0x5d, 0x64, 0x25, 0x4b, 0x6c, 0x42, 0xc0, 0xa6, 0x08, 0x52,
+	0x2d, 0xe0, 0x6c, 0x08, 0x9a, 0x1a, 0xd1, 0x6c, 0x24, 0x52, 0x20, 0xc7, 0xae, 0xe5, 0x55, 0x57,
+	0x5e, 0xf7, 0x13, 0xba, 0xec, 0x27, 0xf4, 0x13, 0xba, 0xf4, 0x32, 0xe8, 0xaa, 0x96, 0x37, 0x5d,
+	0xe6, 0x13, 0x8a, 0x19, 0x92, 0x36, 0xf5, 0xa8, 0x22, 0x14, 0xd9, 0x71, 0xee, 0x39, 0x67, 0x66,
+	0xee, 0xbd, 0x67, 0xae, 0x04, 0xdf, 0x0d, 0xde, 0x39, 0xd5, 0x8e, 0x45, 0x2d, 0xff, 0xe4, 0xa7,
+	0xaa, 0xeb, 0x51, 0x12, 0x78, 0x56, 0xaf, 0xda, 0x27, 0xd4, 0x62, 0x41, 0x8e, 0x84, 0x84, 0xf6,
+	0x3b, 0xf7, 0x5f, 0x95, 0x41, 0xe0, 0x53, 0x1f, 0xef, 0xc4, 0xa2, 0x4a, 0xc2, 0xad, 0xc4, 0x8c,
+	0xca, 0x79, 0xad, 0x7c, 0x85, 0x60, 0xcb, 0x20, 0x36, 0x75, 0x7d, 0x4f, 0xf1, 0xba, 0xbe, 0x7c,
+	0x41, 0x89, 0x17, 0xba, 0xbe, 0x87, 0x5f, 0xc2, 0x76, 0x18, 0xc5, 0xcd, 0x44, 0x67, 0xfa, 0xdd,
+	0x6e, 0x48, 0xa8, 0x88, 0x4a, 0x68, 0x77, 0x49, 0x7f, 0x18, 0xc3, 0x47, 0x31, 0xda, 0xe2, 0xe0,
+	0x4c, 0x5d, 0x8f, 0x78, 0x0e, 0x3d, 0x15, 0xb3, 0x33, 0x75, 0x87, 0x1c, 0x2c, 0xff, 0x81, 0x60,
+	0xd3, 0x18, 0x47, 0x70, 0x1d, 0x56, 0x6d, 0xbf, 0x77, 0xd6, 0xf7, 0x42, 0x11, 0x95, 0x72, 0xbb,
+	0xc5, 0xda, 0xb3, 0xca, 0x9c, 0x5c, 0x2a, 0x0d, 0xce, 0x6d, 0x92, 0xd0, 0xd6, 0x13, 0x1d, 0x96,
+	0x00, 0x3a, 0x2e, 0xdf, 0xd5, 0x0a, 0x86, 0x62, 0xb6, 0x94, 0xdb, 0x2d, 0xe8, 0xa9, 0x08, 0x3e,
+	0x80, 0x42, 0xe8, 0x07, 0xd4, 0x74, 0xbd, 0xae, 0x2f, 0xe6, 0x4a, 0x68, 0xb7, 0x58, 0xfb, 0x6a,
+	0xee, 0x21, 0x86, 0x1f, 0x50, 0x56, 0x29, 0x3d, 0x1f, 0xc6, 0x5f, 0xe5, 0xdf, 0x96, 0x00, 0xee,
+	0xcf, 0xc6, 0xaf, 0x60, 0x89, 0x0e, 0x07, 0x84, 0x97, 0x69, 0xb1, 0x2b, 0xb7, 0x87, 0x03, 0xa2,
+	0x73, 0x11, 0xde, 0x86, 0x55, 0x6a, 0x39, 0x66, 0x40, 0xba, 0xbc, 0x5c, 0xeb, 0xfa, 0x0a, 0xb5,
+	0x1c, 0x9d, 0x74, 0xf1, 0x17, 0x50, 0x1c, 0x58, 0x0e, 0x09, 0x4d, 0xdb, 0x3f, 0xf3, 0x28, 0xbf,
+	0xea, 0x92, 0x0e, 0x3c, 0xd4, 0x60, 0x11, 0xfc, 0x14, 0x20, 0xf0, 0x7f, 0x4e, 0xf0, 0x25, 0x8e,
+	0x17, 0x58, 0x24, 0x82, 0xbf, 0x84, 0xb5, 0x73, 0xab, 0x77, 0x76, 0xb7, 0xc1, 0x32, 0x27, 0x14,
+	0xa3, 0x58, 0x44, 0x51, 0xa1, 0x68, 0xfb, 0xfd, 0x41, 0x40, 0x42, 0xe6, 0x00, 0x71, 0xa5, 0x84,
+	0x76, 0x37, 0x6a, 0xdf, 0x7c, 0xe4, 0xfe, 0x77, 0x7c, 0x9e, 0x44, 0x7a, 0x03, 0xfc, 0x1c, 0x1e,
+	0x9c, 0x79, 0x49, 0x80, 0x74, 0xcc, 0xd0, 0xbd, 0x24, 0xe2, 0x2a, 0x3f, 0x57, 0x48, 0x03, 0x86,
+	0x7b, 0x49, 0xf0, 0x33, 0xd8, 0x9c, 0xa4, 0xe6, 0x39, 0x75, 0x63, 0x82, 0xf8, 0x02, 0x3e, 0x8f,
+	0x9a, 0x3b, 0xe5, 0xcb, 0x02, 0xe7, 0x6f, 0x45, 0xe8, 0x84, 0x2d, 0x67, 0xa8, 0x62, 0x57, 0xc2,
+	0x2c, 0x55, 0x64, 0x4a, 0xfc, 0x1a, 0x20, 0xa4, 0x16, 0x75, 0x43, 0xea, 0xda, 0xa1, 0x58, 0x5c,
+	0xa0, 0xa1, 0xc6, 0x1d, 0x5d, 0x4f, 0x49, 0xcb, 0x34, 0x71, 0x08, 0xab, 0x12, 0x96, 0x21, 0x3f,
+	0x38, 0x1d, 0x86, 0xae, 0x6d, 0xf5, 0xb8, 0x4b, 0x36, 0x6a, 0x5f, 0xcf, 0xdd, 0x54, 0x8b, 0xc9,
+	0xbc, 0xc4, 0x77, 0x52, 0x66, 0x89, 0x9e, 0xef, 0xb0, 0x4f, 0xee, 0x97, 0x1c, 0xf7, 0x0b, 0xc4,
+	0x21, 0x9d, 0x74, 0xcb, 0x47, 0xb0, 0xd1, 0x18, 0x4b, 0x0b, 0xbf, 0x82, 0x65, 0x6e, 0x99, 0xf8,
+	0x3d, 0xcd, 0xb7, 0xba, 0x66, 0x39, 0x84, 0xbf, 0xa6, 0x48, 0x53, 0xbe, 0xca, 0x41, 0x3e, 0x89,
+	0xcd, 0x6e, 0x2e, 0x5a, 0xbc, 0xb9, 0xd9, 0x99, 0xcd, 0xdd, 0x82, 0x65, 0x3b, 0xb0, 0xf7, 0x6b,
+	0x71, 0x32, 0xd1, 0xe2, 0x13, 0x58, 0x5b, 0x86, 0x3c, 0xf1, 0x6c, 0xbf, 0xe3, 0x7a, 0x4e, 0xec,
+	0xeb, 0xf9, 0x15, 0x97, 0x63, 0x72, 0x54, 0xf1, 0x44, 0xca, 0x2a, 0x9e, 0x36, 0x5c, 0xe4, 0x65,
+	0x48, 0xd9, 0x6c, 0x07, 0x0a, 0x9c, 0x90, 0xf2, 0x6f, 0x9e, 0x05, 0x78, 0x72, 0xe3, 0x6e, 0x2a,
+	0xfc, 0x7f, 0x37, 0x85, 0x00, 0xf7, 0x08, 0x3b, 0xb3, 0xef, 0x7a, 0x26, 0x4f, 0x97, 0x77, 0x60,
+	0x4d, 0xcf, 0xf7, 0x5d, 0xef, 0x47, 0xb6, 0xe6, 0xa0, 0x75, 0x11, 0x83, 0xd9, 0x18, 0xb4, 0x2e,
+	0x22, 0xf0, 0x39, 0x3c, 0xb0, 0xad, 0xa0, 0xe3, 0x7a, 0x56, 0xcf, 0xa5, 0xc3, 0xb1, 0xc9, 0x22,
+	0xa4, 0x00, 0x5e, 0xc2, 0xf2, 0x5f, 0x08, 0xf2, 0xc9, 0xf0, 0xc3, 0x06, 0xac, 0xc5, 0xcf, 0x89,
+	0x4d, 0xc1, 0xc4, 0x4e, 0xdf, 0x2e, 0x34, 0x39, 0xe3, 0xa1, 0xc7, 0x96, 0x6c, 0x5e, 0x24, 0xdf,
+	0xe1, 0xe3, 0x61, 0xf2, 0x48, 0xd8, 0x92, 0x75, 0x35, 0x3e, 0xc2, 0xf5, 0x3a, 0xe4, 0x82, 0x67,
+	0xb6, 0x9e, 0x08, 0x14, 0x16, 0xc2, 0x6f, 0xa0, 0xd0, 0x71, 0x83, 0xe8, 0x47, 0x83, 0x27, 0xb7,
+	0x51, 0xdb, 0xfb, 0xe8, 0x15, 0x9a, 0x89, 0x42, 0xbf, 0x17, 0xef, 0x5d, 0xc2, 0x5a, 0xfa, 0x91,
+	0xe1, 0xa7, 0xf0, 0x48, 0x7b, 0x73, 0x6c, 0x28, 0x8d, 0xfa, 0xa1, 0xd9, 0x3e, 0xd6, 0x64, 0xf3,
+	0x07, 0xd5, 0xd0, 0xe4, 0x86, 0xf2, 0xbd, 0x22, 0x37, 0x85, 0x0c, 0xde, 0x86, 0xcf, 0xc6, 0x61,
+	0x45, 0x6d, 0xbf, 0x7c, 0x21, 0x20, 0x2c, 0xc2, 0xd6, 0x84, 0x2e, 0x42, 0xb2, 0xd3, 0xc8, 0x81,
+	0xa2, 0xd6, 0xf5, 0x63, 0x21, 0xb7, 0x77, 0x85, 0x60, 0x73, 0x62, 0x8e, 0xe2, 0x12, 0x3c, 0x69,
+	0xb4, 0x8e, 0x34, 0x5d, 0x36, 0x0c, 0xa5, 0xa5, 0xce, 0xba, 0xc2, 0x23, 0x78, 0x38, 0xc5, 0x50,
+	0x5b, 0xaa, 0x2c, 0x20, 0xbc, 0x03, 0xdb, 0x53, 0x90, 0xa1, 0xd6, 0x35, 0xed, 0x58, 0xc8, 0xce,
+	0xd4, 0xbd, 0x35, 0xda, 0x4d, 0x21, 0xb7, 0x37, 0x84, 0xb5, 0xb4, 0xef, 0x59, 0x11, 0x64, 0xb5,
+	0xd1, 0x6a, 0x2a, 0xea, 0xeb, 0xff, 0x28, 0xc2, 0x38, 0xac, 0x1d, 0xd6, 0x15, 0x55, 0x40, 0xd3,
+	0x40, 0x53, 0x3e, 0x6c, 0xd7, 0xa3, 0x1a, 0x8c, 0x03, 0x07, 0x4a, 0xfb, 0xa8, 0xae, 0x09, 0xb9,
+	0xbd, 0x1e, 0xac, 0x8f, 0xf5, 0x06, 0x4b, 0xf0, 0xd8, 0x68, 0xe9, 0x6d, 0xb3, 0xa9, 0xe8, 0x72,
+	0xa3, 0xcd, 0x6e, 0x3a, 0x7e, 0xf8, 0x13, 0x10, 0x27, 0xf0, 0xba, 0xd1, 0x90, 0x55, 0xb6, 0xb5,
+	0x80, 0xd8, 0xcd, 0x27, 0xd0, 0xa6, 0x7c, 0x07, 0x67, 0x0f, 0x2e, 0xae, 0x6f, 0xa4, 0xcc, 0xfb,
+	0x1b, 0x29, 0xf3, 0xe1, 0x46, 0x42, 0xbf, 0x8c, 0x24, 0xf4, 0xfb, 0x48, 0x42, 0x7f, 0x8e, 0x24,
+	0x74, 0x3d, 0x92, 0xd0, 0xdf, 0x23, 0x09, 0xfd, 0x33, 0x92, 0x32, 0x1f, 0x46, 0x12, 0xfa, 0xf5,
+	0x56, 0xca, 0x5c, 0xdf, 0x4a, 0x99, 0xf7, 0xb7, 0x52, 0xe6, 0xed, 0x81, 0xe3, 0xd2, 0xd3, 0xb3,
+	0x93, 0x8a, 0xed, 0xf7, 0xab, 0x4e, 0x60, 0x75, 0x2d, 0xcf, 0xaa, 0xf6, 0xfc, 0x77, 0x6e, 0xf5,
+	0x7c, 0xbf, 0xba, 0xe0, 0x7f, 0xb3, 0x93, 0x15, 0xfe, 0x97, 0x6c, 0xff, 0xdf, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0xbf, 0x00, 0xfb, 0x52, 0xcd, 0x09, 0x00, 0x00,
 }
 
-func (x ValueType) String() string {
-	s, ok := ValueType_name[int32(x)]
+func (x PhysicalType) String() string {
+	s, ok := PhysicalType_name[int32(x)]
 	if ok {
 		return s
 	}
@@ -686,14 +953,14 @@ func (x SortDirection) String() string {
 	}
 	return strconv.Itoa(int(x))
 }
-func (this *ColumnInfo) Equal(that interface{}) bool {
+func (this *SectionInfoExtension) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ColumnInfo)
+	that1, ok := that.(*SectionInfoExtension)
 	if !ok {
-		that2, ok := that.(ColumnInfo)
+		that2, ok := that.(SectionInfoExtension)
 		if ok {
 			that1 = &that2
 		} else {
@@ -705,13 +972,86 @@ func (this *ColumnInfo) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.Name != that1.Name {
+	if this.SectionMetadataOffset != that1.SectionMetadataOffset {
 		return false
 	}
-	if this.ValueType != that1.ValueType {
+	if this.SectionMetadataLength != that1.SectionMetadataLength {
+		return false
+	}
+	return true
+}
+func (this *SectionMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionMetadata)
+	if !ok {
+		that2, ok := that.(SectionMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Columns) != len(that1.Columns) {
+		return false
+	}
+	for i := range this.Columns {
+		if !this.Columns[i].Equal(that1.Columns[i]) {
+			return false
+		}
+	}
+	if len(this.Dictionary) != len(that1.Dictionary) {
+		return false
+	}
+	for i := range this.Dictionary {
+		if this.Dictionary[i] != that1.Dictionary[i] {
+			return false
+		}
+	}
+	if !this.SortInfo.Equal(that1.SortInfo) {
+		return false
+	}
+	return true
+}
+func (this *ColumnDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnDesc)
+	if !ok {
+		that2, ok := that.(ColumnDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Type.Equal(that1.Type) {
+		return false
+	}
+	if this.TagRef != that1.TagRef {
+		return false
+	}
+	if this.PagesCount != that1.PagesCount {
 		return false
 	}
 	if this.RowsCount != that1.RowsCount {
+		return false
+	}
+	if this.ValuesCount != that1.ValuesCount {
 		return false
 	}
 	if this.Compression != that1.Compression {
@@ -723,16 +1063,117 @@ func (this *ColumnInfo) Equal(that interface{}) bool {
 	if this.CompressedSize != that1.CompressedSize {
 		return false
 	}
-	if this.MetadataOffset != that1.MetadataOffset {
+	if this.ColumnMetadataOffset != that1.ColumnMetadataOffset {
 		return false
 	}
-	if this.MetadataSize != that1.MetadataSize {
+	if this.ColumnMetadataLength != that1.ColumnMetadataLength {
 		return false
 	}
 	if !this.Statistics.Equal(that1.Statistics) {
 		return false
 	}
+	return true
+}
+func (this *ColumnType) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnType)
+	if !ok {
+		that2, ok := that.(ColumnType)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Physical != that1.Physical {
+		return false
+	}
+	if this.LogicalRef != that1.LogicalRef {
+		return false
+	}
+	return true
+}
+func (this *ColumnMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnMetadata)
+	if !ok {
+		that2, ok := that.(ColumnMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Pages) != len(that1.Pages) {
+		return false
+	}
+	for i := range this.Pages {
+		if !this.Pages[i].Equal(that1.Pages[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *PageDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PageDesc)
+	if !ok {
+		that2, ok := that.(PageDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		return false
+	}
+	if this.CompressedSize != that1.CompressedSize {
+		return false
+	}
+	if this.Crc32 != that1.Crc32 {
+		return false
+	}
+	if this.RowsCount != that1.RowsCount {
+		return false
+	}
 	if this.ValuesCount != that1.ValuesCount {
+		return false
+	}
+	if this.Encoding != that1.Encoding {
+		return false
+	}
+	if this.DataOffset != that1.DataOffset {
+		return false
+	}
+	if this.DataSize != that1.DataSize {
+		return false
+	}
+	if !this.Statistics.Equal(that1.Statistics) {
 		return false
 	}
 	return true
@@ -767,62 +1208,14 @@ func (this *Statistics) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *PageInfo) Equal(that interface{}) bool {
+func (this *SortInfo) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*PageInfo)
+	that1, ok := that.(*SortInfo)
 	if !ok {
-		that2, ok := that.(PageInfo)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.UncompressedSize != that1.UncompressedSize {
-		return false
-	}
-	if this.CompressedSize != that1.CompressedSize {
-		return false
-	}
-	if this.Crc32 != that1.Crc32 {
-		return false
-	}
-	if this.RowsCount != that1.RowsCount {
-		return false
-	}
-	if this.Encoding != that1.Encoding {
-		return false
-	}
-	if this.DataOffset != that1.DataOffset {
-		return false
-	}
-	if this.DataSize != that1.DataSize {
-		return false
-	}
-	if !this.Statistics.Equal(that1.Statistics) {
-		return false
-	}
-	if this.ValuesCount != that1.ValuesCount {
-		return false
-	}
-	return true
-}
-func (this *SectionSortInfo) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*SectionSortInfo)
-	if !ok {
-		that2, ok := that.(SectionSortInfo)
+		that2, ok := that.(SortInfo)
 		if ok {
 			that1 = &that2
 		} else {
@@ -844,14 +1237,14 @@ func (this *SectionSortInfo) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *SectionSortInfo_ColumnSort) Equal(that interface{}) bool {
+func (this *SortInfo_ColumnSort) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*SectionSortInfo_ColumnSort)
+	that1, ok := that.(*SortInfo_ColumnSort)
 	if !ok {
-		that2, ok := that.(SectionSortInfo_ColumnSort)
+		that2, ok := that.(SortInfo_ColumnSort)
 		if ok {
 			that1 = &that2
 		} else {
@@ -871,24 +1264,97 @@ func (this *SectionSortInfo_ColumnSort) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ColumnInfo) GoString() string {
+func (this *SectionInfoExtension) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 14)
-	s = append(s, "&datasetmd.ColumnInfo{")
-	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
-	s = append(s, "ValueType: "+fmt.Sprintf("%#v", this.ValueType)+",\n")
+	s := make([]string, 0, 6)
+	s = append(s, "&datasetmd.SectionInfoExtension{")
+	s = append(s, "SectionMetadataOffset: "+fmt.Sprintf("%#v", this.SectionMetadataOffset)+",\n")
+	s = append(s, "SectionMetadataLength: "+fmt.Sprintf("%#v", this.SectionMetadataLength)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SectionMetadata) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&datasetmd.SectionMetadata{")
+	if this.Columns != nil {
+		s = append(s, "Columns: "+fmt.Sprintf("%#v", this.Columns)+",\n")
+	}
+	s = append(s, "Dictionary: "+fmt.Sprintf("%#v", this.Dictionary)+",\n")
+	if this.SortInfo != nil {
+		s = append(s, "SortInfo: "+fmt.Sprintf("%#v", this.SortInfo)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ColumnDesc) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 15)
+	s = append(s, "&datasetmd.ColumnDesc{")
+	if this.Type != nil {
+		s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	}
+	s = append(s, "TagRef: "+fmt.Sprintf("%#v", this.TagRef)+",\n")
+	s = append(s, "PagesCount: "+fmt.Sprintf("%#v", this.PagesCount)+",\n")
 	s = append(s, "RowsCount: "+fmt.Sprintf("%#v", this.RowsCount)+",\n")
+	s = append(s, "ValuesCount: "+fmt.Sprintf("%#v", this.ValuesCount)+",\n")
 	s = append(s, "Compression: "+fmt.Sprintf("%#v", this.Compression)+",\n")
 	s = append(s, "UncompressedSize: "+fmt.Sprintf("%#v", this.UncompressedSize)+",\n")
 	s = append(s, "CompressedSize: "+fmt.Sprintf("%#v", this.CompressedSize)+",\n")
-	s = append(s, "MetadataOffset: "+fmt.Sprintf("%#v", this.MetadataOffset)+",\n")
-	s = append(s, "MetadataSize: "+fmt.Sprintf("%#v", this.MetadataSize)+",\n")
+	s = append(s, "ColumnMetadataOffset: "+fmt.Sprintf("%#v", this.ColumnMetadataOffset)+",\n")
+	s = append(s, "ColumnMetadataLength: "+fmt.Sprintf("%#v", this.ColumnMetadataLength)+",\n")
 	if this.Statistics != nil {
 		s = append(s, "Statistics: "+fmt.Sprintf("%#v", this.Statistics)+",\n")
 	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ColumnType) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&datasetmd.ColumnType{")
+	s = append(s, "Physical: "+fmt.Sprintf("%#v", this.Physical)+",\n")
+	s = append(s, "LogicalRef: "+fmt.Sprintf("%#v", this.LogicalRef)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ColumnMetadata) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&datasetmd.ColumnMetadata{")
+	if this.Pages != nil {
+		s = append(s, "Pages: "+fmt.Sprintf("%#v", this.Pages)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PageDesc) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 13)
+	s = append(s, "&datasetmd.PageDesc{")
+	s = append(s, "UncompressedSize: "+fmt.Sprintf("%#v", this.UncompressedSize)+",\n")
+	s = append(s, "CompressedSize: "+fmt.Sprintf("%#v", this.CompressedSize)+",\n")
+	s = append(s, "Crc32: "+fmt.Sprintf("%#v", this.Crc32)+",\n")
+	s = append(s, "RowsCount: "+fmt.Sprintf("%#v", this.RowsCount)+",\n")
 	s = append(s, "ValuesCount: "+fmt.Sprintf("%#v", this.ValuesCount)+",\n")
+	s = append(s, "Encoding: "+fmt.Sprintf("%#v", this.Encoding)+",\n")
+	s = append(s, "DataOffset: "+fmt.Sprintf("%#v", this.DataOffset)+",\n")
+	s = append(s, "DataSize: "+fmt.Sprintf("%#v", this.DataSize)+",\n")
+	if this.Statistics != nil {
+		s = append(s, "Statistics: "+fmt.Sprintf("%#v", this.Statistics)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -904,44 +1370,24 @@ func (this *Statistics) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *PageInfo) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 13)
-	s = append(s, "&datasetmd.PageInfo{")
-	s = append(s, "UncompressedSize: "+fmt.Sprintf("%#v", this.UncompressedSize)+",\n")
-	s = append(s, "CompressedSize: "+fmt.Sprintf("%#v", this.CompressedSize)+",\n")
-	s = append(s, "Crc32: "+fmt.Sprintf("%#v", this.Crc32)+",\n")
-	s = append(s, "RowsCount: "+fmt.Sprintf("%#v", this.RowsCount)+",\n")
-	s = append(s, "Encoding: "+fmt.Sprintf("%#v", this.Encoding)+",\n")
-	s = append(s, "DataOffset: "+fmt.Sprintf("%#v", this.DataOffset)+",\n")
-	s = append(s, "DataSize: "+fmt.Sprintf("%#v", this.DataSize)+",\n")
-	if this.Statistics != nil {
-		s = append(s, "Statistics: "+fmt.Sprintf("%#v", this.Statistics)+",\n")
-	}
-	s = append(s, "ValuesCount: "+fmt.Sprintf("%#v", this.ValuesCount)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *SectionSortInfo) GoString() string {
+func (this *SortInfo) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&datasetmd.SectionSortInfo{")
+	s = append(s, "&datasetmd.SortInfo{")
 	if this.ColumnSorts != nil {
 		s = append(s, "ColumnSorts: "+fmt.Sprintf("%#v", this.ColumnSorts)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *SectionSortInfo_ColumnSort) GoString() string {
+func (this *SortInfo_ColumnSort) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&datasetmd.SectionSortInfo_ColumnSort{")
+	s = append(s, "&datasetmd.SortInfo_ColumnSort{")
 	s = append(s, "ColumnIndex: "+fmt.Sprintf("%#v", this.ColumnIndex)+",\n")
 	s = append(s, "Direction: "+fmt.Sprintf("%#v", this.Direction)+",\n")
 	s = append(s, "}")
@@ -955,7 +1401,7 @@ func valueToGoStringDatasetmd(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
-func (m *ColumnInfo) Marshal() (dAtA []byte, err error) {
+func (m *SectionInfoExtension) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -965,21 +1411,269 @@ func (m *ColumnInfo) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ColumnInfo) MarshalTo(dAtA []byte) (int, error) {
+func (m *SectionInfoExtension) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ColumnInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *SectionInfoExtension) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.ValuesCount != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ValuesCount))
+	if m.SectionMetadataLength != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.SectionMetadataLength))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.SectionMetadataOffset != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.SectionMetadataOffset))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SectionMetadata) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SectionMetadata) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SectionMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.SortInfo != nil {
+		{
+			size, err := m.SortInfo.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintDatasetmd(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Dictionary) > 0 {
+		for iNdEx := len(m.Dictionary) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Dictionary[iNdEx])
+			copy(dAtA[i:], m.Dictionary[iNdEx])
+			i = encodeVarintDatasetmd(dAtA, i, uint64(len(m.Dictionary[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Columns) > 0 {
+		for iNdEx := len(m.Columns) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Columns[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintDatasetmd(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ColumnDesc) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ColumnDesc) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ColumnDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Statistics != nil {
+		{
+			size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintDatasetmd(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x5a
+	}
+	if m.ColumnMetadataLength != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ColumnMetadataLength))
 		i--
 		dAtA[i] = 0x50
 	}
+	if m.ColumnMetadataOffset != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ColumnMetadataOffset))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.CompressedSize != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.CompressedSize))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.UncompressedSize != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.UncompressedSize))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Compression != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Compression))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.ValuesCount != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ValuesCount))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.RowsCount != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.RowsCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.PagesCount != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.PagesCount))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.TagRef != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.TagRef))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Type != nil {
+		{
+			size, err := m.Type.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintDatasetmd(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ColumnType) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ColumnType) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ColumnType) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.LogicalRef != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.LogicalRef))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Physical != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Physical))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ColumnMetadata) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ColumnMetadata) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ColumnMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Pages) > 0 {
+		for iNdEx := len(m.Pages) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Pages[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintDatasetmd(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PageDesc) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PageDesc) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PageDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
 	if m.Statistics != nil {
 		{
 			size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
@@ -992,47 +1686,45 @@ func (m *ColumnInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x4a
 	}
-	if m.MetadataSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.MetadataSize))
+	if m.DataSize != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.DataSize))
 		i--
 		dAtA[i] = 0x40
 	}
-	if m.MetadataOffset != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.MetadataOffset))
+	if m.DataOffset != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.DataOffset))
 		i--
 		dAtA[i] = 0x38
 	}
-	if m.CompressedSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.CompressedSize))
+	if m.Encoding != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Encoding))
 		i--
 		dAtA[i] = 0x30
 	}
-	if m.UncompressedSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.UncompressedSize))
+	if m.ValuesCount != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ValuesCount))
 		i--
 		dAtA[i] = 0x28
-	}
-	if m.Compression != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Compression))
-		i--
-		dAtA[i] = 0x20
 	}
 	if m.RowsCount != 0 {
 		i = encodeVarintDatasetmd(dAtA, i, uint64(m.RowsCount))
 		i--
+		dAtA[i] = 0x20
+	}
+	if m.Crc32 != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Crc32))
+		i--
 		dAtA[i] = 0x18
 	}
-	if m.ValueType != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ValueType))
+	if m.CompressedSize != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.CompressedSize))
 		i--
 		dAtA[i] = 0x10
 	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = encodeVarintDatasetmd(dAtA, i, uint64(len(m.Name)))
+	if m.UncompressedSize != 0 {
+		i = encodeVarintDatasetmd(dAtA, i, uint64(m.UncompressedSize))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -1079,7 +1771,7 @@ func (m *Statistics) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *PageInfo) Marshal() (dAtA []byte, err error) {
+func (m *SortInfo) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1089,87 +1781,12 @@ func (m *PageInfo) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PageInfo) MarshalTo(dAtA []byte) (int, error) {
+func (m *SortInfo) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *PageInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.ValuesCount != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.ValuesCount))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.Statistics != nil {
-		{
-			size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintDatasetmd(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x42
-	}
-	if m.DataSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.DataSize))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.DataOffset != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.DataOffset))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.Encoding != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Encoding))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.RowsCount != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.RowsCount))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.Crc32 != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.Crc32))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.CompressedSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.CompressedSize))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.UncompressedSize != 0 {
-		i = encodeVarintDatasetmd(dAtA, i, uint64(m.UncompressedSize))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SectionSortInfo) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SectionSortInfo) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *SectionSortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *SortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1191,7 +1808,7 @@ func (m *SectionSortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SectionSortInfo_ColumnSort) Marshal() (dAtA []byte, err error) {
+func (m *SortInfo_ColumnSort) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1201,12 +1818,12 @@ func (m *SectionSortInfo_ColumnSort) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SectionSortInfo_ColumnSort) MarshalTo(dAtA []byte) (int, error) {
+func (m *SortInfo_ColumnSort) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *SectionSortInfo_ColumnSort) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *SortInfo_ColumnSort) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1235,21 +1852,67 @@ func encodeVarintDatasetmd(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *ColumnInfo) Size() (n int) {
+func (m *SectionInfoExtension) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Name)
-	if l > 0 {
+	if m.SectionMetadataOffset != 0 {
+		n += 1 + sovDatasetmd(uint64(m.SectionMetadataOffset))
+	}
+	if m.SectionMetadataLength != 0 {
+		n += 1 + sovDatasetmd(uint64(m.SectionMetadataLength))
+	}
+	return n
+}
+
+func (m *SectionMetadata) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Columns) > 0 {
+		for _, e := range m.Columns {
+			l = e.Size()
+			n += 1 + l + sovDatasetmd(uint64(l))
+		}
+	}
+	if len(m.Dictionary) > 0 {
+		for _, s := range m.Dictionary {
+			l = len(s)
+			n += 1 + l + sovDatasetmd(uint64(l))
+		}
+	}
+	if m.SortInfo != nil {
+		l = m.SortInfo.Size()
 		n += 1 + l + sovDatasetmd(uint64(l))
 	}
-	if m.ValueType != 0 {
-		n += 1 + sovDatasetmd(uint64(m.ValueType))
+	return n
+}
+
+func (m *ColumnDesc) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Type != nil {
+		l = m.Type.Size()
+		n += 1 + l + sovDatasetmd(uint64(l))
+	}
+	if m.TagRef != 0 {
+		n += 1 + sovDatasetmd(uint64(m.TagRef))
+	}
+	if m.PagesCount != 0 {
+		n += 1 + sovDatasetmd(uint64(m.PagesCount))
 	}
 	if m.RowsCount != 0 {
 		n += 1 + sovDatasetmd(uint64(m.RowsCount))
+	}
+	if m.ValuesCount != 0 {
+		n += 1 + sovDatasetmd(uint64(m.ValuesCount))
 	}
 	if m.Compression != 0 {
 		n += 1 + sovDatasetmd(uint64(m.Compression))
@@ -1260,18 +1923,82 @@ func (m *ColumnInfo) Size() (n int) {
 	if m.CompressedSize != 0 {
 		n += 1 + sovDatasetmd(uint64(m.CompressedSize))
 	}
-	if m.MetadataOffset != 0 {
-		n += 1 + sovDatasetmd(uint64(m.MetadataOffset))
+	if m.ColumnMetadataOffset != 0 {
+		n += 1 + sovDatasetmd(uint64(m.ColumnMetadataOffset))
 	}
-	if m.MetadataSize != 0 {
-		n += 1 + sovDatasetmd(uint64(m.MetadataSize))
+	if m.ColumnMetadataLength != 0 {
+		n += 1 + sovDatasetmd(uint64(m.ColumnMetadataLength))
 	}
 	if m.Statistics != nil {
 		l = m.Statistics.Size()
 		n += 1 + l + sovDatasetmd(uint64(l))
 	}
+	return n
+}
+
+func (m *ColumnType) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Physical != 0 {
+		n += 1 + sovDatasetmd(uint64(m.Physical))
+	}
+	if m.LogicalRef != 0 {
+		n += 1 + sovDatasetmd(uint64(m.LogicalRef))
+	}
+	return n
+}
+
+func (m *ColumnMetadata) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Pages) > 0 {
+		for _, e := range m.Pages {
+			l = e.Size()
+			n += 1 + l + sovDatasetmd(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *PageDesc) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UncompressedSize != 0 {
+		n += 1 + sovDatasetmd(uint64(m.UncompressedSize))
+	}
+	if m.CompressedSize != 0 {
+		n += 1 + sovDatasetmd(uint64(m.CompressedSize))
+	}
+	if m.Crc32 != 0 {
+		n += 1 + sovDatasetmd(uint64(m.Crc32))
+	}
+	if m.RowsCount != 0 {
+		n += 1 + sovDatasetmd(uint64(m.RowsCount))
+	}
 	if m.ValuesCount != 0 {
 		n += 1 + sovDatasetmd(uint64(m.ValuesCount))
+	}
+	if m.Encoding != 0 {
+		n += 1 + sovDatasetmd(uint64(m.Encoding))
+	}
+	if m.DataOffset != 0 {
+		n += 1 + sovDatasetmd(uint64(m.DataOffset))
+	}
+	if m.DataSize != 0 {
+		n += 1 + sovDatasetmd(uint64(m.DataSize))
+	}
+	if m.Statistics != nil {
+		l = m.Statistics.Size()
+		n += 1 + l + sovDatasetmd(uint64(l))
 	}
 	return n
 }
@@ -1296,44 +2023,7 @@ func (m *Statistics) Size() (n int) {
 	return n
 }
 
-func (m *PageInfo) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.UncompressedSize != 0 {
-		n += 1 + sovDatasetmd(uint64(m.UncompressedSize))
-	}
-	if m.CompressedSize != 0 {
-		n += 1 + sovDatasetmd(uint64(m.CompressedSize))
-	}
-	if m.Crc32 != 0 {
-		n += 1 + sovDatasetmd(uint64(m.Crc32))
-	}
-	if m.RowsCount != 0 {
-		n += 1 + sovDatasetmd(uint64(m.RowsCount))
-	}
-	if m.Encoding != 0 {
-		n += 1 + sovDatasetmd(uint64(m.Encoding))
-	}
-	if m.DataOffset != 0 {
-		n += 1 + sovDatasetmd(uint64(m.DataOffset))
-	}
-	if m.DataSize != 0 {
-		n += 1 + sovDatasetmd(uint64(m.DataSize))
-	}
-	if m.Statistics != nil {
-		l = m.Statistics.Size()
-		n += 1 + l + sovDatasetmd(uint64(l))
-	}
-	if m.ValuesCount != 0 {
-		n += 1 + sovDatasetmd(uint64(m.ValuesCount))
-	}
-	return n
-}
-
-func (m *SectionSortInfo) Size() (n int) {
+func (m *SortInfo) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1348,7 +2038,7 @@ func (m *SectionSortInfo) Size() (n int) {
 	return n
 }
 
-func (m *SectionSortInfo_ColumnSort) Size() (n int) {
+func (m *SortInfo_ColumnSort) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1369,21 +2059,94 @@ func sovDatasetmd(x uint64) (n int) {
 func sozDatasetmd(x uint64) (n int) {
 	return sovDatasetmd(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (this *ColumnInfo) String() string {
+func (this *SectionInfoExtension) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ColumnInfo{`,
-		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
-		`ValueType:` + fmt.Sprintf("%v", this.ValueType) + `,`,
+	s := strings.Join([]string{`&SectionInfoExtension{`,
+		`SectionMetadataOffset:` + fmt.Sprintf("%v", this.SectionMetadataOffset) + `,`,
+		`SectionMetadataLength:` + fmt.Sprintf("%v", this.SectionMetadataLength) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SectionMetadata) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForColumns := "[]*ColumnDesc{"
+	for _, f := range this.Columns {
+		repeatedStringForColumns += strings.Replace(f.String(), "ColumnDesc", "ColumnDesc", 1) + ","
+	}
+	repeatedStringForColumns += "}"
+	s := strings.Join([]string{`&SectionMetadata{`,
+		`Columns:` + repeatedStringForColumns + `,`,
+		`Dictionary:` + fmt.Sprintf("%v", this.Dictionary) + `,`,
+		`SortInfo:` + strings.Replace(this.SortInfo.String(), "SortInfo", "SortInfo", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ColumnDesc) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ColumnDesc{`,
+		`Type:` + strings.Replace(this.Type.String(), "ColumnType", "ColumnType", 1) + `,`,
+		`TagRef:` + fmt.Sprintf("%v", this.TagRef) + `,`,
+		`PagesCount:` + fmt.Sprintf("%v", this.PagesCount) + `,`,
 		`RowsCount:` + fmt.Sprintf("%v", this.RowsCount) + `,`,
+		`ValuesCount:` + fmt.Sprintf("%v", this.ValuesCount) + `,`,
 		`Compression:` + fmt.Sprintf("%v", this.Compression) + `,`,
 		`UncompressedSize:` + fmt.Sprintf("%v", this.UncompressedSize) + `,`,
 		`CompressedSize:` + fmt.Sprintf("%v", this.CompressedSize) + `,`,
-		`MetadataOffset:` + fmt.Sprintf("%v", this.MetadataOffset) + `,`,
-		`MetadataSize:` + fmt.Sprintf("%v", this.MetadataSize) + `,`,
+		`ColumnMetadataOffset:` + fmt.Sprintf("%v", this.ColumnMetadataOffset) + `,`,
+		`ColumnMetadataLength:` + fmt.Sprintf("%v", this.ColumnMetadataLength) + `,`,
 		`Statistics:` + strings.Replace(this.Statistics.String(), "Statistics", "Statistics", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ColumnType) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ColumnType{`,
+		`Physical:` + fmt.Sprintf("%v", this.Physical) + `,`,
+		`LogicalRef:` + fmt.Sprintf("%v", this.LogicalRef) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ColumnMetadata) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForPages := "[]*PageDesc{"
+	for _, f := range this.Pages {
+		repeatedStringForPages += strings.Replace(f.String(), "PageDesc", "PageDesc", 1) + ","
+	}
+	repeatedStringForPages += "}"
+	s := strings.Join([]string{`&ColumnMetadata{`,
+		`Pages:` + repeatedStringForPages + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PageDesc) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&PageDesc{`,
+		`UncompressedSize:` + fmt.Sprintf("%v", this.UncompressedSize) + `,`,
+		`CompressedSize:` + fmt.Sprintf("%v", this.CompressedSize) + `,`,
+		`Crc32:` + fmt.Sprintf("%v", this.Crc32) + `,`,
+		`RowsCount:` + fmt.Sprintf("%v", this.RowsCount) + `,`,
 		`ValuesCount:` + fmt.Sprintf("%v", this.ValuesCount) + `,`,
+		`Encoding:` + fmt.Sprintf("%v", this.Encoding) + `,`,
+		`DataOffset:` + fmt.Sprintf("%v", this.DataOffset) + `,`,
+		`DataSize:` + fmt.Sprintf("%v", this.DataSize) + `,`,
+		`Statistics:` + strings.Replace(this.Statistics.String(), "Statistics", "Statistics", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1400,44 +2163,26 @@ func (this *Statistics) String() string {
 	}, "")
 	return s
 }
-func (this *PageInfo) String() string {
+func (this *SortInfo) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&PageInfo{`,
-		`UncompressedSize:` + fmt.Sprintf("%v", this.UncompressedSize) + `,`,
-		`CompressedSize:` + fmt.Sprintf("%v", this.CompressedSize) + `,`,
-		`Crc32:` + fmt.Sprintf("%v", this.Crc32) + `,`,
-		`RowsCount:` + fmt.Sprintf("%v", this.RowsCount) + `,`,
-		`Encoding:` + fmt.Sprintf("%v", this.Encoding) + `,`,
-		`DataOffset:` + fmt.Sprintf("%v", this.DataOffset) + `,`,
-		`DataSize:` + fmt.Sprintf("%v", this.DataSize) + `,`,
-		`Statistics:` + strings.Replace(this.Statistics.String(), "Statistics", "Statistics", 1) + `,`,
-		`ValuesCount:` + fmt.Sprintf("%v", this.ValuesCount) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *SectionSortInfo) String() string {
-	if this == nil {
-		return "nil"
-	}
-	repeatedStringForColumnSorts := "[]*SectionSortInfo_ColumnSort{"
+	repeatedStringForColumnSorts := "[]*SortInfo_ColumnSort{"
 	for _, f := range this.ColumnSorts {
-		repeatedStringForColumnSorts += strings.Replace(fmt.Sprintf("%v", f), "SectionSortInfo_ColumnSort", "SectionSortInfo_ColumnSort", 1) + ","
+		repeatedStringForColumnSorts += strings.Replace(fmt.Sprintf("%v", f), "SortInfo_ColumnSort", "SortInfo_ColumnSort", 1) + ","
 	}
 	repeatedStringForColumnSorts += "}"
-	s := strings.Join([]string{`&SectionSortInfo{`,
+	s := strings.Join([]string{`&SortInfo{`,
 		`ColumnSorts:` + repeatedStringForColumnSorts + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *SectionSortInfo_ColumnSort) String() string {
+func (this *SortInfo_ColumnSort) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&SectionSortInfo_ColumnSort{`,
+	s := strings.Join([]string{`&SortInfo_ColumnSort{`,
 		`ColumnIndex:` + fmt.Sprintf("%v", this.ColumnIndex) + `,`,
 		`Direction:` + fmt.Sprintf("%v", this.Direction) + `,`,
 		`}`,
@@ -1452,7 +2197,7 @@ func valueToStringDatasetmd(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
-func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
+func (m *SectionInfoExtension) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1475,15 +2220,140 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ColumnInfo: wiretype end group for non-group")
+			return fmt.Errorf("proto: SectionInfoExtension: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ColumnInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SectionInfoExtension: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SectionMetadataOffset", wireType)
+			}
+			m.SectionMetadataOffset = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SectionMetadataOffset |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SectionMetadataLength", wireType)
+			}
+			m.SectionMetadataLength = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SectionMetadataLength |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatasetmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SectionMetadata) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatasetmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SectionMetadata: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SectionMetadata: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Columns", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Columns = append(m.Columns, &ColumnDesc{})
+			if err := m.Columns[len(m.Columns)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dictionary", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -1511,13 +2381,13 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Name = string(dAtA[iNdEx:postIndex])
+			m.Dictionary = append(m.Dictionary, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ValueType", wireType)
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SortInfo", wireType)
 			}
-			m.ValueType = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatasetmd
@@ -1527,12 +2397,156 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.ValueType |= ValueType(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.SortInfo == nil {
+				m.SortInfo = &SortInfo{}
+			}
+			if err := m.SortInfo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatasetmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ColumnDesc) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatasetmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ColumnDesc: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ColumnDesc: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Type == nil {
+				m.Type = &ColumnType{}
+			}
+			if err := m.Type.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TagRef", wireType)
+			}
+			m.TagRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TagRef |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PagesCount", wireType)
+			}
+			m.PagesCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PagesCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RowsCount", wireType)
 			}
@@ -1551,7 +2565,26 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValuesCount", wireType)
+			}
+			m.ValuesCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ValuesCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Compression", wireType)
 			}
@@ -1570,7 +2603,7 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UncompressedSize", wireType)
 			}
@@ -1589,7 +2622,7 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 6:
+		case 8:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CompressedSize", wireType)
 			}
@@ -1608,11 +2641,11 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 9:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataOffset", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ColumnMetadataOffset", wireType)
 			}
-			m.MetadataOffset = 0
+			m.ColumnMetadataOffset = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatasetmd
@@ -1622,16 +2655,435 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.MetadataOffset |= uint64(b&0x7F) << shift
+				m.ColumnMetadataOffset |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ColumnMetadataLength", wireType)
+			}
+			m.ColumnMetadataLength = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ColumnMetadataLength |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Statistics == nil {
+				m.Statistics = &Statistics{}
+			}
+			if err := m.Statistics.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatasetmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ColumnType) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatasetmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ColumnType: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ColumnType: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Physical", wireType)
+			}
+			m.Physical = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Physical |= PhysicalType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogicalRef", wireType)
+			}
+			m.LogicalRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LogicalRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatasetmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ColumnMetadata) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatasetmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ColumnMetadata: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ColumnMetadata: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pages", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Pages = append(m.Pages, &PageDesc{})
+			if err := m.Pages[len(m.Pages)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatasetmd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthDatasetmd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PageDesc) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatasetmd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PageDesc: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PageDesc: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UncompressedSize", wireType)
+			}
+			m.UncompressedSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UncompressedSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CompressedSize", wireType)
+			}
+			m.CompressedSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CompressedSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Crc32", wireType)
+			}
+			m.Crc32 = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Crc32 |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RowsCount", wireType)
+			}
+			m.RowsCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.RowsCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValuesCount", wireType)
+			}
+			m.ValuesCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ValuesCount |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Encoding", wireType)
+			}
+			m.Encoding = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Encoding |= EncodingType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DataOffset", wireType)
+			}
+			m.DataOffset = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatasetmd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DataOffset |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 8:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MetadataSize", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DataSize", wireType)
 			}
-			m.MetadataSize = 0
+			m.DataSize = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatasetmd
@@ -1641,7 +3093,7 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.MetadataSize |= uint64(b&0x7F) << shift
+				m.DataSize |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1682,25 +3134,6 @@ func (m *ColumnInfo) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 10:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ValuesCount", wireType)
-			}
-			m.ValuesCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ValuesCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipDatasetmd(dAtA[iNdEx:])
@@ -1865,7 +3298,7 @@ func (m *Statistics) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PageInfo) Unmarshal(dAtA []byte) error {
+func (m *SortInfo) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1888,251 +3321,10 @@ func (m *PageInfo) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PageInfo: wiretype end group for non-group")
+			return fmt.Errorf("proto: SortInfo: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PageInfo: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UncompressedSize", wireType)
-			}
-			m.UncompressedSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.UncompressedSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CompressedSize", wireType)
-			}
-			m.CompressedSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CompressedSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Crc32", wireType)
-			}
-			m.Crc32 = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Crc32 |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RowsCount", wireType)
-			}
-			m.RowsCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RowsCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Encoding", wireType)
-			}
-			m.Encoding = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Encoding |= EncodingType(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataOffset", wireType)
-			}
-			m.DataOffset = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataOffset |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataSize", wireType)
-			}
-			m.DataSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataSize |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatasetmd
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthDatasetmd
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Statistics == nil {
-				m.Statistics = &Statistics{}
-			}
-			if err := m.Statistics.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ValuesCount", wireType)
-			}
-			m.ValuesCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatasetmd
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ValuesCount |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipDatasetmd(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthDatasetmd
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthDatasetmd
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SectionSortInfo) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowDatasetmd
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SectionSortInfo: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SectionSortInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SortInfo: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2164,7 +3356,7 @@ func (m *SectionSortInfo) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.ColumnSorts = append(m.ColumnSorts, &SectionSortInfo_ColumnSort{})
+			m.ColumnSorts = append(m.ColumnSorts, &SortInfo_ColumnSort{})
 			if err := m.ColumnSorts[len(m.ColumnSorts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2193,7 +3385,7 @@ func (m *SectionSortInfo) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SectionSortInfo_ColumnSort) Unmarshal(dAtA []byte) error {
+func (m *SortInfo_ColumnSort) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {

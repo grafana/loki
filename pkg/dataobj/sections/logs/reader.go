@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -121,6 +123,7 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
+	stats dataset.ReaderStats
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -159,7 +162,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
 	if !r.ready {
-		err := r.init()
+		err := r.init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
@@ -171,7 +174,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
 	defer builder.Release()
 
-	n, readErr := r.inner.Read(ctx, r.buf)
+	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
@@ -205,7 +208,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
-				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
 			default:
 				// We'll only hit this if we added a new column type but forgot to
 				// support reading it.
@@ -219,7 +222,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	return builder.NewRecord(), readErr
 }
 
-func (r *Reader) init() error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
@@ -233,7 +236,16 @@ func (r *Reader) init() error {
 	// easy filtering of Row Values with index >= len(r.opts.Columns).
 	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
 
-	dset, err := newColumnsDataset(cols)
+	var innerSection *columnar.Section
+	innerColumns := make([]*columnar.Column, len(cols))
+	for i, column := range cols {
+		if innerSection == nil {
+			innerSection = column.Section.inner
+		}
+		innerColumns[i] = column.inner
+	}
+
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(cols) {
@@ -249,6 +261,9 @@ func (r *Reader) init() error {
 	if err != nil {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
+
+	// TODO(ashwanth): remove when global stats are updated by the executor.
+	r.stats.LinkGlobalStats(stats.FromContext(ctx))
 
 	innerOptions := dataset.ReaderOptions{
 		Dataset:         dset,
@@ -336,13 +351,13 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		}
 
 		var valueSet dataset.ValueSet
-		switch col.ColumnInfo().Type {
-		case datasetmd.VALUE_TYPE_INT64:
+		switch col.ColumnDesc().Type.Physical {
+		case datasetmd.PHYSICAL_TYPE_INT64:
 			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_UINT64:
+		case datasetmd.PHYSICAL_TYPE_UINT64:
 			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-			valueSet = dataset.NewByteArrayValueSet(vals)
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			valueSet = dataset.NewBinaryValueSet(vals)
 		default:
 			panic("InPredicate not implemented for datatype")
 		}
@@ -392,7 +407,7 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	}
 }
 
-func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
+func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 	toType, ok := arrowconv.DatasetType(dtype)
 	if !ok {
 		panic(fmt.Sprintf("unsupported dataset type %s", dtype))
@@ -405,6 +420,7 @@ func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
+	r.stats.Reset()
 
 	r.ready = false
 
@@ -413,6 +429,10 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
+}
+
+func (r *Reader) Stats() *dataset.ReaderStats {
+	return &r.stats
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers

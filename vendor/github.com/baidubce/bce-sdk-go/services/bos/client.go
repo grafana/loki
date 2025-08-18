@@ -1287,6 +1287,11 @@ func (c *Client) PostObjectFromStream(bucket, object string, content io.Reader, 
 	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
 }
 
+func (c *Client) OptionsObject(bucket, object string, args *api.OptionsObjectArgs,
+	options ...api.Option) (*api.OptionsObjectResult, error) {
+	return api.OptionsObject(c, bucket, object, args, c.BosContext, options...)
+}
+
 // CopyObject - copy a remote object to another one
 //
 // PARAMS:
