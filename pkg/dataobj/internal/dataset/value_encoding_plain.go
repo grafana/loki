@@ -14,7 +14,7 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		datasetmd.PHYSICAL_TYPE_BINARY,
 		datasetmd.ENCODING_TYPE_PLAIN,
 		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
 		func(r streamio.Reader) valueDecoder { return newPlainBytesDecoder(r) },
@@ -33,9 +33,9 @@ func newPlainBytesEncoder(w streamio.Writer) *plainBytesEncoder {
 	return &plainBytesEncoder{w: w}
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_BYTE_ARRAY].
-func (enc *plainBytesEncoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_BYTE_ARRAY
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_BINARY].
+func (enc *plainBytesEncoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_BINARY
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_PLAIN].
@@ -45,10 +45,10 @@ func (enc *plainBytesEncoder) EncodingType() datasetmd.EncodingType {
 
 // Encode encodes an individual string value.
 func (enc *plainBytesEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+	if v.Type() != datasetmd.PHYSICAL_TYPE_BINARY {
 		return fmt.Errorf("plain: invalid value type %v", v.Type())
 	}
-	sv := v.ByteArray()
+	sv := v.Binary()
 
 	if err := streamio.WriteUvarint(enc.w, uint64(len(sv))); err != nil {
 		return err
@@ -83,9 +83,9 @@ func newPlainBytesDecoder(r streamio.Reader) *plainBytesDecoder {
 	return &plainBytesDecoder{r: r}
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_BYTE_ARRAY].
-func (dec *plainBytesDecoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_BYTE_ARRAY
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_BINARY].
+func (dec *plainBytesDecoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_BINARY
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_PLAIN].
@@ -130,7 +130,7 @@ func (dec *plainBytesDecoder) decode(v *Value) error {
 		return err
 	}
 
-	*v = ByteArrayValue(dst)
+	*v = BinaryValue(dst)
 	return nil
 }
 

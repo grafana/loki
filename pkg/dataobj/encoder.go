@@ -49,13 +49,13 @@ func newEncoder(store scratch.Store) *encoder {
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte, extension []byte) {
+func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, data, metadata []byte) {
 	var (
 		dataHandle     = enc.store.Put(data)
 		metadataHandle = enc.store.Put(metadata)
 	)
 
-	enc.sections = append(enc.sections, sectionInfo{
+	si := sectionInfo{
 		Type: typ,
 
 		Data:     dataHandle,
@@ -63,10 +63,13 @@ func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte, extens
 
 		DataSize:     len(data),
 		MetadataSize: len(metadata),
+	}
+	if opts != nil {
+		si.Tenant = opts.Tenant
+		si.ExtensionData = slices.Clone(opts.ExtensionData) // Avoid retaining references to caller memory.
+	}
 
-		ExtensionData: extension,
-	})
-
+	enc.sections = append(enc.sections, si)
 	enc.totalBytes += len(data) + len(metadata)
 }
 
@@ -94,10 +97,7 @@ func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 }
 
 func (enc *encoder) initTypeRefs() {
-	// Reserve the zero index in the dictionary for an invalid entry. This is
-	// only required for the type refs, but it's still easier to debug.
-	enc.dictionary = []string{""}
-	enc.dictionaryLookup = map[string]uint32{"": 0}
+	enc.initDictionary()
 
 	enc.rawTypes = []*filemd.SectionType{
 		{NameRef: nil}, // Invalid type.
@@ -109,12 +109,21 @@ func (enc *encoder) initTypeRefs() {
 	enc.typesReady = true
 }
 
+func (enc *encoder) initDictionary() {
+	if len(enc.dictionary) > 0 && len(enc.dictionaryLookup) > 0 {
+		return // Already initialized.
+	}
+
+	// Reserve the zero index in the dictionary for an invalid entry. This is
+	// only required for the type refs, but it's still easier to debug.
+	enc.dictionary = []string{""}
+	enc.dictionaryLookup = map[string]uint32{"": 0}
+}
+
 // getDictionaryKey returns the dictionary key for the given text or creates a
 // new entry.
 func (enc *encoder) getDictionaryKey(text string) uint32 {
-	if enc.dictionaryLookup == nil {
-		enc.dictionaryLookup = make(map[string]uint32)
-	}
+	enc.initDictionary()
 
 	key, ok := enc.dictionaryLookup[text]
 	if ok {
@@ -128,6 +137,8 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 }
 
 func (enc *encoder) Metadata() (proto.Message, error) {
+	enc.initDictionary()
+
 	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
 	offset := enc.startOffset
@@ -150,6 +161,7 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 			},
 
 			ExtensionData: info.ExtensionData,
+			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
 		offset += info.DataSize + info.MetadataSize
@@ -229,6 +241,7 @@ func (enc *encoder) Reset() {
 
 	enc.typesReady = false
 	enc.dictionary = nil
+	enc.dictionaryLookup = nil
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
 }

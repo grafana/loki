@@ -297,6 +297,21 @@ type PutObjectArgs struct {
 	// alternative Options please refer to service/bos/api/option.go
 }
 
+type OptionsObjectArgs struct {
+	Origin         string
+	RequestMethod  string
+	RequestHeaders []string
+}
+
+type OptionsObjectResult struct {
+	AllowCredentials bool
+	AllowHeaders     []string
+	AllowMethods     []string
+	AllowOrigin      string
+	ExposeHeaders    []string
+	MaxAge           int
+}
+
 type PostObjectArgs struct {
 	Expiration         time.Duration
 	ContentLengthLower int64

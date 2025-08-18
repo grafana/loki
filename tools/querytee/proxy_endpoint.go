@@ -307,6 +307,7 @@ type BackendResponse struct {
 	err      error
 	duration time.Duration
 	traceID  string
+	spanID   string
 }
 
 func (r *BackendResponse) succeeded() bool {
@@ -349,11 +350,11 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Capture response data with actual durations and trace IDs
+	// Capture response data with actual durations, trace IDs, and span IDs
 	cellAData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellAResp.status,
 		Body:       io.NopCloser(bytes.NewReader(cellAResp.body)),
-	}, cellAResp.duration, cellAResp.traceID)
+	}, cellAResp.duration, cellAResp.traceID, cellAResp.spanID)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to capture cell A response", "err", err)
 		return
@@ -362,7 +363,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 	cellBData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellBResp.status,
 		Body:       io.NopCloser(bytes.NewReader(cellBResp.body)),
-	}, cellBResp.duration, cellBResp.traceID)
+	}, cellBResp.duration, cellBResp.traceID, cellBResp.spanID)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to capture cell B response", "err", err)
 		return

@@ -566,7 +566,7 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 
 		traceID := "abc123def456"
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-		exploreURL := service.GenerateTraceExploreURL(traceID, sampledAt)
+		exploreURL := service.GenerateTraceExploreURL(traceID, "", sampledAt)
 
 		// Verify the URL structure
 		assert.Contains(t, exploreURL, "https://grafana.example.com/explore")
@@ -593,7 +593,7 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 
 		traceID := "abc123def456"
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-		exploreURL := service.GenerateTraceExploreURL(traceID, sampledAt)
+		exploreURL := service.GenerateTraceExploreURL(traceID, "", sampledAt)
 
 		assert.Empty(t, exploreURL)
 	})
@@ -610,7 +610,7 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 		}
 
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-		exploreURL := service.GenerateTraceExploreURL("abc123", sampledAt)
+		exploreURL := service.GenerateTraceExploreURL("abc123", "", sampledAt)
 		assert.Empty(t, exploreURL)
 
 		// Only TracesDatasourceUID
@@ -623,7 +623,7 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 			},
 		}
 
-		exploreURL2 := service2.GenerateTraceExploreURL("abc123", sampledAt)
+		exploreURL2 := service2.GenerateTraceExploreURL("abc123", "", sampledAt)
 		assert.Empty(t, exploreURL2)
 	})
 }
