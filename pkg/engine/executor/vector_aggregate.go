@@ -39,7 +39,7 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 		inputs:     inputs,
 		evaluator:  evaluator,
 		groupBy:    groupBy,
-		aggregator: newAggregator(groupBy),
+		aggregator: newAggregator(groupBy, 0),
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,

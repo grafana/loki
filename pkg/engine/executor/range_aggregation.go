@@ -44,13 +44,11 @@ type RangeAggregationPipeline struct {
 
 func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
 	r := &RangeAggregationPipeline{
-		inputs:     inputs,
-		evaluator:  evaluator,
-		aggregator: newAggregator(opts.partitionBy),
-		opts:       opts,
+		inputs:    inputs,
+		evaluator: evaluator,
+		opts:      opts,
 	}
 	r.init()
-
 	return r, nil
 }
 
@@ -94,13 +92,7 @@ func (r *RangeAggregationPipeline) init() {
 		return ret, true
 	}
 
-	points := make([]time.Time, len(windows))
-	for i, w := range windows {
-		points[i] = w.endTs
-	}
-
-	// TODO: rethink if this is required. Uncommenting this breaks bench test
-	// r.aggregator.withBasePoints(points) // initialize aggregator with points to aggregate
+	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
 }
 
 // Read reads the next value into its state.

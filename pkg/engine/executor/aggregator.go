@@ -17,33 +17,36 @@ import (
 )
 
 type groupState struct {
-	value       int64
-	labelValues []string
+	value       int64    // aggregated value
+	labelValues []string // grouping label values
 }
 
+// aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
+// Currently it only supports SUM operation, but can be extended to support other operations like COUNT, AVG, etc.
 type aggregator struct {
 	groupBy []physical.ColumnExpression          // columns to group by
-	digest  *xxhash.Digest                       // used to compute key for each group
 	points  map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest  *xxhash.Digest                       // used to compute key for each group
 }
 
-func newAggregator(groupBy []physical.ColumnExpression) *aggregator {
-	return &aggregator{
+// newAggregator creates a new aggregator with the specified groupBy columns.
+func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int) *aggregator {
+	a := aggregator{
 		groupBy: groupBy,
 		digest:  xxhash.New(),
-		points:  make(map[time.Time]map[uint64]*groupState),
 	}
+
+	if pointsSizeHint > 0 {
+		a.points = make(map[time.Time]map[uint64]*groupState, pointsSizeHint)
+	} else {
+		a.points = make(map[time.Time]map[uint64]*groupState)
+	}
+
+	return &a
 }
 
-// withBasePoints sets predefined time points that will always be included.
-// The aggregator may add more points as new data timestamps are encountered.
-func (a *aggregator) withBasePoints(points []time.Time) {
-	a.points = make(map[time.Time]map[uint64]*groupState, len(points))
-	for _, ts := range points {
-		a.points[ts] = make(map[uint64]*groupState)
-	}
-}
-
+// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
+// It expects labelValues to be in the same order as the groupBy columns.
 func (a *aggregator) Add(ts time.Time, value int64, labelValues []string) {
 	point, ok := a.points[ts]
 	if !ok {
@@ -118,24 +121,10 @@ func (a *aggregator) buildRecord() (arrow.Record, error) {
 	defer rb.Release()
 
 	// emit aggregated results in sorted order of timestamp
-	for _, ts := range a.GetSortedTimestamps() {
-		entries := a.GetEntriesForTimestamp(ts)
+	for _, ts := range a.getSortedTimestamps() {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
 
-		if len(entries) == 0 {
-			// If a timestamp has no entries, append a single row with null values.
-			// Loki response is expected to produce points with all possible timestamps even if no data is available.
-			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
-
-			rb.Field(1).(*array.Int64Builder).AppendNull()
-			for col := range a.groupBy {
-				builder := rb.Field(col + 2)
-				builder.(*array.StringBuilder).AppendNull()
-			}
-			continue
-		}
-
-		for _, entry := range entries {
+		for _, entry := range a.points[ts] {
 			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
 			rb.Field(1).(*array.Int64Builder).Append(entry.value)
 
@@ -162,18 +151,9 @@ func (a *aggregator) Reset() {
 	}
 }
 
-func (a *aggregator) NumOfPoints() int {
-	return len(a.points)
-}
-
-// GetSortedTimestamps returns all timestamps in sorted order
-func (a *aggregator) GetSortedTimestamps() []time.Time {
+// getSortedTimestamps returns all timestamps in sorted order
+func (a *aggregator) getSortedTimestamps() []time.Time {
 	return slices.SortedFunc(maps.Keys(a.points), func(a, b time.Time) int {
 		return a.Compare(b)
 	})
-}
-
-// GetEntriesForTimestamp returns all entries for a given timestamp
-func (a *aggregator) GetEntriesForTimestamp(ts time.Time) map[uint64]*groupState {
-	return a.points[ts]
 }

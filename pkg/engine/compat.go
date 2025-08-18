@@ -324,5 +324,11 @@ func (b *matrixResultBuilder) Build(s stats.Result, md *metadata.Context) logqlm
 }
 
 func (b *matrixResultBuilder) Len() int {
-	return len(b.seriesIndex)
+	total := 0
+	for _, series := range b.seriesIndex {
+		total += len(series.Floats)
+		total += len(series.Histograms)
+	}
+
+	return total
 }
