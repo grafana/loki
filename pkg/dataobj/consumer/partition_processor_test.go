@@ -1,10 +1,8 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -299,11 +297,6 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
-		&sync.Pool{
-			New: func() any {
-				return bytes.NewBuffer(make([]byte, 0, 1024))
-			},
-		},
 		60*time.Minute,
 		nil,
 	)
