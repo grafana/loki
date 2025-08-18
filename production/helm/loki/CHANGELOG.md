@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods. [#18548](https://github.com/grafana/loki/pull/18548)
 
 ## 6.36.1
 - [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)
@@ -68,7 +69,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Improve health probe helper templates [#18347](https://github.com/grafana/loki/pull/18347)
 - [ENHANCEMENT] Add FOLDER_ANNOTATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
 - [ENHANCEMENT] Add FOLDER_ANNOTATATION logic for sidecar container. [#13289](https://github.com/grafana/loki/pull/13289)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods. [#18548](https://github.com/grafana/loki/pull/18548)
 - [BUGFIX] Fix PDB settings for chunksCache and resultsCache [#18321](https://github.com/grafana/loki/pull/18321)
 - [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
 - [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)
