@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -44,6 +45,8 @@ type Service struct {
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
 	processorFactory  *partitionProcessorFactory
+
+	processorNotReady prometheus.Counter
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
@@ -53,6 +56,10 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
+		processorNotReady: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_processor_not_ready_total",
+			Help: "The total number of records discarded as the processor was not ready.",
+		}),
 	}
 
 	consumerClient, err := consumer.NewGroupClient(
@@ -181,6 +188,7 @@ func (s *Service) run(ctx context.Context) error {
 			// Collect all records for this partition
 			records := ftp.Records
 			if len(records) == 0 {
+				s.processorNotReady.Inc()
 				return
 			}
 
