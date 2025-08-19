@@ -349,7 +349,7 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	// p.lastModified = time.Time{}
+	p.lastModified = time.Time{}
 	p.lastFlush = p.clock.Now()
 
 	return nil
