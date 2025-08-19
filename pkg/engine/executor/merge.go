@@ -41,10 +41,6 @@ func (m *Merge) Read(ctx context.Context) error {
 		return m.state.err
 	}
 
-	if m.state.batch != nil {
-		m.state.batch.Release()
-	}
-
 	record, err := m.read(ctx)
 	m.state = newState(record, err)
 
