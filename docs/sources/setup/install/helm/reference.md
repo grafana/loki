@@ -1209,6 +1209,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1524,6 +1525,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
@@ -1610,6 +1620,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1919,6 +1930,15 @@ null
 			<td>bloomPlanner.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
