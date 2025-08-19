@@ -176,6 +176,7 @@ func (s *Service) run(ctx context.Context) error {
 			s.partitionMtx.RLock()
 			handlers, ok := s.partitionHandlers[ftp.Topic]
 			if !ok {
+				level.Error(s.logger).Log("msg", "missing processor 1", "topic", ftp.Topic, "partition", ftp.Partition)
 				s.processorNotReady.Inc()
 				s.partitionMtx.RUnlock()
 				return
@@ -183,6 +184,7 @@ func (s *Service) run(ctx context.Context) error {
 			processor, ok := handlers[ftp.Partition]
 			s.partitionMtx.RUnlock()
 			if !ok {
+				level.Error(s.logger).Log("msg", "missing processor 2", "topic", ftp.Topic, "partition", ftp.Partition)
 				s.processorNotReady.Inc()
 				return
 			}
