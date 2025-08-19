@@ -324,7 +324,7 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
               <div className="grid grid-cols-7 gap-4">
                 <div className="col-span-2 text-sm text-muted-foreground flex items-center gap-2">
                   <Activity className="h-4 w-4" />
-                  <span>Trace ID</span>
+                  <span>Trace</span>
                 </div>
                 <div className="col-span-2 text-right">
                   {query.cellATraceID ? (
@@ -335,11 +335,11 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                         rel="noopener noreferrer"
                         className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
                       >
-                        {query.cellATraceID}
+                        {query.cellASpanID ? query.cellASpanID : query.cellATraceID}
                       </a>
                     ) : (
                       <span className="font-mono text-xs text-muted-foreground">
-                        {query.cellATraceID}
+                        {query.cellASpanID ? query.cellASpanID : query.cellATraceID}
                       </span>
                     )
                   ) : (
@@ -356,11 +356,11 @@ export function QueryDiffView({ query }: { query: SampledQuery }) {
                         rel="noopener noreferrer"
                         className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
                       >
-                        {query.cellBTraceID}
+                        {query.cellBSpanID ? query.cellBSpanID : query.cellBTraceID}
                       </a>
                     ) : (
                       <span className="font-mono text-xs text-muted-foreground">
-                        {query.cellBTraceID}
+                        {query.cellBSpanID ? query.cellBSpanID : query.cellBTraceID}
                       </span>
                     )
                   ) : (

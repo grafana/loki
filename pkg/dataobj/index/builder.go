@@ -323,11 +323,11 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(p.mCfg, indexStorageBucket, p.scratchStore, events[0].Tenant, p.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
 	if minTime.IsZero() || maxTime.IsZero() {
 		return errors.New("failed to get min/max timestamps")
 	}
-	if err := metastoreUpdater.Update(p.ctx, key, minTime, maxTime); err != nil {
+	if err := metastoreTocWriter.WriteEntry(p.ctx, key, minTime, maxTime); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 

@@ -44,25 +44,16 @@ message SectionType {
 
   // The reference to the type name.
   NameRef name_ref = 1;
+
+  // An optional section-specified version of this type, used to inform section
+  // implementations how to read the section.
+  uint32 version = 2;
 }
 
 // SectionInfo describes a section within the data object. Each section is an
 // independent unit of the data object.
 message SectionInfo {
-  // Kind of the section within the data object.
-  //
-  // Deprecated: Use type_index to refer to the type of a section.
-  SectionKind kind = 1 [deprecated = true];
-
-  // Byte offset of the section's metadata from the start of the data object.
-  //
-  // Deprecated: Use layout to describe the location of regions of a section.
-  uint64 metadata_offset = 2 [deprecated = true];
-
-  // Size of the section's metadata in bytes.
-  //
-  // Deprecated: Use layout to describe the location of regions of a section.
-  uint64 metadata_size = 3 [deprecated = true];
+  reserved 1 to 3; // Removed fields.
 
   // The physical layout of the section within the data object. Setting
   // layout is mutually exclusive with specifying the metadata_offset and
@@ -86,10 +77,27 @@ message SectionInfo {
   SectionLayout layout = 4;
 
   // An index into Metadata.types specifying the type of this section.
-  //
-  // This field supersedes the deprecated kind field. Either this or the kind
-  // field must be set to a non-zero value.
   uint32 type_ref = 5;
+
+  // Optional additional information about the section that sections can
+  // provide.
+  //
+  // Because extension_data increases the size of the file metadata, sections
+  // should only use this field for required information that must be stored
+  // without loading the section.
+  //
+  // Sections implementations are recommended to use the version field of
+  // [SectionType] to determine how to interpret the payload.
+  bytes extension_data = 6;
+
+  // An index into Metadata.dictionary specifying the owning tenant of this
+  // section.
+  //
+  // Sections containing data wholly owned by a single tenant must specify the
+  // owning tenant. If tenant_ref is 0, the section holds data owned by multiple
+  // tenants, usually with some other mechanism to determine ownership (e.g., if
+  // the section does not contain cross-tenant aggregated data).
+  uint32 tenant_ref = 7;
 }
 
 // SectionLayout describes the physical placement of the regions that form a
@@ -121,29 +129,4 @@ message Region {
 
   // Length of the region in bytes.
   uint64 length = 2;
-}
-
-// SectionKind describes the kind of section stored within a data object.
-//
-// Deprecated: Types are now specified as values in the Metadata's types field
-// instead of structurally.
-enum SectionKind {
-  // SECTION_KIND_UNSPECIFIED is an invalid section kind.
-  SECTION_KIND_UNSPECIFIED = 0;
-
-  // SECTION_KIND_STREAMS is a section containing references to streams that
-  // exist within the data object. SECTION_KIND_STREAMS does not contain any
-  // actual log data.
-  SECTION_KIND_STREAMS = 1;
-
-  // SECTION_KIND_LOGS is a section containing log records across multiple
-  // streams. Each log record contains a stream ID which refers to a stream
-  // from SECTION_KIND_STREAMS.
-  SECTION_KIND_LOGS = 2;
-
-// DO NOT ADD NEW VALUES HERE!
-//
-// Types can now be specified as values in the Metadata's types field. This
-// avoids the need for every new section to centrally register itself by
-// updating the file-wide protobuf.
 }
