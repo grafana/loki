@@ -49,7 +49,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ### 1.3 Collect Keys from Unwrap Expression
 
-**Behavior**: When unwrap references a parsed field, that field should be collected.
+*Behavior**: When unwrap references a parsed field, that field should be collected.
 
 **Test** (NEW):
 - Create AST: `{app="test"} | logfmt | unwrap bytes | sum_over_time([5m])`
@@ -95,9 +95,9 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ---
 
-## Section 2: Logical Plan Parse Node
+## Section 2: Logical Plan Parse Node ✅ COMPLETE
 
-### 2.1 Create Basic Parse Instruction
+### 2.1 Create Basic Parse Instruction ✅
 
 **Behavior**: A Parse instruction should be creatable with parser type and requested keys.
 
@@ -114,7 +114,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Add ParserKind enum (ParserLogfmt, ParserJSON)
 - Implement Value interface methods
 
-### 2.2 Builder Adds Parse After MakeTable
+### 2.2 Builder Adds Parse After MakeTable ✅
 
 **Behavior**: Builder should insert Parse instruction in correct position after MakeTable.
 
@@ -129,7 +129,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Add Parse method to Builder
 - Method adds Parse instruction and returns new Builder
 
-### 2.3 Planner Creates Parse from LogfmtParserExpr
+### 2.3 Planner Creates Parse from LogfmtParserExpr ✅
 
 **Behavior**: When planner encounters LogfmtParserExpr in AST, it should create Parse instruction with collected keys.
 
