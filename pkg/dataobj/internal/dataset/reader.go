@@ -326,7 +326,7 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 
 		value := row.Values[columnIndex]
-		if value.IsNil() || value.Type() != p.Column.ColumnInfo().Type {
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
 			return false
 		}
 		return p.Values.Contains(value)
@@ -521,10 +521,10 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
 			stats.AddPrimaryColumns(1)
-			stats.AddPrimaryColumnPages(uint64(column.ColumnInfo().PagesCount))
+			stats.AddPrimaryColumnPages(uint64(column.ColumnDesc().PagesCount))
 		} else {
 			stats.AddSecondaryColumns(1)
-			stats.AddSecondaryColumnPages(uint64(column.ColumnInfo().PagesCount))
+			stats.AddSecondaryColumnPages(uint64(column.ColumnDesc().PagesCount))
 		}
 	}
 
@@ -555,7 +555,7 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 
 	var rowsCount uint64
 	for _, column := range r.dl.AllColumns() {
-		rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
 	stats.AddTotalRowsAvailable(int64(rowsCount))
@@ -649,7 +649,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 			// Predicate can't be simplfied, so we permit the full range.
 			var rowsCount uint64
 			for _, column := range r.dl.AllColumns() {
-				rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+				rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 			}
 			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
 		}
@@ -678,7 +678,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		// will cache metadata.
 		var rowsCount uint64
 		for _, column := range r.dl.AllColumns() {
-			rowsCount = max(rowsCount, uint64(column.ColumnInfo().RowsCount))
+			rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 		}
 		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
 
@@ -777,7 +777,7 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 		if err != nil {
 			return nil, err
 		}
-		pageInfo := page.PageInfo()
+		pageInfo := page.PageDesc()
 		lastPageSize = pageInfo.RowCount
 
 		pageRange := rowRange{
