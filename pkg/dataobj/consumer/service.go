@@ -176,6 +176,7 @@ func (s *Service) run(ctx context.Context) error {
 			s.partitionMtx.RLock()
 			handlers, ok := s.partitionHandlers[ftp.Topic]
 			if !ok {
+				s.processorNotReady.Inc()
 				s.partitionMtx.RUnlock()
 				return
 			}
