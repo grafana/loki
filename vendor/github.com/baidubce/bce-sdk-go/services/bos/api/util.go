@@ -70,6 +70,23 @@ const (
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 
+	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
+	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
+	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+
+	INVENTORY_FILE_FORMAT_CSV = "CSV"
+
+	INVENTORY_OBJECT_VERSIONS_ALL     = "All"
+	INVENTORY_OBJECT_VERSIONS_CURRENT = "Current"
+
+	REQUEST_PAYMENT_REQUESTER    = "Requester"
+	REQUEST_PAYMENT_BUCKET_OWNER = "BucketOwner"
+
+	EVENT_FROM_CLIENT      = "Client"
+	EVENT_FROM_LIFECYCLE   = "Lifecycle"
+	EVENT_FROM_REPLICATION = "Replication"
+	EVENT_FROM_BATCH       = "Batch"
+
 	// BOS Client error message format
 	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
@@ -226,6 +243,7 @@ func toHttpHeaderKey(key string) string {
 			needToUpper = true
 		} else {
 			result.WriteByte(c)
+			needToUpper = false
 		}
 	}
 	return result.String()

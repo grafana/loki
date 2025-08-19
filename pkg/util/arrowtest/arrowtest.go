@@ -3,11 +3,9 @@ package arrowtest
 
 import (
 	"cmp"
-	"encoding/base64"
 	"fmt"
 	"slices"
 	"time"
-	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -48,7 +46,7 @@ func (rows Rows) Schema() *arrow.Schema {
 		// in the following loop.
 		field := arrow.Field{
 			Name:     key,
-			Type:     scalar.MakeScalar(value).DataType(),
+			Type:     determineDatatype(value),
 			Nullable: true,
 		}
 
@@ -65,7 +63,7 @@ func (rows Rows) Schema() *arrow.Schema {
 			}
 			field := &fields[index]
 
-			gotType := scalar.MakeScalar(value).DataType()
+			gotType := determineDatatype(value)
 
 			if !arrow.TypeEqual(field.Type, gotType) {
 				// The types don't match. We need to check for nulls here:
@@ -88,6 +86,15 @@ func (rows Rows) Schema() *arrow.Schema {
 	})
 
 	return arrow.NewSchema(fields, nil)
+}
+
+func determineDatatype(value any) arrow.DataType {
+	switch value := value.(type) {
+	case time.Time:
+		return &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: value.Location().String()}
+	default:
+		return scalar.MakeScalar(value).DataType()
+	}
 }
 
 // Record converts rows into an [arrow.Record] with the provided schema. A
@@ -113,7 +120,20 @@ func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.Reco
 			if value == nil {
 				fieldBuilder.AppendNull()
 				continue
-			} else if err := scalar.Append(fieldBuilder, scalar.MakeScalar(value)); err != nil {
+			}
+
+			var s scalar.Scalar
+
+			switch v := value.(type) {
+			case time.Time:
+				s = scalar.NewTimestampScalar(arrow.Timestamp(v.UnixNano()), determineDatatype(v))
+			case *time.Time:
+				s = scalar.NewTimestampScalar(arrow.Timestamp(v.UnixNano()), determineDatatype(v))
+			default:
+				s = scalar.MakeScalar(v)
+			}
+
+			if err := scalar.Append(fieldBuilder, s); err != nil {
 				panic(fmt.Sprintf("arrowtest.Record: failed to append value %v for column %q: %v", value, field.Name, err))
 			}
 		}
@@ -125,8 +145,7 @@ func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.Reco
 // RecordRows converts an [arrow.Record] into [Rows] for comparison in tests.
 // RecordRows requires all columns in the record to have a unique name.
 //
-// Most values are converted to their Go equivalents, with the exception of
-// timestamps, which are converted to strings using [Time].
+// All values are converted to their direct Go equivalents.
 //
 // Callers building expected [Rows] must use the same functions.
 func RecordRows(rec arrow.Record) (Rows, error) {
@@ -134,14 +153,32 @@ func RecordRows(rec arrow.Record) (Rows, error) {
 
 	for i := range int(rec.NumRows()) {
 		row := make(Row, rec.NumCols())
+
 		for j := range int(rec.NumCols()) {
-			row[rec.Schema().Field(j).Name] = rec.Column(j).GetOneForMarshal(i)
+			row[rec.Schema().Field(j).Name] = getArrayValue(rec.Column(j), i)
 		}
 
 		rows[i] = row
 	}
 
 	return rows, nil
+}
+
+// getArrayValue converts a value from an [arrow.Array] at the given index back
+// into a Go value. Timestamps have a special case so they are converted into a
+// [time.Time].
+func getArrayValue(arr arrow.Array, index int) any {
+	switch arr := arr.(type) {
+	case *array.Timestamp:
+		toTimestamp, err := arr.DataType().(*arrow.TimestampType).GetToTimeFunc()
+		if err != nil {
+			panic(err)
+		}
+		return toTimestamp(arr.Value(index))
+
+	default:
+		return arr.GetOneForMarshal(index)
+	}
 }
 
 // TableRows concatenates all chunks of the [arrow.Table] into a single
@@ -175,22 +212,4 @@ func mergeTable(alloc memory.Allocator, table arrow.Table) (arrow.Record, error)
 	}
 
 	return array.NewRecord(table.Schema(), recordColumns, table.NumRows()), nil
-}
-
-// Base64 encodes the given string as base64.
-func Base64(s string) string {
-	rawString := unsafe.Slice(unsafe.StringData(s), len(s))
-	return base64.StdEncoding.EncodeToString(rawString)
-}
-
-// Time returns a string representation of t in the format emitted by
-// [TableRows].
-//
-// Callers must configure t with the same timezone and precision used by the
-// Arrow column.
-func Time(t time.Time) string {
-	// This is the format used by [array.Timestamp.ValueStr]. Arrow will
-	// automatically truncate the timestamp before formatting it, but we bypass
-	// that here to make it the caller's responsibility instead.
-	return t.Format("2006-01-02 15:04:05.999999999Z0700")
 }

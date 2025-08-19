@@ -109,8 +109,10 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -192,6 +194,10 @@ spec:
           readinessProbe:
           {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.startupProbe }}
+          startupProbe:
+          {{- toYaml .Values.sidecar.startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.resources }}
           resources:
           {{- toYaml .Values.sidecar.resources | nindent 12 }}
@@ -260,6 +266,10 @@ spec:
         name: storage
         {{- with .Values.singleBinary.persistence.annotations }}
         annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.singleBinary.persistence.labels }}
+        labels:
           {{- toYaml . | nindent 10 }}
         {{- end }}
       spec:

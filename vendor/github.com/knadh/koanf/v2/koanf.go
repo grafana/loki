@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/maps"
 	"github.com/mitchellh/copystructure"
-	"github.com/go-viper/mapstructure/v2"
 )
 
 // Koanf is the configuration apparatus.
@@ -254,10 +254,11 @@ func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) 
 				mapstructure.StringToTimeDurationHookFunc(),
 				textUnmarshalerHookFunc()),
 			Metadata:         nil,
-			Result:           o,
 			WeaklyTypedInput: true,
 		}
 	}
+
+	c.DecoderConfig.Result = o
 
 	if c.Tag == "" {
 		c.DecoderConfig.TagName = "koanf"

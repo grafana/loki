@@ -4,16 +4,16 @@
 package plogotlp // import "go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 import (
-	"bytes"
-
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-var jsonUnmarshaler = &plog.JSONUnmarshaler{}
+var (
+	jsonMarshaler   = &plog.JSONMarshaler{}
+	jsonUnmarshaler = &plog.JSONUnmarshaler{}
+)
 
 // ExportRequest represents the request for gRPC/HTTP client/server.
 // It's a wrapper for plog.Logs data.
@@ -57,11 +57,7 @@ func (ms ExportRequest) UnmarshalProto(data []byte) error {
 
 // MarshalJSON marshals ExportRequest into JSON bytes.
 func (ms ExportRequest) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	if err := json.Marshal(&buf, ms.orig); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return jsonMarshaler.MarshalLogs(plog.Logs(internal.NewLogs(ms.orig, nil)))
 }
 
 // UnmarshalJSON unmarshalls ExportRequest from JSON bytes.

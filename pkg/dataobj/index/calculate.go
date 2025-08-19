@@ -1,7 +1,6 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -41,8 +40,12 @@ func (c *Calculator) Reset() {
 	clear(c.indexStreamIDLookup)
 }
 
-func (c *Calculator) Flush(buffer *bytes.Buffer) (indexobj.FlushStats, error) {
-	return c.indexobjBuilder.Flush(buffer)
+func (c *Calculator) TimeRange() (minTime, maxTime time.Time) {
+	return c.indexobjBuilder.TimeRange()
+}
+
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
+	return c.indexobjBuilder.Flush()
 }
 
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
@@ -131,7 +134,8 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
-		if !logs.IsMetadataColumn(column.Type) {
+		logsType, _ := logs.ParseColumnType(column.Type)
+		if logsType != logs.ColumnTypeMetadata {
 			continue
 		}
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)

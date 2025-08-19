@@ -82,6 +82,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -160,6 +161,7 @@ const (
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
 	DataObjIndexBuilder      = "dataobj-index-builder"
+	ScratchStore             = "scratch-store"
 	UI                       = "ui"
 	All                      = "all"
 	Read                     = "read"
@@ -549,7 +551,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 	logger := log.With(util_log.Logger, "component", "dataobj-querier")
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(store, logger, prometheus.DefaultRegisterer)),
+			Store: dataobjquerier.NewStore(store, logger, metastore.NewObjectMetastore(t.Cfg.DataObj.Metastore.Storage, store, logger, prometheus.DefaultRegisterer)),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{
@@ -627,7 +629,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.DataObj.Metastore.Storage, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -2203,6 +2205,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.Cfg.DataObj.Metastore,
 		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
+		t.scratchStore,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		t.partitionRing,
 		prometheus.DefaultRegisterer,
@@ -2229,10 +2232,27 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 		util_log.Logger,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		store,
+		t.scratchStore,
 		prometheus.DefaultRegisterer,
 	)
 
 	return t.dataObjIndexBuilder, err
+}
+
+func (t *Loki) initScratchStore() (services.Service, error) {
+	logger := log.With(util_log.Logger, "module", "scratch-store")
+	store, err := scratch.Open(logger, t.Cfg.Common.ScratchPath)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := scratch.NewMetrics()
+	if err := metrics.Register(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+
+	t.scratchStore = scratch.ObserveStore(metrics, store)
+	return services.NewIdleService(nil, nil), nil
 }
 
 func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {

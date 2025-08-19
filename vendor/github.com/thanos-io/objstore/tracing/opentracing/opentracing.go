@@ -118,7 +118,7 @@ func (t TracingBucket) Upload(ctx context.Context, name string, r io.Reader) (er
 	return
 }
 
-func (t TracingBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) (err error) {
+func (t TracingBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) (err error) {
 	doWithSpan(ctx, "bucket_get_and_replace", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("name", name)
 		err = t.bkt.GetAndReplace(spanCtx, name, f)

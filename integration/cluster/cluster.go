@@ -183,7 +183,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0640) // #nosec G306 -- this is fencing off the "other" permissions
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0640) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -355,7 +355,7 @@ func (c *Component) writeConfig() error {
 		return fmt.Errorf("error getting merged config: %w", err)
 	}
 
-	if err := os.WriteFile(configFile.Name(), mergedConfig, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+	if err := os.WriteFile(configFile.Name(), mergedConfig, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -532,7 +532,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 		return err
 	}
 
-	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions
+	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 }
 
 func (c *Component) GetTenantLimits(tenant string) validation.Limits {

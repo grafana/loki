@@ -206,7 +206,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 
 	bs := iter.ReadStringAsSlice()
-	ss := *(*string)(unsafe.Pointer(&bs)) // #nosec G103 -- we know the string is not mutated
+	ss := *(*string)(unsafe.Pointer(&bs)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	v, err := strconv.ParseFloat(ss, 64)
 	if err != nil {
 		iter.ReportError("logproto.LegacySample", err.Error())

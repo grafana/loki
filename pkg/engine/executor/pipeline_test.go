@@ -223,3 +223,16 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	prefetchingPipeline.Close()
 	alloc.AssertSize(t, 0)
 }
+
+func Test_prefetchWrapper_Close(t *testing.T) {
+	t.Run("initialized prefetcher", func(t *testing.T) {
+		w := newPrefetchingPipeline(emptyPipeline())
+		require.ErrorIs(t, EOF, w.Read(t.Context()))
+		require.NotPanics(t, w.Close)
+	})
+
+	t.Run("uninitialized prefetcher", func(t *testing.T) {
+		w := newPrefetchingPipeline(emptyPipeline())
+		require.NotPanics(t, w.Close)
+	})
+}

@@ -175,6 +175,26 @@ ui:
     # CLI flag: -ui.goldfish.max-idle-time
     [max_idle_time: <int> | default = 300]
 
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -892,6 +912,14 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.retain-for
   [retain_for: <duration> | default = 3h]
 
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1117,21 +1145,17 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-index-builder.storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0/"]
-
-    # Experimental: A list of tenant IDs to enable index building for. If empty,
-    # all tenants will be enabled.
-    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
-    [enabled_tenant_ids: <string> | default = ""]
-
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
+    storage:
+      # Experimental: A prefix to use for storing indexes in object storage.
+      # Used to separate the metastore & index files during initial testing.
+      # CLI flag: -dataobj-metastore.index-storage-prefix
+      [index_storage_prefix: <string> | default = "index/v0/"]
+
+      # Experimental: A list of tenant IDs to enable index building for. If
+      # empty, all tenants will be enabled.
+      # CLI flag: -dataobj-metastore.enabled-tenant-ids
+      [enabled_tenant_ids: <string> | default = ""]
 
   querier:
     # Enable the dataobj querier.
@@ -2428,6 +2452,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2631,10 +2659,9 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of workers to run for concurrent processing of jobs. Setting it to 0
-  # will run a worker per available CPU core.
-  # CLI flag: -compactor.worker.num-workers
-  [num_workers: <int> | default = 0]
+  # Number of sub-workers to run for concurrent processing of jobs.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 4]
 
 jobs_config:
   deletion:
@@ -4473,6 +4500,17 @@ otlp_config:
 # CLI flag: -limits.pattern-persistence-enabled
 [pattern_persistence_enabled: <boolean> | default = false]
 
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
+
+# Minimum pattern rate (samples per second) required for a pattern to be
+# persisted. Patterns with lower rates will be filtered out during persistence.
+# CLI flag: -limits.pattern-rate-threshold
+[pattern_rate_threshold: <float> | default = 1]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
@@ -4871,6 +4909,13 @@ engine:
   # Experimental: Batch size of the next generation query engine.
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
+
+  # Experimental: Maximum total size of future pages for DataObjScan to download
+  # before they are needed, for roundtrip reduction to object storage. Setting
+  # to zero disables downloading future pages. Only used in the next generation
+  # query engine.
+  # CLI flag: -querier.engine.dataobjscan-page-cache-size
+  [dataobjscan_page_cache_size: <int> | default = 0B]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5900,7 +5945,7 @@ grpc_tls_config:
 
 # Comma separated list of headers to exclude from tracing spans. Only used if
 # server.trace-request-headers is true. The following headers are always
-# excluded: Authorization, Cookie, X-Csrf-Token.
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
 # CLI flag: -server.trace-request-headers-exclude-list
 [trace_request_exclude_headers_list: <string> | default = ""]
 
@@ -5941,6 +5986,11 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
 ```
 
 ### storage_config

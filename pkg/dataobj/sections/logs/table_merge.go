@@ -9,7 +9,6 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -113,14 +112,14 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			value := row.Values[i]
 
 			switch column.Type {
-			case logsmd.COLUMN_TYPE_STREAM_ID:
+			case ColumnTypeStreamID:
 				_ = streamIDBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_TIMESTAMP:
+			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_METADATA:
-				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+			case ColumnTypeMetadata:
+				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_MESSAGE:
+			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
