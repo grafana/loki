@@ -35,7 +35,7 @@ var (
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
 
-	trueBytes = []byte("true")
+	trueBytes  = []byte("true")
 	falseBytes = []byte("false")
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
@@ -158,7 +158,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), j.valueBuffer)
 
 		if j.captureJSONPath {
-            // TODO: very this is ok. buildJSONPathFromPrefixBuffer uses and unsafe string 
+			// TODO: very this is ok. buildJSONPathFromPrefixBuffer uses and unsafe string
 			j.lbs.SetJSONPath(sanitizedKey, []string{unsafeGetString(key)})
 		}
 
@@ -625,9 +625,9 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	ids   []string
-	paths [][]string
-	keys  internedStringSet
+	ids         []string
+	paths       [][]string
+	keys        internedStringSet
 	valueBuffer []byte
 }
 
@@ -649,9 +649,9 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}
 
 	return &JSONExpressionParser{
-		ids:   ids,
-		paths: paths,
-		keys:  internedStringSet{},
+		ids:         ids,
+		paths:       paths,
+		keys:        internedStringSet{},
 		valueBuffer: make([]byte, 0, 64),
 	}, nil
 }
@@ -734,9 +734,9 @@ func isValidJSONStart(data []byte) bool {
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
-	lbsBuffer []string
+	lbsBuffer   []string
 	valueBuffer []byte
-	keys internedStringSet
+	keys        internedStringSet
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -745,8 +745,8 @@ type UnpackParser struct {
 // see https://grafana.com/docs/loki/latest/clients/promtail/stages/pack/
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
-		lbsBuffer: make([]string, 0, 16),
-		keys:      internedStringSet{},
+		lbsBuffer:   make([]string, 0, 16),
+		keys:        internedStringSet{},
 		valueBuffer: make([]byte, 0, 64),
 	}
 }

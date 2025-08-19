@@ -512,7 +512,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			for i, line := range tt.lines {
 				finalLine, finalLbs, _ := sp.Process(0, line, labels.EmptyLabels())
 				require.Equal(t, tt.wantLine[i], finalLine)
-				require.Equal(t, tt.wantLabels[i], finalLbs.Labels()) 
+				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
 				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
 				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
@@ -810,13 +810,13 @@ func logfmtBenchmark(b *testing.B, parser Stage, lines int) {
 		for _, line := range streams {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
-		if !resMatches {
-			b.Fatalf("resulting line not ok: %s\n", line)
-		}
+			if !resMatches {
+				b.Fatalf("resulting line not ok: %s\n", line)
+			}
 
-		if resLbs.Stream().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
+			if resLbs.Stream().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
 				b.Fatalf("label was not extracted correctly! ts was %v, expected 2020-10-18T18:04:22.147378997Z, %+v\n", resLbs.Stream().Get("ts"), resLbs)
-		}
+			}
 		}
 	}
 }
