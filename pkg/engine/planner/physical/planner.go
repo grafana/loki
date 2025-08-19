@@ -147,6 +147,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
+	case *logical.Parse:
+		return p.processParse(inst, ctx)
 	}
 	return nil, nil
 }
@@ -331,6 +333,27 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	if err != nil {
 		return nil, err
 	}
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
+// Convert [logical.Parse] into one [ParseNode] node.
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+	node := &ParseNode{
+		Kind:          lp.Kind,
+		RequestedKeys: lp.RequestedKeys,
+	}
+	p.plan.addNode(node)
+	
+	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+	
 	for i := range children {
 		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
