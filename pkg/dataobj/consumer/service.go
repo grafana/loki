@@ -182,13 +182,13 @@ func (s *Service) run(ctx context.Context) error {
 			processor, ok := handlers[ftp.Partition]
 			s.partitionMtx.RUnlock()
 			if !ok {
+				s.processorNotReady.Inc()
 				return
 			}
 
 			// Collect all records for this partition
 			records := ftp.Records
 			if len(records) == 0 {
-				s.processorNotReady.Inc()
 				return
 			}
 
