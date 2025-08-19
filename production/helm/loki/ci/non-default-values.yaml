@@ -1,4 +1,3 @@
-namespaceOverride: loki
 deploymentMode: Distributed
 loki:
   commonConfig:
