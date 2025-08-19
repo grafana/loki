@@ -261,6 +261,59 @@ func TestPlanner_Convert(t *testing.T) {
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 }
 
+func TestPlanner_Convert_WithParse(t *testing.T) {
+	// Build a query plan with Parse:
+	// { app="users" } | logfmt | level="error"
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1),
+		},
+	).Parse(
+		logical.ParserLogfmt,
+		[]string{"level", "status"},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("level", types.ColumnTypeParsed),
+			Right: logical.NewLiteral("error"),
+			Op:    types.BinaryOpEq,
+		},
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	catalog := &catalog{
+		streamsByObject: map[string]objectMeta{
+			"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+		},
+	}
+	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+
+	// Verify ParseNode exists in correct position
+	root, err := physicalPlan.Root()
+	require.NoError(t, err)
+
+	// Physical plan is built bottom up, so it should be Filter -> ParseNode -> ...
+	filterNode, ok := root.(*Filter)
+	require.True(t, ok, "Root should be Filter")
+
+	children := physicalPlan.Children(filterNode)
+	require.Len(t, children, 1)
+
+	parseNode, ok := children[0].(*ParseNode)
+	require.True(t, ok, "Filter's child should be ParseNode")
+	require.Equal(t, logical.ParserLogfmt, parseNode.Kind)
+	require.Equal(t, []string{"level", "status"}, parseNode.RequestedKeys)
+}
+
 func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	// logical plan for count_over_time({ app="users" } | age > 21[5m])
 	b := logical.NewBuilder(
