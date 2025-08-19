@@ -30,6 +30,7 @@ import (
 // builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(stream logproto.Stream) error
+	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRange() (time.Time, time.Time)
 	UnregisterMetrics(prometheus.Registerer)
@@ -399,7 +400,10 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *partitionProcessor) needsIdleFlush() bool {
-	if p.builder == nil {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	if p.lastModified.IsZero() {
