@@ -24,26 +24,26 @@ type rangeAggregationOptions struct {
 	step          time.Duration // step used for range queries
 }
 
-// RangeAggregationPipeline is a pipeline that performs aggregations over a time window.
+// rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
 // 2. Partitions the data by the specified columns
 // 3. Applies the aggregation function on each partition
 //
 // Current version only supports counting for instant queries.
-type RangeAggregationPipeline struct {
+type rangeAggregationPipeline struct {
 	state           state
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
-	matchingTimeWindows func(t time.Time) ([]time.Time, bool) // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator                   // used to evaluate column expressions
+	matchingTimeWindows func(t time.Time) []time.Time // function to find matching time windows for a given timestamp
+	evaluator           expressionEvaluator           // used to evaluate column expressions
 	opts                rangeAggregationOptions
 }
 
-func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*RangeAggregationPipeline, error) {
-	r := &RangeAggregationPipeline{
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
 		opts:      opts,
@@ -52,7 +52,7 @@ func NewRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluato
 	return r, nil
 }
 
-func (r *RangeAggregationPipeline) init() {
+func (r *rangeAggregationPipeline) init() {
 	windows := []struct {
 		// lower bound is not inclusive
 		// refer to [logql.batchRangeVectorIterator]
@@ -82,9 +82,9 @@ func (r *RangeAggregationPipeline) init() {
 		upperbound = r.opts.endTs
 	)
 
-	r.matchingTimeWindows = func(t time.Time) ([]time.Time, bool) {
+	r.matchingTimeWindows = func(t time.Time) []time.Time {
 		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
-			return nil, false // out of range
+			return nil // out of range
 		}
 
 		var ret []time.Time
@@ -94,7 +94,7 @@ func (r *RangeAggregationPipeline) init() {
 			}
 		}
 
-		return ret, true
+		return ret
 	}
 
 	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
@@ -103,7 +103,7 @@ func (r *RangeAggregationPipeline) init() {
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *RangeAggregationPipeline) Read(ctx context.Context) error {
+func (r *rangeAggregationPipeline) Read(ctx context.Context) error {
 	// if the state already has an error, do not attempt to read.
 	if r.state.err != nil {
 		return r.state.err
@@ -131,7 +131,7 @@ func (r *RangeAggregationPipeline) Read(ctx context.Context) error {
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausing all inputs.
-func (r *RangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -185,8 +185,8 @@ func (r *RangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			tsCol := vec.ToArray().(*array.Timestamp)
 
 			for row := range int(record.NumRows()) {
-				windows, ok := r.matchingTimeWindows(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if !ok {
+				windows := r.matchingTimeWindows(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
 					continue // out of range, skip this row
 				}
 
@@ -204,17 +204,17 @@ func (r *RangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 	}
 
 	r.inputsExhausted = true
-	return r.aggregator.buildRecord()
+	return r.aggregator.BuildRecord()
 }
 
 // Value returns the current value in state.
-func (r *RangeAggregationPipeline) Value() (arrow.Record, error) {
+func (r *rangeAggregationPipeline) Value() (arrow.Record, error) {
 	return r.state.Value()
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
-func (r *RangeAggregationPipeline) Close() {
+func (r *rangeAggregationPipeline) Close() {
 	// Release last batch
 	if r.state.batch != nil {
 		r.state.batch.Release()
@@ -226,11 +226,11 @@ func (r *RangeAggregationPipeline) Close() {
 }
 
 // Inputs returns the inputs of the pipeline.
-func (r *RangeAggregationPipeline) Inputs() []Pipeline {
+func (r *rangeAggregationPipeline) Inputs() []Pipeline {
 	return r.inputs
 }
 
 // Transport returns the type of transport of the implementation.
-func (r *RangeAggregationPipeline) Transport() Transport {
+func (r *rangeAggregationPipeline) Transport() Transport {
 	return Local
 }

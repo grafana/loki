@@ -86,7 +86,7 @@ func (a *aggregator) Add(ts time.Time, value int64, labelValues []string) {
 	}
 }
 
-func (a *aggregator) buildRecord() (arrow.Record, error) {
+func (a *aggregator) BuildRecord() (arrow.Record, error) {
 	fields := make([]arrow.Field, 0, len(a.groupBy)+2)
 	fields = append(fields,
 		arrow.Field{

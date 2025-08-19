@@ -52,7 +52,7 @@ func TestAggregator(t *testing.T) {
 		agg.Add(ts1, 5, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 15
 		agg.Add(ts2, 10, []string{"prod", "app1"}) // prod/app1 at ts2 should now be 25
 
-		record, err := agg.buildRecord()
+		record, err := agg.BuildRecord()
 		require.NoError(t, err)
 		defer record.Release()
 

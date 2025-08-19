@@ -13,11 +13,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-// VectorAggregationPipeline is a pipeline that performs vector aggregations.
+// vectorAggregationPipeline is a pipeline that performs vector aggregations.
 //
 // It reads from the input pipeline, groups the data by specified columns,
 // and applies the aggregation function on each group.
-type VectorAggregationPipeline struct {
+type vectorAggregationPipeline struct {
 	state           state
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
@@ -30,12 +30,12 @@ type VectorAggregationPipeline struct {
 	valueEval evalFunc // used to evaluate the value column
 }
 
-func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*VectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
 
-	return &VectorAggregationPipeline{
+	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		groupBy:    groupBy,
@@ -56,7 +56,7 @@ func NewVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *VectorAggregationPipeline) Read(ctx context.Context) error {
+func (v *vectorAggregationPipeline) Read(ctx context.Context) error {
 	if v.state.err != nil {
 		return v.state.err
 	}
@@ -80,7 +80,7 @@ func (v *VectorAggregationPipeline) Read(ctx context.Context) error {
 	return nil
 }
 
-func (v *VectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)
@@ -145,16 +145,16 @@ func (v *VectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 
 	v.inputsExhausted = true
 
-	return v.aggregator.buildRecord()
+	return v.aggregator.BuildRecord()
 }
 
 // Value returns the current value in state.
-func (v *VectorAggregationPipeline) Value() (arrow.Record, error) {
+func (v *vectorAggregationPipeline) Value() (arrow.Record, error) {
 	return v.state.Value()
 }
 
 // Close closes the resources of the pipeline.
-func (v *VectorAggregationPipeline) Close() {
+func (v *vectorAggregationPipeline) Close() {
 	if v.state.batch != nil {
 		v.state.batch.Release()
 	}
@@ -165,11 +165,11 @@ func (v *VectorAggregationPipeline) Close() {
 }
 
 // Inputs returns the inputs of the pipeline.
-func (v *VectorAggregationPipeline) Inputs() []Pipeline {
+func (v *vectorAggregationPipeline) Inputs() []Pipeline {
 	return v.inputs
 }
 
 // Transport returns the transport type of the pipeline.
-func (v *VectorAggregationPipeline) Transport() Transport {
+func (v *vectorAggregationPipeline) Transport() Transport {
 	return Local
 }
