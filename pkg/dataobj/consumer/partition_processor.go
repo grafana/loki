@@ -69,7 +69,10 @@ type partitionProcessor struct {
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
-	lastFlush    time.Time
+	lastFlush time.Time
+
+	// lastModified is used to know when the idle is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
 
 	// Metrics
@@ -346,6 +349,7 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
+	// p.lastModified = time.Time{}
 	p.lastFlush = p.clock.Now()
 
 	return nil
@@ -392,7 +396,8 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	return true, nil
 }
 
-// isIdle returns true if the partition has exceeded the idle flush timeout.
+// needsIdleFlush returns true if the partition has exceeded the idle timeout
+// and the builder has some data buffered.
 func (p *partitionProcessor) needsIdleFlush() bool {
 	if p.builder == nil {
 		return false

@@ -38,6 +38,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 	recordingTocWriter := &recordingTocWriter{TableOfContentsWriter: tocWriter}
 	p.metastoreTocWriter = recordingTocWriter
 
+	// The last modified timestamp should be zero.
+	require.True(t, p.lastModified.IsZero())
+
 	// Push two streams, one minute apart.
 	now1 := clock.Now()
 	s1 := logproto.Stream{
@@ -77,9 +80,13 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 	require.Equal(t, now1, minTime)
 	require.Equal(t, now2, maxTime)
 
-	// Flush the data object.
+	// The last modified timestamp should be the time of the last append.
+	require.Equal(t, now2, p.lastModified)
+
+	// Flush the data object. The last modified time should also be reset.
 	require.NoError(t, p.flush())
 	require.Equal(t, now2, p.lastFlush)
+	require.True(t, p.lastModified.IsZero())
 
 	// Flush should produce two uploads, the data object and the metastore
 	// object.
