@@ -34,8 +34,9 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-addr>:3100/otlp
+    endpoint: http://<loki-addr>/otlp
 ```
+For Grafana Cloud users, refer to [https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/](https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/).
 
 And enable it in `service.pipelines`:
 
@@ -61,7 +62,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>:3100/otlp
+    endpoint: http://<loki-addr>/otlp
 
 service:
   extensions: [basicauth/otlp]
