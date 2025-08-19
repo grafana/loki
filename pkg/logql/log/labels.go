@@ -609,6 +609,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	b.Range(func(name, value []byte) {
 		b.scratchBuilder.UnsafeAddBytes(name, value)
 	})
+	b.scratchBuilder.Sort()
 
 	lbls := b.scratchBuilder.Labels()
 	hash := b.hasher.Hash(lbls)
@@ -634,6 +635,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})
+	b.scratchBuilder.Sort()
 	parsed = b.scratchBuilder.Labels()
 
 	// Structured Metadata
@@ -643,6 +645,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})
+	b.scratchBuilder.Sort()
 	meta = b.scratchBuilder.Labels()
 
 	// Stream
@@ -652,6 +655,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})
+	b.scratchBuilder.Sort()
 	stream = b.scratchBuilder.Labels()
 
 	result := NewLabelsResult(lbls.String(), hash, stream, meta, parsed)

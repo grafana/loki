@@ -121,38 +121,38 @@ func (c *columnarLabels) reset() {
 	c.values.reset()
 }
 
-func (s *columnarLabels) len() int {
-	return s.names.len()
+func (c *columnarLabels) len() int {
+	return c.names.len()
 }
 
-func (s *columnarLabels) get(key []byte) ([]byte, bool) {
+func (c *columnarLabels) get(key []byte) ([]byte, bool) {
 	// Benchmarking showed that linear search is faster for small number of labels.
-	if s.names.len() <= 50 {
-		for i := 0; i < len(s.names.indices); i++ {
-			if bytes.Equal(s.names.get(i), key) {
-				return s.values.get(i), true
+	if c.names.len() <= 50 {
+		for i := 0; i < len(c.names.indices); i++ {
+			if bytes.Equal(c.names.get(i), key) {
+				return c.values.get(i), true
 			}
 		}
 		return nil, false
 	}
 
-	idx := s.names.index(key)
+	idx := c.names.index(key)
 	if idx == -1 {
 		return nil, false
 	}
-	return s.values.get(idx), true
+	return c.values.get(idx), true
 }
 
-func (s *columnarLabels) getAt(i int) (name, value []byte) {
-	return s.names.get(i), s.values.get(i)
+func (c *columnarLabels) getAt(i int) (name, value []byte) {
+	return c.names.get(i), c.values.get(i)
 }
 
-func (s *columnarLabels) del(name []byte) {
+func (c *columnarLabels) del(name []byte) {
 	// TODO: to a string search on s.names.data
-	for i := 0; i < len(s.names.indices); i++ {
-		if bytes.Equal(s.names.get(i), name) {
-			s.names.del(i)
-			s.values.del(i)
+	for i := 0; i < len(c.names.indices); i++ {
+		if bytes.Equal(c.names.get(i), name) {
+			c.names.del(i)
+			c.values.del(i)
 		}
 	}
 }
