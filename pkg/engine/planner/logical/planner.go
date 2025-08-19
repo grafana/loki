@@ -72,7 +72,14 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 				predicates = append(predicates, val)
 			}
 			return true
-		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+		case *syntax.LogfmtParserExpr:
+			// For metric queries, logfmt parsing is handled in buildPlanForSampleQuery
+			if isMetricQuery {
+				return true // continue traversing to find label filters
+			}
+			err = errUnimplemented
+			return false
+		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 			err = errUnimplemented
@@ -99,6 +106,8 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 			Shard:      shard,
 		},
 	)
+
+	// Parse operation will be added from buildPlanForSampleQuery if needed
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -135,18 +144,32 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 }
 
 func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
+	if params.Step() > 0 {
+		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
+	}
+
+	// Collect keys for logfmt parsing on the full sample expression
+	requestedKeys, _ := CollectRequestedKeys(e)
+
 	var (
 		err error
 
 		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
-		vecAggType types.VectorAggregationType
-		groupBy    []ColumnRef
+		vecAggType      types.VectorAggregationType
+		groupBy         []ColumnRef
+		hasLogfmtParser bool
 	)
 
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
+		case *syntax.LogfmtParserExpr:
+			hasLogfmtParser = true
+			return true
+		case *syntax.LogRangeExpr, *syntax.PipelineExpr, *syntax.MatchersExpr, *syntax.LabelFilterExpr:
+			// Continue traversing into these expressions to find logfmt
+			return true
 		case *syntax.RangeAggregationExpr:
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
@@ -157,7 +180,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			rangeAggType = types.RangeAggregationTypeCount
 			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
+			return true // continue traversing to find logfmt
 
 		case *syntax.VectorAggregationExpr:
 			// only sum operation is supported for vector aggregation
@@ -176,8 +199,8 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			return true
 		default:
-			err = errUnimplemented
-			return false // do not traverse children
+			// For other expressions, just continue traversing
+			return true
 		}
 	})
 	if err != nil {
@@ -196,6 +219,11 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
+	}
+
+	// Add Parse operation if we found logfmt and have keys to extract
+	if hasLogfmtParser && len(requestedKeys) > 0 {
+		builder = builder.Parse(ParserLogfmt, requestedKeys)
 	}
 
 	builder = builder.RangeAggregation(
