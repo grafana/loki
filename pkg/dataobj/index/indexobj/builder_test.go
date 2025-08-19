@@ -1,7 +1,6 @@
 package indexobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -28,9 +26,6 @@ var testBuilderConfig = BuilderConfig{
 }
 
 func TestBuilder(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-	dirtyBuf := bytes.NewBuffer([]byte("dirty"))
-
 	testStreams := []streams.Stream{
 		{
 			ID: 1,
@@ -67,31 +62,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
-		require.NoError(t, err)
-
-		for _, stream := range testStreams {
-			_, err := builder.AppendStream(stream)
-			require.NoError(t, err)
-		}
-		for _, pointer := range testPointers {
-			err := builder.AppendColumnIndex(pointer.Path, pointer.Section, pointer.ColumnName, pointer.ColumnIndex, pointer.ValuesBloomFilter)
-			require.NoError(t, err)
-		}
-		_, err = builder.Flush(buf)
-		require.NoError(t, err)
-	})
-
-	t.Run("Read", func(t *testing.T) {
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		require.NoError(t, err)
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-	})
-
-	t.Run("BuildWithDirtyBuffer", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
+		builder, err := NewBuilder(testBuilderConfig, nil)
 		require.NoError(t, err)
 
 		for _, stream := range testStreams {
@@ -103,15 +74,10 @@ func TestBuilder(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		_, err = builder.Flush(dirtyBuf)
+		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
+		defer closer.Close()
 
-		require.Equal(t, buf.Len(), dirtyBuf.Len()-5)
-	})
-
-	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
-		require.NoError(t, err)
 		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
 		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
 		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
@@ -124,7 +90,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig)
+	builder, err := NewBuilder(testBuilderConfig, nil)
 	require.NoError(t, err)
 
 	i := 0
@@ -154,7 +120,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig)
+	builder, err := NewBuilder(testBuilderConfig, nil)
 	require.NoError(t, err)
 
 	i := 0

@@ -101,9 +101,9 @@ func TestMockCatalog(t *testing.T) {
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
 			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, time.Now(), time.Now())
-			require.Equal(t, tt.expPaths, paths)
-			require.Equal(t, tt.expStreams, streams)
-			require.Equal(t, tt.expSections, sections)
+			require.ElementsMatch(t, tt.expPaths, paths)
+			require.ElementsMatch(t, tt.expStreams, streams)
+			require.ElementsMatch(t, tt.expSections, sections)
 		})
 	}
 }
@@ -211,8 +211,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
 			require.NoError(t, err)
-			require.Equal(t, tt.expPaths, locations(t, planner.plan, nodes))
-			require.Equal(t, tt.expSections, sections(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }

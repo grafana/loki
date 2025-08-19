@@ -54,7 +54,7 @@ bloom_build:
   planner:
     planning_interval: 6h
   builder:
-    planner_address: bloom-planner.<namespace>.svc.cluster.local.:9095
+    planner_address: bloom-planner.<namespace>.svc.cluster.local:9095
 
 # Configuration block for bloom filtering.
 bloom_gateway:

@@ -78,11 +78,6 @@ func NewContext(ctx context.Context) (*Context, context.Context) {
 	return contextData, ctx
 }
 
-func IsPresent(ctx context.Context) bool {
-	_, ok := ctx.Value(statsKey).(*Context)
-	return ok
-}
-
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)
@@ -237,6 +232,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.PagesDownloaded += m.Dataobj.PagesDownloaded
 	s.Dataobj.PagesDownloadedBytes += m.Dataobj.PagesDownloadedBytes
 	s.Dataobj.PageBatches += m.Dataobj.PageBatches
+	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
@@ -572,6 +568,10 @@ func (c *Context) AddPagesDownloadedBytes(i int64) {
 
 func (c *Context) AddPageBatches(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PageBatches, i)
+}
+
+func (c *Context) AddPageDownloadTime(duration time.Duration) {
+	atomic.AddInt64(&c.store.Dataobj.TotalPageDownloadTime, int64(duration))
 }
 
 func (c *Context) AddTotalRowsAvailable(i int64) {

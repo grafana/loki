@@ -36,7 +36,9 @@ function TestComponent() {
   
   return (
     <div>
-      <div data-testid="goldfish-feature">{features.goldfish ? 'enabled' : 'disabled'}</div>
+      <div data-testid="goldfish-feature">{features.goldfish.enabled ? 'enabled' : 'disabled'}</div>
+      <div data-testid="goldfish-cell-a-namespace">{features.goldfish.cellANamespace || 'none'}</div>
+      <div data-testid="goldfish-cell-b-namespace">{features.goldfish.cellBNamespace || 'none'}</div>
     </div>
   );
 }
@@ -75,7 +77,7 @@ describe('FeatureFlagsProvider API calls with environment abstraction', () => {
     // Setup: Mock successful API response
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ goldfish: true }),
+      json: async () => ({ goldfish: { enabled: true } }),
     });
 
     // Act: Render the provider which triggers the API call
@@ -98,7 +100,7 @@ describe('FeatureFlagsProvider API calls with environment abstraction', () => {
   it('uses mock features when shouldUseMockFeatures returns true', async () => {
     // Setup: Enable mock features
     mockShouldUseMockFeatures.mockReturnValue(true);
-    mockGetDevEnvironmentOverrides.mockReturnValue({ goldfish: true });
+    mockGetDevEnvironmentOverrides.mockReturnValue({ goldfish: { enabled: true } });
 
     // Act: Render the provider
     renderWithProvider();
@@ -116,11 +118,11 @@ describe('FeatureFlagsProvider API calls with environment abstraction', () => {
   it('combines server response with dev overrides', async () => {
     // Setup: Mock server response and dev overrides
     mockAbsolutePath.mockReturnValue('/ui/api/v1/features');
-    mockGetDevEnvironmentOverrides.mockReturnValue({ goldfish: true }); // Override to true
+    mockGetDevEnvironmentOverrides.mockReturnValue({ goldfish: { enabled: true } }); // Override to true
     
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ goldfish: false }), // Server says false
+      json: async () => ({ goldfish: { enabled: false } }), // Server says false
     });
 
     // Act: Render the provider
@@ -152,5 +154,55 @@ describe('FeatureFlagsProvider API calls with environment abstraction', () => {
 
     // Assert: Should still have called absolutePath
     expect(mockAbsolutePath).toHaveBeenCalledWith('/api/v1/features');
+  });
+
+  it('handles goldfish object structure with namespaces', async () => {
+    // Setup: Mock absolutePath and API response with goldfish object
+    mockAbsolutePath.mockReturnValue('/ui/api/v1/features');
+    
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        goldfish: {
+          enabled: true,
+          cellANamespace: 'loki-ops-002',
+          cellBNamespace: 'loki-ops-003'
+        }
+      }),
+    });
+
+    // Act: Render the provider
+    renderWithProvider();
+
+    // Assert: Verify features are loaded with namespaces
+    await waitFor(() => {
+      expect(screen.getByTestId('goldfish-feature')).toHaveTextContent('enabled');
+      expect(screen.getByTestId('goldfish-cell-a-namespace')).toHaveTextContent('loki-ops-002');
+      expect(screen.getByTestId('goldfish-cell-b-namespace')).toHaveTextContent('loki-ops-003');
+    });
+  });
+
+  it('handles goldfish object structure without namespaces', async () => {
+    // Setup: Mock absolutePath and API response with goldfish object but no namespaces
+    mockAbsolutePath.mockReturnValue('/ui/api/v1/features');
+    
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        goldfish: {
+          enabled: false
+        }
+      }),
+    });
+
+    // Act: Render the provider
+    renderWithProvider();
+
+    // Assert: Verify features are loaded without namespaces
+    await waitFor(() => {
+      expect(screen.getByTestId('goldfish-feature')).toHaveTextContent('disabled');
+      expect(screen.getByTestId('goldfish-cell-a-namespace')).toHaveTextContent('none');
+      expect(screen.getByTestId('goldfish-cell-b-namespace')).toHaveTextContent('none');
+    });
   });
 });

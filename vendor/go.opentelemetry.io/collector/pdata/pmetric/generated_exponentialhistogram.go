@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // ExponentialHistogram represents the type of a metric that is calculated by aggregating
@@ -51,6 +50,11 @@ func (ms ExponentialHistogram) MoveTo(dest ExponentialHistogram) {
 	*ms.orig = otlpmetrics.ExponentialHistogram{}
 }
 
+// DataPoints returns the DataPoints associated with this ExponentialHistogram.
+func (ms ExponentialHistogram) DataPoints() ExponentialHistogramDataPointSlice {
+	return newExponentialHistogramDataPointSlice(&ms.orig.DataPoints, ms.state)
+}
+
 // AggregationTemporality returns the aggregationtemporality associated with this ExponentialHistogram.
 func (ms ExponentialHistogram) AggregationTemporality() AggregationTemporality {
 	return AggregationTemporality(ms.orig.AggregationTemporality)
@@ -62,32 +66,8 @@ func (ms ExponentialHistogram) SetAggregationTemporality(v AggregationTemporalit
 	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
 }
 
-// DataPoints returns the DataPoints associated with this ExponentialHistogram.
-func (ms ExponentialHistogram) DataPoints() ExponentialHistogramDataPointSlice {
-	return newExponentialHistogramDataPointSlice(&ms.orig.DataPoints, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogram) CopyTo(dest ExponentialHistogram) {
 	dest.state.AssertMutable()
-	copyOrigExponentialHistogram(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ExponentialHistogram) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.AggregationTemporality != otlpmetrics.AggregationTemporality(0) {
-		dest.WriteObjectField("aggregationTemporality")
-		ms.AggregationTemporality().marshalJSONStream(dest)
-	}
-	if len(ms.orig.DataPoints) > 0 {
-		dest.WriteObjectField("dataPoints")
-		ms.DataPoints().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigExponentialHistogram(dest, src *otlpmetrics.ExponentialHistogram) {
-	dest.AggregationTemporality = src.AggregationTemporality
-	dest.DataPoints = copyOrigExponentialHistogramDataPointSlice(dest.DataPoints, src.DataPoints)
+	internal.CopyOrigExponentialHistogram(dest.orig, ms.orig)
 }

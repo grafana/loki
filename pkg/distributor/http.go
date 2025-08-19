@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/util"
@@ -119,11 +120,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 		if shouldLog {
 			for _, s := range req.Streams {
+				lbs, err := syntax.ParseLabels(s.Labels)
+				if err != nil {
+					// We just log the error and continue, we need the parsed labels to log the policy.
+					// In this case, the lbs will be empty and the policy will be empty.
+					level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
+				}
+
 				logValues := []interface{}{
 					"msg", "push request streams",
 					"stream", s.Labels,
 					"streamLabelsHash", util.HashedQuery(s.Labels), // this is to make it easier to do searching and grouping
 					"streamSizeBytes", humanize.Bytes(uint64(pushStats.StreamSizeBytes[s.Labels])),
+					"policy", streamResolver.PolicyFor(lbs),
 				}
 				if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
 					logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())

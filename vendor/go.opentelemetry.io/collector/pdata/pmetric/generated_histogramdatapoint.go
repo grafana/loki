@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -89,32 +88,6 @@ func (ms HistogramDataPoint) SetCount(v uint64) {
 	ms.orig.Count = v
 }
 
-// BucketCounts returns the bucketcounts associated with this HistogramDataPoint.
-func (ms HistogramDataPoint) BucketCounts() pcommon.UInt64Slice {
-	return pcommon.UInt64Slice(internal.NewUInt64Slice(&ms.orig.BucketCounts, ms.state))
-}
-
-// ExplicitBounds returns the explicitbounds associated with this HistogramDataPoint.
-func (ms HistogramDataPoint) ExplicitBounds() pcommon.Float64Slice {
-	return pcommon.Float64Slice(internal.NewFloat64Slice(&ms.orig.ExplicitBounds, ms.state))
-}
-
-// Exemplars returns the Exemplars associated with this HistogramDataPoint.
-func (ms HistogramDataPoint) Exemplars() ExemplarSlice {
-	return newExemplarSlice(&ms.orig.Exemplars, ms.state)
-}
-
-// Flags returns the flags associated with this HistogramDataPoint.
-func (ms HistogramDataPoint) Flags() DataPointFlags {
-	return DataPointFlags(ms.orig.Flags)
-}
-
-// SetFlags replaces the flags associated with this HistogramDataPoint.
-func (ms HistogramDataPoint) SetFlags(v DataPointFlags) {
-	ms.state.AssertMutable()
-	ms.orig.Flags = uint32(v)
-}
-
 // Sum returns the sum associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) Sum() float64 {
 	return ms.orig.GetSum()
@@ -136,6 +109,32 @@ func (ms HistogramDataPoint) SetSum(v float64) {
 func (ms HistogramDataPoint) RemoveSum() {
 	ms.state.AssertMutable()
 	ms.orig.Sum_ = nil
+}
+
+// BucketCounts returns the BucketCounts associated with this HistogramDataPoint.
+func (ms HistogramDataPoint) BucketCounts() pcommon.UInt64Slice {
+	return pcommon.UInt64Slice(internal.NewUInt64Slice(&ms.orig.BucketCounts, ms.state))
+}
+
+// ExplicitBounds returns the ExplicitBounds associated with this HistogramDataPoint.
+func (ms HistogramDataPoint) ExplicitBounds() pcommon.Float64Slice {
+	return pcommon.Float64Slice(internal.NewFloat64Slice(&ms.orig.ExplicitBounds, ms.state))
+}
+
+// Exemplars returns the Exemplars associated with this HistogramDataPoint.
+func (ms HistogramDataPoint) Exemplars() ExemplarSlice {
+	return newExemplarSlice(&ms.orig.Exemplars, ms.state)
+}
+
+// Flags returns the flags associated with this HistogramDataPoint.
+func (ms HistogramDataPoint) Flags() DataPointFlags {
+	return DataPointFlags(ms.orig.Flags)
+}
+
+// SetFlags replaces the flags associated with this HistogramDataPoint.
+func (ms HistogramDataPoint) SetFlags(v DataPointFlags) {
+	ms.state.AssertMutable()
+	ms.orig.Flags = uint32(v)
 }
 
 // Min returns the min associated with this HistogramDataPoint.
@@ -187,92 +186,5 @@ func (ms HistogramDataPoint) RemoveMax() {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms HistogramDataPoint) CopyTo(dest HistogramDataPoint) {
 	dest.state.AssertMutable()
-	copyOrigHistogramDataPoint(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms HistogramDataPoint) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.StartTimeUnixNano != 0 {
-		dest.WriteObjectField("startTimeUnixNano")
-		dest.WriteUint64(ms.orig.StartTimeUnixNano)
-	}
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	if ms.orig.Count != uint64(0) {
-		dest.WriteObjectField("count")
-		dest.WriteUint64(ms.orig.Count)
-	}
-	dest.WriteObjectField("bucketCounts")
-	internal.MarshalJSONStreamUInt64Slice(internal.NewUInt64Slice(&ms.orig.BucketCounts, ms.state), dest)
-	dest.WriteObjectField("explicitBounds")
-	internal.MarshalJSONStreamFloat64Slice(internal.NewFloat64Slice(&ms.orig.ExplicitBounds, ms.state), dest)
-	if len(ms.orig.Exemplars) > 0 {
-		dest.WriteObjectField("exemplars")
-		ms.Exemplars().marshalJSONStream(dest)
-	}
-	if ms.orig.Flags != 0 {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	if ms.HasSum() {
-		dest.WriteObjectField("sum")
-		dest.WriteFloat64(ms.Sum())
-	}
-	if ms.HasMin() {
-		dest.WriteObjectField("min")
-		dest.WriteFloat64(ms.Min())
-	}
-	if ms.HasMax() {
-		dest.WriteObjectField("max")
-		dest.WriteFloat64(ms.Max())
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigHistogramDataPoint(dest, src *otlpmetrics.HistogramDataPoint) {
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.StartTimeUnixNano = src.StartTimeUnixNano
-	dest.TimeUnixNano = src.TimeUnixNano
-	dest.Count = src.Count
-	dest.BucketCounts = internal.CopyOrigUInt64Slice(dest.BucketCounts, src.BucketCounts)
-	dest.ExplicitBounds = internal.CopyOrigFloat64Slice(dest.ExplicitBounds, src.ExplicitBounds)
-	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
-	dest.Flags = src.Flags
-	if srcSum, ok := src.Sum_.(*otlpmetrics.HistogramDataPoint_Sum); ok {
-		destSum, ok := dest.Sum_.(*otlpmetrics.HistogramDataPoint_Sum)
-		if !ok {
-			destSum = &otlpmetrics.HistogramDataPoint_Sum{}
-			dest.Sum_ = destSum
-		}
-		destSum.Sum = srcSum.Sum
-	} else {
-		dest.Sum_ = nil
-	}
-	if srcMin, ok := src.Min_.(*otlpmetrics.HistogramDataPoint_Min); ok {
-		destMin, ok := dest.Min_.(*otlpmetrics.HistogramDataPoint_Min)
-		if !ok {
-			destMin = &otlpmetrics.HistogramDataPoint_Min{}
-			dest.Min_ = destMin
-		}
-		destMin.Min = srcMin.Min
-	} else {
-		dest.Min_ = nil
-	}
-	if srcMax, ok := src.Max_.(*otlpmetrics.HistogramDataPoint_Max); ok {
-		destMax, ok := dest.Max_.(*otlpmetrics.HistogramDataPoint_Max)
-		if !ok {
-			destMax = &otlpmetrics.HistogramDataPoint_Max{}
-			dest.Max_ = destMax
-		}
-		destMax.Max = srcMax.Max
-	} else {
-		dest.Max_ = nil
-	}
+	internal.CopyOrigHistogramDataPoint(dest.orig, ms.orig)
 }

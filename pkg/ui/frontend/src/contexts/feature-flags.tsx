@@ -3,8 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { absolutePath } from "../util";
 import { shouldUseMockFeatures, getDevEnvironmentOverrides } from "../lib/environment";
 
+interface GoldfishFeature {
+  enabled: boolean;
+  cellANamespace?: string;
+  cellBNamespace?: string;
+}
+
 interface FeatureFlags {
-  goldfish: boolean;
+  goldfish: GoldfishFeature;
 }
 
 interface FeatureFlagsContextType {
@@ -14,7 +20,9 @@ interface FeatureFlagsContextType {
 }
 
 const defaultFeatures: FeatureFlags = {
-  goldfish: false,
+  goldfish: {
+    enabled: false,
+  },
 };
 
 export const FeatureFlagsContext = createContext<FeatureFlagsContextType>({
@@ -26,7 +34,7 @@ export const FeatureFlagsContext = createContext<FeatureFlagsContextType>({
 
 // For development mode, check if we have an override
 function getDevOverrides(): Partial<FeatureFlags> {
-  return getDevEnvironmentOverrides();
+  return getDevEnvironmentOverrides() as Partial<FeatureFlags>;
 }
 
 async function fetchFeatures(): Promise<FeatureFlags> {
