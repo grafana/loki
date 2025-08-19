@@ -513,8 +513,6 @@ func (b *LabelsBuilder) Range(f func(name, value []byte), categories ...LabelCat
 			f(unsafeGetBytes(logqlmodel.ErrorDetailsLabel), unsafeGetBytes(b.errDetails))
 		}
 	}
-
-	return
 }
 
 // TODO: ideally we remove this
@@ -624,7 +622,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Parsed
 	b.scratchBuilder.Reset()
 	b.Range(func(name, value []byte) {
-		// Skip error labels for stream and meta categories
+		// Add error labels to parsed labels, ie skip them for stream and meta categories
 		if unsafeGetString(name) == logqlmodel.ErrorLabel || unsafeGetString(name) == logqlmodel.ErrorDetailsLabel {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 			return
@@ -651,7 +649,8 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Stream
 	b.scratchBuilder.Reset()
 	b.Range(func(name, value []byte) {
-		if !labelsContain(b.add[ParsedLabel], name) && !labelsContain(b.add[StructuredMetadataLabel], name) {
+		if !labelsContain(b.add[ParsedLabel], name) && !labelsContain(b.add[StructuredMetadataLabel], name) &&
+			unsafeGetString(name) != logqlmodel.ErrorLabel && unsafeGetString(name) != logqlmodel.ErrorDetailsLabel {
 			b.scratchBuilder.UnsafeAddBytes(name, value)
 		}
 	})
