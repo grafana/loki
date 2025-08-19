@@ -30,7 +30,7 @@ var testBuilderConfig = logsobj.BuilderConfig{
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {
-	t.Run("has expected metastore time range", func(t *testing.T) {
+	t.Run("has expected table of contents", func(t *testing.T) {
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 
@@ -190,35 +190,6 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	require.Equal(t, clock.Now(), p.lastFlushed)
 }
 
-func TestPartitionProcessor_ProcessRecord(t *testing.T) {
-	clock := quartz.NewMock(t)
-	p := newTestPartitionProcessor(t, clock)
-
-	// The builder is initialized to nil until the first record.
-	require.Nil(t, p.builder)
-	require.True(t, p.lastModified.IsZero())
-
-	// Push a record.
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
-		Entries: []push.Entry{{
-			Timestamp: time.Now().UTC(),
-			Line:      "abc",
-		}},
-	}
-	b, err := s.Marshal()
-	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: clock.Now(),
-	})
-
-	// The builder should be initialized and last modified timestamp updated.
-	require.NotNil(t, p.builder)
-	require.Equal(t, clock.Now(), p.lastModified)
-}
-
 func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 	t.Run("when builder is full", func(t *testing.T) {
 		clock := quartz.NewMock(t)
@@ -320,6 +291,35 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		// was the record that was flushed.
 		require.Equal(t, int64(1), committer.records[0].Offset)
 	})
+}
+
+func TestPartitionProcessor_ProcessRecord(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+
+	// The builder is initialized to nil until the first record.
+	require.Nil(t, p.builder)
+	require.True(t, p.lastModified.IsZero())
+
+	// Push a record.
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: time.Now().UTC(),
+			Line:      "abc",
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: clock.Now(),
+	})
+
+	// The builder should be initialized and last modified timestamp updated.
+	require.NotNil(t, p.builder)
+	require.Equal(t, clock.Now(), p.lastModified)
 }
 
 func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {
