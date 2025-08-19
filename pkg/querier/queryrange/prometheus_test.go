@@ -51,6 +51,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		},
@@ -91,6 +92,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		}
