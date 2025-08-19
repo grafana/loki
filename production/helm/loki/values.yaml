@@ -3702,9 +3702,11 @@ minio:
       memory: 128Mi
   # Allow the address used by Loki to refer to Minio to be overridden
   address: null
-# Create extra manifests via values. Would be passed through `tpl` for templating
-# objects can also be provided as multiline strings, useful for templating field names
-extraObjects: []
+
+# Create extra manifests via values
+# Can be a list or dictionary, both are passed through `tpl`.  If dict, keys are ignored and only values are used.  
+# Objects can also be defined as multiline strings, useful for templating field names
+extraObjects: null
 # - apiVersion: v1
 #   kind: ConfigMap
 #   metadata:
