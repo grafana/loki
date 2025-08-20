@@ -66,7 +66,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.ingester.dnsConfig }}
+      {{- with .Values.ingester.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}

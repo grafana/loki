@@ -113,6 +113,8 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
+  # -- DNS config for Loki pods
+  dnsConfig: {}
   ######################################################################################################################
   #
   # Loki Configuration

@@ -46,7 +46,7 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.distributor.dnsConfig }}
+      {{- with .Values.distributor.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}

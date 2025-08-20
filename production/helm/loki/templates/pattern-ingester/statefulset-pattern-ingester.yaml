@@ -65,7 +65,7 @@ spec:
       initContainers:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.patternIngester.dnsConfig }}
+      {{- with .Values.patternIngester.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}

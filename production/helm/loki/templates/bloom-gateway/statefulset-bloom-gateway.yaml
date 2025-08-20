@@ -56,7 +56,7 @@ spec:
       {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomGateway.hostUsers) }}
       hostUsers: {{ .Values.bloomGateway.hostUsers }}
       {{- end }}
-      {{- with .Values.bloomGateway.dnsConfig }}
+      {{- with .Values.bloomGateway.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}

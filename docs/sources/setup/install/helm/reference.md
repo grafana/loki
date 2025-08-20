@@ -6853,6 +6853,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for Loki pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.enableServiceLinks</td>
 			<td>bool</td>
 			<td>Should enableServiceLinks be enabled. Default to enable</td>
