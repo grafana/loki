@@ -35,7 +35,14 @@ func (m *mockOverrides) DefaultLimits() *validation.Limits {
 	return m.limits
 }
 
-func (m *mockOverrides) AllowStructuredMetadata() bool { return false }
+func (m *mockOverrides) AllowStructuredMetadata(userID string) bool { return false }
+
+func (m *mockOverrides) AllByUserID() map[string]*validation.Limits {
+	if m.limits != nil {
+		return map[string]*validation.Limits{"__defaults__": m.limits}
+	}
+	return map[string]*validation.Limits{}
+}
 
 func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 	limits := &validation.Limits{
@@ -127,6 +134,46 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				require.NoError(t, err)
 				tt.checkResponse(t, body)
 			}
+		})
+	}
+}
+
+func TestTenantLimitsHandlerUnsupportedAcceptFallback(t *testing.T) {
+	// Test that unsupported Accept headers fall back to YAML for tenant limits
+
+	limits := &validation.Limits{
+		IngestionRateMB: 10.0,
+	}
+
+	mockTenantLimits := &mockTenantLimits{limits: limits}
+
+	loki := &Loki{
+		TenantLimits: mockTenantLimits,
+		Cfg: Config{
+			TenantLimitsAllowPublish: []string{},
+		},
+	}
+
+	unsupportedTypes := []string{
+		"application/xml",
+		"text/html",
+		"*/*",
+	}
+
+	for _, contentType := range unsupportedTypes {
+		t.Run(contentType, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+			req.Header.Set("Accept", contentType)
+
+			handler := loki.tenantLimitsHandler()
+			w := httptest.NewRecorder()
+			handler(w, req)
+
+			// Should return YAML (default behavior)
+			assert.Equal(t, 200, w.Code)
+			assert.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"))
+			assert.Contains(t, w.Body.String(), "ingestion_rate_mb:") // YAML format
 		})
 	}
 }
