@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"encoding/json"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -127,6 +128,94 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				require.NoError(t, err)
 				tt.checkResponse(t, body)
 			}
+		})
+	}
+}
+
+func TestTenantLimitsHandlerJSONResponse(t *testing.T) {
+	// Test that tenantLimitsHandler returns JSON when Accept: application/json is sent
+
+	limits := &validation.Limits{
+		IngestionRateMB:        10.0,
+		MaxLabelNameLength:     100,
+		MaxQuerySeries:         1000,
+		MaxLocalStreamsPerUser: 500,
+	}
+
+	mockTenantLimits := &mockTenantLimits{limits: limits}
+
+	loki := &Loki{
+		TenantLimits: mockTenantLimits,
+		Cfg: Config{
+			TenantLimitsAllowPublish: []string{}, // Empty allowlist = all fields
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
+	req.Header.Set("X-Scope-OrgID", "test-tenant")
+	req.Header.Set("Accept", "application/json")
+
+	handler := loki.tenantLimitsHandler()
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	resp := w.Result()
+
+	// Should return JSON with correct content-type
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	// Response should be valid JSON
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var jsonResponse map[string]any
+	err = json.Unmarshal(body, &jsonResponse)
+	require.NoError(t, err, "Response should be valid JSON")
+
+	// Verify expected fields are present with JSON field names
+	assert.Equal(t, float64(10), jsonResponse["ingestion_rate_mb"])
+	assert.Equal(t, float64(100), jsonResponse["max_label_name_length"])
+	assert.Equal(t, float64(1000), jsonResponse["max_query_series"])
+	assert.Equal(t, float64(500), jsonResponse["max_streams_per_user"])
+}
+
+func TestTenantLimitsHandlerUnsupportedAcceptFallback(t *testing.T) {
+	// Test that unsupported Accept headers fall back to YAML for tenant limits
+
+	limits := &validation.Limits{
+		IngestionRateMB: 10.0,
+	}
+
+	mockTenantLimits := &mockTenantLimits{limits: limits}
+
+	loki := &Loki{
+		TenantLimits: mockTenantLimits,
+		Cfg: Config{
+			TenantLimitsAllowPublish: []string{},
+		},
+	}
+
+	unsupportedTypes := []string{
+		"application/xml",
+		"text/html",
+		"*/*",
+	}
+
+	for _, contentType := range unsupportedTypes {
+		t.Run(contentType, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+			req.Header.Set("Accept", contentType)
+
+			handler := loki.tenantLimitsHandler()
+			w := httptest.NewRecorder()
+			handler(w, req)
+
+			// Should return YAML (default behavior)
+			assert.Equal(t, 200, w.Code)
+			assert.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"))
+			assert.Contains(t, w.Body.String(), "ingestion_rate_mb:") // YAML format
 		})
 	}
 }
