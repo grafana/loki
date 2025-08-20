@@ -175,7 +175,7 @@ If you are a Grafana Cloud customer, open a support escalation listing the Attri
 
 Here are some example configs to change the default mapping of OTLP to Loki format:
 
-#### Example 1:
+#### Example 1
 
 ```yaml
 limits_config:
@@ -192,7 +192,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 2:
+#### Example 2
 
 ```yaml
 limits_config:
@@ -209,7 +209,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 3:
+#### Example 3
 
 ```yaml
 limits_config:

@@ -29,9 +29,14 @@ Run the Compactor as a singleton (a single instance).
 {{< /admonition >}}
 
 The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
-Both compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
+Both compaction and retention are idempotent, which means once the action has been performed, if the action is performed multiple times, it has no further effect on logs after the first time it is performed. If the Compactor restarts, it continues from where it left off.
+
+{{< admonition type="note" >}}
+Changes to your retention period are not retroactive, that is, they are not applied to logs that have already been ingested.
+{{< /admonition >}}
 
 The Compactor's algorithm to apply retention is as follows:
+
 - For each day or table (one table per day with 24h index period):
   - Compact multiple index files in the table into per-tenant index files. Result of compaction is a single index file per tenant per day.
   - Traverse the per-tenant index. Use the tenant configuration to identify the chunks that need to be removed.
@@ -42,6 +47,7 @@ Chunks are not deleted while applying the retention algorithm on the index. They
 and this delay can be configured by setting `-compactor.retention-delete-delay`. Marker files are used to keep track of the chunks pending for deletion.
 
 Chunks cannot be deleted immediately for the following reasons:
+
 - Index Gateway downloads a copy of the index files to serve queries and refreshes them at a regular interval.
   Having a delay allows the index gateways to pull the modified index file which would not contain any reference to the chunks marked for deletion.
   Without the delay, index files (that are stale) on the gateways could refer to already deleted chunks leading to query failures.
@@ -150,7 +156,8 @@ overrides:
 ```
 
 Retention period for a given stream is decided based on the first match in this list:
-1. If mutiple per-tenant `retention_stream` selectors match the stream, retention period with the highest priority is picked.
+
+1. If multiple per-tenant `retention_stream` selectors match the stream, retention period with the highest priority is picked.
 2. If multiple global `retention_stream` selectors match the stream, retention period with the highest priority is picked. This value is not considered if per-tenant `retention_stream` is set.
 3. If a per-tenant `retention_period` is specified, it will be applied.
 4. The global `retention_period` will be applied if none of the above match.
@@ -168,6 +175,7 @@ Stream matching uses the same syntax as Prometheus label matching:
 - `!~`: Select labels that do not regex-match the provided string.
 
 The example configurations defined above will result in the following retention periods:
+
 - For tenant `29`:
   - Streams that have the namespace label `prod` will have a retention period of `336h` (2 weeks), even if the container label is `loki`, since the priority of the `prod` rule is higher.
   - Streams that have the container label `loki` but are not in the namespace `prod` will have a `72h` retention period.
@@ -220,7 +228,6 @@ For further details on the Table Manager internals, refer to the
 [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
 
 Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) to delete log entries from a specific stream.
-
 
 ## Example Configuration
 
