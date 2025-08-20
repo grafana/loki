@@ -33,6 +33,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
 
+
 ## 6.36.1
 - [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)
 
