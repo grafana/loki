@@ -30,6 +30,7 @@ import (
 // builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(stream logproto.Stream) error
+	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRange() (time.Time, time.Time)
 	UnregisterMetrics(prometheus.Registerer)
@@ -69,7 +70,10 @@ type partitionProcessor struct {
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
-	lastFlush    time.Time
+	lastFlushed time.Time
+
+	// lastModified is used to know when the idle is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
 
 	// Metrics
@@ -346,7 +350,8 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	p.lastFlush = p.clock.Now()
+	p.lastModified = time.Time{}
+	p.lastFlushed = p.clock.Now()
 
 	return nil
 }
@@ -392,9 +397,13 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	return true, nil
 }
 
-// isIdle returns true if the partition has exceeded the idle flush timeout.
+// needsIdleFlush returns true if the partition has exceeded the idle timeout
+// and the builder has some data buffered.
 func (p *partitionProcessor) needsIdleFlush() bool {
-	if p.builder == nil {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	if p.lastModified.IsZero() {
