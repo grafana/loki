@@ -322,8 +322,7 @@ func detectLevelFromLogLine(log string) string {
 	}
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "[err]") || strings.Contains(log, "[ERR]") ||
-		strings.Contains(log, "[error]") || strings.Contains(log, "[ERROR]") ||
-		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
+		strings.Contains(log, "[error]") || strings.Contains(log, "[ERROR]") {
 		return constants.LogLevelError
 	}
 	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
@@ -332,9 +331,8 @@ func detectLevelFromLogLine(log string) string {
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
 		return constants.LogLevelWarn
 	}
-	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") ||
-		strings.Contains(log, "[critical]") || strings.Contains(log, "[CRITICAL]") ||
-		strings.Contains(log, "critical") || strings.Contains(log, "CRITICAL") {
+	if strings.Contains(log, "critical:") || strings.Contains(log, "CRITICAL:") ||
+		strings.Contains(log, "[critical]") || strings.Contains(log, "[CRITICAL]") {
 		return constants.LogLevelCritical
 	}
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") ||

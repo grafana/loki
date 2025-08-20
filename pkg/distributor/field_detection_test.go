@@ -254,14 +254,14 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			entry: logproto.Entry{
 				Line: "this is a critical message",
 			},
-			expectedLogLevel: constants.LogLevelCritical,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with CRITICAL keyword in log line",
 			entry: logproto.Entry{
 				Line: "this is a CRITICAL message",
 			},
-			expectedLogLevel: constants.LogLevelCritical,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with critical: prefix in log line",
@@ -573,14 +573,14 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 			entry: logproto.Entry{
 				Line: "this is a critical message",
 			},
-			expectedLogLevel: constants.LogLevelCritical,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with CRITICAL keyword in log line",
 			entry: logproto.Entry{
 				Line: "this is a CRITICAL message",
 			},
-			expectedLogLevel: constants.LogLevelCritical,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with critical: prefix in log line",
