@@ -22,13 +22,14 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/golang/snappy"
-	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/prometheus/prometheus/util/compression"
 )
 
 // LiveReaderMetrics holds all metrics exposed by the LiveReader.
 type LiveReaderMetrics struct {
+	reg                    prometheus.Registerer
 	readerCorruptionErrors *prometheus.CounterVec
 }
 
@@ -36,6 +37,7 @@ type LiveReaderMetrics struct {
 // at LiveReader instantiation.
 func NewLiveReaderMetrics(reg prometheus.Registerer) *LiveReaderMetrics {
 	m := &LiveReaderMetrics{
+		reg: reg,
 		readerCorruptionErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "prometheus_tsdb_wal_reader_corruption_errors_total",
 			Help: "Errors encountered when reading the WAL.",
@@ -49,16 +51,22 @@ func NewLiveReaderMetrics(reg prometheus.Registerer) *LiveReaderMetrics {
 	return m
 }
 
+// Unregister unregisters metrics emitted by this instance.
+func (m *LiveReaderMetrics) Unregister() {
+	if m.reg == nil {
+		return
+	}
+
+	m.reg.Unregister(m.readerCorruptionErrors)
+}
+
 // NewLiveReader returns a new live reader.
 func NewLiveReader(logger *slog.Logger, metrics *LiveReaderMetrics, r io.Reader) *LiveReader {
-	// Calling zstd.NewReader with a nil io.Reader and no options cannot return an error.
-	zstdReader, _ := zstd.NewReader(nil)
-
 	lr := &LiveReader{
-		logger:     logger,
-		rdr:        r,
-		zstdReader: zstdReader,
-		metrics:    metrics,
+		logger:  logger,
+		rdr:     r,
+		decBuf:  compression.NewSyncDecodeBuffer(),
+		metrics: metrics,
 
 		// Until we understand how they come about, make readers permissive
 		// to records spanning pages.
@@ -72,12 +80,13 @@ func NewLiveReader(logger *slog.Logger, metrics *LiveReaderMetrics, r io.Reader)
 // that are still in the process of being written, and returns records as soon
 // as they can be read.
 type LiveReader struct {
-	logger      *slog.Logger
-	rdr         io.Reader
-	err         error
-	rec         []byte
-	compressBuf []byte
-	zstdReader  *zstd.Decoder
+	logger *slog.Logger
+	rdr    io.Reader
+	err    error
+	rec    []byte
+
+	precomprBuf []byte
+	decBuf      compression.DecodeBuffer
 	hdr         [recordHeaderSize]byte
 	buf         [pageSize]byte
 	readIndex   int   // Index in buf to start at for next read.
@@ -195,18 +204,19 @@ func (r *LiveReader) buildRecord() (bool, error) {
 
 		rt := recTypeFromHeader(r.hdr[0])
 		if rt == recFirst || rt == recFull {
-			r.rec = r.rec[:0]
-			r.compressBuf = r.compressBuf[:0]
+			r.precomprBuf = r.precomprBuf[:0]
 		}
 
-		isSnappyCompressed := r.hdr[0]&snappyMask == snappyMask
-		isZstdCompressed := r.hdr[0]&zstdMask == zstdMask
-
-		if isSnappyCompressed || isZstdCompressed {
-			r.compressBuf = append(r.compressBuf, temp...)
-		} else {
-			r.rec = append(r.rec, temp...)
+		// Segment format has only 2 bits, so it's either of those 3 options.
+		// https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/wal.md#records-encoding
+		compr := compression.None
+		if r.hdr[0]&snappyMask == snappyMask {
+			compr = compression.Snappy
+		} else if r.hdr[0]&zstdMask == zstdMask {
+			compr = compression.Zstd
 		}
+
+		r.precomprBuf = append(r.precomprBuf, temp...)
 
 		if err := validateRecord(rt, r.index); err != nil {
 			r.index = 0
@@ -214,20 +224,9 @@ func (r *LiveReader) buildRecord() (bool, error) {
 		}
 		if rt == recLast || rt == recFull {
 			r.index = 0
-			if isSnappyCompressed && len(r.compressBuf) > 0 {
-				// The snappy library uses `len` to calculate if we need a new buffer.
-				// In order to allocate as few buffers as possible make the length
-				// equal to the capacity.
-				r.rec = r.rec[:cap(r.rec)]
-				r.rec, err = snappy.Decode(r.rec, r.compressBuf)
-				if err != nil {
-					return false, err
-				}
-			} else if isZstdCompressed && len(r.compressBuf) > 0 {
-				r.rec, err = r.zstdReader.DecodeAll(r.compressBuf, r.rec[:0])
-				if err != nil {
-					return false, err
-				}
+			r.rec, err = compression.Decode(compr, r.precomprBuf, r.decBuf)
+			if err != nil {
+				return false, err
 			}
 			return true, nil
 		}

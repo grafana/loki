@@ -111,10 +111,7 @@ func (t *transformRowWriter) WriteRows(rows []Row) (n int, err error) {
 	}
 
 	for n < len(rows) {
-		numRows := len(rows) - n
-		if numRows > len(t.rows) {
-			numRows = len(t.rows)
-		}
+		numRows := min(len(rows)-n, len(t.rows))
 		if err := t.writeRows(rows[n : n+numRows]); err != nil {
 			return n, err
 		}

@@ -1,6 +1,10 @@
 package executor
 
-import "github.com/apache/arrow-go/v18/arrow"
+import (
+	"context"
+
+	"github.com/apache/arrow-go/v18/arrow"
+)
 
 func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 	// We gradually reduce offsetRemaining and limitRemaining as we process more records, as the
@@ -10,7 +14,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(Local, func(inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		var length int64
 		var start, end int64
 		var batch arrow.Record
@@ -22,9 +26,9 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 				return Exhausted
 			}
 
-			// Pull the next item from downstream
+			// Pull the next item from input
 			input := inputs[0]
-			err := input.Read()
+			err := input.Read(ctx)
 			if err != nil {
 				return failureState(err)
 			}
@@ -43,6 +47,10 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 
 		if length <= 0 && offsetRemaining <= 0 {
 			return Exhausted
+		}
+
+		if batch.NumRows() == 0 {
+			return successState(batch)
 		}
 
 		rec := batch.NewSlice(start, end)

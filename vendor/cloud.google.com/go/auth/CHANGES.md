@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.16.4](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.3...auth/v0.16.4) (2025-08-06)
+
+
+### Bug Fixes
+
+* **auth:** Add UseDefaultClient: true to metadata.Options ([#12666](https://github.com/googleapis/google-cloud-go/issues/12666)) ([1482191](https://github.com/googleapis/google-cloud-go/commit/1482191e88236693efef68769752638281566766)), refs [#11078](https://github.com/googleapis/google-cloud-go/issues/11078) [#12657](https://github.com/googleapis/google-cloud-go/issues/12657)
+
+## [0.16.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.2...auth/v0.16.3) (2025-07-17)
+
+
+### Bug Fixes
+
+* **auth:** Fix race condition in cachedTokenProvider.tokenAsync ([#12586](https://github.com/googleapis/google-cloud-go/issues/12586)) ([73867cc](https://github.com/googleapis/google-cloud-go/commit/73867ccc1e9808d65361bcfc0776bd95fe34dbb3))
+
+## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
+
+
+### Bug Fixes
+
+* **auth:** Add back DirectPath misconfiguration logging ([#11162](https://github.com/googleapis/google-cloud-go/issues/11162)) ([8d52da5](https://github.com/googleapis/google-cloud-go/commit/8d52da58da5a0ed77a0f6307d1b561bc045406a1))
+* **auth:** Remove s2a fallback option ([#12354](https://github.com/googleapis/google-cloud-go/issues/12354)) ([d5acc59](https://github.com/googleapis/google-cloud-go/commit/d5acc599cd775ddc404349e75906fa02e8ff133e))
+
+## [0.16.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.0...auth/v0.16.1) (2025-04-23)
+
+
+### Bug Fixes
+
+* **auth:** Clone detectopts before assigning TokenBindingType ([#11881](https://github.com/googleapis/google-cloud-go/issues/11881)) ([2167b02](https://github.com/googleapis/google-cloud-go/commit/2167b020fdc43b517c2b6ecca264a10e357ea035))
+
 ## [0.16.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.15.0...auth/v0.16.0) (2025-04-14)
 
 

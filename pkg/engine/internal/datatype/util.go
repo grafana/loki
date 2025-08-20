@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ColumnMetadataBuiltinMessage   = ColumnMetadata(types.ColumnTypeBuiltin, String)
-	ColumnMetadataBuiltinTimestamp = ColumnMetadata(types.ColumnTypeBuiltin, Timestamp)
+	ColumnMetadataBuiltinMessage   = ColumnMetadata(types.ColumnTypeBuiltin, Loki.String)
+	ColumnMetadataBuiltinTimestamp = ColumnMetadata(types.ColumnTypeBuiltin, Loki.Timestamp)
 )
 
 func ColumnMetadata(ct types.ColumnType, dt DataType) arrow.Metadata {

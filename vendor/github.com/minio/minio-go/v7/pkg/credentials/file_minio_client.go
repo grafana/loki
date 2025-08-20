@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/goccy/go-json"
+	"github.com/minio/minio-go/v7/internal/json"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home

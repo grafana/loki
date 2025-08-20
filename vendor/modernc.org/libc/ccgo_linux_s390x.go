@@ -553,8 +553,8 @@ func X__ldexp_cexp(tls *TLS, z complex128, expt int32) (r complex128) {
 	v2 = Uint64FromInt32((Int32FromInt32(0x3ff)+half_expt)<<Int32FromInt32(20))<<Int32FromInt32(32) | uint64(Uint32FromInt32(Int32FromInt32(0)))
 	scale2 = *(*float64)(unsafe.Pointer(&v2))
 	v3 = [2]float64{
-		0: Xcos(tls, y) * exp_x * scale1 * scale2,
-		1: Xsin(tls, y) * exp_x * scale1 * scale2,
+		0: float64(float64(float64(Xcos(tls, y)*exp_x)*scale1) * scale2),
+		1: float64(float64(float64(Xsin(tls, y)*exp_x)*scale1) * scale2),
 	}
 	return *(*complex128)(unsafe.Pointer(&v3))
 }
@@ -606,8 +606,8 @@ func X__ldexp_cexpf(tls *TLS, z complex64, expt int32) (r complex64) {
 	v2 = Uint32FromInt32((int32(0x7f) + half_expt) << int32(23))
 	scale2 = *(*float32)(unsafe.Pointer(&v2))
 	v3 = [2]float32{
-		0: Xcosf(tls, y) * exp_x * scale1 * scale2,
-		1: Xsinf(tls, y) * exp_x * scale1 * scale2,
+		0: float32(float32(float32(Xcosf(tls, y)*exp_x)*scale1) * scale2),
+		1: float32(float32(float32(Xsinf(tls, y)*exp_x)*scale1) * scale2),
 	}
 	return *(*complex64)(unsafe.Pointer(&v3))
 }
@@ -810,8 +810,8 @@ func Xcasin(tls *TLS, z complex128) (r1 complex128) {
 	x = Float64FromComplex128(z)
 	y = +(*(*[2]float64)(unsafe.Pointer(&z)))[int32(1)]
 	v1 = [2]float64{
-		0: float64(1) - (x-y)*(x+y),
-		1: -Float64FromFloat64(2) * x * y,
+		0: float64(1) - float64((x-y)*(x+y)),
+		1: float64(float64(-Float64FromFloat64(2)*x) * y),
 	}
 	w = *(*complex128)(unsafe.Pointer(&v1))
 	v2 = [2]float64{
@@ -841,7 +841,7 @@ func Xcasinf(tls *TLS, z complex64) (r1 complex64) {
 	y = +(*(*[2]float32)(unsafe.Pointer(&z)))[int32(1)]
 	v1 = [2]float32{
 		0: float32(Float64FromFloat64(1) - float64((x-y)*(x+y))),
-		1: float32(-Float64FromFloat64(2) * float64(x) * float64(y)),
+		1: float32(float64(float64(-Float64FromFloat64(2)*float64(x)) * float64(y))),
 	}
 	w = *(*complex64)(unsafe.Pointer(&v1))
 	v2 = [2]float32{
@@ -931,7 +931,7 @@ func __redupi(tls *TLS, x float64) (r float64) {
 	}
 	i = int64(t) /* the multiple */
 	t = float64(i)
-	t = x - t*_DP1 - t*_DP2 - t*_DP3
+	t = x - float64(t*_DP1) - float64(t*_DP2) - float64(t*_DP3)
 	return t
 }
 
@@ -946,17 +946,17 @@ func Xcatan(tls *TLS, z complex128) (r complex128) {
 	_, _, _, _, _, _, _ = a, t, w, x, x2, y, v1
 	x = Float64FromComplex128(z)
 	y = +(*(*[2]float64)(unsafe.Pointer(&z)))[int32(1)]
-	x2 = x * x
-	a = float64(1) - x2 - y*y
-	t = float64(0.5) * Xatan2(tls, float64(2)*x, a)
+	x2 = float64(x * x)
+	a = float64(1) - x2 - float64(y*y)
+	t = float64(float64(0.5) * Xatan2(tls, float64(float64(2)*x), a))
 	w = Complex128FromFloat64(__redupi(tls, t))
 	t = y - float64(1)
-	a = x2 + t*t
+	a = x2 + float64(t*t)
 	t = y + float64(1)
-	a = (x2 + t*t) / a
+	a = (x2 + float64(t*t)) / a
 	v1 = [2]float64{
 		0: Float64FromComplex128(w),
-		1: float64(0.25) * Xlog(tls, a),
+		1: float64(float64(0.25) * Xlog(tls, a)),
 	}
 	w = *(*complex128)(unsafe.Pointer(&v1))
 	return w
@@ -983,7 +983,7 @@ func __redupif(tls *TLS, xx float32) (r float32) {
 	}
 	i = int64(t) /* the multiple */
 	t = float32(i)
-	t = float32(float64(x) - float64(t)*_DP11 - float64(t)*_DP21 - float64(t)*_DP31)
+	t = float32(float64(x) - float64(float64(t)*_DP11) - float64(float64(t)*_DP21) - float64(float64(t)*_DP31))
 	return t
 }
 
@@ -998,17 +998,17 @@ func Xcatanf(tls *TLS, z complex64) (r complex64) {
 	_, _, _, _, _, _, _ = a, t, w, x, x2, y, v1
 	x = Float32FromComplex64(z)
 	y = +(*(*[2]float32)(unsafe.Pointer(&z)))[int32(1)]
-	x2 = x * x
-	a = Float32FromFloat32(1) - x2 - y*y
-	t = Float32FromFloat32(0.5) * Xatan2f(tls, Float32FromFloat32(2)*x, a)
+	x2 = float32(x * x)
+	a = Float32FromFloat32(1) - x2 - float32(y*y)
+	t = float32(Float32FromFloat32(0.5) * Xatan2f(tls, float32(Float32FromFloat32(2)*x), a))
 	w = Complex64FromFloat32(__redupif(tls, t))
 	t = y - Float32FromFloat32(1)
-	a = x2 + t*t
+	a = x2 + float32(t*t)
 	t = y + Float32FromFloat32(1)
-	a = (x2 + t*t) / a
+	a = (x2 + float32(t*t)) / a
 	v1 = [2]float32{
 		0: Float32FromComplex64(w),
-		1: Float32FromFloat32(0.25) * Xlogf(tls, a),
+		1: float32(Float32FromFloat32(0.25) * Xlogf(tls, a)),
 	}
 	w = *(*complex64)(unsafe.Pointer(&v1))
 	return w
@@ -1129,24 +1129,24 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 		if iy|ly == 0 {
 			v1 = [2]float64{
 				0: Xcosh(tls, x),
-				1: x * y,
+				1: float64(x * y),
 			}
 			return *(*complex128)(unsafe.Pointer(&v1))
 		}
 		if ix < int32(0x40360000) { /* small x: normal case */
 			v2 = [2]float64{
-				0: Xcosh(tls, x) * Xcos(tls, y),
-				1: Xsinh(tls, x) * Xsin(tls, y),
+				0: float64(Xcosh(tls, x) * Xcos(tls, y)),
+				1: float64(Xsinh(tls, x) * Xsin(tls, y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v2))
 		}
 		/* |x| >= 22, so cosh(x) ~= exp(|x|) */
 		if ix < int32(0x40862e42) {
 			/* x < 710: exp(|x|) won't overflow */
-			h = Xexp(tls, Xfabs(tls, x)) * float64(0.5)
+			h = float64(Xexp(tls, Xfabs(tls, x)) * float64(0.5))
 			v3 = [2]float64{
-				0: h * Xcos(tls, y),
-				1: Xcopysign(tls, h, x) * Xsin(tls, y),
+				0: float64(h * Xcos(tls, y)),
+				1: float64(Xcopysign(tls, h, x) * Xsin(tls, y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v3))
 		} else {
@@ -1159,15 +1159,15 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 				z = X__ldexp_cexp(tls, *(*complex128)(unsafe.Pointer(&v4)), -int32(1))
 				v5 = [2]float64{
 					0: Float64FromComplex128(z),
-					1: +(*(*[2]float64)(unsafe.Pointer(&z)))[int32(1)] * Xcopysign(tls, Float64FromInt32(1), x),
+					1: float64(+(*(*[2]float64)(unsafe.Pointer(&z)))[int32(1)] * Xcopysign(tls, Float64FromInt32(1), x)),
 				}
 				return *(*complex128)(unsafe.Pointer(&v5))
 			} else {
 				/* x >= 1455: the result always overflows */
-				h = _huge * x
+				h = float64(_huge * x)
 				v6 = [2]float64{
-					0: h * h * Xcos(tls, y),
-					1: h * Xsin(tls, y),
+					0: float64(float64(h*h) * Xcos(tls, y)),
+					1: float64(h * Xsin(tls, y)),
 				}
 				return *(*complex128)(unsafe.Pointer(&v6))
 			}
@@ -1185,7 +1185,7 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 	if ix|lx == 0 && iy >= int32(0x7ff00000) {
 		v7 = [2]float64{
 			0: y - y,
-			1: Xcopysign(tls, Float64FromInt32(0), x*(y-y)),
+			1: Xcopysign(tls, Float64FromInt32(0), float64(x*(y-y))),
 		}
 		return *(*complex128)(unsafe.Pointer(&v7))
 	}
@@ -1198,14 +1198,14 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 	if iy|ly == 0 && ix >= int32(0x7ff00000) {
 		if hx&int32(0xfffff)|lx == 0 {
 			v8 = [2]float64{
-				0: x * x,
-				1: Xcopysign(tls, Float64FromInt32(0), x) * y,
+				0: float64(x * x),
+				1: float64(Xcopysign(tls, Float64FromInt32(0), x) * y),
 			}
 			return *(*complex128)(unsafe.Pointer(&v8))
 		}
 		v9 = [2]float64{
-			0: x * x,
-			1: Xcopysign(tls, Float64FromInt32(0), (x+x)*y),
+			0: float64(x * x),
+			1: Xcopysign(tls, Float64FromInt32(0), float64((x+x)*y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v9))
 	}
@@ -1220,7 +1220,7 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 	if ix < int32(0x7ff00000) && iy >= int32(0x7ff00000) {
 		v10 = [2]float64{
 			0: y - y,
-			1: x * (y - y),
+			1: float64(x * (y - y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v10))
 	}
@@ -1236,14 +1236,14 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 	if ix >= int32(0x7ff00000) && hx&int32(0xfffff)|lx == 0 {
 		if iy >= int32(0x7ff00000) {
 			v11 = [2]float64{
-				0: x * x,
-				1: x * (y - y),
+				0: float64(x * x),
+				1: float64(x * (y - y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v11))
 		}
 		v12 = [2]float64{
-			0: x * x * Xcos(tls, y),
-			1: x * Xsin(tls, y),
+			0: float64(float64(x*x) * Xcos(tls, y)),
+			1: float64(x * Xsin(tls, y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v12))
 	}
@@ -1259,8 +1259,8 @@ func Xccosh(tls *TLS, z complex128) (r complex128) {
 	 * nonzero y.  Choice = don't raise (except for signaling NaNs).
 	 */
 	v13 = [2]float64{
-		0: x * x * (y - y),
-		1: (x + x) * (y - y),
+		0: float64(float64(x*x) * (y - y)),
+		1: float64((x + x) * (y - y)),
 	}
 	return *(*complex128)(unsafe.Pointer(&v13))
 }
@@ -1286,24 +1286,24 @@ func Xccoshf(tls *TLS, z complex64) (r complex64) {
 		if iy == 0 {
 			v1 = [2]float32{
 				0: Xcoshf(tls, x),
-				1: x * y,
+				1: float32(x * y),
 			}
 			return *(*complex64)(unsafe.Pointer(&v1))
 		}
 		if ix < int32(0x41100000) { /* small x: normal case */
 			v2 = [2]float32{
-				0: Xcoshf(tls, x) * Xcosf(tls, y),
-				1: Xsinhf(tls, x) * Xsinf(tls, y),
+				0: float32(Xcoshf(tls, x) * Xcosf(tls, y)),
+				1: float32(Xsinhf(tls, x) * Xsinf(tls, y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v2))
 		}
 		/* |x| >= 9, so cosh(x) ~= exp(|x|) */
 		if ix < int32(0x42b17218) {
 			/* x < 88.7: expf(|x|) won't overflow */
-			h = Xexpf(tls, Xfabsf(tls, x)) * Float32FromFloat32(0.5)
+			h = float32(Xexpf(tls, Xfabsf(tls, x)) * Float32FromFloat32(0.5))
 			v3 = [2]float32{
-				0: h * Xcosf(tls, y),
-				1: Xcopysignf(tls, h, x) * Xsinf(tls, y),
+				0: float32(h * Xcosf(tls, y)),
+				1: float32(Xcopysignf(tls, h, x) * Xsinf(tls, y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v3))
 		} else {
@@ -1316,15 +1316,15 @@ func Xccoshf(tls *TLS, z complex64) (r complex64) {
 				z = X__ldexp_cexpf(tls, *(*complex64)(unsafe.Pointer(&v4)), -int32(1))
 				v5 = [2]float32{
 					0: Float32FromComplex64(z),
-					1: +(*(*[2]float32)(unsafe.Pointer(&z)))[int32(1)] * Xcopysignf(tls, Float32FromInt32(1), x),
+					1: float32(+(*(*[2]float32)(unsafe.Pointer(&z)))[int32(1)] * Xcopysignf(tls, Float32FromInt32(1), x)),
 				}
 				return *(*complex64)(unsafe.Pointer(&v5))
 			} else {
 				/* x >= 192.7: the result always overflows */
-				h = _huge1 * x
+				h = float32(_huge1 * x)
 				v6 = [2]float32{
-					0: h * h * Xcosf(tls, y),
-					1: h * Xsinf(tls, y),
+					0: float32(float32(h*h) * Xcosf(tls, y)),
+					1: float32(h * Xsinf(tls, y)),
 				}
 				return *(*complex64)(unsafe.Pointer(&v6))
 			}
@@ -1333,48 +1333,48 @@ func Xccoshf(tls *TLS, z complex64) (r complex64) {
 	if ix == 0 && iy >= int32(0x7f800000) {
 		v7 = [2]float32{
 			0: y - y,
-			1: Xcopysignf(tls, Float32FromInt32(0), x*(y-y)),
+			1: Xcopysignf(tls, Float32FromInt32(0), float32(x*(y-y))),
 		}
 		return *(*complex64)(unsafe.Pointer(&v7))
 	}
 	if iy == 0 && ix >= int32(0x7f800000) {
 		if hx&int32(0x7fffff) == 0 {
 			v8 = [2]float32{
-				0: x * x,
-				1: Xcopysignf(tls, Float32FromInt32(0), x) * y,
+				0: float32(x * x),
+				1: float32(Xcopysignf(tls, Float32FromInt32(0), x) * y),
 			}
 			return *(*complex64)(unsafe.Pointer(&v8))
 		}
 		v9 = [2]float32{
-			0: x * x,
-			1: Xcopysignf(tls, Float32FromInt32(0), (x+x)*y),
+			0: float32(x * x),
+			1: Xcopysignf(tls, Float32FromInt32(0), float32((x+x)*y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v9))
 	}
 	if ix < int32(0x7f800000) && iy >= int32(0x7f800000) {
 		v10 = [2]float32{
 			0: y - y,
-			1: x * (y - y),
+			1: float32(x * (y - y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v10))
 	}
 	if ix >= int32(0x7f800000) && hx&int32(0x7fffff) == 0 {
 		if iy >= int32(0x7f800000) {
 			v11 = [2]float32{
-				0: x * x,
-				1: x * (y - y),
+				0: float32(x * x),
+				1: float32(x * (y - y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v11))
 		}
 		v12 = [2]float32{
-			0: x * x * Xcosf(tls, y),
-			1: x * Xsinf(tls, y),
+			0: float32(float32(x*x) * Xcosf(tls, y)),
+			1: float32(x * Xsinf(tls, y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v12))
 	}
 	v13 = [2]float32{
-		0: x * x * (y - y),
-		1: (x + x) * (y - y),
+		0: float32(float32(x*x) * (y - y)),
+		1: float32((x + x) * (y - y)),
 	}
 	return *(*complex64)(unsafe.Pointer(&v13))
 }
@@ -1475,8 +1475,8 @@ func Xcexp(tls *TLS, z complex128) (r complex128) {
 		 */
 		exp_x = Xexp(tls, x)
 		v6 = [2]float64{
-			0: exp_x * Xcos(tls, y),
-			1: exp_x * Xsin(tls, y),
+			0: float64(exp_x * Xcos(tls, y)),
+			1: float64(exp_x * Xsin(tls, y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v6))
 	}
@@ -1555,8 +1555,8 @@ func Xcexpf(tls *TLS, z complex64) (r complex64) {
 		 */
 		exp_x = Xexpf(tls, x)
 		v6 = [2]float32{
-			0: exp_x * Xcosf(tls, y),
-			1: exp_x * Xsinf(tls, y),
+			0: float32(exp_x * Xcosf(tls, y)),
+			1: float32(exp_x * Xsinf(tls, y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v6))
 	}
@@ -1891,18 +1891,18 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 		}
 		if ix < int32(0x40360000) { /* small x: normal case */
 			v2 = [2]float64{
-				0: Xsinh(tls, x) * Xcos(tls, y),
-				1: Xcosh(tls, x) * Xsin(tls, y),
+				0: float64(Xsinh(tls, x) * Xcos(tls, y)),
+				1: float64(Xcosh(tls, x) * Xsin(tls, y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v2))
 		}
 		/* |x| >= 22, so cosh(x) ~= exp(|x|) */
 		if ix < int32(0x40862e42) {
 			/* x < 710: exp(|x|) won't overflow */
-			h = Xexp(tls, Xfabs(tls, x)) * float64(0.5)
+			h = float64(Xexp(tls, Xfabs(tls, x)) * float64(0.5))
 			v3 = [2]float64{
-				0: Xcopysign(tls, h, x) * Xcos(tls, y),
-				1: h * Xsin(tls, y),
+				0: float64(Xcopysign(tls, h, x) * Xcos(tls, y)),
+				1: float64(h * Xsin(tls, y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v3))
 		} else {
@@ -1914,16 +1914,16 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 				}
 				z = X__ldexp_cexp(tls, *(*complex128)(unsafe.Pointer(&v4)), -int32(1))
 				v5 = [2]float64{
-					0: Float64FromComplex128(z) * Xcopysign(tls, Float64FromInt32(1), x),
+					0: float64(Float64FromComplex128(z) * Xcopysign(tls, Float64FromInt32(1), x)),
 					1: +(*(*[2]float64)(unsafe.Pointer(&z)))[int32(1)],
 				}
 				return *(*complex128)(unsafe.Pointer(&v5))
 			} else {
 				/* x >= 1455: the result always overflows */
-				h = _huge2 * x
+				h = float64(_huge2 * x)
 				v6 = [2]float64{
-					0: h * Xcos(tls, y),
-					1: h * h * Xsin(tls, y),
+					0: float64(h * Xcos(tls, y)),
+					1: float64(float64(h*h) * Xsin(tls, y)),
 				}
 				return *(*complex128)(unsafe.Pointer(&v6))
 			}
@@ -1940,7 +1940,7 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 	 */
 	if ix|lx == 0 && iy >= int32(0x7ff00000) {
 		v7 = [2]float64{
-			0: Xcopysign(tls, Float64FromInt32(0), x*(y-y)),
+			0: Xcopysign(tls, Float64FromInt32(0), float64(x*(y-y))),
 			1: y - y,
 		}
 		return *(*complex128)(unsafe.Pointer(&v7))
@@ -1975,7 +1975,7 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 	if ix < int32(0x7ff00000) && iy >= int32(0x7ff00000) {
 		v10 = [2]float64{
 			0: y - y,
-			1: x * (y - y),
+			1: float64(x * (y - y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v10))
 	}
@@ -1993,14 +1993,14 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 	if ix >= int32(0x7ff00000) && hx&int32(0xfffff)|lx == 0 {
 		if iy >= int32(0x7ff00000) {
 			v11 = [2]float64{
-				0: x * x,
-				1: x * (y - y),
+				0: float64(x * x),
+				1: float64(x * (y - y)),
 			}
 			return *(*complex128)(unsafe.Pointer(&v11))
 		}
 		v12 = [2]float64{
-			0: x * Xcos(tls, y),
-			1: float64(X__builtin_inff(tls)) * Xsin(tls, y),
+			0: float64(x * Xcos(tls, y)),
+			1: float64(float64(X__builtin_inff(tls)) * Xsin(tls, y)),
 		}
 		return *(*complex128)(unsafe.Pointer(&v12))
 	}
@@ -2016,8 +2016,8 @@ func Xcsinh(tls *TLS, z complex128) (r complex128) {
 	 * nonzero y.  Choice = don't raise (except for signaling NaNs).
 	 */
 	v13 = [2]float64{
-		0: x * x * (y - y),
-		1: (x + x) * (y - y),
+		0: float64(float64(x*x) * (y - y)),
+		1: float64((x + x) * (y - y)),
 	}
 	return *(*complex128)(unsafe.Pointer(&v13))
 }
@@ -2049,18 +2049,18 @@ func Xcsinhf(tls *TLS, z complex64) (r complex64) {
 		}
 		if ix < int32(0x41100000) { /* small x: normal case */
 			v2 = [2]float32{
-				0: Xsinhf(tls, x) * Xcosf(tls, y),
-				1: Xcoshf(tls, x) * Xsinf(tls, y),
+				0: float32(Xsinhf(tls, x) * Xcosf(tls, y)),
+				1: float32(Xcoshf(tls, x) * Xsinf(tls, y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v2))
 		}
 		/* |x| >= 9, so cosh(x) ~= exp(|x|) */
 		if ix < int32(0x42b17218) {
 			/* x < 88.7: expf(|x|) won't overflow */
-			h = Xexpf(tls, Xfabsf(tls, x)) * Float32FromFloat32(0.5)
+			h = float32(Xexpf(tls, Xfabsf(tls, x)) * Float32FromFloat32(0.5))
 			v3 = [2]float32{
-				0: Xcopysignf(tls, h, x) * Xcosf(tls, y),
-				1: h * Xsinf(tls, y),
+				0: float32(Xcopysignf(tls, h, x) * Xcosf(tls, y)),
+				1: float32(h * Xsinf(tls, y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v3))
 		} else {
@@ -2072,16 +2072,16 @@ func Xcsinhf(tls *TLS, z complex64) (r complex64) {
 				}
 				z = X__ldexp_cexpf(tls, *(*complex64)(unsafe.Pointer(&v4)), -int32(1))
 				v5 = [2]float32{
-					0: Float32FromComplex64(z) * Xcopysignf(tls, Float32FromInt32(1), x),
+					0: float32(Float32FromComplex64(z) * Xcopysignf(tls, Float32FromInt32(1), x)),
 					1: +(*(*[2]float32)(unsafe.Pointer(&z)))[int32(1)],
 				}
 				return *(*complex64)(unsafe.Pointer(&v5))
 			} else {
 				/* x >= 192.7: the result always overflows */
-				h = _huge3 * x
+				h = float32(_huge3 * x)
 				v6 = [2]float32{
-					0: h * Xcosf(tls, y),
-					1: h * h * Xsinf(tls, y),
+					0: float32(h * Xcosf(tls, y)),
+					1: float32(float32(h*h) * Xsinf(tls, y)),
 				}
 				return *(*complex64)(unsafe.Pointer(&v6))
 			}
@@ -2089,7 +2089,7 @@ func Xcsinhf(tls *TLS, z complex64) (r complex64) {
 	}
 	if ix == 0 && iy >= int32(0x7f800000) {
 		v7 = [2]float32{
-			0: Xcopysignf(tls, Float32FromInt32(0), x*(y-y)),
+			0: Xcopysignf(tls, Float32FromInt32(0), float32(x*(y-y))),
 			1: y - y,
 		}
 		return *(*complex64)(unsafe.Pointer(&v7))
@@ -2111,27 +2111,27 @@ func Xcsinhf(tls *TLS, z complex64) (r complex64) {
 	if ix < int32(0x7f800000) && iy >= int32(0x7f800000) {
 		v10 = [2]float32{
 			0: y - y,
-			1: x * (y - y),
+			1: float32(x * (y - y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v10))
 	}
 	if ix >= int32(0x7f800000) && hx&int32(0x7fffff) == 0 {
 		if iy >= int32(0x7f800000) {
 			v11 = [2]float32{
-				0: x * x,
-				1: x * (y - y),
+				0: float32(x * x),
+				1: float32(x * (y - y)),
 			}
 			return *(*complex64)(unsafe.Pointer(&v11))
 		}
 		v12 = [2]float32{
-			0: x * Xcosf(tls, y),
-			1: X__builtin_inff(tls) * Xsinf(tls, y),
+			0: float32(x * Xcosf(tls, y)),
+			1: float32(X__builtin_inff(tls) * Xsinf(tls, y)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v12))
 	}
 	v13 = [2]float32{
-		0: x * x * (y - y),
-		1: (x + x) * (y - y),
+		0: float32(float32(x*x) * (y - y)),
+		1: float32((x + x) * (y - y)),
 	}
 	return *(*complex64)(unsafe.Pointer(&v13))
 }
@@ -2259,16 +2259,16 @@ _9:
 	}
 	/* Algorithm 312, CACM vol 10, Oct 1967. */
 	if a >= Float64FromInt32(0) {
-		t = Xsqrt(tls, (a+Xhypot(tls, a, b))*float64(0.5))
+		t = Xsqrt(tls, float64((a+Xhypot(tls, a, b))*float64(0.5)))
 		v14 = [2]float64{
 			0: t,
-			1: b / (Float64FromInt32(2) * t),
+			1: b / float64(Float64FromInt32(2)*t),
 		}
 		result = *(*complex128)(unsafe.Pointer(&v14))
 	} else {
-		t = Xsqrt(tls, (-a+Xhypot(tls, a, b))*float64(0.5))
+		t = Xsqrt(tls, float64((-a+Xhypot(tls, a, b))*float64(0.5)))
 		v15 = [2]float64{
-			0: Xfabs(tls, b) / (Float64FromInt32(2) * t),
+			0: Xfabs(tls, b) / float64(Float64FromInt32(2)*t),
 			1: Xcopysign(tls, t, b),
 		}
 		result = *(*complex128)(unsafe.Pointer(&v15))
@@ -2375,16 +2375,16 @@ _9:
 	 * This is Algorithm 312, CACM vol 10, Oct 1967.
 	 */
 	if a >= Float32FromInt32(0) {
-		t = Xsqrt(tls, (float64(a)+Xhypot(tls, float64(a), float64(b)))*float64(0.5))
+		t = Xsqrt(tls, float64((float64(a)+Xhypot(tls, float64(a), float64(b)))*float64(0.5)))
 		v14 = [2]float32{
 			0: float32(t),
-			1: float32(float64(b) / (Float64FromFloat64(2) * t)),
+			1: float32(float64(b) / float64(Float64FromFloat64(2)*t)),
 		}
 		return *(*complex64)(unsafe.Pointer(&v14))
 	} else {
-		t = Xsqrt(tls, (float64(-a)+Xhypot(tls, float64(a), float64(b)))*float64(0.5))
+		t = Xsqrt(tls, float64((float64(-a)+Xhypot(tls, float64(a), float64(b)))*float64(0.5)))
 		v15 = [2]float32{
-			0: float32(float64(Xfabsf(tls, b)) / (Float64FromFloat64(2) * t)),
+			0: float32(float64(Xfabsf(tls, b)) / float64(Float64FromFloat64(2)*t)),
 			1: Xcopysignf(tls, float32(t), b),
 		}
 		return *(*complex64)(unsafe.Pointer(&v15))
@@ -2487,7 +2487,7 @@ func Xctanh(tls *TLS, z complex128) (r complex128) {
 			if y == Float64FromInt32(0) {
 				v2 = y
 			} else {
-				v2 = x * y
+				v2 = float64(x * y)
 			}
 			v1 = [2]float64{
 				0: x,
@@ -2504,7 +2504,7 @@ func Xctanh(tls *TLS, z complex128) (r complex128) {
 		if BoolInt32(v6&(-Uint64FromUint64(1)>>Int32FromInt32(1)) == Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0 {
 			v5 = y
 		} else {
-			v5 = Xsin(tls, y) * Xcos(tls, y)
+			v5 = float64(Xsin(tls, y) * Xcos(tls, y))
 		}
 		v4 = [2]float64{
 			0: x,
@@ -2543,18 +2543,18 @@ _9:
 		exp_mx = Xexp(tls, -Xfabs(tls, x))
 		v12 = [2]float64{
 			0: Xcopysign(tls, Float64FromInt32(1), x),
-			1: Float64FromInt32(4) * Xsin(tls, y) * Xcos(tls, y) * exp_mx * exp_mx,
+			1: float64(float64(float64(float64(Float64FromInt32(4)*Xsin(tls, y))*Xcos(tls, y))*exp_mx) * exp_mx),
 		}
 		return *(*complex128)(unsafe.Pointer(&v12))
 	}
 	/* Kahan's algorithm */
 	t = Xtan(tls, y)
-	beta = float64(1) + t*t /* = 1 / cos^2(y) */
+	beta = float64(1) + float64(t*t) /* = 1 / cos^2(y) */
 	s = Xsinh(tls, x)
-	rho = Xsqrt(tls, Float64FromInt32(1)+s*s) /* = cosh(x) */
-	denom = Float64FromInt32(1) + beta*s*s
+	rho = Xsqrt(tls, Float64FromInt32(1)+float64(s*s)) /* = cosh(x) */
+	denom = Float64FromInt32(1) + float64(float64(beta*s)*s)
 	v13 = [2]float64{
-		0: beta * rho * s / denom,
+		0: float64(float64(beta*rho)*s) / denom,
 		1: t / denom,
 	}
 	return *(*complex128)(unsafe.Pointer(&v13))
@@ -2585,7 +2585,7 @@ func Xctanhf(tls *TLS, z complex64) (r complex64) {
 			if y == Float32FromInt32(0) {
 				v2 = y
 			} else {
-				v2 = x * y
+				v2 = float32(x * y)
 			}
 			v1 = [2]float32{
 				0: x,
@@ -2602,7 +2602,7 @@ func Xctanhf(tls *TLS, z complex64) (r complex64) {
 		if BoolInt32(v6&uint32(0x7fffffff) == uint32(0x7f800000)) != 0 {
 			v5 = y
 		} else {
-			v5 = Xsinf(tls, y) * Xcosf(tls, y)
+			v5 = float32(Xsinf(tls, y) * Xcosf(tls, y))
 		}
 		v4 = [2]float32{
 			0: x,
@@ -2630,17 +2630,17 @@ _9:
 		exp_mx = Xexpf(tls, -Xfabsf(tls, x))
 		v12 = [2]float32{
 			0: Xcopysignf(tls, Float32FromInt32(1), x),
-			1: Float32FromInt32(4) * Xsinf(tls, y) * Xcosf(tls, y) * exp_mx * exp_mx,
+			1: float32(float32(float32(float32(Float32FromInt32(4)*Xsinf(tls, y))*Xcosf(tls, y))*exp_mx) * exp_mx),
 		}
 		return *(*complex64)(unsafe.Pointer(&v12))
 	}
 	t = Xtanf(tls, y)
 	beta = float32(float64(1) + float64(t*t))
 	s = Xsinhf(tls, x)
-	rho = Xsqrtf(tls, Float32FromInt32(1)+s*s)
-	denom = Float32FromInt32(1) + beta*s*s
+	rho = Xsqrtf(tls, Float32FromInt32(1)+float32(s*s))
+	denom = Float32FromInt32(1) + float32(float32(beta*s)*s)
 	v13 = [2]float32{
-		0: beta * rho * s / denom,
+		0: float32(float32(beta*rho)*s) / denom,
 		1: t / denom,
 	}
 	return *(*complex64)(unsafe.Pointer(&v13))
@@ -13902,7 +13902,7 @@ func X__ctype_get_mb_cur_max(tls *TLS) (r Tsize_t) {
 	}
 	var v1 int32
 	_ = v1
-	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 		v1 = int32(4)
 	} else {
 		v1 = int32(1)
@@ -24981,7 +24981,7 @@ func X__reset_tls(tls *TLS) {
 	var mem, p uintptr
 	var self Tpthread_t
 	_, _, _, _, _ = i, mem, n, p, self
-	self = ___get_tp(tls)
+	self = uintptr(___get_tp(tls))
 	n = *(*Tuintptr_t)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(self)).Fdtv))
 	if n != 0 {
 		p = X__libc.Ftls_head
@@ -25017,7 +25017,7 @@ func X__init_ssp(tls *TLS, entropy uintptr) {
 	 * still be detected. Endianness is taken care of
 	 * automatically. */
 	*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__stack_chk_guard)) + 1)) = uint8(0)
-	(*t__pthread)(unsafe.Pointer(___get_tp(tls))).Fcanary = X__stack_chk_guard
+	(*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Fcanary = X__stack_chk_guard
 }
 
 func X__stack_chk_fail(tls *TLS) {
@@ -25627,7 +25627,7 @@ func Xstrerror(tls *TLS, e int32) (r uintptr) {
 		trc("tls=%v e=%v, (%v:)", tls, e, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__strerror_l(tls, e, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__strerror_l(tls, e, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 func Xstrerror_l(tls *TLS, e int32, loc Tlocale_t) (r uintptr) {
@@ -26275,19 +26275,19 @@ func _decfloat(tls *TLS, f uintptr, c int32, bits int32, emin int32, sign int32,
 	}
 	/* Handle zero specially to avoid nasty special cases later */
 	if !((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0] != 0) {
-		return float64(sign) * float64(0)
+		return float64(float64(sign) * float64(0))
 	}
 	/* Optimize small integers (w/no exponent) and over/under-flow */
 	if lrp == dc && dc < int64(10) && (bits > int32(30) || (*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]>>bits == uint32(0)) {
-		return float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0])
+		return float64(float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]))
 	}
 	if lrp > int64(-emin/int32(2)) {
 		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(ERANGE)
-		return float64(sign) * Float64FromFloat64(1.79769313486231570815e+308) * Float64FromFloat64(1.79769313486231570815e+308)
+		return float64(float64(float64(sign)*Float64FromFloat64(1.79769313486231570815e+308)) * Float64FromFloat64(1.79769313486231570815e+308))
 	}
 	if lrp < int64(emin-Int32FromInt32(2)*Int32FromInt32(LDBL_MANT_DIG)) {
 		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(ERANGE)
-		return float64(sign) * Float64FromFloat64(2.22507385850720138309e-308) * Float64FromFloat64(2.22507385850720138309e-308)
+		return float64(float64(float64(sign)*Float64FromFloat64(2.22507385850720138309e-308)) * Float64FromFloat64(2.22507385850720138309e-308))
 	}
 	/* Align incomplete final B1B digit */
 	if j != 0 {
@@ -26311,14 +26311,14 @@ func _decfloat(tls *TLS, f uintptr, c int32, bits int32, emin int32, sign int32,
 	/* Optimize small to mid-size integers (even in exp. notation) */
 	if lnz < int32(9) && lnz <= rp && rp < int32(18) {
 		if rp == int32(9) {
-			return float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0])
+			return float64(float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]))
 		}
 		if rp < int32(9) {
-			return float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]) / float64(_p10s[int32(8)-rp])
+			return float64(float64(sign)*float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0])) / float64(_p10s[int32(8)-rp])
 		}
 		bitlim = bits - int32(3)*(rp-Int32FromInt32(9))
 		if bitlim > int32(30) || (*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]>>bitlim == uint32(0) {
-			return float64(sign) * float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0]) * float64(_p10s[rp-int32(10)])
+			return float64(float64(float64(sign)*float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[0])) * float64(_p10s[rp-int32(10)]))
 		}
 	}
 	/* Drop trailing zeros */
@@ -26472,7 +26472,7 @@ func _decfloat(tls *TLS, f uintptr, c int32, bits int32, emin int32, sign int32,
 			z = v30
 			(*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[v30-int32(1)] = uint32(0)
 		}
-		y = Float64FromFloat64(1e+09)*y + float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[(a+i)&(Int32FromInt32(KMAX)-Int32FromInt32(1))])
+		y = float64(Float64FromFloat64(1e+09)*y) + float64((*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[(a+i)&(Int32FromInt32(KMAX)-Int32FromInt32(1))])
 		goto _28
 	_28:
 		;
@@ -26498,16 +26498,16 @@ func _decfloat(tls *TLS, f uintptr, c int32, bits int32, emin int32, sign int32,
 	if (a+i)&(Int32FromInt32(KMAX)-Int32FromInt32(1)) != z {
 		t = (*(*[128]Tuint32_t)(unsafe.Pointer(bp)))[(a+i)&(Int32FromInt32(KMAX)-Int32FromInt32(1))]
 		if t < uint32(500000000) && (t != 0 || (a+i+int32(1))&(Int32FromInt32(KMAX)-Int32FromInt32(1)) != z) {
-			frac += float64(0.25) * float64(sign)
+			frac += float64(float64(0.25) * float64(sign))
 		} else {
 			if t > uint32(500000000) {
-				frac += float64(0.75) * float64(sign)
+				frac += float64(float64(0.75) * float64(sign))
 			} else {
 				if t == uint32(500000000) {
 					if (a+i+int32(1))&(Int32FromInt32(KMAX)-Int32FromInt32(1)) == z {
-						frac += float64(0.5) * float64(sign)
+						frac += float64(float64(0.5) * float64(sign))
 					} else {
-						frac += float64(0.75) * float64(sign)
+						frac += float64(float64(0.75) * float64(sign))
 					}
 				}
 			}
@@ -26649,10 +26649,10 @@ func _hexfloat(tls *TLS, f uintptr, bits int32, emin int32, sign int32, pok int3
 			} else {
 				if dc < int64(Int32FromInt32(LDBL_MANT_DIG)/Int32FromInt32(4)+Int32FromInt32(1)) {
 					scale /= Float64FromInt32(16)
-					y += float64(d) * scale
+					y += float64(float64(d) * scale)
 				} else {
 					if d != 0 && !(gottail != 0) {
-						y += Float64FromFloat64(0.5) * scale
+						y += float64(Float64FromFloat64(0.5) * scale)
 						gottail = int32(1)
 					}
 				}
@@ -26688,7 +26688,7 @@ func _hexfloat(tls *TLS, f uintptr, bits int32, emin int32, sign int32, pok int3
 		} else {
 			X__shlim(tls, f, int64(Int32FromInt32(0)))
 		}
-		return float64(sign) * float64(0)
+		return float64(float64(sign) * float64(0))
 	}
 	if !(gotrad != 0) {
 		rp = dc
@@ -26717,15 +26717,15 @@ func _hexfloat(tls *TLS, f uintptr, bits int32, emin int32, sign int32, pok int3
 	}
 	e2 += int64(4)*rp - int64(32)
 	if !(x != 0) {
-		return float64(sign) * float64(0)
+		return float64(float64(sign) * float64(0))
 	}
 	if e2 > int64(-emin) {
 		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(ERANGE)
-		return float64(sign) * Float64FromFloat64(1.79769313486231570815e+308) * Float64FromFloat64(1.79769313486231570815e+308)
+		return float64(float64(float64(sign)*Float64FromFloat64(1.79769313486231570815e+308)) * Float64FromFloat64(1.79769313486231570815e+308))
 	}
 	if e2 < int64(emin-Int32FromInt32(2)*Int32FromInt32(LDBL_MANT_DIG)) {
 		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(ERANGE)
-		return float64(sign) * Float64FromFloat64(2.22507385850720138309e-308) * Float64FromFloat64(2.22507385850720138309e-308)
+		return float64(float64(float64(sign)*Float64FromFloat64(2.22507385850720138309e-308)) * Float64FromFloat64(2.22507385850720138309e-308))
 	}
 	for x < uint32(0x80000000) {
 		if y >= Float64FromFloat64(0.5) {
@@ -26750,7 +26750,7 @@ func _hexfloat(tls *TLS, f uintptr, bits int32, emin int32, sign int32, pok int3
 		x++
 		y = Float64FromInt32(0)
 	}
-	y = bias + float64(sign)*float64(x) + float64(sign)*y
+	y = bias + float64(float64(sign)*float64(x)) + float64(float64(sign)*y)
 	y -= bias
 	if !(y != 0) {
 		*(*int32)(unsafe.Pointer(X__errno_location(tls))) = int32(ERANGE)
@@ -28321,7 +28321,7 @@ func Xgetloadavg(tls *TLS, a uintptr, n int32) (r int32) {
 		if !(i < n) {
 			break
 		}
-		*(*float64)(unsafe.Pointer(a + uintptr(i)*8)) = Float64FromFloat64(1) / float64(Int32FromInt32(1)<<Int32FromInt32(SI_LOAD_SHIFT)) * float64(*(*uint64)(unsafe.Pointer(bp + 8 + uintptr(i)*8)))
+		*(*float64)(unsafe.Pointer(a + uintptr(i)*8)) = float64(Float64FromFloat64(1) / float64(Int32FromInt32(1)<<Int32FromInt32(SI_LOAD_SHIFT)) * float64(*(*uint64)(unsafe.Pointer(bp + 8 + uintptr(i)*8))))
 		goto _2
 	_2:
 		;
@@ -31126,7 +31126,7 @@ func X__lctrans_cur(tls *TLS, msg uintptr) (r uintptr) {
 		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__lctrans_impl(tls, msg, *(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale + 5*8)))
+	return X__lctrans_impl(tls, msg, *(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale + 5*8)))
 }
 
 func _swapc(tls *TLS, x Tuint32_t, c int32) (r Tuint32_t) {
@@ -31648,7 +31648,7 @@ func Xdcngettext(tls *TLS, domainname uintptr, msgid1 uintptr, msgid2 uintptr, n
 	var _ /* z at bp+8 */ uintptr
 	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = alt_modlen, catlen, catname, csp, dirlen, dirname, domlen, l, lm, loc, loclen, locname, locp, map1, modlen, modname, name, np, old_cats, old_errno, p1, plural, q, r, rem, rule, trans, v10, v11, v12, v14, v15, v17, v18, v21, v3, v5, v6, v8, v9
 	defer func() { Xrealloc(tls, name, 0) }()
-	loc = (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale
+	loc = (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale
 	old_errno = *(*int32)(unsafe.Pointer(X__errno_location(tls)))
 	/* match gnu gettext behaviour */
 	if !(msgid1 != 0) {
@@ -98301,7 +98301,7 @@ func Xiconv(tls *TLS, cd Ticonv_t, in uintptr, inb uintptr, out uintptr, outb ui
 	*(*Tmbstate_t)(unsafe.Pointer(bp + 24)) = Tmbstate_t{}
 	type1 = *(*uint8)(unsafe.Pointer(map1 + uintptr(-Int32FromInt32(1))))
 	totype = *(*uint8)(unsafe.Pointer(tomap + uintptr(-Int32FromInt32(1))))
-	ploc = ___get_tp(tls) + 168
+	ploc = uintptr(___get_tp(tls)) + 168
 	loc = *(*Tlocale_t)(unsafe.Pointer(ploc))
 	if !(in != 0) || !(*(*uintptr)(unsafe.Pointer(in)) != 0) || !(*(*Tsize_t)(unsafe.Pointer(inb)) != 0) {
 		return uint64(0)
@@ -99335,7 +99335,7 @@ func X__nl_langinfo(tls *TLS, item Tnl_item) (r uintptr) {
 		trc("tls=%v item=%v, (%v:)", tls, item, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__nl_langinfo_l(tls, item, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__nl_langinfo_l(tls, item, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 func Xnl_langinfo(tls *TLS, item Tnl_item) (r uintptr) {
@@ -100053,7 +100053,7 @@ func Xstrcoll(tls *TLS, l uintptr, r uintptr) (r1 int32) {
 		trc("tls=%v l=%v r=%v, (%v:)", tls, l, r, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
-	return X__strcoll_l(tls, l, r, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__strcoll_l(tls, l, r, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 func Xstrcoll_l(tls *TLS, l uintptr, r uintptr, loc Tlocale_t) (r1 int32) {
@@ -100219,7 +100219,7 @@ func Xstrfmon(tls *TLS, s uintptr, n Tsize_t, fmt uintptr, va uintptr) (r Tssize
 	var ret Tssize_t
 	_, _ = ap, ret
 	ap = va
-	ret = _vstrfmon_l(tls, s, n, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale, fmt, ap)
+	ret = _vstrfmon_l(tls, s, n, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale, fmt, ap)
 	_ = ap
 	return ret
 }
@@ -100294,7 +100294,7 @@ func Xstrxfrm(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r Tsize_t) {
 		trc("tls=%v dest=%v src=%v n=%v, (%v:)", tls, dest, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__strxfrm_l(tls, dest, src, n, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__strxfrm_l(tls, dest, src, n, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 // C documentation
@@ -100383,7 +100383,7 @@ func X__uselocale(tls *TLS, new1 Tlocale_t) (r Tlocale_t) {
 	var global, old, v1, v2 Tlocale_t
 	var self Tpthread_t
 	_, _, _, _, _ = global, old, self, v1, v2
-	self = ___get_tp(tls)
+	self = uintptr(___get_tp(tls))
 	old = (*t__pthread)(unsafe.Pointer(self)).Flocale
 	global = uintptr(unsafe.Pointer(&X__libc)) + 56
 	if new1 != 0 {
@@ -100426,7 +100426,7 @@ func Xwcscoll(tls *TLS, l uintptr, r uintptr) (r1 int32) {
 		trc("tls=%v l=%v r=%v, (%v:)", tls, l, r, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
-	return X__wcscoll_l(tls, l, r, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__wcscoll_l(tls, l, r, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 // C documentation
@@ -100467,7 +100467,7 @@ func Xwcsxfrm(tls *TLS, dest uintptr, src uintptr, n Tsize_t) (r Tsize_t) {
 		trc("tls=%v dest=%v src=%v n=%v, (%v:)", tls, dest, src, n, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__wcsxfrm_l(tls, dest, src, n, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__wcsxfrm_l(tls, dest, src, n, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 // C documentation
@@ -100511,12 +100511,12 @@ func X__cos(tls *TLS, x float64, y float64) (r1 float64) {
 	}
 	var hz, r, w, z Tdouble_t
 	_, _, _, _ = hz, r, w, z
-	z = x * x
-	w = z * z
-	r = z*(_C1+z*(_C2+z*_C3)) + w*w*(_C4+z*(_C5+z*_C6))
-	hz = float64(0.5) * z
+	z = Tdouble_t(x * x)
+	w = Tdouble_t(z * z)
+	r = Tdouble_t(z*(_C1+float64(z*(_C2+float64(z*_C3))))) + Tdouble_t(Tdouble_t(w*w)*(_C4+float64(z*(_C5+float64(z*_C6)))))
+	hz = Tdouble_t(float64(0.5) * z)
 	w = float64(1) - hz
-	return w + (Float64FromFloat64(1) - w - hz + (z*r - x*y))
+	return w + (Float64FromFloat64(1) - w - hz + (Tdouble_t(z*r) - Tdouble_t(x*y)))
 }
 
 // C documentation
@@ -100536,10 +100536,10 @@ func X__cosdf(tls *TLS, x float64) (r1 float32) {
 	var r, w, z Tdouble_t
 	_, _, _ = r, w, z
 	/* Try to optimize for parallel evaluation as in __tandf.c. */
-	z = x * x
-	w = z * z
-	r = _C21 + z*_C31
-	return float32(float64(1) + z*_C0 + w*_C11 + w*z*r)
+	z = Tdouble_t(x * x)
+	w = Tdouble_t(z * z)
+	r = _C21 + float64(z*_C31)
+	return float32(float64(1) + float64(z*_C0) + float64(w*_C11) + float64(Tdouble_t(w*z)*r))
 }
 
 // C documentation
@@ -100564,7 +100564,7 @@ func X__expo2(tls *TLS, x float64, sign float64) (r float64) {
 	scale = *(*float64)(unsafe.Pointer(&v1))
 	/* exp(x - k ln2) * 2**(k-1) */
 	/* in directed rounding correct sign before rounding or overflow is important */
-	return Xexp(tls, x-_kln22) * (sign * scale) * scale
+	return float64(float64(Xexp(tls, x-_kln22)*float64(sign*scale)) * scale)
 }
 
 // C documentation
@@ -100589,7 +100589,7 @@ func X__expo2f(tls *TLS, x float32, sign float32) (r float32) {
 	scale = *(*float32)(unsafe.Pointer(&v1))
 	/* exp(x - k ln2) * 2**(k-1) */
 	/* in directed rounding correct sign before rounding or overflow is important */
-	return Xexpf(tls, x-_kln23) * (sign * scale) * scale
+	return float32(float32(Xexpf(tls, x-_kln23)*float32(sign*scale)) * scale)
 }
 
 func X__fpclassify(tls *TLS, x float64) (r int32) {
@@ -100787,7 +100787,7 @@ func X__math_xflow(tls *TLS, sign Tuint32_t, y2 float64) (r float64) {
 	v2 = y1
 	goto _3
 _3:
-	y = v2 * y2
+	y = float64(v2 * y2)
 	v4 = y
 	goto _5
 _5:
@@ -100810,7 +100810,7 @@ func X__math_xflowf(tls *TLS, sign Tuint32_t, y2 float32) (r float32) {
 	v2 = y1
 	goto _3
 _3:
-	y = v2 * y2
+	y = float32(v2 * y2)
 	v4 = y
 	goto _5
 _5:
@@ -100891,14 +100891,14 @@ func X__rem_pio2(tls *TLS, x float64, y uintptr) (r1 int32) {
 			}
 		} else {
 			if !(sign != 0) {
-				z = x - Float64FromInt32(2)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z - Float64FromInt32(2)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Float64FromInt32(2)*_pio2_1t
+				z = x - float64(Float64FromInt32(2)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z - Tdouble_t(Float64FromInt32(2)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Tdouble_t(Float64FromInt32(2)*_pio2_1t)
 				return int32(2)
 			} else {
-				z = x + Float64FromInt32(2)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z + Float64FromInt32(2)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Float64FromInt32(2)*_pio2_1t
+				z = x + float64(Float64FromInt32(2)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z + Tdouble_t(Float64FromInt32(2)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Tdouble_t(Float64FromInt32(2)*_pio2_1t)
 				return -int32(2)
 			}
 		}
@@ -100909,14 +100909,14 @@ func X__rem_pio2(tls *TLS, x float64, y uintptr) (r1 int32) {
 				goto medium
 			}
 			if !(sign != 0) {
-				z = x - Float64FromInt32(3)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z - Float64FromInt32(3)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Float64FromInt32(3)*_pio2_1t
+				z = x - float64(Float64FromInt32(3)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z - Tdouble_t(Float64FromInt32(3)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Tdouble_t(Float64FromInt32(3)*_pio2_1t)
 				return int32(3)
 			} else {
-				z = x + Float64FromInt32(3)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z + Float64FromInt32(3)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Float64FromInt32(3)*_pio2_1t
+				z = x + float64(Float64FromInt32(3)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z + Tdouble_t(Float64FromInt32(3)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Tdouble_t(Float64FromInt32(3)*_pio2_1t)
 				return -int32(3)
 			}
 		} else {
@@ -100924,14 +100924,14 @@ func X__rem_pio2(tls *TLS, x float64, y uintptr) (r1 int32) {
 				goto medium
 			}
 			if !(sign != 0) {
-				z = x - Float64FromInt32(4)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z - Float64FromInt32(4)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Float64FromInt32(4)*_pio2_1t
+				z = x - float64(Float64FromInt32(4)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z - Tdouble_t(Float64FromInt32(4)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) - Tdouble_t(Float64FromInt32(4)*_pio2_1t)
 				return int32(4)
 			} else {
-				z = x + Float64FromInt32(4)*_pio2_1
-				*(*float64)(unsafe.Pointer(y)) = z + Float64FromInt32(4)*_pio2_1t
-				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Float64FromInt32(4)*_pio2_1t
+				z = x + float64(Float64FromInt32(4)*_pio2_1)
+				*(*float64)(unsafe.Pointer(y)) = z + Tdouble_t(Float64FromInt32(4)*_pio2_1t)
+				*(*float64)(unsafe.Pointer(y + 1*8)) = z - *(*float64)(unsafe.Pointer(y)) + Tdouble_t(Float64FromInt32(4)*_pio2_1t)
 				return -int32(4)
 			}
 		}
@@ -100943,22 +100943,22 @@ func X__rem_pio2(tls *TLS, x float64, y uintptr) (r1 int32) {
 medium:
 	;
 	/* rint(x/(pi/2)) */
-	fn = x*_invpio2 + _toint - _toint
+	fn = Tdouble_t(x*_invpio2) + _toint - _toint
 	n = int32(fn)
-	r = x - fn*_pio2_1
-	w = fn * _pio2_1t /* 1st round, good to 85 bits */
+	r = x - float64(fn*_pio2_1)
+	w = Tdouble_t(fn * _pio2_1t) /* 1st round, good to 85 bits */
 	/* Matters with directed rounding. */
 	if r-w < -_pio4 {
 		n--
 		fn--
-		r = x - fn*_pio2_1
-		w = fn * _pio2_1t
+		r = x - float64(fn*_pio2_1)
+		w = Tdouble_t(fn * _pio2_1t)
 	} else {
 		if r-w > _pio4 {
 			n++
 			fn++
-			r = x - fn*_pio2_1
-			w = fn * _pio2_1t
+			r = x - float64(fn*_pio2_1)
+			w = Tdouble_t(fn * _pio2_1t)
 		}
 	}
 	*(*float64)(unsafe.Pointer(y)) = r - w
@@ -100967,17 +100967,17 @@ medium:
 	ex = Int32FromUint32(ix >> int32(20))
 	if ex-ey > int32(16) { /* 2nd round, good to 118 bits */
 		t = r
-		w = fn * _pio2_2
+		w = Tdouble_t(fn * _pio2_2)
 		r = t - w
-		w = fn*_pio2_2t - (t - r - w)
+		w = Tdouble_t(fn*_pio2_2t) - (t - r - w)
 		*(*float64)(unsafe.Pointer(y)) = r - w
 		*(*float64)(unsafe.Pointer(bp)) = *(*float64)(unsafe.Pointer(y))
 		ey = Int32FromUint64(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(52) & uint64(0x7ff))
 		if ex-ey > int32(49) { /* 3rd round, good to 151 bits, covers all cases */
 			t = r
-			w = fn * _pio2_3
+			w = Tdouble_t(fn * _pio2_3)
 			r = t - w
-			w = fn*_pio2_3t - (t - r - w)
+			w = Tdouble_t(fn*_pio2_3t) - (t - r - w)
 			*(*float64)(unsafe.Pointer(y)) = r - w
 		}
 	}
@@ -101005,7 +101005,7 @@ _1:
 			break
 		}
 		(*(*[3]float64)(unsafe.Pointer(bp + 8)))[i] = float64(int32(z))
-		z = (z - (*(*[3]float64)(unsafe.Pointer(bp + 8)))[i]) * float64(1.6777216e+07)
+		z = Tdouble_t((z - (*(*[3]float64)(unsafe.Pointer(bp + 8)))[i]) * float64(1.6777216e+07))
 		goto _3
 	_3:
 		;
@@ -101185,7 +101185,7 @@ func X__rem_pio2_large(tls *TLS, x uintptr, y uintptr, e0 int32, nx int32, prec 
 			if !(j <= jx) {
 				break
 			}
-			fw += *(*float64)(unsafe.Pointer(x + uintptr(j)*8)) * f[jx+i-j]
+			fw += float64(*(*float64)(unsafe.Pointer(x + uintptr(j)*8)) * f[jx+i-j])
 			goto _4
 		_4:
 			;
@@ -101209,8 +101209,8 @@ recompute:
 		if !(j > 0) {
 			break
 		}
-		fw = float64(int32(Float64FromFloat64(5.960464477539063e-08) * z))
-		(*(*[20]Tint32_t)(unsafe.Pointer(bp)))[i] = int32(z - Float64FromFloat64(1.6777216e+07)*fw)
+		fw = float64(int32(float64(Float64FromFloat64(5.960464477539063e-08) * z)))
+		(*(*[20]Tint32_t)(unsafe.Pointer(bp)))[i] = int32(z - float64(Float64FromFloat64(1.6777216e+07)*fw))
 		z = q[j-int32(1)] + fw
 		goto _5
 	_5:
@@ -101219,8 +101219,8 @@ recompute:
 		j--
 	}
 	/* compute n */
-	z = Xscalbn(tls, z, q0)                         /* actual value of z */
-	z -= float64(8) * Xfloor(tls, z*float64(0.125)) /* trim off integer >= 8 */
+	z = Xscalbn(tls, z, q0)                                           /* actual value of z */
+	z -= float64(float64(8) * Xfloor(tls, float64(z*float64(0.125)))) /* trim off integer >= 8 */
 	n = int32(z)
 	z -= float64(n)
 	ih = 0
@@ -101313,7 +101313,7 @@ recompute:
 					if !(j <= jx) {
 						break
 					}
-					fw += *(*float64)(unsafe.Pointer(x + uintptr(j)*8)) * f[jx+i-j]
+					fw += float64(*(*float64)(unsafe.Pointer(x + uintptr(j)*8)) * f[jx+i-j])
 					goto _10
 				_10:
 					;
@@ -101340,8 +101340,8 @@ recompute:
 	} else { /* break z into 24-bit if necessary */
 		z = Xscalbn(tls, z, -q0)
 		if z >= float64(1.6777216e+07) {
-			fw = float64(int32(Float64FromFloat64(5.960464477539063e-08) * z))
-			(*(*[20]Tint32_t)(unsafe.Pointer(bp)))[jz] = int32(z - Float64FromFloat64(1.6777216e+07)*fw)
+			fw = float64(int32(float64(Float64FromFloat64(5.960464477539063e-08) * z)))
+			(*(*[20]Tint32_t)(unsafe.Pointer(bp)))[jz] = int32(z - float64(Float64FromFloat64(1.6777216e+07)*fw))
 			jz += int32(1)
 			q0 += int32(24)
 			(*(*[20]Tint32_t)(unsafe.Pointer(bp)))[jz] = int32(fw)
@@ -101356,7 +101356,7 @@ recompute:
 		if !(i >= 0) {
 			break
 		}
-		q[i] = fw * float64((*(*[20]Tint32_t)(unsafe.Pointer(bp)))[i])
+		q[i] = float64(fw * float64((*(*[20]Tint32_t)(unsafe.Pointer(bp)))[i]))
 		fw *= float64(5.960464477539063e-08)
 		goto _11
 	_11:
@@ -101375,7 +101375,7 @@ recompute:
 			if !(k <= jp && k <= jz-i) {
 				break
 			}
-			fw += _PIo2[k] * q[i+k]
+			fw += float64(_PIo2[k] * q[i+k])
 			goto _13
 		_13:
 			;
@@ -101566,19 +101566,19 @@ func X__rem_pio2f(tls *TLS, x float32, y uintptr) (r int32) {
 	/* 25+53 bit pi is good enough for medium size */
 	if ix < uint32(0x4dc90fdb) { /* |x| ~< 2^28*(pi/2), medium size */
 		/* Use a specialized rint() to get fn. */
-		fn = float64(x)*_invpio21 + _toint1 - _toint1
+		fn = Tdouble_t(float64(x)*_invpio21) + _toint1 - _toint1
 		n = int32(fn)
-		*(*float64)(unsafe.Pointer(y)) = float64(x) - fn*_pio2_11 - fn*_pio2_1t1
+		*(*float64)(unsafe.Pointer(y)) = float64(x) - Tdouble_t(fn*_pio2_11) - Tdouble_t(fn*_pio2_1t1)
 		/* Matters with directed rounding. */
 		if *(*float64)(unsafe.Pointer(y)) < -_pio41 {
 			n--
 			fn--
-			*(*float64)(unsafe.Pointer(y)) = float64(x) - fn*_pio2_11 - fn*_pio2_1t1
+			*(*float64)(unsafe.Pointer(y)) = float64(x) - Tdouble_t(fn*_pio2_11) - Tdouble_t(fn*_pio2_1t1)
 		} else {
 			if *(*float64)(unsafe.Pointer(y)) > _pio41 {
 				n++
 				fn++
-				*(*float64)(unsafe.Pointer(y)) = float64(x) - fn*_pio2_11 - fn*_pio2_1t1
+				*(*float64)(unsafe.Pointer(y)) = float64(x) - Tdouble_t(fn*_pio2_11) - Tdouble_t(fn*_pio2_1t1)
 			}
 		}
 		return n
@@ -101675,14 +101675,14 @@ func X__sin(tls *TLS, x float64, y float64, iy int32) (r1 float64) {
 	}
 	var r, v, w, z Tdouble_t
 	_, _, _, _ = r, v, w, z
-	z = x * x
-	w = z * z
-	r = _S2 + z*(_S3+z*_S4) + z*w*(_S5+z*_S6)
-	v = z * x
+	z = Tdouble_t(x * x)
+	w = Tdouble_t(z * z)
+	r = _S2 + float64(z*(_S3+float64(z*_S4))) + float64(Tdouble_t(z*w)*(_S5+float64(z*_S6)))
+	v = Tdouble_t(z * x)
 	if iy == 0 {
-		return x + v*(_S1+z*r)
+		return x + float64(v*(_S1+float64(z*r)))
 	} else {
-		return x - (z*(Float64FromFloat64(0.5)*y-v*r) - y - v*_S1)
+		return x - (Tdouble_t(z*(float64(Float64FromFloat64(0.5)*y)-float64(v*r))) - y - Tdouble_t(v*_S1))
 	}
 	return r1
 }
@@ -101704,11 +101704,11 @@ func X__sindf(tls *TLS, x float64) (r1 float32) {
 	var r, s, w, z Tdouble_t
 	_, _, _, _ = r, s, w, z
 	/* Try to optimize for parallel evaluation as in __tandf.c. */
-	z = x * x
-	w = z * z
-	r = _S31 + z*_S41
-	s = z * x
-	return float32(x + s*(_S11+z*_S21) + s*w*r)
+	z = Tdouble_t(x * x)
+	w = Tdouble_t(z * z)
+	r = _S31 + float64(z*_S41)
+	s = Tdouble_t(z * x)
+	return float32(x + float64(s*(_S11+float64(z*_S21))) + float64(Tdouble_t(s*w)*r))
 }
 
 var _T = [13]float64{
@@ -101751,21 +101751,21 @@ func X__tan(tls *TLS, x float64, y float64, odd int32) (r1 float64) {
 		x = _pio42 - x + (_pio4lo - y)
 		y = float64(0)
 	}
-	z = x * x
-	w = z * z
+	z = Tdouble_t(x * x)
+	w = Tdouble_t(z * z)
 	/*
 	 * Break x^5*(T[1]+x^2*T[2]+...) into
 	 * x^5(T[1]+x^4*T[3]+...+x^20*T[11]) +
 	 * x^5(x^2*(T[2]+x^4*T[4]+...+x^22*[T12]))
 	 */
-	r = _T[int32(1)] + w*(_T[int32(3)]+w*(_T[int32(5)]+w*(_T[int32(7)]+w*(_T[int32(9)]+w*_T[int32(11)]))))
-	v = z * (_T[int32(2)] + w*(_T[int32(4)]+w*(_T[int32(6)]+w*(_T[int32(8)]+w*(_T[int32(10)]+w*_T[int32(12)])))))
-	s = z * x
-	r = y + z*(s*(r+v)+y) + s*_T[0]
+	r = _T[int32(1)] + float64(w*(_T[int32(3)]+float64(w*(_T[int32(5)]+float64(w*(_T[int32(7)]+float64(w*(_T[int32(9)]+float64(w*_T[int32(11)])))))))))
+	v = Tdouble_t(z * (_T[int32(2)] + float64(w*(_T[int32(4)]+float64(w*(_T[int32(6)]+float64(w*(_T[int32(8)]+float64(w*(_T[int32(10)]+float64(w*_T[int32(12)])))))))))))
+	s = Tdouble_t(z * x)
+	r = y + float64(z*(Tdouble_t(s*(r+v))+y)) + float64(s*_T[0])
 	w = x + r
 	if big != 0 {
 		s = float64(int32(1) - int32(2)*odd)
-		v = s - float64(2)*(x+(r-w*w/(w+s)))
+		v = s - Tdouble_t(float64(2)*(x+(r-Tdouble_t(w*w)/(w+s))))
 		if sign != 0 {
 			v1 = -v
 		} else {
@@ -101786,7 +101786,7 @@ func X__tan(tls *TLS, x float64, y float64, odd int32) (r1 float64) {
 	a0 = v3
 	v4 = *(*Tuint64_t)(unsafe.Pointer(&a0))>>Int32FromInt32(32)<<Int32FromInt32(32) | uint64(Uint32FromInt32(Int32FromInt32(0)))
 	a0 = *(*float64)(unsafe.Pointer(&v4))
-	return a0 + a*(Float64FromFloat64(1)+a0*w0+a0*v)
+	return a0 + float64(a*(Float64FromFloat64(1)+float64(a0*w0)+float64(a0*v)))
 }
 
 // C documentation
@@ -101809,7 +101809,7 @@ func X__tandf(tls *TLS, x float64, odd int32) (r1 float32) {
 	var r, s, t, u, w, z Tdouble_t
 	var v1 float64
 	_, _, _, _, _, _, _ = r, s, t, u, w, z, v1
-	z = x * x
+	z = Tdouble_t(x * x)
 	/*
 	 * Split up the polynomial into small independent terms to give
 	 * opportunities for parallel evaluation.  The chosen splitting is
@@ -101824,12 +101824,12 @@ func X__tandf(tls *TLS, x float64, odd int32) (r1 float32) {
 	 * and would give results as accurate as Horner's method if the
 	 * small terms were added from highest degree down.
 	 */
-	r = _T1[int32(4)] + z*_T1[int32(5)]
-	t = _T1[int32(2)] + z*_T1[int32(3)]
-	w = z * z
-	s = z * x
-	u = _T1[0] + z*_T1[int32(1)]
-	r = x + s*u + s*w*(t+w*r)
+	r = _T1[int32(4)] + float64(z*_T1[int32(5)])
+	t = _T1[int32(2)] + float64(z*_T1[int32(3)])
+	w = Tdouble_t(z * z)
+	s = Tdouble_t(z * x)
+	u = _T1[0] + float64(z*_T1[int32(1)])
+	r = x + float64(s*u) + float64(Tdouble_t(s*w)*(t+Tdouble_t(w*r)))
 	if odd != 0 {
 		v1 = -Float64FromFloat64(1) / r
 	} else {
@@ -101854,8 +101854,8 @@ var _qS4 = float64(0.07703815055590194)             /* 0x3FB3B8C5, 0xB12E9282 */
 func _R(tls *TLS, z float64) (r float64) {
 	var p, q Tdouble_t
 	_, _ = p, q
-	p = z * (_pS0 + z*(_pS1+z*(_pS2+z*(_pS3+z*(_pS4+z*_pS5)))))
-	q = float64(1) + z*(_qS1+z*(_qS2+z*(_qS3+z*_qS4)))
+	p = Tdouble_t(z * (_pS0 + float64(z*(_pS1+float64(z*(_pS2+float64(z*(_pS3+float64(z*(_pS4+float64(z*_pS5)))))))))))
+	q = float64(1) + float64(z*(_qS1+float64(z*(_qS2+float64(z*(_qS3+float64(z*_qS4)))))))
 	return p / q
 }
 
@@ -101876,7 +101876,7 @@ func Xacos(tls *TLS, x float64) (r float64) {
 		if ix-uint32(0x3ff00000)|lx == uint32(0) {
 			/* acos(1)=0, acos(-1)=pi */
 			if hx>>int32(31) != 0 {
-				return Float64FromInt32(2)*_pio2_hi + Float64FromFloat32(7.52316384526264e-37)
+				return float64(Float64FromInt32(2)*_pio2_hi) + Float64FromFloat32(7.52316384526264e-37)
 			}
 			return Float64FromInt32(0)
 		}
@@ -101887,24 +101887,24 @@ func Xacos(tls *TLS, x float64) (r float64) {
 		if ix <= uint32(0x3c600000) { /* |x| < 2**-57 */
 			return _pio2_hi + Float64FromFloat32(7.52316384526264e-37)
 		}
-		return _pio2_hi - (x - (_pio2_lo - x*_R(tls, x*x)))
+		return _pio2_hi - (x - (_pio2_lo - float64(x*_R(tls, float64(x*x)))))
 	}
 	/* x < -0.5 */
 	if hx>>int32(31) != 0 {
-		z = (float64(1) + x) * float64(0.5)
+		z = float64((float64(1) + x) * float64(0.5))
 		s = Xsqrt(tls, z)
-		w = _R(tls, z)*s - _pio2_lo
-		return Float64FromInt32(2) * (_pio2_hi - (s + w))
+		w = float64(_R(tls, z)*s) - _pio2_lo
+		return float64(Float64FromInt32(2) * (_pio2_hi - (s + w)))
 	}
 	/* x > 0.5 */
-	z = (float64(1) - x) * float64(0.5)
+	z = float64((float64(1) - x) * float64(0.5))
 	s = Xsqrt(tls, z)
 	df = s
 	v1 = *(*Tuint64_t)(unsafe.Pointer(&df))>>Int32FromInt32(32)<<Int32FromInt32(32) | uint64(Uint32FromInt32(Int32FromInt32(0)))
 	df = *(*float64)(unsafe.Pointer(&v1))
-	c = (z - df*df) / (s + df)
-	w = _R(tls, z)*s + c
-	return Float64FromInt32(2) * (df + w)
+	c = (z - float64(df*df)) / (s + df)
+	w = float64(_R(tls, z)*s) + c
+	return float64(Float64FromInt32(2) * (df + w))
 }
 
 var _pio2_hi1 = float32(1.5707962513)     /* 0x3fc90fda */
@@ -101917,8 +101917,8 @@ var _qS11 = float32(-Float64FromFloat64(0.7066296339))
 func _R1(tls *TLS, z float32) (r float32) {
 	var p, q Tfloat_t
 	_, _ = p, q
-	p = float64(z * (_pS01 + z*(_pS11+z*_pS21)))
-	q = float64(Float32FromFloat32(1) + z*_qS11)
+	p = Tfloat_t(z * (_pS01 + float32(z*(_pS11+float32(z*_pS21)))))
+	q = float64(Float32FromFloat32(1) + float32(z*_qS11))
 	return float32(p / q)
 }
 
@@ -101936,7 +101936,7 @@ func Xacosf(tls *TLS, x float32) (r float32) {
 	if ix >= uint32(0x3f800000) {
 		if ix == uint32(0x3f800000) {
 			if hx>>int32(31) != 0 {
-				return Float32FromInt32(2)*_pio2_hi1 + Float32FromFloat32(7.52316384526264e-37)
+				return float32(Float32FromInt32(2)*_pio2_hi1) + Float32FromFloat32(7.52316384526264e-37)
 			}
 			return Float32FromInt32(0)
 		}
@@ -101947,24 +101947,24 @@ func Xacosf(tls *TLS, x float32) (r float32) {
 		if ix <= uint32(0x32800000) { /* |x| < 2**-26 */
 			return _pio2_hi1 + Float32FromFloat32(7.52316384526264e-37)
 		}
-		return _pio2_hi1 - (x - (_pio2_lo1 - x*_R1(tls, x*x)))
+		return _pio2_hi1 - (x - (_pio2_lo1 - float32(x*_R1(tls, float32(x*x)))))
 	}
 	/* x < -0.5 */
 	if hx>>int32(31) != 0 {
-		z = (Float32FromInt32(1) + x) * Float32FromFloat32(0.5)
+		z = float32((Float32FromInt32(1) + x) * Float32FromFloat32(0.5))
 		s = Xsqrtf(tls, z)
-		w = _R1(tls, z)*s - _pio2_lo1
-		return Float32FromInt32(2) * (_pio2_hi1 - (s + w))
+		w = float32(_R1(tls, z)*s) - _pio2_lo1
+		return float32(Float32FromInt32(2) * (_pio2_hi1 - (s + w)))
 	}
 	/* x > 0.5 */
-	z = (Float32FromInt32(1) - x) * Float32FromFloat32(0.5)
+	z = float32((Float32FromInt32(1) - x) * Float32FromFloat32(0.5))
 	s = Xsqrtf(tls, z)
 	hx = *(*Tuint32_t)(unsafe.Pointer(&s))
 	v1 = hx & uint32(0xfffff000)
 	df = *(*float32)(unsafe.Pointer(&v1))
-	c = (z - df*df) / (s + df)
-	w = _R1(tls, z)*s + c
-	return Float32FromInt32(2) * (df + w)
+	c = (z - float32(df*df)) / (s + df)
+	w = float32(_R1(tls, z)*s) + c
+	return float32(Float32FromInt32(2) * (df + w))
 }
 
 // C documentation
@@ -101995,11 +101995,11 @@ func Xacosh(tls *TLS, x float64) (r float64) {
 	/* x < 1 domain error is handled in the called functions */
 	if e < Uint32FromInt32(Int32FromInt32(0x3ff)+Int32FromInt32(1)) {
 		/* |x| < 2, up to 2ulp error in [1,1.125] */
-		return Xlog1p(tls, x-Float64FromInt32(1)+Xsqrt(tls, (x-Float64FromInt32(1))*(x-Float64FromInt32(1))+Float64FromInt32(2)*(x-Float64FromInt32(1))))
+		return Xlog1p(tls, x-Float64FromInt32(1)+Xsqrt(tls, float64((x-Float64FromInt32(1))*(x-Float64FromInt32(1)))+float64(Float64FromInt32(2)*(x-Float64FromInt32(1)))))
 	}
 	if e < Uint32FromInt32(Int32FromInt32(0x3ff)+Int32FromInt32(26)) {
 		/* |x| < 0x1p26 */
-		return Xlog(tls, Float64FromInt32(2)*x-Float64FromInt32(1)/(x+Xsqrt(tls, x*x-Float64FromInt32(1))))
+		return Xlog(tls, float64(Float64FromInt32(2)*x)-Float64FromInt32(1)/(x+Xsqrt(tls, float64(x*x)-Float64FromInt32(1))))
 	}
 	/* |x| >= 0x1p26 or nan */
 	return Xlog(tls, x) + float64(0.6931471805599453)
@@ -102033,11 +102033,11 @@ func Xacoshf(tls *TLS, x float32) (r float32) {
 	if a < Uint32FromInt32(Int32FromInt32(0x3f800000)+Int32FromInt32(1)<<Int32FromInt32(23)) {
 		/* |x| < 2, invalid if x < 1 */
 		/* up to 2ulp error in [1,1.125] */
-		return Xlog1pf(tls, x-Float32FromInt32(1)+Xsqrtf(tls, (x-Float32FromInt32(1))*(x-Float32FromInt32(1))+Float32FromInt32(2)*(x-Float32FromInt32(1))))
+		return Xlog1pf(tls, x-Float32FromInt32(1)+Xsqrtf(tls, float32((x-Float32FromInt32(1))*(x-Float32FromInt32(1)))+float32(Float32FromInt32(2)*(x-Float32FromInt32(1)))))
 	}
 	if *(*Tuint32_t)(unsafe.Pointer(bp)) < Uint32FromInt32(Int32FromInt32(0x3f800000)+Int32FromInt32(12)<<Int32FromInt32(23)) {
 		/* 2 <= x < 0x1p12 */
-		return Xlogf(tls, Float32FromInt32(2)*x-Float32FromInt32(1)/(x+Xsqrtf(tls, x*x-Float32FromInt32(1))))
+		return Xlogf(tls, float32(Float32FromInt32(2)*x)-Float32FromInt32(1)/(x+Xsqrtf(tls, float32(x*x)-Float32FromInt32(1))))
 	}
 	/* x >= 0x1p12 or x <= -2 or nan */
 	return Xlogf(tls, x) + Float32FromFloat32(0.6931471805599453)
@@ -102076,8 +102076,8 @@ var _qS41 = float64(0.07703815055590194)             /* 0x3FB3B8C5, 0xB12E9282 *
 func _R2(tls *TLS, z float64) (r float64) {
 	var p, q Tdouble_t
 	_, _ = p, q
-	p = z * (_pS02 + z*(_pS12+z*(_pS22+z*(_pS31+z*(_pS41+z*_pS51)))))
-	q = float64(1) + z*(_qS12+z*(_qS21+z*(_qS31+z*_qS41)))
+	p = Tdouble_t(z * (_pS02 + float64(z*(_pS12+float64(z*(_pS22+float64(z*(_pS31+float64(z*(_pS41+float64(z*_pS51)))))))))))
+	q = float64(1) + float64(z*(_qS12+float64(z*(_qS21+float64(z*(_qS31+float64(z*_qS41)))))))
 	return p / q
 }
 
@@ -102097,7 +102097,7 @@ func Xasin(tls *TLS, x float64) (r1 float64) {
 		lx = uint32(*(*Tuint64_t)(unsafe.Pointer(&x)))
 		if ix-uint32(0x3ff00000)|lx == uint32(0) {
 			/* asin(1) = +-pi/2 with inexact */
-			return x*_pio2_hi2 + Float64FromFloat32(7.52316384526264e-37)
+			return float64(x*_pio2_hi2) + Float64FromFloat32(7.52316384526264e-37)
 		}
 		return Float64FromInt32(0) / (x - x)
 	}
@@ -102107,21 +102107,21 @@ func Xasin(tls *TLS, x float64) (r1 float64) {
 		if ix < uint32(0x3e500000) && ix >= uint32(0x00100000) {
 			return x
 		}
-		return x + x*_R2(tls, x*x)
+		return x + float64(x*_R2(tls, float64(x*x)))
 	}
 	/* 1 > |x| >= 0.5 */
-	z = (Float64FromInt32(1) - Xfabs(tls, x)) * float64(0.5)
+	z = float64((Float64FromInt32(1) - Xfabs(tls, x)) * float64(0.5))
 	s = Xsqrt(tls, z)
 	r = _R2(tls, z)
 	if ix >= uint32(0x3fef3333) { /* if |x| > 0.975 */
-		x = _pio2_hi2 - (Float64FromInt32(2)*(s+s*r) - _pio2_lo2)
+		x = _pio2_hi2 - (float64(Float64FromInt32(2)*(s+float64(s*r))) - _pio2_lo2)
 	} else {
 		/* f+c = sqrt(z) */
 		f = s
 		v1 = *(*Tuint64_t)(unsafe.Pointer(&f))>>Int32FromInt32(32)<<Int32FromInt32(32) | uint64(Uint32FromInt32(Int32FromInt32(0)))
 		f = *(*float64)(unsafe.Pointer(&v1))
-		c = (z - f*f) / (s + f)
-		x = float64(0.5)*_pio2_hi2 - (Float64FromInt32(2)*s*r - (_pio2_lo2 - Float64FromInt32(2)*c) - (float64(0.5)*_pio2_hi2 - Float64FromInt32(2)*f))
+		c = (z - float64(f*f)) / (s + f)
+		x = float64(float64(0.5)*_pio2_hi2) - (float64(float64(Float64FromInt32(2)*s)*r) - (_pio2_lo2 - float64(Float64FromInt32(2)*c)) - (float64(float64(0.5)*_pio2_hi2) - float64(Float64FromInt32(2)*f)))
 	}
 	if hx>>int32(31) != 0 {
 		return -x
@@ -102140,8 +102140,8 @@ var _qS13 = float32(-Float64FromFloat64(0.7066296339))
 func _R3(tls *TLS, z float32) (r float32) {
 	var p, q Tfloat_t
 	_, _ = p, q
-	p = float64(z * (_pS03 + z*(_pS13+z*_pS23)))
-	q = float64(Float32FromFloat32(1) + z*_qS13)
+	p = Tfloat_t(z * (_pS03 + float32(z*(_pS13+float32(z*_pS23)))))
+	q = float64(Float32FromFloat32(1) + float32(z*_qS13))
 	return float32(p / q)
 }
 
@@ -102158,7 +102158,7 @@ func Xasinf(tls *TLS, x float32) (r float32) {
 	ix = hx & uint32(0x7fffffff)
 	if ix >= uint32(0x3f800000) { /* |x| >= 1 */
 		if ix == uint32(0x3f800000) { /* |x| == 1 */
-			return float32(float64(x)*_pio2 + Float64FromFloat32(7.52316384526264e-37))
+			return float32(float64(float64(x)*_pio2) + Float64FromFloat32(7.52316384526264e-37))
 		} /* asin(+-1) = +-pi/2 with inexact */
 		return Float32FromInt32(0) / (x - x) /* asin(|x|>1) is NaN */
 	}
@@ -102167,12 +102167,12 @@ func Xasinf(tls *TLS, x float32) (r float32) {
 		if ix < uint32(0x39800000) && ix >= uint32(0x00800000) {
 			return x
 		}
-		return x + x*_R3(tls, x*x)
+		return x + float32(x*_R3(tls, float32(x*x)))
 	}
 	/* 1 > |x| >= 0.5 */
-	z = (Float32FromInt32(1) - Xfabsf(tls, x)) * Float32FromFloat32(0.5)
+	z = float32((Float32FromInt32(1) - Xfabsf(tls, x)) * Float32FromFloat32(0.5))
 	s = Xsqrt(tls, float64(z))
-	x = float32(_pio2 - Float64FromInt32(2)*(s+s*float64(_R3(tls, z))))
+	x = float32(_pio2 - float64(Float64FromInt32(2)*(s+float64(s*float64(_R3(tls, z))))))
 	if hx>>int32(31) != 0 {
 		return -x
 	}
@@ -102216,11 +102216,11 @@ func Xasinh(tls *TLS, x3 float64) (r float64) {
 	} else {
 		if e >= Uint32FromInt32(Int32FromInt32(0x3ff)+Int32FromInt32(1)) {
 			/* |x| >= 2 */
-			x3 = Xlog(tls, Float64FromInt32(2)*x3+Float64FromInt32(1)/(Xsqrt(tls, x3*x3+Float64FromInt32(1))+x3))
+			x3 = Xlog(tls, float64(Float64FromInt32(2)*x3)+Float64FromInt32(1)/(Xsqrt(tls, float64(x3*x3)+Float64FromInt32(1))+x3))
 		} else {
 			if e >= Uint32FromInt32(Int32FromInt32(0x3ff)-Int32FromInt32(26)) {
 				/* |x| >= 0x1p-26, up to 1.6ulp error in [0.125,0.5] */
-				x3 = Xlog1p(tls, x3+x3*x3/(Xsqrt(tls, x3*x3+Float64FromInt32(1))+Float64FromInt32(1)))
+				x3 = Xlog1p(tls, x3+float64(x3*x3)/(Xsqrt(tls, float64(x3*x3)+Float64FromInt32(1))+Float64FromInt32(1)))
 			} else {
 				/* |x| < 0x1p-26, raise inexact if x != 0 */
 				if uint64(8) == uint64(4) {
@@ -102229,7 +102229,7 @@ func Xasinh(tls *TLS, x3 float64) (r float64) {
 					if uint64(8) == uint64(8) {
 						y1 = x3 + Float64FromFloat32(1.329227995784916e+36)
 					} else {
-						y2 = x3 + Float64FromFloat32(1.329227995784916e+36)
+						y2 = float64(x3 + Float64FromFloat32(1.329227995784916e+36))
 					}
 				}
 			}
@@ -102281,11 +102281,11 @@ func Xasinhf(tls *TLS, x3 float32) (r float32) {
 	} else {
 		if i >= Uint32FromInt32(Int32FromInt32(0x3f800000)+Int32FromInt32(1)<<Int32FromInt32(23)) {
 			/* |x| >= 2 */
-			x3 = Xlogf(tls, Float32FromInt32(2)*x3+Float32FromInt32(1)/(Xsqrtf(tls, x3*x3+Float32FromInt32(1))+x3))
+			x3 = Xlogf(tls, float32(Float32FromInt32(2)*x3)+Float32FromInt32(1)/(Xsqrtf(tls, float32(x3*x3)+Float32FromInt32(1))+x3))
 		} else {
 			if i >= Uint32FromInt32(Int32FromInt32(0x3f800000)-Int32FromInt32(12)<<Int32FromInt32(23)) {
 				/* |x| >= 0x1p-12, up to 1.6ulp error in [0.125,0.5] */
-				x3 = Xlog1pf(tls, x3+x3*x3/(Xsqrtf(tls, x3*x3+Float32FromInt32(1))+Float32FromInt32(1)))
+				x3 = Xlog1pf(tls, x3+float32(x3*x3)/(Xsqrtf(tls, float32(x3*x3)+Float32FromInt32(1))+Float32FromInt32(1)))
 			} else {
 				/* |x| < 0x1p-12, raise inexact if x!=0 */
 				if uint64(4) == uint64(4) {
@@ -102411,7 +102411,7 @@ func Xatan(tls *TLS, x3 float64) (r float64) {
 		if ix < uint32(0x3ff30000) { /* |x| < 1.1875 */
 			if ix < uint32(0x3fe60000) { /*  7/16 <= |x| < 11/16 */
 				id = 0
-				x3 = (float64(2)*x3 - float64(1)) / (float64(2) + x3)
+				x3 = (float64(float64(2)*x3) - float64(1)) / (float64(2) + x3)
 			} else { /* 11/16 <= |x| < 19/16 */
 				id = int32(1)
 				x3 = (x3 - float64(1)) / (x3 + float64(1))
@@ -102419,7 +102419,7 @@ func Xatan(tls *TLS, x3 float64) (r float64) {
 		} else {
 			if ix < uint32(0x40038000) { /* |x| < 2.4375 */
 				id = int32(2)
-				x3 = (x3 - float64(1.5)) / (float64(1) + float64(1.5)*x3)
+				x3 = (x3 - float64(1.5)) / (float64(1) + float64(float64(1.5)*x3))
 			} else { /* 2.4375 <= |x| < 2^66 */
 				id = int32(3)
 				x3 = -Float64FromFloat64(1) / x3
@@ -102427,15 +102427,15 @@ func Xatan(tls *TLS, x3 float64) (r float64) {
 		}
 	}
 	/* end of argument reduction */
-	z = x3 * x3
-	w = z * z
+	z = Tdouble_t(x3 * x3)
+	w = Tdouble_t(z * z)
 	/* break sum from i=0 to 10 aT[i]z**(i+1) into odd and even poly */
-	s1 = z * (_aT[0] + w*(_aT[int32(2)]+w*(_aT[int32(4)]+w*(_aT[int32(6)]+w*(_aT[int32(8)]+w*_aT[int32(10)])))))
-	s2 = w * (_aT[int32(1)] + w*(_aT[int32(3)]+w*(_aT[int32(5)]+w*(_aT[int32(7)]+w*_aT[int32(9)]))))
+	s1 = Tdouble_t(z * (_aT[0] + float64(w*(_aT[int32(2)]+float64(w*(_aT[int32(4)]+float64(w*(_aT[int32(6)]+float64(w*(_aT[int32(8)]+float64(w*_aT[int32(10)])))))))))))
+	s2 = Tdouble_t(w * (_aT[int32(1)] + float64(w*(_aT[int32(3)]+float64(w*(_aT[int32(5)]+float64(w*(_aT[int32(7)]+float64(w*_aT[int32(9)])))))))))
 	if id < 0 {
-		return x3 - x3*(s1+s2)
+		return x3 - float64(x3*(s1+s2))
 	}
-	z = _atanhi[id] - (x3*(s1+s2) - _atanlo[id] - x3)
+	z = _atanhi[id] - (float64(x3*(s1+s2)) - _atanlo[id] - x3)
 	if sign != 0 {
 		v4 = -z
 	} else {
@@ -102521,9 +102521,9 @@ _2:
 			case uint32(1):
 				return -_pi / Float64FromInt32(4) /* atan(-INF,+INF) */
 			case uint32(2):
-				return Float64FromInt32(3) * _pi / Float64FromInt32(4) /* atan(+INF,-INF) */
+				return float64(Float64FromInt32(3)*_pi) / Float64FromInt32(4) /* atan(+INF,-INF) */
 			case uint32(3):
-				return float64(-Int32FromInt32(3)) * _pi / Float64FromInt32(4) /* atan(-INF,-INF) */
+				return float64(float64(-Int32FromInt32(3))*_pi) / Float64FromInt32(4) /* atan(-INF,-INF) */
 			}
 		} else {
 			switch m {
@@ -102638,9 +102638,9 @@ _2:
 			case uint32(1):
 				return -_pi1 / Float32FromInt32(4) /* atan(-INF,+INF) */
 			case uint32(2):
-				return Float32FromInt32(3) * _pi1 / Float32FromInt32(4) /*atan(+INF,-INF)*/
+				return float32(Float32FromInt32(3)*_pi1) / Float32FromInt32(4) /*atan(+INF,-INF)*/
 			case uint32(3):
-				return float32(-Int32FromInt32(3)) * _pi1 / Float32FromInt32(4) /*atan(-INF,-INF)*/
+				return float32(float32(-Int32FromInt32(3))*_pi1) / Float32FromInt32(4) /*atan(-INF,-INF)*/
 			}
 		} else {
 			switch m {
@@ -102755,7 +102755,7 @@ func Xatanf(tls *TLS, x3 float32) (r float32) {
 			if ix < uint32(0x00800000) {
 				/* raise underflow for subnormal x */
 				if uint64(4) == uint64(4) {
-					y = x3 * x3
+					y = float32(x3 * x3)
 				} else {
 					if uint64(4) == uint64(8) {
 						y1 = float64(x3 * x3)
@@ -102772,7 +102772,7 @@ func Xatanf(tls *TLS, x3 float32) (r float32) {
 		if ix < uint32(0x3f980000) { /* |x| < 1.1875 */
 			if ix < uint32(0x3f300000) { /*  7/16 <= |x| < 11/16 */
 				id = 0
-				x3 = (Float32FromFloat32(2)*x3 - Float32FromFloat32(1)) / (Float32FromFloat32(2) + x3)
+				x3 = (float32(Float32FromFloat32(2)*x3) - Float32FromFloat32(1)) / (Float32FromFloat32(2) + x3)
 			} else { /* 11/16 <= |x| < 19/16 */
 				id = int32(1)
 				x3 = (x3 - Float32FromFloat32(1)) / (x3 + Float32FromFloat32(1))
@@ -102780,7 +102780,7 @@ func Xatanf(tls *TLS, x3 float32) (r float32) {
 		} else {
 			if ix < uint32(0x401c0000) { /* |x| < 2.4375 */
 				id = int32(2)
-				x3 = (x3 - Float32FromFloat32(1.5)) / (Float32FromFloat32(1) + Float32FromFloat32(1.5)*x3)
+				x3 = (x3 - Float32FromFloat32(1.5)) / (Float32FromFloat32(1) + float32(Float32FromFloat32(1.5)*x3))
 			} else { /* 2.4375 <= |x| < 2**26 */
 				id = int32(3)
 				x3 = -Float32FromFloat32(1) / x3
@@ -102788,15 +102788,15 @@ func Xatanf(tls *TLS, x3 float32) (r float32) {
 		}
 	}
 	/* end of argument reduction */
-	z = float64(x3 * x3)
-	w = z * z
+	z = Tfloat_t(x3 * x3)
+	w = Tfloat_t(z * z)
 	/* break sum from i=0 to 10 aT[i]z**(i+1) into odd and even poly */
-	s1 = z * (float64(_aT1[0]) + w*(float64(_aT1[int32(2)])+w*float64(_aT1[int32(4)])))
-	s2 = w * (float64(_aT1[int32(1)]) + w*float64(_aT1[int32(3)]))
+	s1 = Tfloat_t(z * (float64(_aT1[0]) + Tfloat_t(w*(float64(_aT1[int32(2)])+Tfloat_t(w*float64(_aT1[int32(4)]))))))
+	s2 = Tfloat_t(w * (float64(_aT1[int32(1)]) + Tfloat_t(w*float64(_aT1[int32(3)]))))
 	if id < 0 {
-		return float32(float64(x3) - float64(x3)*(s1+s2))
+		return float32(float64(x3) - Tfloat_t(float64(x3)*(s1+s2)))
 	}
-	z = float64(_atanhi1[id]) - (float64(x3)*(s1+s2) - float64(_atanlo1[id]) - float64(x3))
+	z = float64(_atanhi1[id]) - (Tfloat_t(float64(x3)*(s1+s2)) - float64(_atanlo1[id]) - float64(x3))
 	if sign != 0 {
 		v4 = -z
 	} else {
@@ -102853,11 +102853,11 @@ func Xatanh(tls *TLS, x3 float64) (r float64) {
 			}
 		} else {
 			/* |x| < 0.5, up to 1.7ulp error */
-			y3 = float64(0.5) * Xlog1p(tls, Float64FromInt32(2)*y3+Float64FromInt32(2)*y3*y3/(Float64FromInt32(1)-y3))
+			y3 = Tdouble_t(float64(0.5) * Xlog1p(tls, Tdouble_t(Float64FromInt32(2)*y3)+Tdouble_t(Tdouble_t(Float64FromInt32(2)*y3)*y3)/(Float64FromInt32(1)-y3)))
 		}
 	} else {
 		/* avoid overflow */
-		y3 = float64(0.5) * Xlog1p(tls, Float64FromInt32(2)*(y3/(Float64FromInt32(1)-y3)))
+		y3 = Tdouble_t(float64(0.5) * Xlog1p(tls, float64(Float64FromInt32(2)*(y3/(Float64FromInt32(1)-y3)))))
 	}
 	if s != 0 {
 		v1 = -y3
@@ -102903,22 +102903,22 @@ func Xatanhf(tls *TLS, x3 float32) (r float32) {
 			/* handle underflow */
 			if *(*Tuint32_t)(unsafe.Pointer(bp)) < Uint32FromInt32(Int32FromInt32(1)<<Int32FromInt32(23)) {
 				if uint64(4) == uint64(4) {
-					y = float32(y3 * y3)
+					y = float32(Tfloat_t(y3 * y3))
 				} else {
 					if uint64(4) == uint64(8) {
-						y1 = float64(float32(y3 * y3))
+						y1 = float64(float32(Tfloat_t(y3 * y3)))
 					} else {
-						y2 = float64(float32(y3 * y3))
+						y2 = float64(float32(Tfloat_t(y3 * y3)))
 					}
 				}
 			}
 		} else {
 			/* |x| < 0.5, up to 1.7ulp error */
-			y3 = float64(Float32FromFloat32(0.5) * Xlog1pf(tls, float32(Float64FromInt32(2)*y3+Float64FromInt32(2)*y3*y3/(Float64FromInt32(1)-y3))))
+			y3 = Tfloat_t(Float32FromFloat32(0.5) * Xlog1pf(tls, float32(Tfloat_t(Float64FromInt32(2)*y3)+Tfloat_t(Tfloat_t(Float64FromInt32(2)*y3)*y3)/(Float64FromInt32(1)-y3))))
 		}
 	} else {
 		/* avoid overflow */
-		y3 = float64(Float32FromFloat32(0.5) * Xlog1pf(tls, float32(Float64FromInt32(2)*(y3/(Float64FromInt32(1)-y3)))))
+		y3 = Tfloat_t(Float32FromFloat32(0.5) * Xlog1pf(tls, float32(Float64FromInt32(2)*(y3/(Float64FromInt32(1)-y3)))))
 	}
 	if s != 0 {
 		v1 = -y3
@@ -103000,7 +103000,7 @@ func Xcbrt(tls *TLS, x float64) (r1 float64) {
 	 * division rounds towards minus infinity; this is also efficient.
 	 */
 	if hx < uint32(0x00100000) { /* zero or subnormal? */
-		*(*float64)(unsafe.Pointer(bp)) = x * float64(1.8014398509481984e+16)
+		*(*float64)(unsafe.Pointer(bp)) = float64(x * float64(1.8014398509481984e+16))
 		hx = uint32(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(32) & uint64(0x7fffffff))
 		if hx == uint32(0) {
 			return x
@@ -103010,7 +103010,7 @@ func Xcbrt(tls *TLS, x float64) (r1 float64) {
 		hx = hx/uint32(3) + _B1
 	}
 	p1 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & (Uint64FromUint64(1) << Int32FromInt32(63))
+	*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & (Uint64FromUint64(1) << Int32FromInt32(63)))
 	*(*Tuint64_t)(unsafe.Pointer(bp)) |= uint64(hx) << int32(32)
 	t = *(*float64)(unsafe.Pointer(bp))
 	/*
@@ -103023,8 +103023,8 @@ func Xcbrt(tls *TLS, x float64) (r1 float64) {
 	 *
 	 * Try to optimize for parallel evaluation as in __tanf.c.
 	 */
-	r = t * t * (t / x)
-	t = t * (_P0 + r*(_P1+r*_P2) + r*r*r*(_P3+r*_P4))
+	r = Tdouble_t(Tdouble_t(t*t) * (t / x))
+	t = Tdouble_t(t * (_P0 + float64(r*(_P1+float64(r*_P2))) + float64(Tdouble_t(Tdouble_t(r*r)*r)*(_P3+float64(r*_P4)))))
 	/*
 	 * Round t away from zero to 23 bits (sloppily except for ensuring that
 	 * the result is larger in magnitude than cbrt(x) but not much more than
@@ -103036,14 +103036,14 @@ func Xcbrt(tls *TLS, x float64) (r1 float64) {
 	 * before the final error is larger than 0.667 ulps.
 	 */
 	*(*float64)(unsafe.Pointer(bp)) = t
-	*(*Tuint64_t)(unsafe.Pointer(bp)) = (*(*Tuint64_t)(unsafe.Pointer(bp)) + Uint64FromUint32(0x80000000)) & uint64(0xffffffffc0000000)
+	*(*Tuint64_t)(unsafe.Pointer(bp)) = uint64(*(*Tuint64_t)(unsafe.Pointer(bp))+Uint64FromUint32(0x80000000)) & uint64(0xffffffffc0000000)
 	t = *(*float64)(unsafe.Pointer(bp))
 	/* one step Newton iteration to 53 bits with error < 0.667 ulps */
-	s = t * t             /* t*t is exact */
-	r = x / s             /* error <= 0.5 ulps; |r| < |t| */
-	w = t + t             /* t+t is exact */
-	r = (r - t) / (w + r) /* r-t is exact; w+r ~= 3*t */
-	t = t + t*r           /* error <= 0.5 + 0.5/3 + epsilon */
+	s = Tdouble_t(t * t)   /* t*t is exact */
+	r = x / s              /* error <= 0.5 ulps; |r| < |t| */
+	w = t + t              /* t+t is exact */
+	r = (r - t) / (w + r)  /* r-t is exact; w+r ~= 3*t */
+	t = t + Tdouble_t(t*r) /* error <= 0.5 + 0.5/3 + epsilon */
 	return t
 }
 
@@ -103081,7 +103081,7 @@ func Xcbrtf(tls *TLS, x float32) (r1 float32) {
 		if hx == uint32(0) {
 			return x
 		} /* cbrt(+-0) is itself */
-		*(*float32)(unsafe.Pointer(bp)) = x * Float32FromFloat32(1.6777216e+07)
+		*(*float32)(unsafe.Pointer(bp)) = float32(x * Float32FromFloat32(1.6777216e+07))
 		hx = *(*Tuint32_t)(unsafe.Pointer(bp)) & uint32(0x7fffffff)
 		hx = hx/uint32(3) + _B21
 	} else {
@@ -103095,14 +103095,14 @@ func Xcbrtf(tls *TLS, x float32) (r1 float32) {
 	 * without causing overflow or underflow.
 	 */
 	T = float64(*(*float32)(unsafe.Pointer(bp)))
-	r = T * T * T
-	T = T * (float64(x) + float64(x) + r) / (float64(x) + r + r)
+	r = Tdouble_t(Tdouble_t(T*T) * T)
+	T = Tdouble_t(T*(float64(x)+float64(x)+r)) / (float64(x) + r + r)
 	/*
 	 * Second step Newton iteration to 47 bits.  In double precision for
 	 * efficiency and accuracy.
 	 */
-	r = T * T * T
-	T = T * (float64(x) + float64(x) + r) / (float64(x) + r + r)
+	r = Tdouble_t(Tdouble_t(T*T) * T)
+	T = Tdouble_t(T*(float64(x)+float64(x)+r)) / (float64(x) + r + r)
 	/* rounding to 24 bits is perfect in round-to-nearest mode */
 	return float32(T)
 }
@@ -103288,9 +103288,9 @@ func Xcopysign(tls *TLS, x float64, y float64) (r float64) {
 	}{}
 	*(*float64)(unsafe.Pointer(bp + 8)) = y
 	p1 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) / Uint64FromInt32(2))
+	*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) / Uint64FromInt32(2)))
 	p2 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p2)) = *(*Tuint64_t)(unsafe.Pointer(p2)) | *(*Tuint64_t)(unsafe.Pointer(bp + 8))&(Uint64FromUint64(1)<<Int32FromInt32(63))
+	*(*Tuint64_t)(unsafe.Pointer(p2)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p2)) | *(*Tuint64_t)(unsafe.Pointer(bp + 8))&(Uint64FromUint64(1)<<Int32FromInt32(63)))
 	return *(*float64)(unsafe.Pointer(bp))
 }
 
@@ -103363,7 +103363,7 @@ func Xcos(tls *TLS, x3 float64) (r float64) {
 				if uint64(8) == uint64(8) {
 					y1 = x3 + Float64FromFloat32(1.329227995784916e+36)
 				} else {
-					y2 = x3 + Float64FromFloat32(1.329227995784916e+36)
+					y2 = float64(x3 + Float64FromFloat32(1.329227995784916e+36))
 				}
 			}
 			return float64(1)
@@ -103395,10 +103395,10 @@ const M_PI_23 = 1.5707963267948966
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
 
-var _c1pio2 = Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966) /* 0x3FF921FB, 0x54442D18 */
-var _c2pio2 = Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966) /* 0x400921FB, 0x54442D18 */
-var _c3pio2 = Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966) /* 0x4012D97C, 0x7F3321D2 */
-var _c4pio2 = Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966) /* 0x401921FB, 0x54442D18 */
+var _c1pio2 = float64(Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966)) /* 0x3FF921FB, 0x54442D18 */
+var _c2pio2 = float64(Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966)) /* 0x400921FB, 0x54442D18 */
+var _c3pio2 = float64(Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966)) /* 0x4012D97C, 0x7F3321D2 */
+var _c4pio2 = float64(Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966)) /* 0x401921FB, 0x54442D18 */
 
 func Xcosf(tls *TLS, x3 float32) (r float32) {
 	if __ccgo_strace {
@@ -103528,19 +103528,19 @@ func Xcosh(tls *TLS, x3 float64) (r float64) {
 				if uint64(8) == uint64(8) {
 					y1 = x3 + Float64FromFloat32(1.329227995784916e+36)
 				} else {
-					y2 = x3 + Float64FromFloat32(1.329227995784916e+36)
+					y2 = float64(x3 + Float64FromFloat32(1.329227995784916e+36))
 				}
 			}
 			return Float64FromInt32(1)
 		}
 		t = Xexpm1(tls, x3)
-		return Float64FromInt32(1) + t*t/(Float64FromInt32(2)*(Float64FromInt32(1)+t))
+		return Float64FromInt32(1) + float64(t*t)/float64(Float64FromInt32(2)*(Float64FromInt32(1)+t))
 	}
 	/* |x| < log(DBL_MAX) */
 	if w < uint32(0x40862e42) {
 		t = Xexp(tls, x3)
 		/* note: if x>log(0x1p26) then the 1/t is not needed */
-		return float64(0.5) * (t + Float64FromInt32(1)/t)
+		return float64(float64(0.5) * (t + Float64FromInt32(1)/t))
 	}
 	/* |x| > log(DBL_MAX) or nan */
 	/* note: the result is stored to handle overflow */
@@ -103590,12 +103590,12 @@ func Xcoshf(tls *TLS, x3 float32) (r float32) {
 			return Float32FromInt32(1)
 		}
 		t = Xexpm1f(tls, x3)
-		return Float32FromInt32(1) + t*t/(Float32FromInt32(2)*(Float32FromInt32(1)+t))
+		return Float32FromInt32(1) + float32(t*t)/float32(Float32FromInt32(2)*(Float32FromInt32(1)+t))
 	}
 	/* |x| < log(FLT_MAX) */
 	if w < uint32(0x42b17217) {
 		t = Xexpf(tls, x3)
-		return Float32FromFloat32(0.5) * (t + Float32FromInt32(1)/t)
+		return float32(Float32FromFloat32(0.5) * (t + Float32FromInt32(1)/t))
 	}
 	/* |x| > log(FLT_MAX) or nan */
 	t = X__expo2f(tls, x3, Float32FromFloat32(1))
@@ -103690,8 +103690,8 @@ func _erfc1(tls *TLS, x float64) (r float64) {
 	var P, Q, s Tdouble_t
 	_, _, _ = P, Q, s
 	s = Xfabs(tls, x) - Float64FromInt32(1)
-	P = _pa0 + s*(_pa1+s*(_pa2+s*(_pa3+s*(_pa4+s*(_pa5+s*_pa6)))))
-	Q = Float64FromInt32(1) + s*(_qa1+s*(_qa2+s*(_qa3+s*(_qa4+s*(_qa5+s*_qa6)))))
+	P = _pa0 + float64(s*(_pa1+float64(s*(_pa2+float64(s*(_pa3+float64(s*(_pa4+float64(s*(_pa5+float64(s*_pa6)))))))))))
+	Q = Float64FromInt32(1) + Tdouble_t(s*(_qa1+float64(s*(_qa2+float64(s*(_qa3+float64(s*(_qa4+float64(s*(_qa5+float64(s*_qa6)))))))))))
 	return Float64FromInt32(1) - _erx - P/Q
 }
 
@@ -103704,18 +103704,18 @@ func _erfc2(tls *TLS, ix Tuint32_t, x float64) (r float64) {
 		return _erfc1(tls, x)
 	}
 	x = Xfabs(tls, x)
-	s = Float64FromInt32(1) / (x * x)
+	s = Float64FromInt32(1) / float64(x*x)
 	if ix < uint32(0x4006db6d) { /* |x| < 1/.35 ~ 2.85714 */
-		R = _ra0 + s*(_ra1+s*(_ra2+s*(_ra3+s*(_ra4+s*(_ra5+s*(_ra6+s*_ra7))))))
-		S = float64(1) + s*(_sa1+s*(_sa2+s*(_sa3+s*(_sa4+s*(_sa5+s*(_sa6+s*(_sa7+s*_sa8)))))))
+		R = _ra0 + float64(s*(_ra1+float64(s*(_ra2+float64(s*(_ra3+float64(s*(_ra4+float64(s*(_ra5+float64(s*(_ra6+float64(s*_ra7)))))))))))))
+		S = float64(1) + float64(s*(_sa1+float64(s*(_sa2+float64(s*(_sa3+float64(s*(_sa4+float64(s*(_sa5+float64(s*(_sa6+float64(s*(_sa7+float64(s*_sa8)))))))))))))))
 	} else { /* |x| > 1/.35 */
-		R = _rb0 + s*(_rb1+s*(_rb2+s*(_rb3+s*(_rb4+s*(_rb5+s*_rb6)))))
-		S = float64(1) + s*(_sb1+s*(_sb2+s*(_sb3+s*(_sb4+s*(_sb5+s*(_sb6+s*_sb7))))))
+		R = _rb0 + float64(s*(_rb1+float64(s*(_rb2+float64(s*(_rb3+float64(s*(_rb4+float64(s*(_rb5+float64(s*_rb6)))))))))))
+		S = float64(1) + float64(s*(_sb1+float64(s*(_sb2+float64(s*(_sb3+float64(s*(_sb4+float64(s*(_sb5+float64(s*(_sb6+float64(s*_sb7)))))))))))))
 	}
 	z = x
 	v1 = *(*Tuint64_t)(unsafe.Pointer(&z))>>Int32FromInt32(32)<<Int32FromInt32(32) | uint64(Uint32FromInt32(Int32FromInt32(0)))
 	z = *(*float64)(unsafe.Pointer(&v1))
-	return Xexp(tls, -z*z-float64(0.5625)) * Xexp(tls, (z-x)*(z+x)+R/S) / x
+	return float64(Xexp(tls, float64(-z*z)-float64(0.5625))*Xexp(tls, float64((z-x)*(z+x))+R/S)) / x
 }
 
 func Xerf(tls *TLS, x float64) (r1 float64) {
@@ -103737,13 +103737,13 @@ func Xerf(tls *TLS, x float64) (r1 float64) {
 	if ix < uint32(0x3feb0000) { /* |x| < 0.84375 */
 		if ix < uint32(0x3e300000) { /* |x| < 2**-28 */
 			/* avoid underflow */
-			return float64(0.125) * (Float64FromInt32(8)*x + _efx8*x)
+			return float64(float64(0.125) * (float64(Float64FromInt32(8)*x) + float64(_efx8*x)))
 		}
-		z = x * x
-		r = _pp0 + z*(_pp1+z*(_pp2+z*(_pp3+z*_pp4)))
-		s = float64(1) + z*(_qq1+z*(_qq2+z*(_qq3+z*(_qq4+z*_qq5))))
+		z = float64(x * x)
+		r = _pp0 + float64(z*(_pp1+float64(z*(_pp2+float64(z*(_pp3+float64(z*_pp4)))))))
+		s = float64(1) + float64(z*(_qq1+float64(z*(_qq2+float64(z*(_qq3+float64(z*(_qq4+float64(z*_qq5)))))))))
 		y = r / s
-		return x + x*y
+		return x + float64(x*y)
 	}
 	if ix < uint32(0x40180000) { /* 0.84375 <= |x| < 6 */
 		y = Float64FromInt32(1) - _erfc2(tls, ix, x)
@@ -103778,14 +103778,14 @@ func Xerfc(tls *TLS, x float64) (r1 float64) {
 		if ix < uint32(0x3c700000) { /* |x| < 2**-56 */
 			return float64(1) - x
 		}
-		z = x * x
-		r = _pp0 + z*(_pp1+z*(_pp2+z*(_pp3+z*_pp4)))
-		s = float64(1) + z*(_qq1+z*(_qq2+z*(_qq3+z*(_qq4+z*_qq5))))
+		z = float64(x * x)
+		r = _pp0 + float64(z*(_pp1+float64(z*(_pp2+float64(z*(_pp3+float64(z*_pp4)))))))
+		s = float64(1) + float64(z*(_qq1+float64(z*(_qq2+float64(z*(_qq3+float64(z*(_qq4+float64(z*_qq5)))))))))
 		y = r / s
 		if sign != 0 || ix < uint32(0x3fd00000) { /* x < 1/4 */
-			return float64(1) - (x + x*y)
+			return float64(1) - (x + float64(x*y))
 		}
-		return float64(0.5) - (x - float64(0.5) + x*y)
+		return float64(0.5) - (x - float64(0.5) + float64(x*y))
 	}
 	if ix < uint32(0x403c0000) { /* 0.84375 <= |x| < 28 */
 		if sign != 0 {
@@ -103798,7 +103798,7 @@ func Xerfc(tls *TLS, x float64) (r1 float64) {
 	if sign != 0 {
 		v2 = Float64FromInt32(2) - Float64FromFloat64(2.2250738585072014e-308)
 	} else {
-		v2 = Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(2.2250738585072014e-308)
+		v2 = float64(Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(2.2250738585072014e-308))
 	}
 	return v2
 }
@@ -103875,8 +103875,8 @@ func _erfc11(tls *TLS, x float32) (r float32) {
 	var P, Q, s Tfloat_t
 	_, _, _ = P, Q, s
 	s = float64(Xfabsf(tls, x) - Float32FromInt32(1))
-	P = float64(_pa01) + s*(float64(_pa11)+s*(float64(_pa21)+s*(float64(_pa31)+s*(float64(_pa41)+s*(float64(_pa51)+s*float64(_pa61))))))
-	Q = Float64FromInt32(1) + s*(float64(_qa11)+s*(float64(_qa21)+s*(float64(_qa31)+s*(float64(_qa41)+s*(float64(_qa51)+s*float64(_qa61))))))
+	P = float64(_pa01) + Tfloat_t(s*(float64(_pa11)+Tfloat_t(s*(float64(_pa21)+Tfloat_t(s*(float64(_pa31)+Tfloat_t(s*(float64(_pa41)+Tfloat_t(s*(float64(_pa51)+Tfloat_t(s*float64(_pa61))))))))))))
+	Q = Float64FromInt32(1) + Tfloat_t(s*(float64(_qa11)+Tfloat_t(s*(float64(_qa21)+Tfloat_t(s*(float64(_qa31)+Tfloat_t(s*(float64(_qa41)+Tfloat_t(s*(float64(_qa51)+Tfloat_t(s*float64(_qa61))))))))))))
 	return float32(float64(Float32FromInt32(1)-_erx1) - P/Q)
 }
 
@@ -103889,18 +103889,18 @@ func _erfc21(tls *TLS, ix Tuint32_t, x float32) (r float32) {
 		return _erfc11(tls, x)
 	}
 	x = Xfabsf(tls, x)
-	s = float64(Float32FromInt32(1) / (x * x))
+	s = float64(Float32FromInt32(1) / float32(x*x))
 	if ix < uint32(0x4036db6d) { /* |x| < 1/0.35 */
-		R = float64(_ra01) + s*(float64(_ra11)+s*(float64(_ra21)+s*(float64(_ra31)+s*(float64(_ra41)+s*(float64(_ra51)+s*(float64(_ra61)+s*float64(_ra71)))))))
-		S = Float64FromFloat32(1) + s*(float64(_sa11)+s*(float64(_sa21)+s*(float64(_sa31)+s*(float64(_sa41)+s*(float64(_sa51)+s*(float64(_sa61)+s*(float64(_sa71)+s*float64(_sa81))))))))
+		R = float64(_ra01) + Tfloat_t(s*(float64(_ra11)+Tfloat_t(s*(float64(_ra21)+Tfloat_t(s*(float64(_ra31)+Tfloat_t(s*(float64(_ra41)+Tfloat_t(s*(float64(_ra51)+Tfloat_t(s*(float64(_ra61)+Tfloat_t(s*float64(_ra71))))))))))))))
+		S = Float64FromFloat32(1) + Tfloat_t(s*(float64(_sa11)+Tfloat_t(s*(float64(_sa21)+Tfloat_t(s*(float64(_sa31)+Tfloat_t(s*(float64(_sa41)+Tfloat_t(s*(float64(_sa51)+Tfloat_t(s*(float64(_sa61)+Tfloat_t(s*(float64(_sa71)+Tfloat_t(s*float64(_sa81))))))))))))))))
 	} else { /* |x| >= 1/0.35 */
-		R = float64(_rb01) + s*(float64(_rb11)+s*(float64(_rb21)+s*(float64(_rb31)+s*(float64(_rb41)+s*(float64(_rb51)+s*float64(_rb61))))))
-		S = Float64FromFloat32(1) + s*(float64(_sb11)+s*(float64(_sb21)+s*(float64(_sb31)+s*(float64(_sb41)+s*(float64(_sb51)+s*(float64(_sb61)+s*float64(_sb71)))))))
+		R = float64(_rb01) + Tfloat_t(s*(float64(_rb11)+Tfloat_t(s*(float64(_rb21)+Tfloat_t(s*(float64(_rb31)+Tfloat_t(s*(float64(_rb41)+Tfloat_t(s*(float64(_rb51)+Tfloat_t(s*float64(_rb61))))))))))))
+		S = Float64FromFloat32(1) + Tfloat_t(s*(float64(_sb11)+Tfloat_t(s*(float64(_sb21)+Tfloat_t(s*(float64(_sb31)+Tfloat_t(s*(float64(_sb41)+Tfloat_t(s*(float64(_sb51)+Tfloat_t(s*(float64(_sb61)+Tfloat_t(s*float64(_sb71))))))))))))))
 	}
 	ix = *(*Tuint32_t)(unsafe.Pointer(&x))
 	v1 = ix & uint32(0xffffe000)
 	z = *(*float32)(unsafe.Pointer(&v1))
-	return Xexpf(tls, -z*z-Float32FromFloat32(0.5625)) * Xexpf(tls, float32(float64((z-x)*(z+x))+R/S)) / x
+	return float32(Xexpf(tls, float32(-z*z)-Float32FromFloat32(0.5625))*Xexpf(tls, float32(Tfloat_t((z-x)*(z+x))+R/S))) / x
 }
 
 func Xerff(tls *TLS, x float32) (r1 float32) {
@@ -103922,13 +103922,13 @@ func Xerff(tls *TLS, x float32) (r1 float32) {
 	if ix < uint32(0x3f580000) { /* |x| < 0.84375 */
 		if ix < uint32(0x31800000) { /* |x| < 2**-28 */
 			/*avoid underflow */
-			return Float32FromFloat32(0.125) * (Float32FromInt32(8)*x + _efx81*x)
+			return float32(Float32FromFloat32(0.125) * (float32(Float32FromInt32(8)*x) + float32(_efx81*x)))
 		}
-		z = x * x
-		r = _pp01 + z*(_pp11+z*(_pp21+z*(_pp31+z*_pp41)))
-		s = Float32FromInt32(1) + z*(_qq11+z*(_qq21+z*(_qq31+z*(_qq41+z*_qq51))))
+		z = float32(x * x)
+		r = _pp01 + float32(z*(_pp11+float32(z*(_pp21+float32(z*(_pp31+float32(z*_pp41)))))))
+		s = Float32FromInt32(1) + float32(z*(_qq11+float32(z*(_qq21+float32(z*(_qq31+float32(z*(_qq41+float32(z*_qq51)))))))))
 		y = r / s
-		return x + x*y
+		return x + float32(x*y)
 	}
 	if ix < uint32(0x40c00000) { /* |x| < 6 */
 		y = Float32FromInt32(1) - _erfc21(tls, ix, x)
@@ -103963,14 +103963,14 @@ func Xerfcf(tls *TLS, x float32) (r1 float32) {
 		if ix < uint32(0x23800000) { /* |x| < 2**-56 */
 			return Float32FromFloat32(1) - x
 		}
-		z = x * x
-		r = _pp01 + z*(_pp11+z*(_pp21+z*(_pp31+z*_pp41)))
-		s = Float32FromFloat32(1) + z*(_qq11+z*(_qq21+z*(_qq31+z*(_qq41+z*_qq51))))
+		z = float32(x * x)
+		r = _pp01 + float32(z*(_pp11+float32(z*(_pp21+float32(z*(_pp31+float32(z*_pp41)))))))
+		s = Float32FromFloat32(1) + float32(z*(_qq11+float32(z*(_qq21+float32(z*(_qq31+float32(z*(_qq41+float32(z*_qq51)))))))))
 		y = r / s
 		if sign != 0 || ix < uint32(0x3e800000) { /* x < 1/4 */
-			return Float32FromFloat32(1) - (x + x*y)
+			return Float32FromFloat32(1) - (x + float32(x*y))
 		}
-		return Float32FromFloat32(0.5) - (x - Float32FromFloat32(0.5) + x*y)
+		return Float32FromFloat32(0.5) - (x - Float32FromFloat32(0.5) + float32(x*y))
 	}
 	if ix < uint32(0x41e00000) { /* |x| < 28 */
 		if sign != 0 {
@@ -103983,7 +103983,7 @@ func Xerfcf(tls *TLS, x float32) (r1 float32) {
 	if sign != 0 {
 		v2 = Float32FromInt32(2) - Float32FromFloat32(7.52316384526264e-37)
 	} else {
-		v2 = Float32FromFloat32(7.52316384526264e-37) * Float32FromFloat32(7.52316384526264e-37)
+		v2 = float32(Float32FromFloat32(7.52316384526264e-37) * Float32FromFloat32(7.52316384526264e-37))
 	}
 	return v2
 }
@@ -104025,9 +104025,9 @@ func _specialcase(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r flo
 	_, _, _, _, _, _, _, _, _, _, _ = hi, lo, scale, y, y1, y2, y3, v1, v3, v5, v7
 	if ki&uint64(0x80000000) == uint64(0) {
 		/* k > 0, the exponent of scale might have overflowed by <= 460.  */
-		sbits = sbits - Uint64FromUint64(1009)<<Int32FromInt32(52)
+		sbits = Tuint64_t(sbits - Uint64FromUint64(1009)<<Int32FromInt32(52))
 		scale = *(*float64)(unsafe.Pointer(&sbits))
-		y3 = float64(5.486124068793689e+303) * (scale + scale*tmp)
+		y3 = Tdouble_t(float64(5.486124068793689e+303) * (scale + Tdouble_t(scale*tmp)))
 		y = y3
 		v1 = y
 		goto _2
@@ -104035,11 +104035,11 @@ func _specialcase(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r flo
 		return v1
 	}
 	/* k < 0, need special care in the subnormal range.  */
-	sbits = sbits + Uint64FromUint64(1022)<<Int32FromInt32(52)
+	sbits = Tuint64_t(sbits + Uint64FromUint64(1022)<<Int32FromInt32(52))
 	scale = *(*float64)(unsafe.Pointer(&sbits))
-	y3 = scale + scale*tmp
+	y3 = scale + Tdouble_t(scale*tmp)
 	if y3 < float64(1) {
-		lo = scale - y3 + scale*tmp
+		lo = scale - y3 + Tdouble_t(scale*tmp)
 		hi = float64(1) + y3
 		lo = float64(1) - hi + y3 + lo
 		y = hi + lo
@@ -104056,9 +104056,9 @@ func _specialcase(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r flo
 		v5 = y1
 		goto _6
 	_6:
-		y2 = v5 * float64(2.2250738585072014e-308)
+		y2 = float64(v5 * float64(2.2250738585072014e-308))
 	}
-	y3 = float64(2.2250738585072014e-308) * y3
+	y3 = Tdouble_t(float64(2.2250738585072014e-308) * y3)
 	y = y3
 	v7 = y
 	goto _8
@@ -104109,7 +104109,7 @@ func Xexp(tls *TLS, x1 float64) (r1 float64) {
 	}
 	/* exp(x) = 2^(k/N) * exp(r), with exp(r) in [2^(-1/2N),2^(1/2N)].  */
 	/* x = ln2/N*k + r, with int k and r in [-ln2/2N, ln2/2N].  */
-	z = X__exp_data.Finvln2N * x1
+	z = Tdouble_t(X__exp_data.Finvln2N * x1)
 	/* z - kd is in [-1, 1] in non-nearest rounding modes.  */
 	y = z + X__exp_data.Fshift
 	v2 = y
@@ -104119,7 +104119,7 @@ _3:
 	v4 = kd
 	ki = *(*Tuint64_t)(unsafe.Pointer(&v4))
 	kd -= X__exp_data.Fshift
-	r = x1 + kd*X__exp_data.Fnegln2hiN + kd*X__exp_data.Fnegln2loN
+	r = x1 + float64(kd*X__exp_data.Fnegln2hiN) + float64(kd*X__exp_data.Fnegln2loN)
 	/* 2^(k/N) ~= scale * (1 + tail).  */
 	idx = uint64(2) * (ki % Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(EXP_TABLE_BITS)))
 	top = ki << (Int32FromInt32(52) - Int32FromInt32(EXP_TABLE_BITS))
@@ -104129,17 +104129,17 @@ _3:
 	sbits = *(*Tuint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 112 + uintptr(idx+uint64(1))*8)) + top
 	/* exp(x) = 2^(k/N) * exp(r) ~= scale + scale * (tail + exp(r) - 1).  */
 	/* Evaluation is optimized assuming superscalar pipelined execution.  */
-	r2 = r * r
+	r2 = Tdouble_t(r * r)
 	/* Without fma the worst case error is 0.25/N ulp larger.  */
 	/* Worst case error is less than 0.5+1.11/N+(abs poly error * 2^53) ulp.  */
-	tmp = tail + r + r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(5)-Int32FromInt32(EXP_POLY_ORDER))*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(6)-Int32FromInt32(EXP_POLY_ORDER))*8))) + r2*r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(7)-Int32FromInt32(EXP_POLY_ORDER))*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(8)-Int32FromInt32(EXP_POLY_ORDER))*8)))
+	tmp = tail + r + Tdouble_t(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(5)-Int32FromInt32(EXP_POLY_ORDER))*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(6)-Int32FromInt32(EXP_POLY_ORDER))*8))))) + Tdouble_t(Tdouble_t(r2*r2)*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(7)-Int32FromInt32(EXP_POLY_ORDER))*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(8)-Int32FromInt32(EXP_POLY_ORDER))*8)))))
 	if abstop == uint32(0) {
 		return _specialcase(tls, tmp, sbits, ki)
 	}
 	scale = *(*float64)(unsafe.Pointer(&sbits))
 	/* Note: tmp == 0 or |tmp| > 2^-200 and scale > 2^-739, so there
 	   is no spurious underflow here even without fma.  */
-	y = scale + scale*tmp
+	y = scale + Tdouble_t(scale*tmp)
 	v6 = y
 	goto _7
 _7:
@@ -104176,8 +104176,8 @@ func Xexp10(tls *TLS, x float64) (r float64) {
 		if !(y != 0) {
 			return _p10[int32(*(*float64)(unsafe.Pointer(bp)))+int32(15)]
 		}
-		y = Xexp2(tls, float64(3.321928094887362)*y)
-		return y * _p10[int32(*(*float64)(unsafe.Pointer(bp)))+int32(15)]
+		y = Xexp2(tls, float64(float64(3.321928094887362)*y))
+		return float64(y * _p10[int32(*(*float64)(unsafe.Pointer(bp)))+int32(15)])
 	}
 	return Xpow(tls, float64(10), x)
 }
@@ -104252,10 +104252,10 @@ func Xexp10f(tls *TLS, x float32) (r float32) {
 		if !(y != 0) {
 			return _p101[int32(*(*float32)(unsafe.Pointer(bp)))+int32(7)]
 		}
-		y = Xexp2f(tls, Float32FromFloat32(3.321928094887362)*y)
-		return y * _p101[int32(*(*float32)(unsafe.Pointer(bp)))+int32(7)]
+		y = Xexp2f(tls, float32(Float32FromFloat32(3.321928094887362)*y))
+		return float32(y * _p101[int32(*(*float32)(unsafe.Pointer(bp)))+int32(7)])
 	}
-	return float32(Xexp2(tls, float64(3.321928094887362)*float64(x)))
+	return float32(Xexp2(tls, float64(float64(3.321928094887362)*float64(x))))
 }
 
 var _p101 = [15]float32{
@@ -104315,9 +104315,9 @@ func _specialcase1(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 	_, _, _, _, _, _, _, _, _, _, _ = hi, lo, scale, y, y1, y2, y3, v1, v3, v5, v7
 	if ki&uint64(0x80000000) == uint64(0) {
 		/* k > 0, the exponent of scale might have overflowed by 1.  */
-		sbits = sbits - Uint64FromUint64(1)<<Int32FromInt32(52)
+		sbits = Tuint64_t(sbits - Uint64FromUint64(1)<<Int32FromInt32(52))
 		scale = *(*float64)(unsafe.Pointer(&sbits))
-		y3 = Float64FromInt32(2) * (scale + scale*tmp)
+		y3 = Tdouble_t(Float64FromInt32(2) * (scale + Tdouble_t(scale*tmp)))
 		y = y3
 		v1 = y
 		goto _2
@@ -104325,11 +104325,11 @@ func _specialcase1(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 		return v1
 	}
 	/* k < 0, need special care in the subnormal range.  */
-	sbits = sbits + Uint64FromUint64(1022)<<Int32FromInt32(52)
+	sbits = Tuint64_t(sbits + Uint64FromUint64(1022)<<Int32FromInt32(52))
 	scale = *(*float64)(unsafe.Pointer(&sbits))
-	y3 = scale + scale*tmp
+	y3 = scale + Tdouble_t(scale*tmp)
 	if y3 < float64(1) {
-		lo = scale - y3 + scale*tmp
+		lo = scale - y3 + Tdouble_t(scale*tmp)
 		hi = float64(1) + y3
 		lo = float64(1) - hi + y3 + lo
 		y = hi + lo
@@ -104346,9 +104346,9 @@ func _specialcase1(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 		v5 = y1
 		goto _6
 	_6:
-		y2 = v5 * float64(2.2250738585072014e-308)
+		y2 = float64(v5 * float64(2.2250738585072014e-308))
 	}
-	y3 = float64(2.2250738585072014e-308) * y3
+	y3 = Tdouble_t(float64(2.2250738585072014e-308) * y3)
 	y = y3
 	v7 = y
 	goto _8
@@ -104423,17 +104423,17 @@ _5:
 	sbits = *(*Tuint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 112 + uintptr(idx+uint64(1))*8)) + top
 	/* exp2(x) = 2^(k/N) * 2^r ~= scale + scale * (tail + 2^r - 1).  */
 	/* Evaluation is optimized assuming superscalar pipelined execution.  */
-	r2 = r * r
+	r2 = Tdouble_t(r * r)
 	/* Without fma the worst case error is 0.5/N ulp larger.  */
 	/* Worst case error is less than 0.5+0.86/N+(abs poly error * 2^53) ulp.  */
-	tmp = tail + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72)) + r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 1*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 2*8))) + r2*r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 3*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 4*8)))
+	tmp = tail + Tdouble_t(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72))) + Tdouble_t(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 1*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 2*8))))) + Tdouble_t(Tdouble_t(r2*r2)*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 3*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 72 + 4*8)))))
 	if abstop == uint32(0) {
 		return _specialcase1(tls, tmp, sbits, ki)
 	}
 	scale = *(*float64)(unsafe.Pointer(&sbits))
 	/* Note: tmp == 0 or |tmp| > 2^-65 and scale > 2^-928, so there
 	   is no spurious underflow here even without fma.  */
-	y = scale + scale*tmp
+	y = scale + Tdouble_t(scale*tmp)
 	v8 = y
 	goto _9
 _9:
@@ -104501,11 +104501,11 @@ _3:
 	t = *(*Tuint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + uintptr(ki%Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)))*8))
 	t += ki << (Int32FromInt32(52) - Int32FromInt32(EXP2F_TABLE_BITS))
 	s = *(*float64)(unsafe.Pointer(&t))
-	z = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 1*8))
-	r2 = r * r
-	y2 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 2*8))*r + Float64FromInt32(1)
-	y2 = z*r2 + y2
-	y2 = y2 * s
+	z = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 1*8))
+	r2 = Tdouble_t(r * r)
+	y2 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 2*8))*r) + Float64FromInt32(1)
+	y2 = Tdouble_t(z*r2) + y2
+	y2 = Tdouble_t(y2 * s)
 	y = float32(y2)
 	v5 = y
 	goto _6
@@ -104589,7 +104589,7 @@ func Xexpf(tls *TLS, x2 float32) (r1 float32) {
 		}
 	}
 	/* x*N/Ln2 = k + r with r in [-1/2, 1/2] and int k.  */
-	z = X__exp2f_data.Finvln2_scaled * xd
+	z = Tdouble_t(X__exp2f_data.Finvln2_scaled * xd)
 	/* Round and convert z to int, the result is in [-150*N, 128*N] and
 	   ideally ties-to-even rule is used, otherwise the magnitude of r
 	   can be bigger which gives larger approximation error.  */
@@ -104606,11 +104606,11 @@ _3:
 	t = *(*Tuint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + uintptr(ki%Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)))*8))
 	t += ki << (Int32FromInt32(52) - Int32FromInt32(EXP2F_TABLE_BITS))
 	s = *(*float64)(unsafe.Pointer(&t))
-	z = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304 + 1*8))
-	r2 = r * r
-	y2 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304 + 2*8))*r + Float64FromInt32(1)
-	y2 = z*r2 + y2
-	y2 = y2 * s
+	z = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304 + 1*8))
+	r2 = Tdouble_t(r * r)
+	y2 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 304 + 2*8))*r) + Float64FromInt32(1)
+	y2 = Tdouble_t(z*r2) + y2
+	y2 = Tdouble_t(y2 * s)
 	y = float32(y2)
 	v5 = y
 	goto _6
@@ -104704,10 +104704,10 @@ func Xexpm1(tls *TLS, x3 float64) (r float64) {
 			} else {
 				v3 = float64(0.5)
 			}
-			k = int32(_invln2*x3 + v3)
+			k = int32(float64(_invln2*x3) + v3)
 			t = float64(k)
-			hi = x3 - t*_ln2_hi /* t*ln2_hi is exact here */
-			lo = t * _ln2_lo
+			hi = x3 - float64(t*_ln2_hi) /* t*ln2_hi is exact here */
+			lo = Tdouble_t(t * _ln2_lo)
 		}
 		x3 = hi - lo
 		c = hi - x3 - lo
@@ -104730,42 +104730,42 @@ func Xexpm1(tls *TLS, x3 float64) (r float64) {
 		}
 	}
 	/* x is now in primary range */
-	hfx = float64(0.5) * x3
-	hxs = x3 * hfx
-	r1 = float64(1) + hxs*(_Q1+hxs*(_Q2+hxs*(_Q3+hxs*(_Q4+hxs*_Q5))))
-	t = float64(3) - r1*hfx
-	e = hxs * ((r1 - t) / (Float64FromFloat64(6) - x3*t))
+	hfx = Tdouble_t(float64(0.5) * x3)
+	hxs = Tdouble_t(x3 * hfx)
+	r1 = float64(1) + float64(hxs*(_Q1+float64(hxs*(_Q2+float64(hxs*(_Q3+float64(hxs*(_Q4+float64(hxs*_Q5)))))))))
+	t = float64(3) - float64(r1*hfx)
+	e = Tdouble_t(hxs * ((r1 - t) / (Float64FromFloat64(6) - float64(x3*t))))
 	if k == 0 { /* c is 0 */
-		return x3 - (x3*e - hxs)
+		return x3 - (float64(x3*e) - hxs)
 	}
-	e = x3*(e-c) - c
+	e = float64(x3*(e-c)) - c
 	e -= hxs
 	/* exp(x) ~ 2^k (Xreduced - e + 1) */
 	if k == -int32(1) {
-		return float64(0.5)*(x3-e) - float64(0.5)
+		return float64(float64(0.5)*(x3-e)) - float64(0.5)
 	}
 	if k == int32(1) {
 		if x3 < -Float64FromFloat64(0.25) {
-			return -Float64FromFloat64(2) * (e - (x3 + Float64FromFloat64(0.5)))
+			return float64(-Float64FromFloat64(2) * (e - (x3 + Float64FromFloat64(0.5))))
 		}
-		return float64(1) + float64(2)*(x3-e)
+		return float64(1) + float64(float64(2)*(x3-e))
 	}
 	*(*Tuint64_t)(unsafe.Pointer(bp + 8)) = Uint64FromInt32(Int32FromInt32(0x3ff)+k) << int32(52) /* 2^k */
 	twopk = *(*float64)(unsafe.Pointer(bp + 8))
 	if k < 0 || k > int32(56) { /* suffice to return exp(x)-1 */
 		y3 = x3 - e + float64(1)
 		if k == int32(1024) {
-			y3 = y3 * float64(2) * float64(8.98846567431158e+307)
+			y3 = Tdouble_t(Tdouble_t(y3*float64(2)) * float64(8.98846567431158e+307))
 		} else {
-			y3 = y3 * twopk
+			y3 = Tdouble_t(y3 * twopk)
 		}
 		return y3 - float64(1)
 	}
 	*(*Tuint64_t)(unsafe.Pointer(bp + 8)) = Uint64FromInt32(Int32FromInt32(0x3ff)-k) << int32(52) /* 2^-k */
 	if k < int32(20) {
-		y3 = (x3 - e + (Float64FromInt32(1) - *(*float64)(unsafe.Pointer(bp + 8)))) * twopk
+		y3 = Tdouble_t((x3 - e + (Float64FromInt32(1) - *(*float64)(unsafe.Pointer(bp + 8)))) * twopk)
 	} else {
-		y3 = (x3 - (e + *(*float64)(unsafe.Pointer(bp + 8))) + Float64FromInt32(1)) * twopk
+		y3 = Tdouble_t((x3 - (e + *(*float64)(unsafe.Pointer(bp + 8))) + Float64FromInt32(1)) * twopk)
 	}
 	return y3
 }
@@ -104839,10 +104839,10 @@ func Xexpm1f(tls *TLS, x3 float32) (r float32) {
 			} else {
 				v1 = Float32FromFloat32(0.5)
 			}
-			k = int32(_invln21*x3 + v1)
+			k = int32(float32(_invln21*x3) + v1)
 			t = float64(k)
-			hi = float64(x3) - t*float64(_ln2_hi1) /* t*ln2_hi is exact here */
-			lo = t * float64(_ln2_lo1)
+			hi = float64(x3) - Tfloat_t(t*float64(_ln2_hi1)) /* t*ln2_hi is exact here */
+			lo = Tfloat_t(t * float64(_ln2_lo1))
 		}
 		x3 = float32(hi - lo)
 		c = hi - float64(x3) - lo
@@ -104850,7 +104850,7 @@ func Xexpm1f(tls *TLS, x3 float32) (r float32) {
 		if hx < uint32(0x33000000) { /* when |x|<2**-25, return x */
 			if hx < uint32(0x00800000) {
 				if uint64(4) == uint64(4) {
-					y = x3 * x3
+					y = float32(x3 * x3)
 				} else {
 					if uint64(4) == uint64(8) {
 						y1 = float64(x3 * x3)
@@ -104865,42 +104865,42 @@ func Xexpm1f(tls *TLS, x3 float32) (r float32) {
 		}
 	}
 	/* x is now in primary range */
-	hfx = float64(Float32FromFloat32(0.5) * x3)
-	hxs = float64(x3) * hfx
-	r1 = Float64FromFloat32(1) + hxs*(float64(_Q11)+hxs*float64(_Q21))
-	t = Float64FromFloat32(3) - r1*hfx
-	e = hxs * ((r1 - t) / (Float64FromFloat32(6) - float64(x3)*t))
+	hfx = Tfloat_t(Float32FromFloat32(0.5) * x3)
+	hxs = Tfloat_t(float64(x3) * hfx)
+	r1 = Float64FromFloat32(1) + Tfloat_t(hxs*(float64(_Q11)+Tfloat_t(hxs*float64(_Q21))))
+	t = Float64FromFloat32(3) - Tfloat_t(r1*hfx)
+	e = Tfloat_t(hxs * ((r1 - t) / (Float64FromFloat32(6) - Tfloat_t(float64(x3)*t))))
 	if k == 0 { /* c is 0 */
-		return float32(float64(x3) - (float64(x3)*e - hxs))
+		return float32(float64(x3) - (Tfloat_t(float64(x3)*e) - hxs))
 	}
-	e = float64(x3)*(e-c) - c
+	e = Tfloat_t(float64(x3)*(e-c)) - c
 	e -= hxs
 	/* exp(x) ~ 2^k (Xreduced - e + 1) */
 	if k == -int32(1) {
-		return float32(Float64FromFloat32(0.5)*(float64(x3)-e) - Float64FromFloat32(0.5))
+		return float32(Tfloat_t(Float64FromFloat32(0.5)*(float64(x3)-e)) - Float64FromFloat32(0.5))
 	}
 	if k == int32(1) {
 		if x3 < -Float32FromFloat32(0.25) {
 			return float32(float64(-Float32FromFloat32(2)) * (e - float64(x3+Float32FromFloat32(0.5))))
 		}
-		return float32(Float64FromFloat32(1) + Float64FromFloat32(2)*(float64(x3)-e))
+		return float32(Float64FromFloat32(1) + Tfloat_t(Float64FromFloat32(2)*(float64(x3)-e)))
 	}
 	*(*Tuint32_t)(unsafe.Pointer(bp)) = Uint32FromInt32((int32(0x7f) + k) << int32(23)) /* 2^k */
 	twopk = float64(*(*float32)(unsafe.Pointer(bp)))
 	if k < 0 || k > int32(56) { /* suffice to return exp(x)-1 */
 		y3 = float64(x3) - e + Float64FromFloat32(1)
 		if k == int32(128) {
-			y3 = y3 * Float64FromFloat32(2) * Float64FromFloat32(1.7014118346046923e+38)
+			y3 = Tfloat_t(Tfloat_t(y3*Float64FromFloat32(2)) * Float64FromFloat32(1.7014118346046923e+38))
 		} else {
-			y3 = y3 * twopk
+			y3 = Tfloat_t(y3 * twopk)
 		}
 		return float32(y3 - Float64FromFloat32(1))
 	}
 	*(*Tuint32_t)(unsafe.Pointer(bp)) = Uint32FromInt32((int32(0x7f) - k) << int32(23)) /* 2^-k */
 	if k < int32(23) {
-		y3 = (float64(x3) - e + float64(Float32FromInt32(1)-*(*float32)(unsafe.Pointer(bp)))) * twopk
+		y3 = Tfloat_t((float64(x3) - e + float64(Float32FromInt32(1)-*(*float32)(unsafe.Pointer(bp)))) * twopk)
 	} else {
-		y3 = (float64(x3) - (e + float64(*(*float32)(unsafe.Pointer(bp)))) + Float64FromInt32(1)) * twopk
+		y3 = Tfloat_t((float64(x3) - (e + float64(*(*float32)(unsafe.Pointer(bp)))) + Float64FromInt32(1)) * twopk)
 	}
 	return float32(y3)
 }
@@ -104935,7 +104935,7 @@ func Xfabs(tls *TLS, x float64) (r float64) {
 	}{}
 	*(*float64)(unsafe.Pointer(bp)) = x
 	p1 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) / Uint64FromInt32(2))
+	*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) / Uint64FromInt32(2)))
 	return *(*float64)(unsafe.Pointer(bp))
 }
 
@@ -105249,7 +105249,7 @@ func _normalize(tls *TLS, x float64) (r Tnum) {
 	sign = e & int32(0x800)
 	e &= int32(0x7ff)
 	if !(e != 0) {
-		v1 = x * float64(9.223372036854776e+18)
+		v1 = float64(x * float64(9.223372036854776e+18))
 		ix = *(*Tuint64_t)(unsafe.Pointer(&v1))
 		e = Int32FromUint64(ix >> int32(52) & uint64(0x7ff))
 		if e != 0 {
@@ -105259,8 +105259,8 @@ func _normalize(tls *TLS, x float64) (r Tnum) {
 		}
 		e = v2
 	}
-	ix = ix & (Uint64FromUint64(1)<<Int32FromInt32(52) - Uint64FromInt32(1))
-	ix = ix | Uint64FromUint64(1)<<Int32FromInt32(52)
+	ix = Tuint64_t(ix & (Uint64FromUint64(1)<<Int32FromInt32(52) - Uint64FromInt32(1)))
+	ix = Tuint64_t(ix | Uint64FromUint64(1)<<Int32FromInt32(52))
 	ix <<= uint64(1)
 	e -= Int32FromInt32(0x3ff) + Int32FromInt32(52) + Int32FromInt32(1)
 	return Tnum{
@@ -105306,11 +105306,11 @@ func Xfma(tls *TLS, x1 float64, y1 float64, z float64) (r2 float64) {
 	ny = _normalize(tls, y1)
 	nz = _normalize(tls, z)
 	if nx.Fe >= Int32FromInt32(0x7ff)-Int32FromInt32(0x3ff)-Int32FromInt32(52)-Int32FromInt32(1) || ny.Fe >= Int32FromInt32(0x7ff)-Int32FromInt32(0x3ff)-Int32FromInt32(52)-Int32FromInt32(1) {
-		return x1*y1 + z
+		return float64(x1*y1) + z
 	}
 	if nz.Fe >= Int32FromInt32(0x7ff)-Int32FromInt32(0x3ff)-Int32FromInt32(52)-Int32FromInt32(1) {
 		if nz.Fe > Int32FromInt32(0x7ff)-Int32FromInt32(0x3ff)-Int32FromInt32(52)-Int32FromInt32(1) { /* z==0 */
-			return x1*y1 + z
+			return float64(x1*y1) + z
 		}
 		return z
 	}
@@ -105451,7 +105451,7 @@ func Xfma(tls *TLS, x1 float64, y1 float64, z float64) (r2 float64) {
 			}
 		} else {
 			/* exact +-0 */
-			return x1*y1 + z
+			return float64(x1*y1) + z
 		}
 	}
 	e -= d
@@ -105472,8 +105472,8 @@ func Xfma(tls *TLS, x1 float64, y1 float64, z float64) (r2 float64) {
 				/* min normal after rounding, underflow depends
 				   on arch behaviour which can be imitated by
 				   a double to float conversion */
-				fltmin = float32(Float64FromFloat64(1.0842021401737618e-19) * Float64FromFloat32(1.1754943508222875e-38) * r1)
-				return Float64FromFloat64(2.2250738585072014e-308) / Float64FromFloat32(1.1754943508222875e-38) * float64(fltmin)
+				fltmin = float32(float64(Float64FromFloat64(1.0842021401737618e-19)*Float64FromFloat32(1.1754943508222875e-38)) * r1)
+				return float64(Float64FromFloat64(2.2250738585072014e-308) / Float64FromFloat32(1.1754943508222875e-38) * float64(fltmin))
 			}
 			/* one bit is lost when scaled, add another top bit to
 			   only round once at conversion if it is inexact */
@@ -105483,11 +105483,11 @@ func Xfma(tls *TLS, x1 float64, y1 float64, z float64) (r2 float64) {
 					i = -i
 				}
 				r1 = float64(i)
-				r1 = Float64FromInt32(2)*r1 - c /* remove top bit */
+				r1 = float64(Float64FromInt32(2)*r1) - c /* remove top bit */
 				/* raise underflow portably, such that it
 				   cannot be optimized away */
-				tiny = Float64FromFloat64(2.2250738585072014e-308) / Float64FromFloat32(1.1754943508222875e-38) * r1
-				r1 += tiny * tiny * (r1 - r1)
+				tiny = Tdouble_t(Float64FromFloat64(2.2250738585072014e-308) / Float64FromFloat32(1.1754943508222875e-38) * r1)
+				r1 += float64(Tdouble_t(tiny*tiny) * (r1 - r1))
 			}
 		} else {
 			/* only round once when scaled */
@@ -105811,11 +105811,11 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 	_2:
 	}
 	if v3 || BoolInt32(v1&(-Uint64FromUint64(1)>>Int32FromInt32(1)) > Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0 || ex == int32(0x7ff) {
-		return x * y / (x * y)
+		return float64(x*y) / float64(x*y)
 	}
 	if uxi<<int32(1) <= *(*Tuint64_t)(unsafe.Pointer(bp + 16))<<int32(1) {
 		if uxi<<int32(1) == *(*Tuint64_t)(unsafe.Pointer(bp + 16))<<int32(1) {
-			return Float64FromInt32(0) * x
+			return float64(Float64FromInt32(0) * x)
 		}
 		return x
 	}
@@ -105834,8 +105834,8 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 		}
 		uxi <<= Uint64FromInt32(-ex + int32(1))
 	} else {
-		uxi = uxi & (-Uint64FromUint64(1) >> Int32FromInt32(12))
-		uxi = uxi | Uint64FromUint64(1)<<Int32FromInt32(52)
+		uxi = Tuint64_t(uxi & (-Uint64FromUint64(1) >> Int32FromInt32(12)))
+		uxi = Tuint64_t(uxi | Uint64FromUint64(1)<<Int32FromInt32(52))
 	}
 	if !(ey != 0) {
 		i = *(*Tuint64_t)(unsafe.Pointer(bp + 16)) << int32(12)
@@ -105852,9 +105852,9 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 		*(*Tuint64_t)(unsafe.Pointer(bp + 16)) <<= Uint64FromInt32(-ey + int32(1))
 	} else {
 		p6 = bp + 16
-		*(*Tuint64_t)(unsafe.Pointer(p6)) = *(*Tuint64_t)(unsafe.Pointer(p6)) & (-Uint64FromUint64(1) >> Int32FromInt32(12))
+		*(*Tuint64_t)(unsafe.Pointer(p6)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p6)) & (-Uint64FromUint64(1) >> Int32FromInt32(12)))
 		p7 = bp + 16
-		*(*Tuint64_t)(unsafe.Pointer(p7)) = *(*Tuint64_t)(unsafe.Pointer(p7)) | Uint64FromUint64(1)<<Int32FromInt32(52)
+		*(*Tuint64_t)(unsafe.Pointer(p7)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p7)) | Uint64FromUint64(1)<<Int32FromInt32(52))
 	}
 	/* x mod y */
 	for {
@@ -105864,7 +105864,7 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 		i = uxi - *(*Tuint64_t)(unsafe.Pointer(bp + 16))
 		if i>>int32(63) == uint64(0) {
 			if i == uint64(0) {
-				return Float64FromInt32(0) * x
+				return float64(Float64FromInt32(0) * x)
 			}
 			uxi = i
 		}
@@ -105877,7 +105877,7 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 	i = uxi - *(*Tuint64_t)(unsafe.Pointer(bp + 16))
 	if i>>int32(63) == uint64(0) {
 		if i == uint64(0) {
-			return Float64FromInt32(0) * x
+			return float64(Float64FromInt32(0) * x)
 		}
 		uxi = i
 	}
@@ -105893,7 +105893,7 @@ func Xfmod(tls *TLS, x float64, y float64) (r float64) {
 	}
 	/* scale result */
 	if ex > 0 {
-		uxi = uxi - Uint64FromUint64(1)<<Int32FromInt32(52)
+		uxi = Tuint64_t(uxi - Uint64FromUint64(1)<<Int32FromInt32(52))
 		uxi |= Uint64FromInt32(ex) << int32(52)
 	} else {
 		uxi >>= Uint64FromInt32(-ex + int32(1))
@@ -105954,11 +105954,11 @@ func Xfmodf(tls *TLS, x float32, y float32) (r float32) {
 	_2:
 	}
 	if v3 || BoolInt32(v1&uint32(0x7fffffff) > uint32(0x7f800000)) != 0 || ex == int32(0xff) {
-		return x * y / (x * y)
+		return float32(x*y) / float32(x*y)
 	}
 	if uxi<<int32(1) <= *(*Tuint32_t)(unsafe.Pointer(bp + 8))<<int32(1) {
 		if uxi<<int32(1) == *(*Tuint32_t)(unsafe.Pointer(bp + 8))<<int32(1) {
-			return Float32FromInt32(0) * x
+			return float32(Float32FromInt32(0) * x)
 		}
 		return x
 	}
@@ -106005,7 +106005,7 @@ func Xfmodf(tls *TLS, x float32, y float32) (r float32) {
 		i = uxi - *(*Tuint32_t)(unsafe.Pointer(bp + 8))
 		if i>>int32(31) == uint32(0) {
 			if i == uint32(0) {
-				return Float32FromInt32(0) * x
+				return float32(Float32FromInt32(0) * x)
 			}
 			uxi = i
 		}
@@ -106018,7 +106018,7 @@ func Xfmodf(tls *TLS, x float32, y float32) (r float32) {
 	i = uxi - *(*Tuint32_t)(unsafe.Pointer(bp + 8))
 	if i>>int32(31) == uint32(0) {
 		if i == uint32(0) {
-			return Float32FromInt32(0) * x
+			return float32(Float32FromInt32(0) * x)
 		}
 		uxi = i
 	}
@@ -106077,7 +106077,7 @@ func Xfrexp(tls *TLS, x float64, e uintptr) (r float64) {
 	ee = Int32FromUint64(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(52) & uint64(0x7ff))
 	if !(ee != 0) {
 		if x != 0 {
-			x = Xfrexp(tls, x*float64(1.8446744073709552e+19), e)
+			x = Xfrexp(tls, float64(x*float64(1.8446744073709552e+19)), e)
 			*(*int32)(unsafe.Pointer(e)) -= int32(64)
 		} else {
 			*(*int32)(unsafe.Pointer(e)) = 0
@@ -106090,9 +106090,9 @@ func Xfrexp(tls *TLS, x float64, e uintptr) (r float64) {
 	}
 	*(*int32)(unsafe.Pointer(e)) = ee - int32(0x3fe)
 	p1 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & Uint64FromUint64(0x800fffffffffffff)
+	*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & Uint64FromUint64(0x800fffffffffffff))
 	p2 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p2)) = *(*Tuint64_t)(unsafe.Pointer(p2)) | Uint64FromUint64(0x3fe0000000000000)
+	*(*Tuint64_t)(unsafe.Pointer(p2)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p2)) | Uint64FromUint64(0x3fe0000000000000))
 	return *(*float64)(unsafe.Pointer(bp))
 }
 
@@ -106153,11 +106153,11 @@ const SPLIT = 1
 func _sq(tls *TLS, hi uintptr, lo uintptr, x float64) {
 	var xc, xh, xl Tdouble_t
 	_, _, _ = xc, xh, xl
-	xc = x * (Float64FromFloat64(1.34217728e+08) + Float64FromInt32(1))
+	xc = Tdouble_t(x * (Float64FromFloat64(1.34217728e+08) + Float64FromInt32(1)))
 	xh = x - xc + xc
 	xl = x - xh
-	*(*Tdouble_t)(unsafe.Pointer(hi)) = x * x
-	*(*Tdouble_t)(unsafe.Pointer(lo)) = xh*xh - *(*Tdouble_t)(unsafe.Pointer(hi)) + Float64FromInt32(2)*xh*xl + xl*xl
+	*(*Tdouble_t)(unsafe.Pointer(hi)) = Tdouble_t(x * x)
+	*(*Tdouble_t)(unsafe.Pointer(lo)) = Tdouble_t(xh*xh) - *(*Tdouble_t)(unsafe.Pointer(hi)) + Tdouble_t(Tdouble_t(Float64FromInt32(2)*xh)*xl) + Tdouble_t(xl*xl)
 }
 
 func Xhypot(tls *TLS, x float64, y float64) (r float64) {
@@ -106205,9 +106205,9 @@ func Xhypot(tls *TLS, x float64, y float64) (r float64) {
 	*(*float64)(unsafe.Pointer(bp + 8)) = y
 	/* arrange |x| >= |y| */
 	p1 = bp
-	*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) >> Int32FromInt32(1))
+	*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & (-Uint64FromUint64(1) >> Int32FromInt32(1)))
 	p2 = bp + 8
-	*(*Tuint64_t)(unsafe.Pointer(p2)) = *(*Tuint64_t)(unsafe.Pointer(p2)) & (-Uint64FromUint64(1) >> Int32FromInt32(1))
+	*(*Tuint64_t)(unsafe.Pointer(p2)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p2)) & (-Uint64FromUint64(1) >> Int32FromInt32(1)))
 	if *(*Tuint64_t)(unsafe.Pointer(bp)) < *(*Tuint64_t)(unsafe.Pointer(bp + 8)) {
 		ut = *(*struct {
 			Fi [0]Tuint64_t
@@ -106258,7 +106258,7 @@ func Xhypot(tls *TLS, x float64, y float64) (r float64) {
 	}
 	_sq(tls, bp+16, bp+24, x)
 	_sq(tls, bp+32, bp+40, y)
-	return z * Xsqrt(tls, *(*Tdouble_t)(unsafe.Pointer(bp + 40))+*(*Tdouble_t)(unsafe.Pointer(bp + 24))+*(*Tdouble_t)(unsafe.Pointer(bp + 32))+*(*Tdouble_t)(unsafe.Pointer(bp + 16)))
+	return float64(z * Xsqrt(tls, *(*Tdouble_t)(unsafe.Pointer(bp + 40))+*(*Tdouble_t)(unsafe.Pointer(bp + 24))+*(*Tdouble_t)(unsafe.Pointer(bp + 32))+*(*Tdouble_t)(unsafe.Pointer(bp + 16))))
 }
 
 func Xhypotf(tls *TLS, x float32, y float32) (r float32) {
@@ -106337,7 +106337,7 @@ func Xhypotf(tls *TLS, x float32, y float32) (r float32) {
 			y *= Float32FromFloat32(1.2379400392853803e+27)
 		}
 	}
-	return float32(z * float64(Xsqrtf(tls, float32(float64(x)*float64(x)+float64(y)*float64(y)))))
+	return float32(z * float64(Xsqrtf(tls, float32(float64(float64(x)*float64(x))+float64(float64(y)*float64(y))))))
 }
 
 func Xhypotl(tls *TLS, x float64, y float64) (r float64) {
@@ -106530,8 +106530,8 @@ func _common(tls *TLS, ix Tuint32_t, x float64, y0 int32) (r float64) {
 	/* avoid overflow in 2*x, big ulp error when x>=0x1p1023 */
 	if ix < uint32(0x7fe00000) {
 		ss = s - c
-		z = -Xcos(tls, Float64FromInt32(2)*x)
-		if s*c < Float64FromInt32(0) {
+		z = -Xcos(tls, float64(Float64FromInt32(2)*x))
+		if float64(s*c) < Float64FromInt32(0) {
 			cc = z / ss
 		} else {
 			ss = z / cc
@@ -106540,10 +106540,10 @@ func _common(tls *TLS, ix Tuint32_t, x float64, y0 int32) (r float64) {
 			if y0 != 0 {
 				ss = -ss
 			}
-			cc = _pzero(tls, x)*cc - _qzero(tls, x)*ss
+			cc = float64(_pzero(tls, x)*cc) - float64(_qzero(tls, x)*ss)
 		}
 	}
-	return _invsqrtpi * cc / Xsqrt(tls, x)
+	return float64(_invsqrtpi*cc) / Xsqrt(tls, x)
 }
 
 // C documentation
@@ -106571,7 +106571,7 @@ func Xj0(tls *TLS, x float64) (r1 float64) {
 	ix &= uint32(0x7fffffff)
 	/* j0(+-inf)=0, j0(nan)=nan */
 	if ix >= uint32(0x7ff00000) {
-		return Float64FromInt32(1) / (x * x)
+		return Float64FromInt32(1) / float64(x*x)
 	}
 	x = Xfabs(tls, x)
 	if ix >= uint32(0x40000000) { /* |x| >= 2 */
@@ -106581,16 +106581,16 @@ func Xj0(tls *TLS, x float64) (r1 float64) {
 	/* 1 - x*x/4 + x*x*R(x^2)/S(x^2) */
 	if ix >= uint32(0x3f200000) { /* |x| >= 2**-13 */
 		/* up to 4ulp error close to 2 */
-		z = x * x
-		r = z * (_R02 + z*(_R03+z*(_R04+z*_R05)))
-		s = Float64FromInt32(1) + z*(_S01+z*(_S02+z*(_S03+z*_S04)))
-		return (Float64FromInt32(1)+x/Float64FromInt32(2))*(Float64FromInt32(1)-x/Float64FromInt32(2)) + z*(r/s)
+		z = float64(x * x)
+		r = float64(z * (_R02 + float64(z*(_R03+float64(z*(_R04+float64(z*_R05)))))))
+		s = Float64FromInt32(1) + float64(z*(_S01+float64(z*(_S02+float64(z*(_S03+float64(z*_S04)))))))
+		return float64((Float64FromInt32(1)+x/Float64FromInt32(2))*(Float64FromInt32(1)-x/Float64FromInt32(2))) + float64(z*(r/s))
 	}
 	/* 1 - x*x/4 */
 	/* prevent underflow */
 	/* inexact should be raised when x!=0, this is not done correctly */
 	if ix >= uint32(0x38000000) { /* |x| >= 2**-127 */
-		x = float64(0.25) * x * x
+		x = float64(float64(float64(0.25)*x) * x)
 	}
 	return Float64FromInt32(1) - x
 }
@@ -106636,12 +106636,12 @@ func Xy0(tls *TLS, x float64) (r float64) {
 	/* U(x^2)/V(x^2) + (2/pi)*j0(x)*log(x) */
 	if ix >= uint32(0x3e400000) { /* x >= 2**-27 */
 		/* large ulp error near the first zero, x ~= 0.89 */
-		z = x * x
-		u = _u00 + z*(_u01+z*(_u02+z*(_u03+z*(_u04+z*(_u05+z*_u06)))))
-		v = float64(1) + z*(_v01+z*(_v02+z*(_v03+z*_v04)))
-		return u/v + _tpi*(Xj0(tls, x)*Xlog(tls, x))
+		z = float64(x * x)
+		u = _u00 + float64(z*(_u01+float64(z*(_u02+float64(z*(_u03+float64(z*(_u04+float64(z*(_u05+float64(z*_u06)))))))))))
+		v = float64(1) + float64(z*(_v01+float64(z*(_v02+float64(z*(_v03+float64(z*_v04)))))))
+		return u/v + float64(_tpi*float64(Xj0(tls, x)*Xlog(tls, x)))
 	}
-	return _u00 + _tpi*Xlog(tls, x)
+	return _u00 + float64(_tpi*Xlog(tls, x))
 }
 
 // C documentation
@@ -106742,9 +106742,9 @@ func _pzero(tls *TLS, x float64) (r1 float64) {
 			}
 		}
 	}
-	z = float64(1) / (x * x)
-	r = *(*float64)(unsafe.Pointer(p)) + z*(*(*float64)(unsafe.Pointer(p + 1*8))+z*(*(*float64)(unsafe.Pointer(p + 2*8))+z*(*(*float64)(unsafe.Pointer(p + 3*8))+z*(*(*float64)(unsafe.Pointer(p + 4*8))+z**(*float64)(unsafe.Pointer(p + 5*8))))))
-	s = float64(1) + z*(*(*float64)(unsafe.Pointer(q))+z*(*(*float64)(unsafe.Pointer(q + 1*8))+z*(*(*float64)(unsafe.Pointer(q + 2*8))+z*(*(*float64)(unsafe.Pointer(q + 3*8))+z**(*float64)(unsafe.Pointer(q + 4*8))))))
+	z = float64(1) / float64(x*x)
+	r = *(*float64)(unsafe.Pointer(p)) + float64(z*(*(*float64)(unsafe.Pointer(p + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 4*8))+float64(z**(*float64)(unsafe.Pointer(p + 5*8)))))))))))
+	s = float64(1) + float64(z*(*(*float64)(unsafe.Pointer(q))+float64(z*(*(*float64)(unsafe.Pointer(q + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 3*8))+float64(z**(*float64)(unsafe.Pointer(q + 4*8)))))))))))
 	return float64(1) + r/s
 }
 
@@ -106850,9 +106850,9 @@ func _qzero(tls *TLS, x float64) (r1 float64) {
 			}
 		}
 	}
-	z = float64(1) / (x * x)
-	r = *(*float64)(unsafe.Pointer(p)) + z*(*(*float64)(unsafe.Pointer(p + 1*8))+z*(*(*float64)(unsafe.Pointer(p + 2*8))+z*(*(*float64)(unsafe.Pointer(p + 3*8))+z*(*(*float64)(unsafe.Pointer(p + 4*8))+z**(*float64)(unsafe.Pointer(p + 5*8))))))
-	s = float64(1) + z*(*(*float64)(unsafe.Pointer(q))+z*(*(*float64)(unsafe.Pointer(q + 1*8))+z*(*(*float64)(unsafe.Pointer(q + 2*8))+z*(*(*float64)(unsafe.Pointer(q + 3*8))+z*(*(*float64)(unsafe.Pointer(q + 4*8))+z**(*float64)(unsafe.Pointer(q + 5*8)))))))
+	z = float64(1) / float64(x*x)
+	r = *(*float64)(unsafe.Pointer(p)) + float64(z*(*(*float64)(unsafe.Pointer(p + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 4*8))+float64(z**(*float64)(unsafe.Pointer(p + 5*8)))))))))))
+	s = float64(1) + float64(z*(*(*float64)(unsafe.Pointer(q))+float64(z*(*(*float64)(unsafe.Pointer(q + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 4*8))+float64(z**(*float64)(unsafe.Pointer(q + 5*8)))))))))))))
 	return (-Float64FromFloat64(0.125) + r/s) / x
 }
 
@@ -106874,8 +106874,8 @@ func _common1(tls *TLS, ix Tuint32_t, x float32, y0 int32) (r float32) {
 	cc = s + c
 	if ix < uint32(0x7f000000) {
 		ss = s - c
-		z = -Xcosf(tls, Float32FromInt32(2)*x)
-		if s*c < Float32FromInt32(0) {
+		z = -Xcosf(tls, float32(Float32FromInt32(2)*x))
+		if float32(s*c) < Float32FromInt32(0) {
 			cc = z / ss
 		} else {
 			ss = z / cc
@@ -106884,10 +106884,10 @@ func _common1(tls *TLS, ix Tuint32_t, x float32, y0 int32) (r float32) {
 			if y0 != 0 {
 				ss = -ss
 			}
-			cc = _pzerof(tls, x)*cc - _qzerof(tls, x)*ss
+			cc = float32(_pzerof(tls, x)*cc) - float32(_qzerof(tls, x)*ss)
 		}
 	}
-	return _invsqrtpi1 * cc / Xsqrtf(tls, x)
+	return float32(_invsqrtpi1*cc) / Xsqrtf(tls, x)
 }
 
 // C documentation
@@ -106914,7 +106914,7 @@ func Xj0f(tls *TLS, x float32) (r1 float32) {
 	ix = *(*Tuint32_t)(unsafe.Pointer(&x))
 	ix &= uint32(0x7fffffff)
 	if ix >= uint32(0x7f800000) {
-		return Float32FromInt32(1) / (x * x)
+		return Float32FromInt32(1) / float32(x*x)
 	}
 	x = Xfabsf(tls, x)
 	if ix >= uint32(0x40000000) { /* |x| >= 2 */
@@ -106923,13 +106923,13 @@ func Xj0f(tls *TLS, x float32) (r1 float32) {
 	}
 	if ix >= uint32(0x3a000000) { /* |x| >= 2**-11 */
 		/* up to 4ulp error near 2 */
-		z = x * x
-		r = z * (_R021 + z*(_R031+z*(_R041+z*_R051)))
-		s = Float32FromInt32(1) + z*(_S011+z*(_S021+z*(_S031+z*_S041)))
-		return (Float32FromInt32(1)+x/Float32FromInt32(2))*(Float32FromInt32(1)-x/Float32FromInt32(2)) + z*(r/s)
+		z = float32(x * x)
+		r = float32(z * (_R021 + float32(z*(_R031+float32(z*(_R041+float32(z*_R051)))))))
+		s = Float32FromInt32(1) + float32(z*(_S011+float32(z*(_S021+float32(z*(_S031+float32(z*_S041)))))))
+		return float32((Float32FromInt32(1)+x/Float32FromInt32(2))*(Float32FromInt32(1)-x/Float32FromInt32(2))) + float32(z*(r/s))
 	}
 	if ix >= uint32(0x21800000) { /* |x| >= 2**-60 */
-		x = Float32FromFloat32(0.25) * x * x
+		x = float32(float32(Float32FromFloat32(0.25)*x) * x)
 	}
 	return Float32FromInt32(1) - x
 }
@@ -106970,12 +106970,12 @@ func Xy0f(tls *TLS, x float32) (r float32) {
 	}
 	if ix >= uint32(0x39000000) { /* x >= 2**-13 */
 		/* large ulp error at x ~= 0.89 */
-		z = x * x
-		u = _u001 + z*(_u011+z*(_u021+z*(_u031+z*(_u041+z*(_u051+z*_u061)))))
-		v = Float32FromInt32(1) + z*(_v011+z*(_v021+z*(_v031+z*_v041)))
-		return u/v + _tpi1*(Xj0f(tls, x)*Xlogf(tls, x))
+		z = float32(x * x)
+		u = _u001 + float32(z*(_u011+float32(z*(_u021+float32(z*(_u031+float32(z*(_u041+float32(z*(_u051+float32(z*_u061)))))))))))
+		v = Float32FromInt32(1) + float32(z*(_v011+float32(z*(_v021+float32(z*(_v031+float32(z*_v041)))))))
+		return u/v + float32(_tpi1*float32(Xj0f(tls, x)*Xlogf(tls, x)))
 	}
-	return _u001 + _tpi1*Xlogf(tls, x)
+	return _u001 + float32(_tpi1*Xlogf(tls, x))
 }
 
 // C documentation
@@ -107075,9 +107075,9 @@ func _pzerof(tls *TLS, x float32) (r1 float32) {
 			}
 		}
 	}
-	z = float64(Float32FromFloat32(1) / (x * x))
-	r = float64(*(*float32)(unsafe.Pointer(p))) + z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(p + 5*4)))))))
-	s = Float64FromFloat32(1) + z*(float64(*(*float32)(unsafe.Pointer(q)))+z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+z*float64(*(*float32)(unsafe.Pointer(q + 4*4)))))))
+	z = float64(Float32FromFloat32(1) / float32(x*x))
+	r = float64(*(*float32)(unsafe.Pointer(p))) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(p + 5*4))))))))))))
+	s = Float64FromFloat32(1) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(q + 4*4))))))))))))
 	return float32(Float64FromFloat32(1) + r/s)
 }
 
@@ -107183,9 +107183,9 @@ func _qzerof(tls *TLS, x float32) (r1 float32) {
 			}
 		}
 	}
-	z = float64(Float32FromFloat32(1) / (x * x))
-	r = float64(*(*float32)(unsafe.Pointer(p))) + z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(p + 5*4)))))))
-	s = Float64FromFloat32(1) + z*(float64(*(*float32)(unsafe.Pointer(q)))+z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(q + 5*4))))))))
+	z = float64(Float32FromFloat32(1) / float32(x*x))
+	r = float64(*(*float32)(unsafe.Pointer(p))) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(p + 5*4))))))))))))
+	s = Float64FromFloat32(1) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(q + 5*4))))))))))))))
 	return float32((float64(-Float32FromFloat32(0.125)) + r/s) / float64(x))
 }
 
@@ -107212,8 +107212,8 @@ func _common2(tls *TLS, ix Tuint32_t, x float64, y1 int32, sign int32) (r float6
 	if ix < uint32(0x7fe00000) {
 		/* avoid overflow in 2*x */
 		ss = -s - c
-		z = Xcos(tls, Float64FromInt32(2)*x)
-		if s*c > Float64FromInt32(0) {
+		z = Xcos(tls, float64(Float64FromInt32(2)*x))
+		if float64(s*c) > Float64FromInt32(0) {
 			cc = z / ss
 		} else {
 			ss = z / cc
@@ -107222,13 +107222,13 @@ func _common2(tls *TLS, ix Tuint32_t, x float64, y1 int32, sign int32) (r float6
 			if y1 != 0 {
 				ss = -ss
 			}
-			cc = _pone(tls, x)*cc - _qone(tls, x)*ss
+			cc = float64(_pone(tls, x)*cc) - float64(_qone(tls, x)*ss)
 		}
 	}
 	if sign != 0 {
 		cc = -cc
 	}
-	return _invsqrtpi2 * cc / Xsqrt(tls, x)
+	return float64(_invsqrtpi2*cc) / Xsqrt(tls, x)
 }
 
 // C documentation
@@ -107258,21 +107258,21 @@ func Xj1(tls *TLS, x float64) (r1 float64) {
 	sign = Int32FromUint32(ix >> int32(31))
 	ix &= uint32(0x7fffffff)
 	if ix >= uint32(0x7ff00000) {
-		return Float64FromInt32(1) / (x * x)
+		return Float64FromInt32(1) / float64(x*x)
 	}
 	if ix >= uint32(0x40000000) { /* |x| >= 2 */
 		return _common2(tls, ix, Xfabs(tls, x), 0, sign)
 	}
 	if ix >= uint32(0x38000000) { /* |x| >= 2**-127 */
-		z = x * x
-		r = z * (_r00 + z*(_r01+z*(_r02+z*_r03)))
-		s = Float64FromInt32(1) + z*(_s01+z*(_s02+z*(_s03+z*(_s04+z*_s05))))
+		z = float64(x * x)
+		r = float64(z * (_r00 + float64(z*(_r01+float64(z*(_r02+float64(z*_r03)))))))
+		s = Float64FromInt32(1) + float64(z*(_s01+float64(z*(_s02+float64(z*(_s03+float64(z*(_s04+float64(z*_s05)))))))))
 		z = r / s
 	} else {
 		/* avoid underflow, raise inexact if x!=0 */
 		z = x
 	}
-	return (float64(0.5) + z) * x
+	return float64((float64(0.5) + z) * x)
 }
 
 var _U0 = [5]float64{
@@ -107318,10 +107318,10 @@ func Xy1(tls *TLS, x float64) (r float64) {
 	if ix < uint32(0x3c900000) { /* x < 2**-54 */
 		return -_tpi2 / x
 	}
-	z = x * x
-	u = _U0[0] + z*(_U0[int32(1)]+z*(_U0[int32(2)]+z*(_U0[int32(3)]+z*_U0[int32(4)])))
-	v = Float64FromInt32(1) + z*(_V0[0]+z*(_V0[int32(1)]+z*(_V0[int32(2)]+z*(_V0[int32(3)]+z*_V0[int32(4)]))))
-	return x*(u/v) + _tpi2*(Xj1(tls, x)*Xlog(tls, x)-Float64FromInt32(1)/x)
+	z = float64(x * x)
+	u = _U0[0] + float64(z*(_U0[int32(1)]+float64(z*(_U0[int32(2)]+float64(z*(_U0[int32(3)]+float64(z*_U0[int32(4)])))))))
+	v = Float64FromInt32(1) + float64(z*(_V0[0]+float64(z*(_V0[int32(1)]+float64(z*(_V0[int32(2)]+float64(z*(_V0[int32(3)]+float64(z*_V0[int32(4)])))))))))
+	return float64(x*(u/v)) + float64(_tpi2*(float64(Xj1(tls, x)*Xlog(tls, x))-Float64FromInt32(1)/x))
 }
 
 /* For x >= 8, the asymptotic expansions of pone is
@@ -107421,9 +107421,9 @@ func _pone(tls *TLS, x float64) (r1 float64) {
 			}
 		}
 	}
-	z = float64(1) / (x * x)
-	r = *(*float64)(unsafe.Pointer(p)) + z*(*(*float64)(unsafe.Pointer(p + 1*8))+z*(*(*float64)(unsafe.Pointer(p + 2*8))+z*(*(*float64)(unsafe.Pointer(p + 3*8))+z*(*(*float64)(unsafe.Pointer(p + 4*8))+z**(*float64)(unsafe.Pointer(p + 5*8))))))
-	s = float64(1) + z*(*(*float64)(unsafe.Pointer(q))+z*(*(*float64)(unsafe.Pointer(q + 1*8))+z*(*(*float64)(unsafe.Pointer(q + 2*8))+z*(*(*float64)(unsafe.Pointer(q + 3*8))+z**(*float64)(unsafe.Pointer(q + 4*8))))))
+	z = float64(1) / float64(x*x)
+	r = *(*float64)(unsafe.Pointer(p)) + float64(z*(*(*float64)(unsafe.Pointer(p + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 4*8))+float64(z**(*float64)(unsafe.Pointer(p + 5*8)))))))))))
+	s = float64(1) + float64(z*(*(*float64)(unsafe.Pointer(q))+float64(z*(*(*float64)(unsafe.Pointer(q + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 3*8))+float64(z**(*float64)(unsafe.Pointer(q + 4*8)))))))))))
 	return float64(1) + r/s
 }
 
@@ -107528,9 +107528,9 @@ func _qone(tls *TLS, x float64) (r1 float64) {
 			}
 		}
 	}
-	z = float64(1) / (x * x)
-	r = *(*float64)(unsafe.Pointer(p)) + z*(*(*float64)(unsafe.Pointer(p + 1*8))+z*(*(*float64)(unsafe.Pointer(p + 2*8))+z*(*(*float64)(unsafe.Pointer(p + 3*8))+z*(*(*float64)(unsafe.Pointer(p + 4*8))+z**(*float64)(unsafe.Pointer(p + 5*8))))))
-	s = float64(1) + z*(*(*float64)(unsafe.Pointer(q))+z*(*(*float64)(unsafe.Pointer(q + 1*8))+z*(*(*float64)(unsafe.Pointer(q + 2*8))+z*(*(*float64)(unsafe.Pointer(q + 3*8))+z*(*(*float64)(unsafe.Pointer(q + 4*8))+z**(*float64)(unsafe.Pointer(q + 5*8)))))))
+	z = float64(1) / float64(x*x)
+	r = *(*float64)(unsafe.Pointer(p)) + float64(z*(*(*float64)(unsafe.Pointer(p + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(p + 4*8))+float64(z**(*float64)(unsafe.Pointer(p + 5*8)))))))))))
+	s = float64(1) + float64(z*(*(*float64)(unsafe.Pointer(q))+float64(z*(*(*float64)(unsafe.Pointer(q + 1*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 2*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 3*8))+float64(z*(*(*float64)(unsafe.Pointer(q + 4*8))+float64(z**(*float64)(unsafe.Pointer(q + 5*8)))))))))))))
 	return (float64(0.375) + r/s) / x
 }
 
@@ -107548,8 +107548,8 @@ func _common3(tls *TLS, ix Tuint32_t, x float32, y1 int32, sign int32) (r float3
 	cc = s - c
 	if ix < uint32(0x7f000000) {
 		ss = -s - c
-		z = float64(Xcosf(tls, Float32FromInt32(2)*x))
-		if s*c > Float64FromInt32(0) {
+		z = float64(Xcosf(tls, float32(Float32FromInt32(2)*x)))
+		if float64(s*c) > Float64FromInt32(0) {
 			cc = z / ss
 		} else {
 			ss = z / cc
@@ -107558,13 +107558,13 @@ func _common3(tls *TLS, ix Tuint32_t, x float32, y1 int32, sign int32) (r float3
 			if y1 != 0 {
 				ss = -ss
 			}
-			cc = float64(_ponef(tls, x))*cc - float64(_qonef(tls, x))*ss
+			cc = float64(float64(_ponef(tls, x))*cc) - float64(float64(_qonef(tls, x))*ss)
 		}
 	}
 	if sign != 0 {
 		cc = -cc
 	}
-	return float32(float64(_invsqrtpi3) * cc / float64(Xsqrtf(tls, x)))
+	return float32(float64(float64(_invsqrtpi3)*cc) / float64(Xsqrtf(tls, x)))
 }
 
 // C documentation
@@ -107594,20 +107594,20 @@ func Xj1f(tls *TLS, x float32) (r1 float32) {
 	sign = Int32FromUint32(ix >> int32(31))
 	ix &= uint32(0x7fffffff)
 	if ix >= uint32(0x7f800000) {
-		return Float32FromInt32(1) / (x * x)
+		return Float32FromInt32(1) / float32(x*x)
 	}
 	if ix >= uint32(0x40000000) { /* |x| >= 2 */
 		return _common3(tls, ix, Xfabsf(tls, x), 0, sign)
 	}
 	if ix >= uint32(0x39000000) { /* |x| >= 2**-13 */
-		z = x * x
-		r = z * (_r001 + z*(_r011+z*(_r021+z*_r031)))
-		s = Float32FromInt32(1) + z*(_s011+z*(_s021+z*(_s031+z*(_s041+z*_s051))))
+		z = float32(x * x)
+		r = float32(z * (_r001 + float32(z*(_r011+float32(z*(_r021+float32(z*_r031)))))))
+		s = Float32FromInt32(1) + float32(z*(_s011+float32(z*(_s021+float32(z*(_s031+float32(z*(_s041+float32(z*_s051)))))))))
 		z = Float32FromFloat32(0.5) + r/s
 	} else {
 		z = Float32FromFloat32(0.5)
 	}
-	return z * x
+	return float32(z * x)
 }
 
 var _U01 = [5]float32{
@@ -107649,10 +107649,10 @@ func Xy1f(tls *TLS, x float32) (r float32) {
 	if ix < uint32(0x33000000) { /* x < 2**-25 */
 		return -_tpi3 / x
 	}
-	z = x * x
-	u = _U01[0] + z*(_U01[int32(1)]+z*(_U01[int32(2)]+z*(_U01[int32(3)]+z*_U01[int32(4)])))
-	v = Float32FromFloat32(1) + z*(_V01[0]+z*(_V01[int32(1)]+z*(_V01[int32(2)]+z*(_V01[int32(3)]+z*_V01[int32(4)]))))
-	return x*(u/v) + _tpi3*(Xj1f(tls, x)*Xlogf(tls, x)-Float32FromFloat32(1)/x)
+	z = float32(x * x)
+	u = _U01[0] + float32(z*(_U01[int32(1)]+float32(z*(_U01[int32(2)]+float32(z*(_U01[int32(3)]+float32(z*_U01[int32(4)])))))))
+	v = Float32FromFloat32(1) + float32(z*(_V01[0]+float32(z*(_V01[int32(1)]+float32(z*(_V01[int32(2)]+float32(z*(_V01[int32(3)]+float32(z*_V01[int32(4)])))))))))
+	return float32(x*(u/v)) + float32(_tpi3*(float32(Xj1f(tls, x)*Xlogf(tls, x))-Float32FromFloat32(1)/x))
 }
 
 /* For x >= 8, the asymptotic expansions of pone is
@@ -107752,9 +107752,9 @@ func _ponef(tls *TLS, x float32) (r1 float32) {
 			}
 		}
 	}
-	z = float64(Float32FromFloat32(1) / (x * x))
-	r = float64(*(*float32)(unsafe.Pointer(p))) + z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(p + 5*4)))))))
-	s = Float64FromFloat32(1) + z*(float64(*(*float32)(unsafe.Pointer(q)))+z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+z*float64(*(*float32)(unsafe.Pointer(q + 4*4)))))))
+	z = float64(Float32FromFloat32(1) / float32(x*x))
+	r = float64(*(*float32)(unsafe.Pointer(p))) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(p + 5*4))))))))))))
+	s = Float64FromFloat32(1) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(q + 4*4))))))))))))
 	return float32(Float64FromFloat32(1) + r/s)
 }
 
@@ -107859,9 +107859,9 @@ func _qonef(tls *TLS, x float32) (r1 float32) {
 			}
 		}
 	}
-	z = float64(Float32FromFloat32(1) / (x * x))
-	r = float64(*(*float32)(unsafe.Pointer(p))) + z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(p + 5*4)))))))
-	s = Float64FromFloat32(1) + z*(float64(*(*float32)(unsafe.Pointer(q)))+z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+z*(float64(*(*float32)(unsafe.Pointer(q + 4*4)))+z*float64(*(*float32)(unsafe.Pointer(q + 5*4))))))))
+	z = float64(Float32FromFloat32(1) / float32(x*x))
+	r = float64(*(*float32)(unsafe.Pointer(p))) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(p + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(p + 5*4))))))))))))
+	s = Float64FromFloat32(1) + Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 1*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 2*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 3*4)))+Tfloat_t(z*(float64(*(*float32)(unsafe.Pointer(q + 4*4)))+Tfloat_t(z*float64(*(*float32)(unsafe.Pointer(q + 5*4))))))))))))))
 	return float32((Float64FromFloat32(0.375) + r/s) / float64(x))
 }
 
@@ -107936,7 +107936,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 					temp = Xcos(tls, x) + Xsin(tls, x)
 					break
 				}
-				b = _invsqrtpi4 * temp / Xsqrt(tls, x)
+				b = float64(_invsqrtpi4*temp) / Xsqrt(tls, x)
 			} else {
 				a = Xj0(tls, x)
 				b = Xj1(tls, x)
@@ -107947,7 +107947,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 					}
 					i++
 					temp = b
-					b = b*(float64(2)*float64(i)/x) - a /* avoid underflow */
+					b = float64(b*(float64(float64(2)*float64(i))/x)) - a /* avoid underflow */
 					a = temp
 					goto _1
 				_1:
@@ -107961,7 +107961,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 				if nm1 > int32(32) { /* underflow */
 					b = float64(0)
 				} else {
-					temp = x * float64(0.5)
+					temp = float64(x * float64(0.5))
 					b = temp
 					a = float64(1)
 					i = int32(2)
@@ -107980,16 +107980,16 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 				}
 			} else {
 				nf = float64(nm1) + float64(1)
-				w = Float64FromInt32(2) * nf / x
+				w = float64(Float64FromInt32(2)*nf) / x
 				h = Float64FromInt32(2) / x
 				z = w + h
 				q0 = w
-				q1 = w*z - float64(1)
+				q1 = float64(w*z) - float64(1)
 				k = int32(1)
 				for q1 < float64(1e+09) {
 					k += int32(1)
 					z += h
-					tmp = z*q1 - q0
+					tmp = float64(z*q1) - q0
 					q0 = q1
 					q1 = tmp
 				}
@@ -107999,7 +107999,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 					if !(i >= 0) {
 						break
 					}
-					t = Float64FromInt32(1) / (Float64FromInt32(2)*(float64(i)+nf)/x - t)
+					t = Float64FromInt32(1) / (float64(Float64FromInt32(2)*(float64(i)+nf))/x - t)
 					goto _3
 				_3:
 					;
@@ -108015,7 +108015,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 				 *  then recurrent value may overflow and the result is
 				 *  likely underflow to zero
 				 */
-				tmp = nf * Xlog(tls, Xfabs(tls, w))
+				tmp = float64(nf * Xlog(tls, Xfabs(tls, w)))
 				if tmp < float64(709.782712893384) {
 					i = nm1
 					for {
@@ -108023,7 +108023,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 							break
 						}
 						temp = b
-						b = b*(float64(2)*float64(i))/x - a
+						b = float64(b*float64(float64(2)*float64(i)))/x - a
 						a = temp
 						goto _4
 					_4:
@@ -108037,7 +108037,7 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 							break
 						}
 						temp = b
-						b = b*(float64(2)*float64(i))/x - a
+						b = float64(b*float64(float64(2)*float64(i)))/x - a
 						a = temp
 						/* scale b to avoid spurious overflow */
 						if b > float64(3.273390607896142e+150) {
@@ -108054,9 +108054,9 @@ func Xjn(tls *TLS, n int32, x float64) (r float64) {
 				z = Xj0(tls, x)
 				w = Xj1(tls, x)
 				if Xfabs(tls, z) >= Xfabs(tls, w) {
-					b = t * z / b
+					b = float64(t*z) / b
 				} else {
-					b = t * w / a
+					b = float64(t*w) / a
 				}
 			}
 		}
@@ -108138,7 +108138,7 @@ func Xyn(tls *TLS, n int32, x float64) (r float64) {
 			temp = Xsin(tls, x) - Xcos(tls, x)
 			break
 		}
-		b = _invsqrtpi4 * temp / Xsqrt(tls, x)
+		b = float64(_invsqrtpi4*temp) / Xsqrt(tls, x)
 	} else {
 		a = Xy0(tls, x)
 		b = Xy1(tls, x)
@@ -108151,7 +108151,7 @@ func Xyn(tls *TLS, n int32, x float64) (r float64) {
 			}
 			i++
 			temp = b
-			b = float64(2)*float64(i)/x*b - a
+			b = float64(float64(float64(2)*float64(i))/x*b) - a
 			ib = uint32(*(*Tuint64_t)(unsafe.Pointer(&b)) >> int32(32))
 			a = temp
 			goto _2
@@ -108211,7 +108211,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 				}
 				i++
 				temp = b
-				b = b*(Float32FromFloat32(2)*float32(i)/x) - a
+				b = float32(b*(float32(Float32FromFloat32(2)*float32(i))/x)) - a
 				a = temp
 				goto _1
 			_1:
@@ -108224,7 +108224,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 				if nm1 > int32(8) { /* underflow */
 					nm1 = int32(8)
 				}
-				temp = Float32FromFloat32(0.5) * x
+				temp = float32(Float32FromFloat32(0.5) * x)
 				b = temp
 				a = Float32FromFloat32(1)
 				i = int32(2)
@@ -108242,16 +108242,16 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 				b = b / a
 			} else {
 				nf = float32(nm1) + Float32FromFloat32(1)
-				w = Float32FromInt32(2) * nf / x
+				w = float32(Float32FromInt32(2)*nf) / x
 				h = Float32FromInt32(2) / x
 				z = w + h
 				q0 = w
-				q1 = w*z - Float32FromFloat32(1)
+				q1 = float32(w*z) - Float32FromFloat32(1)
 				k = int32(1)
 				for q1 < Float32FromFloat32(10000) {
 					k += int32(1)
 					z += h
-					tmp = z*q1 - q0
+					tmp = float32(z*q1) - q0
 					q0 = q1
 					q1 = tmp
 				}
@@ -108261,7 +108261,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 					if !(i >= 0) {
 						break
 					}
-					t = Float32FromFloat32(1) / (Float32FromInt32(2)*(float32(i)+nf)/x - t)
+					t = Float32FromFloat32(1) / (float32(Float32FromInt32(2)*(float32(i)+nf))/x - t)
 					goto _3
 				_3:
 					;
@@ -108277,7 +108277,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 				 *  then recurrent value may overflow and the result is
 				 *  likely underflow to zero
 				 */
-				tmp = nf * Xlogf(tls, Xfabsf(tls, w))
+				tmp = float32(nf * Xlogf(tls, Xfabsf(tls, w)))
 				if tmp < Float32FromFloat32(88.721679688) {
 					i = nm1
 					for {
@@ -108285,7 +108285,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 							break
 						}
 						temp = b
-						b = Float32FromFloat32(2)*float32(i)*b/x - a
+						b = float32(float32(Float32FromFloat32(2)*float32(i))*b)/x - a
 						a = temp
 						goto _4
 					_4:
@@ -108299,7 +108299,7 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 							break
 						}
 						temp = b
-						b = Float32FromFloat32(2)*float32(i)*b/x - a
+						b = float32(float32(Float32FromFloat32(2)*float32(i))*b)/x - a
 						a = temp
 						/* scale b to avoid spurious overflow */
 						if b > Float32FromFloat32(1.152921504606847e+18) {
@@ -108316,9 +108316,9 @@ func Xjnf(tls *TLS, n int32, x float32) (r float32) {
 				z = Xj0f(tls, x)
 				w = Xj1f(tls, x)
 				if Xfabsf(tls, z) >= Xfabsf(tls, w) {
-					b = t * z / b
+					b = float32(t*z) / b
 				} else {
-					b = t * w / a
+					b = float32(t*w) / a
 				}
 			}
 		}
@@ -108381,7 +108381,7 @@ func Xynf(tls *TLS, n int32, x float32) (r float32) {
 		}
 		i++
 		temp = b
-		b = Float32FromFloat32(2)*float32(i)/x*b - a
+		b = float32(float32(Float32FromFloat32(2)*float32(i))/x*b) - a
 		ib = *(*Tuint32_t)(unsafe.Pointer(&b))
 		a = temp
 		goto _2
@@ -108498,8 +108498,8 @@ func _sin_pi(tls *TLS, x float64) (r float64) {
 	var n int32
 	_ = n
 	/* spurious inexact if odd int */
-	x = float64(2) * (x*float64(0.5) - Xfloor(tls, x*float64(0.5))) /* x mod 2.0 */
-	n = int32(x * Float64FromFloat64(4))
+	x = float64(float64(2) * (float64(x*float64(0.5)) - Xfloor(tls, float64(x*float64(0.5))))) /* x mod 2.0 */
+	n = int32(float64(x * Float64FromFloat64(4)))
 	n = (n + int32(1)) / int32(2)
 	x -= float64(float32(n) * Float32FromFloat32(0.5))
 	x *= _pi2
@@ -108546,7 +108546,7 @@ func X__lgamma_r(tls *TLS, x float64, signgamp uintptr) (r1 float64) {
 	sign = Int32FromUint64(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(63))
 	ix = uint32(*(*Tuint64_t)(unsafe.Pointer(bp)) >> int32(32) & uint64(0x7fffffff))
 	if ix >= uint32(0x7ff00000) {
-		return x * x
+		return float64(x * x)
 	}
 	if ix < Uint32FromInt32((Int32FromInt32(0x3ff)-Int32FromInt32(70))<<Int32FromInt32(20)) { /* |x|<2**-70, return -log(|x|) */
 		if sign != 0 {
@@ -108566,7 +108566,7 @@ func X__lgamma_r(tls *TLS, x float64, signgamp uintptr) (r1 float64) {
 		} else {
 			t = -t
 		}
-		nadj = Xlog(tls, _pi2/(t*x))
+		nadj = Xlog(tls, _pi2/Tdouble_t(t*x))
 	}
 	/* purge off 1 and 2 */
 	if (ix == uint32(0x3ff00000) || ix == uint32(0x40000000)) && uint32(*(*Tuint64_t)(unsafe.Pointer(bp))) == uint32(0) {
@@ -108604,31 +108604,31 @@ func X__lgamma_r(tls *TLS, x float64, signgamp uintptr) (r1 float64) {
 			}
 			switch i {
 			case 0:
-				z = y * y
-				p1 = _a0 + z*(_a2+z*(_a4+z*(_a6+z*(_a8+z*_a10))))
-				p2 = z * (_a1 + z*(_a3+z*(_a5+z*(_a7+z*(_a9+z*_a11)))))
-				p = y*p1 + p2
-				r += p - float64(0.5)*y
+				z = Tdouble_t(y * y)
+				p1 = _a0 + float64(z*(_a2+float64(z*(_a4+float64(z*(_a6+float64(z*(_a8+float64(z*_a10)))))))))
+				p2 = Tdouble_t(z * (_a1 + float64(z*(_a3+float64(z*(_a5+float64(z*(_a7+float64(z*(_a9+float64(z*_a11)))))))))))
+				p = Tdouble_t(y*p1) + p2
+				r += p - Tdouble_t(float64(0.5)*y)
 			case int32(1):
-				z = y * y
-				w = z * y
-				p1 = _t0 + w*(_t3+w*(_t6+w*(_t9+w*_t12))) /* parallel comp */
-				p2 = _t1 + w*(_t4+w*(_t7+w*(_t10+w*_t13)))
-				p3 = _t2 + w*(_t5+w*(_t8+w*(_t11+w*_t14)))
-				p = z*p1 - (_tt - w*(p2+y*p3))
+				z = Tdouble_t(y * y)
+				w = Tdouble_t(z * y)
+				p1 = _t0 + float64(w*(_t3+float64(w*(_t6+float64(w*(_t9+float64(w*_t12))))))) /* parallel comp */
+				p2 = _t1 + float64(w*(_t4+float64(w*(_t7+float64(w*(_t10+float64(w*_t13)))))))
+				p3 = _t2 + float64(w*(_t5+float64(w*(_t8+float64(w*(_t11+float64(w*_t14)))))))
+				p = Tdouble_t(z*p1) - (_tt - float64(w*(p2+Tdouble_t(y*p3))))
 				r += _tf + p
 			case int32(2):
-				p1 = y * (_u0 + y*(_u1+y*(_u2+y*(_u3+y*(_u4+y*_u5)))))
-				p2 = float64(1) + y*(_v1+y*(_v2+y*(_v3+y*(_v4+y*_v5))))
-				r += -Float64FromFloat64(0.5)*y + p1/p2
+				p1 = Tdouble_t(y * (_u0 + float64(y*(_u1+float64(y*(_u2+float64(y*(_u3+float64(y*(_u4+float64(y*_u5)))))))))))
+				p2 = float64(1) + float64(y*(_v1+float64(y*(_v2+float64(y*(_v3+float64(y*(_v4+float64(y*_v5)))))))))
+				r += float64(-Float64FromFloat64(0.5)*y) + p1/p2
 			}
 		} else {
 			if ix < uint32(0x40200000) { /* x < 8.0 */
 				i = int32(x)
 				y = x - float64(i)
-				p = y * (_s0 + y*(_s1+y*(_s2+y*(_s3+y*(_s4+y*(_s5+y*_s6))))))
-				q = float64(1) + y*(_r1+y*(_r2+y*(_r3+y*(_r4+y*(_r5+y*_r6)))))
-				r = float64(0.5)*y + p/q
+				p = Tdouble_t(y * (_s0 + float64(y*(_s1+float64(y*(_s2+float64(y*(_s3+float64(y*(_s4+float64(y*(_s5+float64(y*_s6)))))))))))))
+				q = float64(1) + float64(y*(_r1+float64(y*(_r2+float64(y*(_r3+float64(y*(_r4+float64(y*(_r5+float64(y*_r6)))))))))))
+				r = float64(float64(0.5)*y) + p/q
 				z = float64(1) /* lgamma(1+s) = log(s) + lgamma(s) */
 				switch i {
 				case int32(7):
@@ -108652,11 +108652,11 @@ func X__lgamma_r(tls *TLS, x float64, signgamp uintptr) (r1 float64) {
 				if ix < uint32(0x43900000) { /* 8.0 <= x < 2**58 */
 					t = Xlog(tls, x)
 					z = float64(1) / x
-					y = z * z
-					w = _w0 + z*(_w1+y*(_w2+y*(_w3+y*(_w4+y*(_w5+y*_w6)))))
-					r = (x-float64(0.5))*(t-Float64FromFloat64(1)) + w
+					y = Tdouble_t(z * z)
+					w = _w0 + float64(z*(_w1+float64(y*(_w2+float64(y*(_w3+float64(y*(_w4+float64(y*(_w5+float64(y*_w6)))))))))))
+					r = float64((x-float64(0.5))*(t-Float64FromFloat64(1))) + w
 				} else { /* 2**58 <= x <= inf */
-					r = x * (Xlog(tls, x) - float64(1))
+					r = Tdouble_t(x * (Xlog(tls, x) - float64(1)))
 				}
 			}
 		}
@@ -108755,10 +108755,10 @@ func _sin_pi1(tls *TLS, x float32) (r float32) {
 	var y Tdouble_t
 	_, _ = n, y
 	/* spurious inexact if odd int */
-	x = Float32FromInt32(2) * (x*Float32FromFloat32(0.5) - Xfloorf(tls, x*Float32FromFloat32(0.5))) /* x mod 2.0 */
-	n = int32(x * Float32FromInt32(4))
+	x = float32(Float32FromInt32(2) * (float32(x*Float32FromFloat32(0.5)) - Xfloorf(tls, float32(x*Float32FromFloat32(0.5))))) /* x mod 2.0 */
+	n = int32(float32(x * Float32FromInt32(4)))
 	n = (n + int32(1)) / int32(2)
-	y = float64(x - float32(n)*Float32FromFloat32(0.5))
+	y = float64(x - float32(float32(n)*Float32FromFloat32(0.5)))
 	y *= float64(3.141592653589793)
 	switch n {
 	default: /* case 4: */
@@ -108803,7 +108803,7 @@ func X__lgammaf_r(tls *TLS, x float32, signgamp uintptr) (r1 float32) {
 	sign = Int32FromUint32(*(*Tuint32_t)(unsafe.Pointer(bp)) >> int32(31))
 	ix = *(*Tuint32_t)(unsafe.Pointer(bp)) & uint32(0x7fffffff)
 	if ix >= uint32(0x7f800000) {
-		return x * x
+		return float32(x * x)
 	}
 	if ix < uint32(0x35000000) { /* |x| < 2**-21, return -log(|x|) */
 		if sign != 0 {
@@ -108823,7 +108823,7 @@ func X__lgammaf_r(tls *TLS, x float32, signgamp uintptr) (r1 float32) {
 		} else {
 			t = -t
 		}
-		nadj = Xlogf(tls, _pi3/(t*x))
+		nadj = Xlogf(tls, _pi3/float32(t*x))
 	}
 	/* purge off 1 and 2 */
 	if ix == uint32(0x3f800000) || ix == uint32(0x40000000) {
@@ -108861,31 +108861,31 @@ func X__lgammaf_r(tls *TLS, x float32, signgamp uintptr) (r1 float32) {
 			}
 			switch i {
 			case 0:
-				z = y * y
-				p1 = _a01 + z*(_a21+z*(_a41+z*(_a61+z*(_a81+z*_a101))))
-				p2 = z * (_a12 + z*(_a31+z*(_a51+z*(_a71+z*(_a91+z*_a111)))))
-				p = y*p1 + p2
-				r += p - Float32FromFloat32(0.5)*y
+				z = float32(y * y)
+				p1 = _a01 + float32(z*(_a21+float32(z*(_a41+float32(z*(_a61+float32(z*(_a81+float32(z*_a101)))))))))
+				p2 = float32(z * (_a12 + float32(z*(_a31+float32(z*(_a51+float32(z*(_a71+float32(z*(_a91+float32(z*_a111)))))))))))
+				p = float32(y*p1) + p2
+				r += p - float32(Float32FromFloat32(0.5)*y)
 			case int32(1):
-				z = y * y
-				w = z * y
-				p1 = _t01 + w*(_t31+w*(_t61+w*(_t91+w*_t121))) /* parallel comp */
-				p2 = _t15 + w*(_t41+w*(_t71+w*(_t101+w*_t131)))
-				p3 = _t21 + w*(_t51+w*(_t81+w*(_t111+w*_t141)))
-				p = z*p1 - (_tt1 - w*(p2+y*p3))
+				z = float32(y * y)
+				w = float32(z * y)
+				p1 = _t01 + float32(w*(_t31+float32(w*(_t61+float32(w*(_t91+float32(w*_t121))))))) /* parallel comp */
+				p2 = _t15 + float32(w*(_t41+float32(w*(_t71+float32(w*(_t101+float32(w*_t131)))))))
+				p3 = _t21 + float32(w*(_t51+float32(w*(_t81+float32(w*(_t111+float32(w*_t141)))))))
+				p = float32(z*p1) - (_tt1 - float32(w*(p2+float32(y*p3))))
 				r += _tf1 + p
 			case int32(2):
-				p1 = y * (_u07 + y*(_u11+y*(_u21+y*(_u31+y*(_u41+y*_u51)))))
-				p2 = Float32FromFloat32(1) + y*(_v11+y*(_v21+y*(_v31+y*(_v41+y*_v51))))
-				r += -Float32FromFloat32(0.5)*y + p1/p2
+				p1 = float32(y * (_u07 + float32(y*(_u11+float32(y*(_u21+float32(y*(_u31+float32(y*(_u41+float32(y*_u51)))))))))))
+				p2 = Float32FromFloat32(1) + float32(y*(_v11+float32(y*(_v21+float32(y*(_v31+float32(y*(_v41+float32(y*_v51)))))))))
+				r += float32(-Float32FromFloat32(0.5)*y) + p1/p2
 			}
 		} else {
 			if ix < uint32(0x41000000) { /* x < 8.0 */
 				i = int32(x)
 				y = x - float32(i)
-				p = y * (_s06 + y*(_s11+y*(_s21+y*(_s31+y*(_s41+y*(_s51+y*_s61))))))
-				q = Float32FromFloat32(1) + y*(_r11+y*(_r21+y*(_r31+y*(_r41+y*(_r51+y*_r61)))))
-				r = Float32FromFloat32(0.5)*y + p/q
+				p = float32(y * (_s06 + float32(y*(_s11+float32(y*(_s21+float32(y*(_s31+float32(y*(_s41+float32(y*(_s51+float32(y*_s61)))))))))))))
+				q = Float32FromFloat32(1) + float32(y*(_r11+float32(y*(_r21+float32(y*(_r31+float32(y*(_r41+float32(y*(_r51+float32(y*_r61)))))))))))
+				r = float32(Float32FromFloat32(0.5)*y) + p/q
 				z = Float32FromFloat32(1) /* lgamma(1+s) = log(s) + lgamma(s) */
 				switch i {
 				case int32(7):
@@ -108909,11 +108909,11 @@ func X__lgammaf_r(tls *TLS, x float32, signgamp uintptr) (r1 float32) {
 				if ix < uint32(0x5c800000) { /* 8.0 <= x < 2**58 */
 					t = Xlogf(tls, x)
 					z = Float32FromFloat32(1) / x
-					y = z * z
-					w = _w01 + z*(_w11+y*(_w21+y*(_w31+y*(_w41+y*(_w51+y*_w61)))))
-					r = (x-Float32FromFloat32(0.5))*(t-Float32FromFloat32(1)) + w
+					y = float32(z * z)
+					w = _w01 + float32(z*(_w11+float32(y*(_w21+float32(y*(_w31+float32(y*(_w41+float32(y*(_w51+float32(y*_w61)))))))))))
+					r = float32((x-Float32FromFloat32(0.5))*(t-Float32FromFloat32(1))) + w
 				} else { /* 2**58 <= x <= inf */
-					r = x * (Xlogf(tls, x) - Float32FromFloat32(1))
+					r = float32(x * (Xlogf(tls, x) - Float32FromFloat32(1)))
 				}
 			}
 		}
@@ -109048,17 +109048,17 @@ func Xlog(tls *TLS, x1 float64) (r1 float64) {
 			return Float64FromInt32(0)
 		}
 		r = x1 - float64(1)
-		r2 = r * r
-		r3 = r * r2
-		y1 = r3 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 1*8)) + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 2*8)) + r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 3*8)) + r3*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 4*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 5*8))+r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 6*8))+r3*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 7*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 8*8))+r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 9*8))+r3**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 10*8)))))
+		r2 = Tdouble_t(r * r)
+		r3 = Tdouble_t(r * r2)
+		y1 = Tdouble_t(r3 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 1*8)) + float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 2*8))) + float64(r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 3*8))) + float64(r3*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 4*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 5*8)))+float64(r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 6*8)))+float64(r3*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 7*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 8*8)))+float64(r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 9*8)))+float64(r3**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56 + 10*8)))))))))
 		/* Worst-case error is around 0.507 ULP.  */
-		w = r * float64(1.34217728e+08)
+		w = Tdouble_t(r * float64(1.34217728e+08))
 		rhi = r + w - w
 		rlo = r - rhi
-		w = rhi * rhi * *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56)) /* B[0] == -0.5.  */
+		w = Tdouble_t(Tdouble_t(rhi*rhi) * *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56))) /* B[0] == -0.5.  */
 		hi = r + w
 		lo = r - hi + w
-		lo += *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56)) * rlo * (rhi + r)
+		lo += Tdouble_t(float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 56))*rlo) * (rhi + r))
 		y1 += lo
 		y1 += hi
 		y = y1
@@ -109080,9 +109080,9 @@ func Xlog(tls *TLS, x1 float64) (r1 float64) {
 			return X__math_invalid(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v9 = x1 * float64(4.503599627370496e+15)
+		v9 = float64(x1 * float64(4.503599627370496e+15))
 		ix = *(*Tuint64_t)(unsafe.Pointer(&v9))
-		ix = ix - Uint64FromUint64(52)<<Int32FromInt32(52)
+		ix = Tuint64_t(ix - Uint64FromUint64(52)<<Int32FromInt32(52))
 	}
 	/* x = 2^k z; where z is in range [OFF,2*OFF) and exact.
 	   The range is split into N subintervals.
@@ -109090,7 +109090,7 @@ func Xlog(tls *TLS, x1 float64) (r1 float64) {
 	tmp = ix - uint64(OFF)
 	i = Int32FromUint64(tmp >> (Int32FromInt32(52) - Int32FromInt32(LOG_TABLE_BITS)) % Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(LOG_TABLE_BITS)))
 	k = int32(Int64FromUint64(tmp) >> int32(52)) /* arithmetic shift */
-	iz = ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52))
+	iz = uint64(ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52)))
 	invc = (*(*struct {
 		Finvc float64
 		Flogc float64
@@ -109103,19 +109103,19 @@ func Xlog(tls *TLS, x1 float64) (r1 float64) {
 	/* log(x) = log1p(z/c-1) + log(c) + k*Ln2.  */
 	/* r ~= z/c - 1, |r| < 1/(2*N).  */
 	/* rounding error: 0x1p-55/N.  */
-	r = X__builtin_fma(tls, z, invc, -Float64FromFloat64(1))
+	r = float64(X__builtin_fma(tls, z, invc, -Float64FromFloat64(1)))
 	kd = float64(k)
 	/* hi + lo = r + log(c) + k*Ln2.  */
-	w = kd*X__log_data.Fln2hi + logc
+	w = Tdouble_t(kd*X__log_data.Fln2hi) + logc
 	hi = w + r
-	lo = w - hi + r + kd*X__log_data.Fln2lo
+	lo = w - hi + r + Tdouble_t(kd*X__log_data.Fln2lo)
 	/* log(x) = lo + (log1p(r) - r) + hi.  */
-	r2 = r * r /* rounding error: 0x1p-54/N^2.  */
+	r2 = Tdouble_t(r * r) /* rounding error: 0x1p-54/N^2.  */
 	/* Worst case error if |y| > 0x1p-5:
 	   0.5 + 4.13/N + abs-poly-error*2^57 ULP (+ 0.002 ULP without fma)
 	   Worst case error if |y| > 0x1p-4:
 	   0.5 + 2.06/N + abs-poly-error*2^56 ULP (+ 0.001 ULP without fma).  */
-	y1 = lo + r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16)) + r*r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 1*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 2*8))+r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 3*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 4*8)))) + hi
+	y1 = lo + Tdouble_t(r2**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16))) + Tdouble_t(Tdouble_t(r*r2)*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 1*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 2*8)))+float64(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 3*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log_data)) + 16 + 4*8))))))) + hi
 	y = y1
 	v10 = y
 	goto _11
@@ -109162,7 +109162,7 @@ func Xlog10(tls *TLS, x float64) (r float64) {
 	k = 0
 	if hx < uint32(0x00100000) || hx>>int32(31) != 0 {
 		if *(*Tuint64_t)(unsafe.Pointer(bp))<<int32(1) == uint64(0) {
-			return float64(-Int32FromInt32(1)) / (x * x)
+			return float64(-Int32FromInt32(1)) / float64(x*x)
 		} /* log(+-0)=-inf */
 		if hx>>int32(31) != 0 {
 			return (x - x) / float64(0)
@@ -109188,12 +109188,12 @@ func Xlog10(tls *TLS, x float64) (r float64) {
 	*(*Tuint64_t)(unsafe.Pointer(bp)) = uint64(hx)<<int32(32) | *(*Tuint64_t)(unsafe.Pointer(bp))&uint64(0xffffffff)
 	x = *(*float64)(unsafe.Pointer(bp))
 	f = x - float64(1)
-	hfsq = float64(0.5) * f * f
+	hfsq = Tdouble_t(float64(float64(0.5)*f) * f)
 	s = f / (Float64FromFloat64(2) + f)
-	z = s * s
-	w = z * z
-	t1 = w * (_Lg2 + w*(_Lg4+w*_Lg6))
-	t2 = z * (_Lg1 + w*(_Lg3+w*(_Lg5+w*_Lg7)))
+	z = Tdouble_t(s * s)
+	w = Tdouble_t(z * z)
+	t1 = Tdouble_t(w * (_Lg2 + float64(w*(_Lg4+float64(w*_Lg6)))))
+	t2 = Tdouble_t(z * (_Lg1 + float64(w*(_Lg3+float64(w*(_Lg5+float64(w*_Lg7)))))))
 	R = t2 + t1
 	/* See log2.c for details. */
 	/* hi+lo = f - hfsq + s*(hfsq+R) ~ log(1+f) */
@@ -109201,12 +109201,12 @@ func Xlog10(tls *TLS, x float64) (r float64) {
 	*(*float64)(unsafe.Pointer(bp)) = hi
 	*(*Tuint64_t)(unsafe.Pointer(bp)) &= Uint64FromInt32(-Int32FromInt32(1)) << Int32FromInt32(32)
 	hi = *(*float64)(unsafe.Pointer(bp))
-	lo = f - hi - hfsq + s*(hfsq+R)
+	lo = f - hi - hfsq + Tdouble_t(s*(hfsq+R))
 	/* val_hi+val_lo ~ log10(1+f) + k*log10(2) */
-	val_hi = hi * _ivln10hi
+	val_hi = Tdouble_t(hi * _ivln10hi)
 	dk = float64(k)
-	y = dk * _log10_2hi
-	val_lo = dk*_log10_2lo + (lo+hi)*_ivln10lo + lo*_ivln10hi
+	y = Tdouble_t(dk * _log10_2hi)
+	val_lo = Tdouble_t(dk*_log10_2lo) + Tdouble_t((lo+hi)*_ivln10lo) + Tdouble_t(lo*_ivln10hi)
 	/*
 	 * Extra precision in for adding y is not strictly needed
 	 * since there is no very large cancellation near x = sqrt(2) or
@@ -109256,7 +109256,7 @@ func Xlog10f(tls *TLS, x float32) (r float32) {
 	k = 0
 	if ix < uint32(0x00800000) || ix>>int32(31) != 0 { /* x < 2**-126  */
 		if ix<<int32(1) == uint32(0) {
-			return float32(-Int32FromInt32(1)) / (x * x)
+			return float32(-Int32FromInt32(1)) / float32(x*x)
 		} /* log(+-0)=-inf */
 		if ix>>int32(31) != 0 {
 			return (x - x) / Float32FromFloat32(0)
@@ -109283,19 +109283,19 @@ func Xlog10f(tls *TLS, x float32) (r float32) {
 	x = *(*float32)(unsafe.Pointer(bp))
 	f = float64(x - Float32FromFloat32(1))
 	s = f / (Float64FromFloat32(2) + f)
-	z = s * s
-	w = z * z
-	t1 = w * (float64(_Lg21) + w*float64(_Lg41))
-	t2 = z * (float64(_Lg11) + w*float64(_Lg31))
+	z = Tfloat_t(s * s)
+	w = Tfloat_t(z * z)
+	t1 = Tfloat_t(w * (float64(_Lg21) + Tfloat_t(w*float64(_Lg41))))
+	t2 = Tfloat_t(z * (float64(_Lg11) + Tfloat_t(w*float64(_Lg31))))
 	R = t2 + t1
-	hfsq = Float64FromFloat32(0.5) * f * f
+	hfsq = Tfloat_t(Tfloat_t(Float64FromFloat32(0.5)*f) * f)
 	hi = f - hfsq
 	*(*float32)(unsafe.Pointer(bp)) = float32(hi)
 	*(*Tuint32_t)(unsafe.Pointer(bp)) &= uint32(0xfffff000)
 	hi = float64(*(*float32)(unsafe.Pointer(bp)))
-	lo = f - hi - hfsq + s*(hfsq+R)
+	lo = f - hi - hfsq + Tfloat_t(s*(hfsq+R))
 	dk = float64(k)
-	return float32(dk*float64(_log10_2lo1) + (lo+hi)*float64(_ivln10lo1) + lo*float64(_ivln10hi1) + hi*float64(_ivln10hi1) + dk*float64(_log10_2hi1))
+	return float32(Tfloat_t(dk*float64(_log10_2lo1)) + Tfloat_t((lo+hi)*float64(_ivln10lo1)) + Tfloat_t(lo*float64(_ivln10hi1)) + Tfloat_t(hi*float64(_ivln10hi1)) + Tfloat_t(dk*float64(_log10_2hi1)))
 }
 
 func Xlog10l(tls *TLS, x float64) (r float64) {
@@ -109397,15 +109397,15 @@ func Xlog1p(tls *TLS, x3 float64) (r float64) {
 		*(*Tuint64_t)(unsafe.Pointer(bp)) = uint64(hu)<<int32(32) | *(*Tuint64_t)(unsafe.Pointer(bp))&uint64(0xffffffff)
 		f = *(*float64)(unsafe.Pointer(bp)) - Float64FromInt32(1)
 	}
-	hfsq = float64(0.5) * f * f
+	hfsq = Tdouble_t(float64(float64(0.5)*f) * f)
 	s = f / (Float64FromFloat64(2) + f)
-	z = s * s
-	w = z * z
-	t1 = w * (_Lg22 + w*(_Lg42+w*_Lg61))
-	t2 = z * (_Lg12 + w*(_Lg32+w*(_Lg51+w*_Lg71)))
+	z = Tdouble_t(s * s)
+	w = Tdouble_t(z * z)
+	t1 = Tdouble_t(w * (_Lg22 + float64(w*(_Lg42+float64(w*_Lg61)))))
+	t2 = Tdouble_t(z * (_Lg12 + float64(w*(_Lg32+float64(w*(_Lg51+float64(w*_Lg71)))))))
 	R = t2 + t1
 	dk = float64(k)
-	return s*(hfsq+R) + (dk*_ln2_lo2 + c) - hfsq + f + dk*_ln2_hi2
+	return Tdouble_t(s*(hfsq+R)) + (Tdouble_t(dk*_ln2_lo2) + c) - hfsq + f + Tdouble_t(dk*_ln2_hi2)
 }
 
 var _ln2_hi3 = float32(0.69313812256)    /* 0x3f317180 */
@@ -109454,7 +109454,7 @@ func Xlog1pf(tls *TLS, x3 float32) (r float32) {
 			/* underflow if subnormal */
 			if ix&uint32(0x7f800000) == uint32(0) {
 				if uint64(4) == uint64(4) {
-					y = x3 * x3
+					y = float32(x3 * x3)
 				} else {
 					if uint64(4) == uint64(8) {
 						y1 = float64(x3 * x3)
@@ -109498,14 +109498,14 @@ func Xlog1pf(tls *TLS, x3 float32) (r float32) {
 		f = float64(*(*float32)(unsafe.Pointer(bp)) - Float32FromInt32(1))
 	}
 	s = f / (Float64FromFloat32(2) + f)
-	z = s * s
-	w = z * z
-	t1 = w * (float64(_Lg23) + w*float64(_Lg43))
-	t2 = z * (float64(_Lg13) + w*float64(_Lg33))
+	z = Tfloat_t(s * s)
+	w = Tfloat_t(z * z)
+	t1 = Tfloat_t(w * (float64(_Lg23) + Tfloat_t(w*float64(_Lg43))))
+	t2 = Tfloat_t(z * (float64(_Lg13) + Tfloat_t(w*float64(_Lg33))))
 	R = t2 + t1
-	hfsq = Float64FromFloat32(0.5) * f * f
+	hfsq = Tfloat_t(Tfloat_t(Float64FromFloat32(0.5)*f) * f)
 	dk = float64(k)
-	return float32(s*(hfsq+R) + (dk*float64(_ln2_lo3) + c) - hfsq + f + dk*float64(_ln2_hi3))
+	return float32(Tfloat_t(s*(hfsq+R)) + (Tfloat_t(dk*float64(_ln2_lo3)) + c) - hfsq + f + Tfloat_t(dk*float64(_ln2_hi3)))
 }
 
 func Xlog1pl(tls *TLS, x float64) (r float64) {
@@ -109555,15 +109555,15 @@ func Xlog2(tls *TLS, x1 float64) (r1 float64) {
 			return Float64FromInt32(0)
 		}
 		r = x1 - float64(1)
-		hi = r * X__log2_data.Finvln2hi
-		lo = r*X__log2_data.Finvln2lo + X__builtin_fma(tls, r, X__log2_data.Finvln2hi, -hi)
-		r2 = r * r /* rounding error: 0x1p-62.  */
-		r4 = r2 * r2
+		hi = Tdouble_t(r * X__log2_data.Finvln2hi)
+		lo = Tdouble_t(r*X__log2_data.Finvln2lo) + float64(X__builtin_fma(tls, r, X__log2_data.Finvln2hi, -hi))
+		r2 = Tdouble_t(r * r) /* rounding error: 0x1p-62.  */
+		r4 = Tdouble_t(r2 * r2)
 		/* Worst-case error is less than 0.54 ULP (0.55 ULP without fma).  */
-		p = r2 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64)) + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 1*8)))
+		p = Tdouble_t(r2 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64)) + float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 1*8)))))
 		y1 = hi + p
 		lo += hi - y1 + p
-		lo += r4 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 2*8)) + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 3*8)) + r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 4*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 5*8))) + r4*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 6*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 7*8))+r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 8*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 9*8)))))
+		lo += Tdouble_t(r4 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 2*8)) + float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 3*8))) + float64(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 4*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 5*8))))) + float64(r4*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 6*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 7*8)))+float64(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 8*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 64 + 9*8)))))))))
 		y1 += lo
 		y = y1
 		v6 = y
@@ -109584,9 +109584,9 @@ func Xlog2(tls *TLS, x1 float64) (r1 float64) {
 			return X__math_invalid(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v9 = x1 * float64(4.503599627370496e+15)
+		v9 = float64(x1 * float64(4.503599627370496e+15))
 		ix = *(*Tuint64_t)(unsafe.Pointer(&v9))
-		ix = ix - Uint64FromUint64(52)<<Int32FromInt32(52)
+		ix = Tuint64_t(ix - Uint64FromUint64(52)<<Int32FromInt32(52))
 	}
 	/* x = 2^k z; where z is in range [OFF,2*OFF) and exact.
 	   The range is split into N subintervals.
@@ -109594,7 +109594,7 @@ func Xlog2(tls *TLS, x1 float64) (r1 float64) {
 	tmp = ix - uint64(OFF)
 	i = Int32FromUint64(tmp >> (Int32FromInt32(52) - Int32FromInt32(LOG2_TABLE_BITS)) % Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(LOG2_TABLE_BITS)))
 	k = int32(Int64FromUint64(tmp) >> int32(52)) /* arithmetic shift */
-	iz = ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52))
+	iz = uint64(ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52)))
 	invc = (*(*struct {
 		Finvc float64
 		Flogc float64
@@ -109608,21 +109608,21 @@ func Xlog2(tls *TLS, x1 float64) (r1 float64) {
 	/* log2(x) = log2(z/c) + log2(c) + k.  */
 	/* r ~= z/c - 1, |r| < 1/(2*N).  */
 	/* rounding error: 0x1p-55/N.  */
-	r = X__builtin_fma(tls, z, invc, -Float64FromFloat64(1))
-	t1 = r * X__log2_data.Finvln2hi
-	t2 = r*X__log2_data.Finvln2lo + X__builtin_fma(tls, r, X__log2_data.Finvln2hi, -t1)
+	r = float64(X__builtin_fma(tls, z, invc, -Float64FromFloat64(1)))
+	t1 = Tdouble_t(r * X__log2_data.Finvln2hi)
+	t2 = Tdouble_t(r*X__log2_data.Finvln2lo) + float64(X__builtin_fma(tls, r, X__log2_data.Finvln2hi, -t1))
 	/* hi + lo = r/ln2 + log2(c) + k.  */
 	t3 = kd + logc
 	hi = t3 + t1
 	lo = t3 - hi + t1 + t2
 	/* log2(r+1) = r/ln2 + r^2*poly(r).  */
 	/* Evaluation is optimized assuming superscalar pipelined execution.  */
-	r2 = r * r /* rounding error: 0x1p-54/N^2.  */
-	r4 = r2 * r2
+	r2 = Tdouble_t(r * r) /* rounding error: 0x1p-54/N^2.  */
+	r4 = Tdouble_t(r2 * r2)
 	/* Worst-case error if |y| > 0x1p-4: 0.547 ULP (0.550 ULP without fma).
 	   ~ 0.5 + 2/N/ln2 + abs-poly-error*0x1p56 ULP (+ 0.003 ULP without fma).  */
-	p = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16)) + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 1*8)) + r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 2*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 3*8))) + r4*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 4*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 5*8)))
-	y1 = lo + r2*p + hi
+	p = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16)) + float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 1*8))) + float64(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 2*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 3*8))))) + float64(r4*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 4*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2_data)) + 16 + 5*8)))))
+	y1 = lo + Tdouble_t(r2*p) + hi
 	y = y1
 	v10 = y
 	goto _11
@@ -109681,7 +109681,7 @@ func Xlog2f(tls *TLS, x1 float32) (r1 float32) {
 			return X__math_invalidf(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v1 = x1 * Float32FromFloat32(8.388608e+06)
+		v1 = float32(x1 * Float32FromFloat32(8.388608e+06))
 		ix = *(*Tuint32_t)(unsafe.Pointer(&v1))
 		ix -= Uint32FromInt32(Int32FromInt32(23) << Int32FromInt32(23))
 	}
@@ -109703,14 +109703,14 @@ func Xlog2f(tls *TLS, x1 float32) (r1 float32) {
 	})(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + uintptr(i)*16))).Flogc
 	z = float64(*(*float32)(unsafe.Pointer(&iz)))
 	/* log2(x) = log1p(z/c-1)/ln2 + log2(c) + k */
-	r = z*invc - Float64FromInt32(1)
+	r = Tdouble_t(z*invc) - Float64FromInt32(1)
 	y0 = logc + float64(k)
 	/* Pipelined polynomial evaluation to approximate log1p(r)/ln2.  */
-	r2 = r * r
-	y1 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 1*8))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 2*8))
-	y1 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256))*r2 + y1
-	p = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 3*8))*r + y0
-	y1 = y1*r2 + p
+	r2 = Tdouble_t(r * r)
+	y1 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 1*8))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 2*8))
+	y1 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256))*r2) + y1
+	p = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__log2f_data)) + 256 + 3*8))*r) + y0
+	y1 = Tdouble_t(y1*r2) + p
 	y = float32(y1)
 	v2 = y
 	goto _3
@@ -109772,10 +109772,10 @@ func Xlogb(tls *TLS, x float64) (r float64) {
 	goto _2
 _2:
 	if !(BoolInt32(v1&(-Uint64FromUint64(1)>>Int32FromInt32(1)) < Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0) {
-		return x * x
+		return float64(x * x)
 	}
 	if x == Float64FromInt32(0) {
-		return float64(-Int32FromInt32(1)) / (x * x)
+		return float64(-Int32FromInt32(1)) / float64(x*x)
 	}
 	return float64(Xilogb(tls, x))
 }
@@ -109798,10 +109798,10 @@ func Xlogbf(tls *TLS, x float32) (r float32) {
 	goto _2
 _2:
 	if !(BoolInt32(v1&Uint32FromInt32(0x7fffffff) < Uint32FromInt32(0x7f800000)) != 0) {
-		return x * x
+		return float32(x * x)
 	}
 	if x == Float32FromInt32(0) {
-		return float32(-Int32FromInt32(1)) / (x * x)
+		return float32(-Int32FromInt32(1)) / float32(x*x)
 	}
 	return float32(Xilogbf(tls, x))
 }
@@ -109824,10 +109824,10 @@ func Xlogbl(tls *TLS, x float64) (r float64) {
 	goto _2
 _2:
 	if !(BoolInt32(v1&(-Uint64FromUint64(1)>>Int32FromInt32(1)) < Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0) {
-		return x * x
+		return float64(x * x)
 	}
 	if x == Float64FromInt32(0) {
-		return float64(-Int32FromInt32(1)) / (x * x)
+		return float64(-Int32FromInt32(1)) / float64(x*x)
 	}
 	return float64(Xilogbl(tls, x))
 }
@@ -109871,7 +109871,7 @@ func Xlogf(tls *TLS, x1 float32) (r1 float32) {
 			return X__math_invalidf(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v1 = x1 * Float32FromFloat32(8.388608e+06)
+		v1 = float32(x1 * Float32FromFloat32(8.388608e+06))
 		ix = *(*Tuint32_t)(unsafe.Pointer(&v1))
 		ix -= Uint32FromInt32(Int32FromInt32(23) << Int32FromInt32(23))
 	}
@@ -109892,13 +109892,13 @@ func Xlogf(tls *TLS, x1 float32) (r1 float32) {
 	})(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + uintptr(i)*16))).Flogc
 	z = float64(*(*float32)(unsafe.Pointer(&iz)))
 	/* log(x) = log1p(z/c-1) + log(c) + k*Ln2 */
-	r = z*invc - Float64FromInt32(1)
-	y0 = logc + float64(k)*X__logf_data.Fln2
+	r = Tdouble_t(z*invc) - Float64FromInt32(1)
+	y0 = logc + Tdouble_t(float64(k)*X__logf_data.Fln2)
 	/* Pipelined polynomial evaluation to approximate log1p(r).  */
-	r2 = r * r
-	y1 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264 + 1*8))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264 + 2*8))
-	y1 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264))*r2 + y1
-	y1 = y1*r2 + (y0 + r)
+	r2 = Tdouble_t(r * r)
+	y1 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264 + 1*8))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264 + 2*8))
+	y1 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__logf_data)) + 264))*r2) + y1
+	y1 = Tdouble_t(y1*r2) + (y0 + r)
 	y = float32(y1)
 	v2 = y
 	goto _3
@@ -110027,21 +110027,21 @@ func Xmodf(tls *TLS, x float64, iptr uintptr) (r float64) {
 			return x
 		}
 		p1 = bp
-		*(*Tuint64_t)(unsafe.Pointer(p1)) = *(*Tuint64_t)(unsafe.Pointer(p1)) & (Uint64FromUint64(1) << Int32FromInt32(63))
+		*(*Tuint64_t)(unsafe.Pointer(p1)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p1)) & (Uint64FromUint64(1) << Int32FromInt32(63)))
 		return *(*float64)(unsafe.Pointer(bp))
 	}
 	/* no integral part*/
 	if e < 0 {
 		p2 = bp
-		*(*Tuint64_t)(unsafe.Pointer(p2)) = *(*Tuint64_t)(unsafe.Pointer(p2)) & (Uint64FromUint64(1) << Int32FromInt32(63))
+		*(*Tuint64_t)(unsafe.Pointer(p2)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p2)) & (Uint64FromUint64(1) << Int32FromInt32(63)))
 		*(*float64)(unsafe.Pointer(iptr)) = *(*float64)(unsafe.Pointer(bp))
 		return x
 	}
-	mask = -Uint64FromUint64(1) >> Int32FromInt32(12) >> e
+	mask = uint64(-Uint64FromUint64(1) >> Int32FromInt32(12) >> e)
 	if *(*Tuint64_t)(unsafe.Pointer(bp))&mask == uint64(0) {
 		*(*float64)(unsafe.Pointer(iptr)) = x
 		p3 = bp
-		*(*Tuint64_t)(unsafe.Pointer(p3)) = *(*Tuint64_t)(unsafe.Pointer(p3)) & (Uint64FromUint64(1) << Int32FromInt32(63))
+		*(*Tuint64_t)(unsafe.Pointer(p3)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p3)) & (Uint64FromUint64(1) << Int32FromInt32(63)))
 		return *(*float64)(unsafe.Pointer(bp))
 	}
 	*(*Tuint64_t)(unsafe.Pointer(bp)) &= ^mask
@@ -110196,13 +110196,13 @@ _2:
 	if *(*Tuint64_t)(unsafe.Pointer(bp + 8)) == *(*Tuint64_t)(unsafe.Pointer(bp + 16)) {
 		return y3
 	}
-	ax = *(*Tuint64_t)(unsafe.Pointer(bp + 8)) & (-Uint64FromUint64(1) / Uint64FromInt32(2))
-	ay = *(*Tuint64_t)(unsafe.Pointer(bp + 16)) & (-Uint64FromUint64(1) / Uint64FromInt32(2))
+	ax = uint64(*(*Tuint64_t)(unsafe.Pointer(bp + 8)) & (-Uint64FromUint64(1) / Uint64FromInt32(2)))
+	ay = uint64(*(*Tuint64_t)(unsafe.Pointer(bp + 16)) & (-Uint64FromUint64(1) / Uint64FromInt32(2)))
 	if ax == uint64(0) {
 		if ay == uint64(0) {
 			return y3
 		}
-		*(*Tuint64_t)(unsafe.Pointer(bp + 8)) = *(*Tuint64_t)(unsafe.Pointer(bp + 16))&(Uint64FromUint64(1)<<Int32FromInt32(63)) | uint64(1)
+		*(*Tuint64_t)(unsafe.Pointer(bp + 8)) = uint64(*(*Tuint64_t)(unsafe.Pointer(bp + 16))&(Uint64FromUint64(1)<<Int32FromInt32(63)) | uint64(1))
 	} else {
 		if ax > ay || (*(*Tuint64_t)(unsafe.Pointer(bp + 8))^*(*Tuint64_t)(unsafe.Pointer(bp + 16)))&(Uint64FromUint64(1)<<Int32FromInt32(63)) != 0 {
 			*(*Tuint64_t)(unsafe.Pointer(bp + 8))--
@@ -110226,12 +110226,12 @@ _2:
 	/* raise underflow if ux.f is subnormal or zero */
 	if e == 0 {
 		if uint64(8) == uint64(4) {
-			y = float32(x3*x3 + *(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8)))
+			y = float32(float64(x3*x3) + float64(*(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8))))
 		} else {
 			if uint64(8) == uint64(8) {
-				y1 = x3*x3 + *(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8))
+				y1 = float64(x3*x3) + float64(*(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8)))
 			} else {
-				y2 = x3*x3 + *(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8))
+				y2 = float64(x3*x3) + float64(*(*float64)(unsafe.Pointer(bp + 8))**(*float64)(unsafe.Pointer(bp + 8)))
 			}
 		}
 	}
@@ -110326,12 +110326,12 @@ _2:
 	/* raise underflow if ux.f is subnormal or zero */
 	if e == uint32(0) {
 		if uint64(4) == uint64(4) {
-			y = x3*x3 + *(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4))
+			y = float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4)))
 		} else {
 			if uint64(4) == uint64(8) {
-				y1 = float64(x3*x3 + *(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4)))
+				y1 = float64(float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4))))
 			} else {
-				y2 = float64(x3*x3 + *(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4)))
+				y2 = float64(float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 4))**(*float32)(unsafe.Pointer(bp + 4))))
 			}
 		}
 	}
@@ -110453,12 +110453,12 @@ _2:
 	/* raise underflow if ux.f is subnormal or zero */
 	if e == uint32(0) {
 		if uint64(4) == uint64(4) {
-			y = x3*x3 + *(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16))
+			y = float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16)))
 		} else {
 			if uint64(4) == uint64(8) {
-				y1 = float64(x3*x3 + *(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16)))
+				y1 = float64(float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16))))
 			} else {
-				y2 = float64(x3*x3 + *(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16)))
+				y2 = float64(float32(x3*x3) + float32(*(*float32)(unsafe.Pointer(bp + 16))**(*float32)(unsafe.Pointer(bp + 16))))
 			}
 		}
 	}
@@ -110507,7 +110507,7 @@ func _log_inline(tls *TLS, ix Tuint64_t, tail uintptr) (r1 Tdouble_t) {
 	tmp = ix - uint64(OFF2)
 	i = Int32FromUint64(tmp >> (Int32FromInt32(52) - Int32FromInt32(POW_LOG_TABLE_BITS)) % Uint64FromInt32(Int32FromInt32(1)<<Int32FromInt32(POW_LOG_TABLE_BITS)))
 	k = int32(Int64FromUint64(tmp) >> int32(52)) /* arithmetic shift */
-	iz = ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52))
+	iz = uint64(ix - tmp&(Uint64FromUint64(0xfff)<<Int32FromInt32(52)))
 	z = *(*float64)(unsafe.Pointer(&iz))
 	kd = float64(k)
 	/* log(x) = k*Ln2 + log(c) + log1p(z/c-1).  */
@@ -110531,21 +110531,21 @@ func _log_inline(tls *TLS, ix Tuint64_t, tail uintptr) (r1 Tdouble_t) {
 	})(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 72 + uintptr(i)*32))).Flogctail
 	/* Note: 1/c is j/N or j/N/2 where j is an integer in [N,2N) and
 	   |z/c - 1| < 1/N, so r = z/c - 1 is exactly representible.  */
-	r = X__builtin_fma(tls, z, invc, -Float64FromFloat64(1))
+	r = float64(X__builtin_fma(tls, z, invc, -Float64FromFloat64(1)))
 	/* k*Ln2 + log(c) + r.  */
-	t1 = kd*X__pow_log_data.Fln2hi + logc
+	t1 = Tdouble_t(kd*X__pow_log_data.Fln2hi) + logc
 	t2 = t1 + r
-	lo1 = kd*X__pow_log_data.Fln2lo + logctail
+	lo1 = Tdouble_t(kd*X__pow_log_data.Fln2lo) + logctail
 	lo2 = t1 - t2 + r
-	ar = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16)) * r /* A[0] = -0.5.  */
-	ar2 = r * ar
-	ar3 = r * ar2
+	ar = Tdouble_t(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16)) * r) /* A[0] = -0.5.  */
+	ar2 = Tdouble_t(r * ar)
+	ar3 = Tdouble_t(r * ar2)
 	/* k*Ln2 + log(c) + r + A[0]*r*r.  */
 	hi = t2 + ar2
-	lo3 = X__builtin_fma(tls, ar, r, -ar2)
+	lo3 = float64(X__builtin_fma(tls, ar, r, -ar2))
 	lo4 = t2 - hi + ar2
 	/* p = log1p(r) - r - A[0]*r*r.  */
-	p = ar3 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 1*8)) + r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 2*8)) + ar2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 3*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 4*8))+ar2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 5*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 6*8)))))
+	p = Tdouble_t(ar3 * (*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 1*8)) + float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 2*8))) + float64(ar2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 3*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 4*8)))+float64(ar2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 5*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__pow_log_data)) + 16 + 6*8)))))))))
 	lo = lo1 + lo2 + lo3 + lo4 + p
 	y = hi + lo
 	*(*Tdouble_t)(unsafe.Pointer(tail)) = hi - y + lo
@@ -110568,9 +110568,9 @@ func _specialcase2(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 	_, _, _, _, _, _, _, _, _, _, _, _, _ = hi, lo, one, scale, y, y1, y2, y3, v1, v3, v5, v6, v8
 	if ki&uint64(0x80000000) == uint64(0) {
 		/* k > 0, the exponent of scale might have overflowed by <= 460.  */
-		sbits = sbits - Uint64FromUint64(1009)<<Int32FromInt32(52)
+		sbits = Tuint64_t(sbits - Uint64FromUint64(1009)<<Int32FromInt32(52))
 		scale = *(*float64)(unsafe.Pointer(&sbits))
-		y3 = float64(5.486124068793689e+303) * (scale + scale*tmp)
+		y3 = Tdouble_t(float64(5.486124068793689e+303) * (scale + Tdouble_t(scale*tmp)))
 		y = y3
 		v1 = y
 		goto _2
@@ -110578,16 +110578,16 @@ func _specialcase2(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 		return v1
 	}
 	/* k < 0, need special care in the subnormal range.  */
-	sbits = sbits + Uint64FromUint64(1022)<<Int32FromInt32(52)
+	sbits = Tuint64_t(sbits + Uint64FromUint64(1022)<<Int32FromInt32(52))
 	/* Note: sbits is signed scale.  */
 	scale = *(*float64)(unsafe.Pointer(&sbits))
-	y3 = scale + scale*tmp
+	y3 = scale + Tdouble_t(scale*tmp)
 	if Xfabs(tls, y3) < float64(1) {
 		one = float64(1)
 		if y3 < float64(0) {
 			one = -Float64FromFloat64(1)
 		}
-		lo = scale - y3 + scale*tmp
+		lo = scale - y3 + Tdouble_t(scale*tmp)
 		hi = one + y3
 		lo = one - hi + y3 + lo
 		y = hi + lo
@@ -110605,9 +110605,9 @@ func _specialcase2(tls *TLS, tmp Tdouble_t, sbits Tuint64_t, ki Tuint64_t) (r fl
 		v6 = y1
 		goto _7
 	_7:
-		y2 = v6 * float64(2.2250738585072014e-308)
+		y2 = float64(v6 * float64(2.2250738585072014e-308))
 	}
-	y3 = float64(2.2250738585072014e-308) * y3
+	y3 = Tdouble_t(float64(2.2250738585072014e-308) * y3)
 	y = y3
 	v8 = y
 	goto _9
@@ -110652,7 +110652,7 @@ func _exp_inline(tls *TLS, x1 Tdouble_t, xtail Tdouble_t, sign_bias Tuint32_t) (
 	}
 	/* exp(x) = 2^(k/N) * exp(r), with exp(r) in [2^(-1/2N),2^(1/2N)].  */
 	/* x = ln2/N*k + r, with int k and r in [-ln2/2N, ln2/2N].  */
-	z = X__exp_data.Finvln2N * x1
+	z = Tdouble_t(X__exp_data.Finvln2N * x1)
 	/* z - kd is in [-1, 1] in non-nearest rounding modes.  */
 	y = z + X__exp_data.Fshift
 	v3 = y
@@ -110662,7 +110662,7 @@ _4:
 	v5 = kd
 	ki = *(*Tuint64_t)(unsafe.Pointer(&v5))
 	kd -= X__exp_data.Fshift
-	r = x1 + kd*X__exp_data.Fnegln2hiN + kd*X__exp_data.Fnegln2loN
+	r = x1 + Tdouble_t(kd*X__exp_data.Fnegln2hiN) + Tdouble_t(kd*X__exp_data.Fnegln2loN)
 	/* The code assumes 2^-200 < |xtail| < 2^-8/N.  */
 	r += xtail
 	/* 2^(k/N) ~= scale * (1 + tail).  */
@@ -110674,17 +110674,17 @@ _4:
 	sbits = *(*Tuint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 112 + uintptr(idx+uint64(1))*8)) + top
 	/* exp(x) = 2^(k/N) * exp(r) ~= scale + scale * (tail + exp(r) - 1).  */
 	/* Evaluation is optimized assuming superscalar pipelined execution.  */
-	r2 = r * r
+	r2 = Tdouble_t(r * r)
 	/* Without fma the worst case error is 0.25/N ulp larger.  */
 	/* Worst case error is less than 0.5+1.11/N+(abs poly error * 2^53) ulp.  */
-	tmp = tail + r + r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(5)-Int32FromInt32(EXP_POLY_ORDER))*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(6)-Int32FromInt32(EXP_POLY_ORDER))*8))) + r2*r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(7)-Int32FromInt32(EXP_POLY_ORDER))*8))+r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(8)-Int32FromInt32(EXP_POLY_ORDER))*8)))
+	tmp = tail + r + Tdouble_t(r2*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(5)-Int32FromInt32(EXP_POLY_ORDER))*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(6)-Int32FromInt32(EXP_POLY_ORDER))*8))))) + Tdouble_t(Tdouble_t(r2*r2)*(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(7)-Int32FromInt32(EXP_POLY_ORDER))*8))+float64(r**(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp_data)) + 32 + uintptr(Int32FromInt32(8)-Int32FromInt32(EXP_POLY_ORDER))*8)))))
 	if abstop == uint32(0) {
 		return _specialcase2(tls, tmp, sbits, ki)
 	}
 	scale = *(*float64)(unsafe.Pointer(&sbits))
 	/* Note: tmp == 0 or |tmp| > 2^-200 and scale > 2^-739, so there
 	   is no spurious underflow here even without fma.  */
-	y = scale + scale*tmp
+	y = scale + Tdouble_t(scale*tmp)
 	v7 = y
 	goto _8
 _8:
@@ -110772,10 +110772,10 @@ func Xpow(tls *TLS, x1 float64, y1 float64) (r float64) {
 			if BoolInt32(uint64(2)*ix < uint64(2)**(*Tuint64_t)(unsafe.Pointer(&v6))) == BoolInt32(!(iy>>Int32FromInt32(63) != 0)) {
 				return float64(0)
 			} /* |x|<1 && y==inf or |x|>1 && y==-inf.  */
-			return y1 * y1
+			return float64(y1 * y1)
 		}
 		if _zeroinfnan(tls, ix) != 0 {
-			x2 = x1 * x1
+			x2 = Tdouble_t(x1 * x1)
 			if ix>>int32(63) != 0 && _checkint(tls, iy) == int32(1) {
 				x2 = -x2
 			}
@@ -110835,15 +110835,15 @@ func Xpow(tls *TLS, x1 float64, y1 float64) (r float64) {
 		}
 		if topx == uint32(0) {
 			/* Normalize subnormal x so exponent becomes negative.  */
-			v15 = x1 * float64(4.503599627370496e+15)
+			v15 = float64(x1 * float64(4.503599627370496e+15))
 			ix = *(*Tuint64_t)(unsafe.Pointer(&v15))
 			ix &= uint64(0x7fffffffffffffff)
-			ix = ix - Uint64FromUint64(52)<<Int32FromInt32(52)
+			ix = Tuint64_t(ix - Uint64FromUint64(52)<<Int32FromInt32(52))
 		}
 	}
 	hi = _log_inline(tls, ix, bp)
-	ehi = y1 * hi
-	elo = y1**(*Tdouble_t)(unsafe.Pointer(bp)) + X__builtin_fma(tls, y1, hi, -ehi)
+	ehi = Tdouble_t(y1 * hi)
+	elo = float64(y1**(*Tdouble_t)(unsafe.Pointer(bp))) + float64(X__builtin_fma(tls, y1, hi, -ehi))
 	return _exp_inline(tls, ehi, elo, sign_bias)
 }
 
@@ -110904,16 +110904,16 @@ func _log2_inline(tls *TLS, ix Tuint32_t) (r1 Tdouble_t) {
 	})(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + uintptr(i)*16))).Flogc
 	z = float64(*(*float32)(unsafe.Pointer(&iz)))
 	/* log2(x) = log1p(z/c-1)/ln2 + log2(c) + k */
-	r = z*invc - Float64FromInt32(1)
+	r = Tdouble_t(z*invc) - Float64FromInt32(1)
 	y0 = logc + float64(k)
 	/* Pipelined polynomial evaluation to approximate log1p(r)/ln2.  */
-	r2 = r * r
-	y = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 1*8))
-	p = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 2*8))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 3*8))
-	r4 = r2 * r2
-	q = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 4*8))*r + y0
-	q = p*r2 + q
-	y = y*r4 + q
+	r2 = Tdouble_t(r * r)
+	y = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 1*8))
+	p = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 2*8))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 3*8))
+	r4 = Tdouble_t(r2 * r2)
+	q = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__powf_log2_data)) + 256 + 4*8))*r) + y0
+	q = Tdouble_t(p*r2) + q
+	y = Tdouble_t(y*r4) + q
 	return y
 }
 
@@ -110943,11 +110943,11 @@ _2:
 	ski = ki + uint64(sign_bias)
 	t += ski << (Int32FromInt32(52) - Int32FromInt32(EXP2F_TABLE_BITS))
 	s = *(*float64)(unsafe.Pointer(&t))
-	z = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264))*r + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 1*8))
-	r2 = r * r
-	y2 = *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 2*8))*r + Float64FromInt32(1)
-	y2 = z*r2 + y2
-	y2 = y2 * s
+	z = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264))*r) + *(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 1*8))
+	r2 = Tdouble_t(r * r)
+	y2 = float64(*(*float64)(unsafe.Pointer(uintptr(unsafe.Pointer(&X__exp2f_data)) + 264 + 2*8))*r) + Float64FromInt32(1)
+	y2 = Tdouble_t(z*r2) + y2
+	y2 = Tdouble_t(y2 * s)
 	y = float32(y2)
 	v4 = y
 	goto _5
@@ -111015,10 +111015,10 @@ func Xpowf(tls *TLS, x1 float32, y1 float32) (r float32) {
 			if BoolInt32(uint32(2)*ix < Uint32FromInt32(Int32FromInt32(2)*Int32FromInt32(0x3f800000))) == BoolInt32(!(iy&Uint32FromUint32(0x80000000) != 0)) {
 				return Float32FromFloat32(0)
 			} /* |x|<1 && y==inf or |x|>1 && y==-inf.  */
-			return y1 * y1
+			return float32(y1 * y1)
 		}
 		if _zeroinfnan1(tls, ix) != 0 {
-			x2 = float64(x1 * x1)
+			x2 = Tfloat_t(x1 * x1)
 			if ix&uint32(0x80000000) != 0 && _checkint1(tls, iy) == int32(1) {
 				x2 = -x2
 			}
@@ -111049,22 +111049,22 @@ func Xpowf(tls *TLS, x1 float32, y1 float32) (r float32) {
 		}
 		if ix < uint32(0x00800000) {
 			/* Normalize subnormal x so exponent becomes negative.  */
-			v4 = x1 * Float32FromFloat32(8.388608e+06)
+			v4 = float32(x1 * Float32FromFloat32(8.388608e+06))
 			ix = *(*Tuint32_t)(unsafe.Pointer(&v4))
 			ix &= uint32(0x7fffffff)
 			ix -= Uint32FromInt32(Int32FromInt32(23) << Int32FromInt32(23))
 		}
 	}
 	logx = _log2_inline(tls, ix)
-	ylogx = float64(y1) * logx /* cannot overflow, y is single prec.  */
+	ylogx = Tdouble_t(float64(y1) * logx) /* cannot overflow, y is single prec.  */
 	v5 = ylogx
-	v6 = float64(126) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))
+	v6 = float64(float64(126) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)))
 	if *(*Tuint64_t)(unsafe.Pointer(&v5))>>int32(47)&uint64(0xffff) >= *(*Tuint64_t)(unsafe.Pointer(&v6))>>int32(47) {
 		/* |y*log(x)| >= 126.  */
-		if ylogx > float64(127.99999995700433)*float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)) {
+		if ylogx > Tdouble_t(float64(127.99999995700433)*float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))) {
 			return X__math_oflowf(tls, sign_bias)
 		}
-		if ylogx <= -Float64FromFloat64(150)*float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)) {
+		if ylogx <= Tdouble_t(-Float64FromFloat64(150)*float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))) {
 			return X__math_uflowf(tls, sign_bias)
 		}
 	}
@@ -111189,7 +111189,7 @@ func Xremquo(tls *TLS, x float64, y float64, quo uintptr) (r float64) {
 	_2:
 	}
 	if v3 || BoolInt32(v1&(-Uint64FromUint64(1)>>Int32FromInt32(1)) > Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0 || ex == int32(0x7ff) {
-		return x * y / (x * y)
+		return float64(x*y) / float64(x*y)
 	}
 	if *(*Tuint64_t)(unsafe.Pointer(bp + 8))<<int32(1) == uint64(0) {
 		return x
@@ -111209,8 +111209,8 @@ func Xremquo(tls *TLS, x float64, y float64, quo uintptr) (r float64) {
 		}
 		uxi <<= Uint64FromInt32(-ex + int32(1))
 	} else {
-		uxi = uxi & (-Uint64FromUint64(1) >> Int32FromInt32(12))
-		uxi = uxi | Uint64FromUint64(1)<<Int32FromInt32(52)
+		uxi = Tuint64_t(uxi & (-Uint64FromUint64(1) >> Int32FromInt32(12)))
+		uxi = Tuint64_t(uxi | Uint64FromUint64(1)<<Int32FromInt32(52))
 	}
 	if !(ey != 0) {
 		i = *(*Tuint64_t)(unsafe.Pointer(bp + 16)) << int32(12)
@@ -111227,9 +111227,9 @@ func Xremquo(tls *TLS, x float64, y float64, quo uintptr) (r float64) {
 		*(*Tuint64_t)(unsafe.Pointer(bp + 16)) <<= Uint64FromInt32(-ey + int32(1))
 	} else {
 		p6 = bp + 16
-		*(*Tuint64_t)(unsafe.Pointer(p6)) = *(*Tuint64_t)(unsafe.Pointer(p6)) & (-Uint64FromUint64(1) >> Int32FromInt32(12))
+		*(*Tuint64_t)(unsafe.Pointer(p6)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p6)) & (-Uint64FromUint64(1) >> Int32FromInt32(12)))
 		p7 = bp + 16
-		*(*Tuint64_t)(unsafe.Pointer(p7)) = *(*Tuint64_t)(unsafe.Pointer(p7)) | Uint64FromUint64(1)<<Int32FromInt32(52)
+		*(*Tuint64_t)(unsafe.Pointer(p7)) = Tuint64_t(*(*Tuint64_t)(unsafe.Pointer(p7)) | Uint64FromUint64(1)<<Int32FromInt32(52))
 	}
 	q = uint32(0)
 	if ex < ey {
@@ -111279,7 +111279,7 @@ end:
 	;
 	/* scale result and decide between |x| and |x|-|y| */
 	if ex > 0 {
-		uxi = uxi - Uint64FromUint64(1)<<Int32FromInt32(52)
+		uxi = Tuint64_t(uxi - Uint64FromUint64(1)<<Int32FromInt32(52))
 		uxi |= Uint64FromInt32(ex) << int32(52)
 	} else {
 		uxi >>= Uint64FromInt32(-ex + int32(1))
@@ -111289,7 +111289,7 @@ end:
 	if sy != 0 {
 		y = -y
 	}
-	if ex == ey || ex+int32(1) == ey && (Float64FromInt32(2)*x > y || Float64FromInt32(2)*x == y && q%uint32(2) != 0) {
+	if ex == ey || ex+int32(1) == ey && (float64(Float64FromInt32(2)*x) > y || float64(Float64FromInt32(2)*x) == y && q%uint32(2) != 0) {
 		x -= y
 		q++
 	}
@@ -111362,7 +111362,7 @@ func Xremquof(tls *TLS, x float32, y float32, quo uintptr) (r float32) {
 	_2:
 	}
 	if v3 || BoolInt32(v1&uint32(0x7fffffff) > uint32(0x7f800000)) != 0 || ex == int32(0xff) {
-		return x * y / (x * y)
+		return float32(x*y) / float32(x*y)
 	}
 	if *(*Tuint32_t)(unsafe.Pointer(bp + 4))<<int32(1) == uint32(0) {
 		return x
@@ -111460,7 +111460,7 @@ end:
 	if sy != 0 {
 		y = -y
 	}
-	if ex == ey || ex+int32(1) == ey && (Float32FromInt32(2)*x > y || Float32FromInt32(2)*x == y && q%uint32(2) != 0) {
+	if ex == ey || ex+int32(1) == ey && (float32(Float32FromInt32(2)*x) > y || float32(Float32FromInt32(2)*x) == y && q%uint32(2) != 0) {
 		x -= y
 		q++
 	}
@@ -111637,10 +111637,10 @@ func Xround(tls *TLS, x3 float64) (r float64) {
 			if uint64(8) == uint64(8) {
 				y1 = x3 + _toint6
 			} else {
-				y2 = x3 + _toint6
+				y2 = float64(x3 + _toint6)
 			}
 		}
-		return Float64FromInt32(0) * *(*float64)(unsafe.Pointer(bp))
+		return float64(Float64FromInt32(0) * *(*float64)(unsafe.Pointer(bp)))
 	}
 	y3 = x3 + _toint6 - _toint6 - x3
 	if y3 > float64(0.5) {
@@ -111704,7 +111704,7 @@ func Xroundf(tls *TLS, x3 float32) (r float32) {
 				y2 = float64(x3) + _toint7
 			}
 		}
-		return Float32FromInt32(0) * *(*float32)(unsafe.Pointer(bp))
+		return float32(Float32FromInt32(0) * *(*float32)(unsafe.Pointer(bp)))
 	}
 	y3 = float64(x3) + _toint7 - _toint7 - float64(x3)
 	if y3 > Float64FromFloat32(0.5) {
@@ -111758,7 +111758,7 @@ _2:
 	_4:
 	}
 	if v5 || BoolInt32(v3&(-Uint64FromUint64(1)>>Int32FromInt32(1)) > Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0 {
-		return x * fn
+		return float64(x * fn)
 	}
 	*(*float64)(unsafe.Pointer(bp)) = fn
 	v6 = *(*uint64)(unsafe.Pointer(bp))
@@ -111766,7 +111766,7 @@ _2:
 _7:
 	if !(BoolInt32(v6&(-Uint64FromUint64(1)>>Int32FromInt32(1)) < Uint64FromUint64(0x7ff)<<Int32FromInt32(52)) != 0) {
 		if fn > float64(0) {
-			return x * fn
+			return float64(x * fn)
 		} else {
 			return x / -fn
 		}
@@ -111809,7 +111809,7 @@ _2:
 	_4:
 	}
 	if v5 || BoolInt32(v3&uint32(0x7fffffff) > uint32(0x7f800000)) != 0 {
-		return x * fn
+		return float32(x * fn)
 	}
 	*(*float32)(unsafe.Pointer(bp)) = fn
 	v6 = *(*uint32)(unsafe.Pointer(bp))
@@ -111817,7 +111817,7 @@ _2:
 _7:
 	if !(BoolInt32(v6&Uint32FromInt32(0x7fffffff) < Uint32FromInt32(0x7f800000)) != 0) {
 		if fn > Float32FromFloat32(0) {
-			return x * fn
+			return float32(x * fn)
 		} else {
 			return x / -fn
 		}
@@ -111900,10 +111900,10 @@ func Xscalbn(tls *TLS, x float64, n int32) (r float64) {
 		if n < -int32(1022) {
 			/* make sure final n < -53 to avoid double
 			   rounding in the subnormal range */
-			y *= Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(9.007199254740992e+15)
+			y *= Tdouble_t(Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(9.007199254740992e+15))
 			n += Int32FromInt32(1022) - Int32FromInt32(53)
 			if n < -int32(1022) {
-				y *= Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(9.007199254740992e+15)
+				y *= Tdouble_t(Float64FromFloat64(2.2250738585072014e-308) * Float64FromFloat64(9.007199254740992e+15))
 				n += Int32FromInt32(1022) - Int32FromInt32(53)
 				if n < -int32(1022) {
 					n = -int32(1022)
@@ -111912,7 +111912,7 @@ func Xscalbn(tls *TLS, x float64, n int32) (r float64) {
 		}
 	}
 	*(*Tuint64_t)(unsafe.Pointer(bp)) = Uint64FromInt32(Int32FromInt32(0x3ff)+n) << int32(52)
-	x = y * *(*float64)(unsafe.Pointer(bp))
+	x = float64(y * *(*float64)(unsafe.Pointer(bp)))
 	return x
 }
 
@@ -111942,10 +111942,10 @@ func Xscalbnf(tls *TLS, x float32, n int32) (r float32) {
 		}
 	} else {
 		if n < -int32(126) {
-			y *= float64(Float32FromFloat32(1.1754943508222875e-38) * Float32FromFloat32(1.6777216e+07))
+			y *= Tfloat_t(Float32FromFloat32(1.1754943508222875e-38) * Float32FromFloat32(1.6777216e+07))
 			n += Int32FromInt32(126) - Int32FromInt32(24)
 			if n < -int32(126) {
-				y *= float64(Float32FromFloat32(1.1754943508222875e-38) * Float32FromFloat32(1.6777216e+07))
+				y *= Tfloat_t(Float32FromFloat32(1.1754943508222875e-38) * Float32FromFloat32(1.6777216e+07))
 				n += Int32FromInt32(126) - Int32FromInt32(24)
 				if n < -int32(126) {
 					n = -int32(126)
@@ -112136,10 +112136,10 @@ const M_PI_25 = 1.5707963267948966
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
 
-var _s1pio2 = Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966) /* 0x3FF921FB, 0x54442D18 */
-var _s2pio2 = Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966) /* 0x400921FB, 0x54442D18 */
-var _s3pio2 = Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966) /* 0x4012D97C, 0x7F3321D2 */
-var _s4pio2 = Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966) /* 0x401921FB, 0x54442D18 */
+var _s1pio2 = float64(Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966)) /* 0x3FF921FB, 0x54442D18 */
+var _s2pio2 = float64(Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966)) /* 0x400921FB, 0x54442D18 */
+var _s3pio2 = float64(Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966)) /* 0x4012D97C, 0x7F3321D2 */
+var _s4pio2 = float64(Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966)) /* 0x401921FB, 0x54442D18 */
 
 func Xsincosf(tls *TLS, x3 float32, sin uintptr, cos uintptr) {
 	if __ccgo_strace {
@@ -112298,10 +112298,10 @@ const M_PI_27 = 1.5707963267948966
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
 
-var _s1pio21 = Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966) /* 0x3FF921FB, 0x54442D18 */
-var _s2pio21 = Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966) /* 0x400921FB, 0x54442D18 */
-var _s3pio21 = Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966) /* 0x4012D97C, 0x7F3321D2 */
-var _s4pio21 = Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966) /* 0x401921FB, 0x54442D18 */
+var _s1pio21 = float64(Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966)) /* 0x3FF921FB, 0x54442D18 */
+var _s2pio21 = float64(Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966)) /* 0x400921FB, 0x54442D18 */
+var _s3pio21 = float64(Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966)) /* 0x4012D97C, 0x7F3321D2 */
+var _s4pio21 = float64(Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966)) /* 0x401921FB, 0x54442D18 */
 
 func Xsinf(tls *TLS, x3 float32) (r float32) {
 	if __ccgo_strace {
@@ -112446,14 +112446,14 @@ func Xsinh(tls *TLS, x float64) (r float64) {
 				/* note: this branch avoids spurious underflow */
 				return x
 			}
-			return h * (Float64FromInt32(2)*t - t*t/(t+Float64FromInt32(1)))
+			return float64(h * (float64(Float64FromInt32(2)*t) - float64(t*t)/(t+Float64FromInt32(1))))
 		}
 		/* note: |x|>log(0x1p26)+eps could be just h*exp(x) */
-		return h * (t + t/(t+Float64FromInt32(1)))
+		return float64(h * (t + t/(t+Float64FromInt32(1))))
 	}
 	/* |x| > log(DBL_MAX) or nan */
 	/* note: the result is stored to handle overflow */
-	t = X__expo2(tls, absx, Float64FromInt32(2)*h)
+	t = X__expo2(tls, absx, float64(Float64FromInt32(2)*h))
 	return t
 }
 
@@ -112494,12 +112494,12 @@ func Xsinhf(tls *TLS, x float32) (r float32) {
 			if w < Uint32FromInt32(Int32FromInt32(0x3f800000)-Int32FromInt32(12)<<Int32FromInt32(23)) {
 				return x
 			}
-			return h * (Float32FromInt32(2)*t - t*t/(t+Float32FromInt32(1)))
+			return float32(h * (float32(Float32FromInt32(2)*t) - float32(t*t)/(t+Float32FromInt32(1))))
 		}
-		return h * (t + t/(t+Float32FromInt32(1)))
+		return float32(h * (t + t/(t+Float32FromInt32(1))))
 	}
 	/* |x| > logf(FLT_MAX) or nan */
-	t = X__expo2f(tls, absx, Float32FromInt32(2)*h)
+	t = X__expo2f(tls, absx, float32(Float32FromInt32(2)*h))
 	return t
 }
 
@@ -112566,7 +112566,7 @@ func Xsqrt(tls *TLS, x1 float64) (r1 float64) {
 			return X__math_invalid(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v1 = x1 * float64(4.503599627370496e+15)
+		v1 = float64(x1 * float64(4.503599627370496e+15))
 		ix = *(*Tuint64_t)(unsafe.Pointer(&v1))
 		top = ix >> int32(52)
 		top -= uint64(52)
@@ -112716,7 +112716,7 @@ func Xsqrtf(tls *TLS, x1 float32) (r1 float32) {
 			return X__math_invalidf(tls, x1)
 		}
 		/* x is subnormal, normalize it.  */
-		v1 = x1 * Float32FromFloat32(8.388608e+06)
+		v1 = float32(x1 * Float32FromFloat32(8.388608e+06))
 		ix = *(*Tuint32_t)(unsafe.Pointer(&v1))
 		ix -= Uint32FromInt32(Int32FromInt32(23) << Int32FromInt32(23))
 	}
@@ -112849,10 +112849,10 @@ const M_PI_29 = 1.5707963267948966
 //
 //	/* Small multiples of pi/2 rounded to double precision. */
 
-var _t1pio2 = Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966) /* 0x3FF921FB, 0x54442D18 */
-var _t2pio2 = Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966) /* 0x400921FB, 0x54442D18 */
-var _t3pio2 = Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966) /* 0x4012D97C, 0x7F3321D2 */
-var _t4pio2 = Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966) /* 0x401921FB, 0x54442D18 */
+var _t1pio2 = float64(Float64FromInt32(1) * Float64FromFloat64(1.5707963267948966)) /* 0x3FF921FB, 0x54442D18 */
+var _t2pio2 = float64(Float64FromInt32(2) * Float64FromFloat64(1.5707963267948966)) /* 0x400921FB, 0x54442D18 */
+var _t3pio2 = float64(Float64FromInt32(3) * Float64FromFloat64(1.5707963267948966)) /* 0x4012D97C, 0x7F3321D2 */
+var _t4pio2 = float64(Float64FromInt32(4) * Float64FromFloat64(1.5707963267948966)) /* 0x401921FB, 0x54442D18 */
 
 func Xtanf(tls *TLS, x3 float32) (r float32) {
 	if __ccgo_strace {
@@ -112989,18 +112989,18 @@ func Xtanh(tls *TLS, x3 float64) (r float64) {
 			/* note: this branch avoids raising overflow */
 			t = Float64FromInt32(1) - Float64FromInt32(0)/x3
 		} else {
-			t = Xexpm1(tls, Float64FromInt32(2)*x3)
+			t = Xexpm1(tls, float64(Float64FromInt32(2)*x3))
 			t = Float64FromInt32(1) - Float64FromInt32(2)/(t+Float64FromInt32(2))
 		}
 	} else {
 		if w > uint32(0x3fd058ae) {
 			/* |x| > log(5/3)/2 ~= 0.2554 */
-			t = Xexpm1(tls, Float64FromInt32(2)*x3)
+			t = Xexpm1(tls, float64(Float64FromInt32(2)*x3))
 			t = t / (t + Float64FromInt32(2))
 		} else {
 			if w >= uint32(0x00100000) {
 				/* |x| >= 0x1p-1022, up to 2ulp error in [0.1,0.2554] */
-				t = Xexpm1(tls, float64(-Int32FromInt32(2))*x3)
+				t = Xexpm1(tls, float64(float64(-Int32FromInt32(2))*x3))
 				t = -t / (t + Float64FromInt32(2))
 			} else {
 				/* |x| is subnormal */
@@ -113061,23 +113061,23 @@ func Xtanhf(tls *TLS, x3 float32) (r float32) {
 			/* |x| > 10 */
 			t = Float32FromInt32(1) + Float32FromInt32(0)/x3
 		} else {
-			t = Xexpm1f(tls, Float32FromInt32(2)*x3)
+			t = Xexpm1f(tls, float32(Float32FromInt32(2)*x3))
 			t = Float32FromInt32(1) - Float32FromInt32(2)/(t+Float32FromInt32(2))
 		}
 	} else {
 		if w > uint32(0x3e82c578) {
 			/* |x| > log(5/3)/2 ~= 0.2554 */
-			t = Xexpm1f(tls, Float32FromInt32(2)*x3)
+			t = Xexpm1f(tls, float32(Float32FromInt32(2)*x3))
 			t = t / (t + Float32FromInt32(2))
 		} else {
 			if w >= uint32(0x00800000) {
 				/* |x| >= 0x1p-126 */
-				t = Xexpm1f(tls, float32(-Int32FromInt32(2))*x3)
+				t = Xexpm1f(tls, float32(float32(-Int32FromInt32(2))*x3))
 				t = -t / (t + Float32FromInt32(2))
 			} else {
 				/* |x| is subnormal */
 				if uint64(4) == uint64(4) {
-					y = x3 * x3
+					y = float32(x3 * x3)
 				} else {
 					if uint64(4) == uint64(8) {
 						y1 = float64(x3 * x3)
@@ -113125,12 +113125,12 @@ func _sinpi(tls *TLS, x float64) (r float64) {
 	_ = n
 	/* argument reduction: x = |x| mod 2 */
 	/* spurious inexact when x is odd int */
-	x = x * float64(0.5)
-	x = Float64FromInt32(2) * (x - Xfloor(tls, x))
+	x = float64(x * float64(0.5))
+	x = float64(Float64FromInt32(2) * (x - Xfloor(tls, x)))
 	/* reduce x into [-.25,.25] */
 	n = int32(Float64FromInt32(4) * x)
 	n = (n + int32(1)) / int32(2)
-	x -= float64(n) * float64(0.5)
+	x -= float64(float64(n) * float64(0.5))
 	x *= _pi4
 	switch n {
 	default: /* case 4 */
@@ -113226,8 +113226,8 @@ func _S(tls *TLS, x float64) (r float64) {
 			if !(i >= 0) {
 				break
 			}
-			num = num*x + _Snum[i]
-			den = den*x + _Sden[i]
+			num = Tdouble_t(num*x) + _Snum[i]
+			den = Tdouble_t(den*x) + _Sden[i]
 			goto _1
 		_1:
 			;
@@ -113309,7 +113309,7 @@ func Xtgamma(tls *TLS, x3 float64) (r1 float64) {
 					y2 = float64(float32(Float64FromFloat64(1.1754943508222875e-38) / x3))
 				}
 			}
-			if Xfloor(tls, x3)*float64(0.5) == Xfloor(tls, x3*float64(0.5)) {
+			if float64(Xfloor(tls, x3)*float64(0.5)) == Xfloor(tls, float64(x3*float64(0.5))) {
 				return Float64FromInt32(0)
 			}
 			return -Float64FromFloat64(0)
@@ -113333,17 +113333,17 @@ func Xtgamma(tls *TLS, x3 float64) (r1 float64) {
 		dy -= absx
 	}
 	z = absx - float64(0.5)
-	r = _S(tls, absx) * Xexp(tls, -y3)
+	r = Tdouble_t(_S(tls, absx) * Xexp(tls, -y3))
 	if x3 < Float64FromInt32(0) {
 		/* reflection formula for negative x */
 		/* sinpi(absx) is not 0, integers are already handled */
-		r = -_pi4 / (_sinpi(tls, absx) * absx * r)
+		r = -_pi4 / float64(float64(_sinpi(tls, absx)*absx)*r)
 		dy = -dy
 		z = -z
 	}
-	r += dy * (_gmhalf + Float64FromFloat64(0.5)) * r / y3
-	z = Xpow(tls, y3, float64(0.5)*z)
-	y3 = r * z * z
+	r += Tdouble_t(Tdouble_t(dy*(_gmhalf+Float64FromFloat64(0.5)))*r) / y3
+	z = Xpow(tls, y3, float64(float64(0.5)*z))
+	y3 = float64(Tdouble_t(r*z) * z)
 	return y3
 }
 
@@ -113394,7 +113394,7 @@ func Xtrunc(tls *TLS, x3 float64) (r float64) {
 	if e < int32(12) {
 		e = int32(1)
 	}
-	m = -Uint64FromUint64(1) >> e
+	m = uint64(-Uint64FromUint64(1) >> e)
 	if *(*Tuint64_t)(unsafe.Pointer(bp))&m == uint64(0) {
 		return x3
 	}
@@ -113404,7 +113404,7 @@ func Xtrunc(tls *TLS, x3 float64) (r float64) {
 		if uint64(8) == uint64(8) {
 			y1 = x3 + Float64FromFloat32(1.329227995784916e+36)
 		} else {
-			y2 = x3 + Float64FromFloat32(1.329227995784916e+36)
+			y2 = float64(x3 + Float64FromFloat32(1.329227995784916e+36))
 		}
 	}
 	*(*Tuint64_t)(unsafe.Pointer(bp)) &= ^m
@@ -116563,7 +116563,7 @@ func Xbtowc(tls *TLS, c int32) (r Twint_t) {
 	if Uint32FromInt32(b) < uint32(128) {
 		v1 = Uint32FromInt32(b)
 	} else {
-		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 			v3 = int32(4)
 		} else {
 			v3 = int32(1)
@@ -116764,7 +116764,7 @@ func Xmbrtowc(tls *TLS, wc uintptr, src uintptr, n Tsize_t, st uintptr) (r Tsize
 			*(*Twchar_t)(unsafe.Pointer(wc)) = v1
 			return BoolUint64(!!(v1 != 0))
 		}
-		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 			v2 = int32(4)
 		} else {
 			v2 = int32(1)
@@ -116935,7 +116935,7 @@ func Xmbsrtowcs(tls *TLS, ws uintptr, src uintptr, wn Tsize_t, st uintptr) (r Ts
 			goto resume0
 		}
 	}
-	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 		v3 = int32(4)
 	} else {
 		v3 = int32(1)
@@ -117163,7 +117163,7 @@ func Xmbtowc(tls *TLS, wc uintptr, src uintptr, n Tsize_t) (r int32) {
 		*(*Twchar_t)(unsafe.Pointer(wc)) = v1
 		return BoolInt32(!!(v1 != 0))
 	}
-	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 		v2 = int32(4)
 	} else {
 		v2 = int32(1)
@@ -117233,7 +117233,7 @@ func Xwcrtomb(tls *TLS, s uintptr, wc Twchar_t, st uintptr) (r Tsize_t) {
 		*(*uint8)(unsafe.Pointer(s)) = Uint8FromInt32(wc)
 		return uint64(1)
 	} else {
-		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+		if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 			v1 = int32(4)
 		} else {
 			v1 = int32(1)
@@ -117440,7 +117440,7 @@ func Xwctob(tls *TLS, c Twint_t) (r int32) {
 	if c < uint32(128) {
 		return Int32FromUint32(c)
 	}
-	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+	if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 		v1 = int32(4)
 	} else {
 		v1 = int32(1)
@@ -121276,10 +121276,10 @@ func X__h_errno_location(tls *TLS) (r uintptr) {
 		trc("tls=%v, (%v:)", tls, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	if !((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Fstack != 0) {
+	if !((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Fstack != 0) {
 		return uintptr(unsafe.Pointer(&Xh_errno))
 	}
-	return ___get_tp(tls) + 160
+	return uintptr(___get_tp(tls)) + 160
 }
 
 func Xherror(tls *TLS, msg uintptr) {
@@ -128385,7 +128385,7 @@ func _fnmatch_internal(tls *TLS, pat uintptr, m Tsize_t, str uintptr, n Tsize_t,
 			break
 		}
 		if v9 = uint32(*(*uint8)(unsafe.Pointer(s + uintptr(-Int32FromInt32(1))))) < uint32(128); !v9 {
-			if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+			if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 				v8 = int32(4)
 			} else {
 				v8 = int32(1)
@@ -134834,7 +134834,7 @@ func Xraise(tls *TLS, sig int32) (r int32) {
 	var _ /* set at bp+0 */ Tsigset_t
 	_ = ret
 	X__block_app_sigs(tls, bp)
-	ret = int32(X__syscall_ret(tls, Uint64FromInt64(X__syscall2(tls, int64(SYS_tkill), int64((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid), int64(sig)))))
+	ret = int32(X__syscall_ret(tls, Uint64FromInt64(X__syscall2(tls, int64(SYS_tkill), int64((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid), int64(sig)))))
 	X__restore_sigs(tls, bp)
 	return ret
 }
@@ -135625,13 +135625,13 @@ func _fstatat_statx(tls *TLS, fd int32, path uintptr, st uintptr, flag int32) (r
 		return ret
 	}
 	*(*Tstat)(unsafe.Pointer(st)) = Tstat{
-		Fst_dev:   uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_major)&Uint64FromUint64(0xfffff000)<<Int32FromInt32(32) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_major)&Uint64FromUint64(0x00000fff)<<Int32FromInt32(8) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_minor)&Uint64FromUint64(0xffffff00)<<Int32FromInt32(12) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_minor)&Uint64FromUint64(0x000000ff),
+		Fst_dev:   uint64(uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_major)&Uint64FromUint64(0xfffff000)<<Int32FromInt32(32) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_major)&Uint64FromUint64(0x00000fff)<<Int32FromInt32(8) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_minor)&Uint64FromUint64(0xffffff00)<<Int32FromInt32(12) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_dev_minor)&Uint64FromUint64(0x000000ff)),
 		Fst_ino:   (*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_ino,
 		Fst_nlink: uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_nlink),
 		Fst_mode:  uint32((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_mode),
 		Fst_uid:   (*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_uid,
 		Fst_gid:   (*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_gid,
-		Fst_rdev:  uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_major)&Uint64FromUint64(0xfffff000)<<Int32FromInt32(32) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_major)&Uint64FromUint64(0x00000fff)<<Int32FromInt32(8) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_minor)&Uint64FromUint64(0xffffff00)<<Int32FromInt32(12) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_minor)&Uint64FromUint64(0x000000ff),
+		Fst_rdev:  uint64(uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_major)&Uint64FromUint64(0xfffff000)<<Int32FromInt32(32) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_major)&Uint64FromUint64(0x00000fff)<<Int32FromInt32(8) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_minor)&Uint64FromUint64(0xffffff00)<<Int32FromInt32(12) | uint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_rdev_minor)&Uint64FromUint64(0x000000ff)),
 		Fst_size:  Int64FromUint64((*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_size),
 		Fst_atim: Ttimespec{
 			Ftv_sec:  (*(*Tstatx1)(unsafe.Pointer(bp))).Fstx_atime.Ftv_sec,
@@ -136938,7 +136938,7 @@ func Xfgetc(tls *TLS, f1 uintptr) (r int32) {
 	_, _, _, _, _, _ = l, v1, v2, v4, v5, v6
 	v1 = f1
 	l = AtomicLoadPInt32(v1 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if (*TFILE)(unsafe.Pointer(v1)).Frpos != (*TFILE)(unsafe.Pointer(v1)).Frend {
 			v6 = v1 + 8
 			v5 = *(*uintptr)(unsafe.Pointer(v6))
@@ -137182,7 +137182,7 @@ func X__fgetwc_unlocked(tls *TLS, f uintptr) (r Twint_t) {
 	var ploc uintptr
 	var wc Twchar_t
 	_, _, _ = loc, ploc, wc
-	ploc = ___get_tp(tls) + 168
+	ploc = uintptr(___get_tp(tls)) + 168
 	loc = *(*Tlocale_t)(unsafe.Pointer(ploc))
 	if (*TFILE)(unsafe.Pointer(f)).Fmode <= 0 {
 		Xfwide(tls, f, int32(1))
@@ -137333,7 +137333,7 @@ func Xflockfile(tls *TLS, f uintptr) {
 		return
 	}
 	___lockfile(tls, f)
-	X__register_locked_file(tls, f, ___get_tp(tls))
+	X__register_locked_file(tls, f, uintptr(___get_tp(tls)))
 }
 
 type Tcookie = struct {
@@ -137812,7 +137812,7 @@ func Xfputc(tls *TLS, c1 int32, f1 uintptr) (r int32) {
 	v1 = c1
 	v2 = f1
 	l = AtomicLoadPInt32(v2 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if Int32FromUint8(Uint8FromInt32(v1)) != (*TFILE)(unsafe.Pointer(v2)).Flbf && (*TFILE)(unsafe.Pointer(v2)).Fwpos != (*TFILE)(unsafe.Pointer(v2)).Fwend {
 			v6 = Uint8FromInt32(v1)
 			v8 = v2 + 40
@@ -137864,7 +137864,7 @@ func X__fputwc_unlocked(tls *TLS, c Twchar_t, f uintptr) (r Twint_t) {
 	var v2 uint8
 	var _ /* mbc at bp+0 */ [4]uint8
 	_, _, _, _, _, _, _ = l, loc, ploc, v1, v2, v3, v4
-	ploc = ___get_tp(tls) + 168
+	ploc = uintptr(___get_tp(tls)) + 168
 	loc = *(*Tlocale_t)(unsafe.Pointer(ploc))
 	if (*TFILE)(unsafe.Pointer(f)).Fmode <= 0 {
 		Xfwide(tls, f, int32(1))
@@ -137956,7 +137956,7 @@ func Xfputws(tls *TLS, _ws uintptr, f uintptr) (r int32) {
 	var _ /* buf at bp+8 */ [1024]uint8
 	_, _, _, _, _, _, _ = __need_unlock, l, loc, ploc, v1, v2, v3
 	l = uint64(0)
-	ploc = ___get_tp(tls) + 168
+	ploc = uintptr(___get_tp(tls)) + 168
 	loc = *(*Tlocale_t)(unsafe.Pointer(ploc))
 	if AtomicLoadPInt32(f+140) >= 0 {
 		v1 = ___lockfile(tls, f)
@@ -138332,7 +138332,7 @@ func X__do_orphaned_stdio_locks(tls *TLS) {
 	}
 	var f uintptr
 	_ = f
-	f = (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Fstdio_locks
+	f = (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Fstdio_locks
 	for {
 		if !(f != 0) {
 			break
@@ -138360,7 +138360,7 @@ func X__unlist_locked_file(tls *TLS, f uintptr) {
 		if (*TFILE)(unsafe.Pointer(f)).Fprev_locked != 0 {
 			(*TFILE)(unsafe.Pointer((*TFILE)(unsafe.Pointer(f)).Fprev_locked)).Fnext_locked = (*TFILE)(unsafe.Pointer(f)).Fnext_locked
 		} else {
-			(*t__pthread)(unsafe.Pointer(___get_tp(tls))).Fstdio_locks = (*TFILE)(unsafe.Pointer(f)).Fnext_locked
+			(*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Fstdio_locks = (*TFILE)(unsafe.Pointer(f)).Fnext_locked
 		}
 	}
 }
@@ -138387,7 +138387,7 @@ func Xftrylockfile(tls *TLS, f uintptr) (r int32) {
 	var self Tpthread_t
 	var v5 bool
 	_, _, _, _, _, _, _ = owner, self, tid, v1, v2, v3, v5
-	self = ___get_tp(tls)
+	self = uintptr(___get_tp(tls))
 	tid = (*t__pthread)(unsafe.Pointer(self)).Ftid
 	owner = AtomicLoadPInt32(f + 140)
 	if owner & ^Int32FromInt32(MAYBE_WAITERS) == tid {
@@ -138449,7 +138449,7 @@ func Xfwide(tls *TLS, f uintptr, mode int32) (r int32) {
 	__need_unlock = v1
 	if mode != 0 {
 		if !((*TFILE)(unsafe.Pointer(f)).Flocale != 0) {
-			if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)) != 0) {
+			if !!(*(*uintptr)(unsafe.Pointer((*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)) != 0) {
 				v3 = int32(4)
 			} else {
 				v3 = int32(1)
@@ -138665,7 +138665,7 @@ func Xgetc(tls *TLS, f1 uintptr) (r int32) {
 	_, _, _, _, _, _ = l, v1, v2, v4, v5, v6
 	v1 = f1
 	l = AtomicLoadPInt32(v1 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if (*TFILE)(unsafe.Pointer(v1)).Frpos != (*TFILE)(unsafe.Pointer(v1)).Frend {
 			v6 = v1 + 8
 			v5 = *(*uintptr)(unsafe.Pointer(v6))
@@ -138799,7 +138799,7 @@ func Xgetchar(tls *TLS) (r int32) {
 	_, _, _, _, _, _ = l, v1, v2, v4, v5, v6
 	v1 = uintptr(unsafe.Pointer(&X__stdin_FILE))
 	l = AtomicLoadPInt32(v1 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if (*TFILE)(unsafe.Pointer(v1)).Frpos != (*TFILE)(unsafe.Pointer(v1)).Frend {
 			v6 = v1 + 8
 			v5 = *(*uintptr)(unsafe.Pointer(v6))
@@ -139525,7 +139525,7 @@ func Xputc(tls *TLS, c1 int32, f1 uintptr) (r int32) {
 	v1 = c1
 	v2 = f1
 	l = AtomicLoadPInt32(v2 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if Int32FromUint8(Uint8FromInt32(v1)) != (*TFILE)(unsafe.Pointer(v2)).Flbf && (*TFILE)(unsafe.Pointer(v2)).Fwpos != (*TFILE)(unsafe.Pointer(v2)).Fwend {
 			v6 = Uint8FromInt32(v1)
 			v8 = v2 + 40
@@ -139669,7 +139669,7 @@ func Xputchar(tls *TLS, c1 int32) (r int32) {
 	v1 = c1
 	v2 = uintptr(unsafe.Pointer(&X__stdout_FILE))
 	l = AtomicLoadPInt32(v2 + 140)
-	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Ftid {
+	if l < 0 || l != 0 && l & ^Int32FromInt32(MAYBE_WAITERS) == (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Ftid {
 		if Int32FromUint8(Uint8FromInt32(v1)) != (*TFILE)(unsafe.Pointer(v2)).Flbf && (*TFILE)(unsafe.Pointer(v2)).Fwpos != (*TFILE)(unsafe.Pointer(v2)).Fwend {
 			v6 = Uint8FromInt32(v1)
 			v8 = v2 + 40
@@ -140196,7 +140196,7 @@ func Xungetwc(tls *TLS, c Twint_t, f uintptr) (r Twint_t) {
 	var v3 bool
 	var _ /* mbc at bp+0 */ [4]uint8
 	_, _, _, _, _, _, _, _, _, _ = __need_unlock, l, loc, ploc, v1, v2, v3, v4, v5, p6
-	ploc = ___get_tp(tls) + 168
+	ploc = uintptr(___get_tp(tls)) + 168
 	loc = *(*Tlocale_t)(unsafe.Pointer(ploc))
 	if AtomicLoadPInt32(f+140) >= 0 {
 		v1 = ___lockfile(tls, f)
@@ -140448,7 +140448,7 @@ func _pop_arg(tls *TLS, arg uintptr, type1 int32, ap uintptr) {
 	case int32(_ULONG):
 		(*Targ)(unsafe.Pointer(arg)).Fi = VaUint64(&*(*Tva_list)(unsafe.Pointer(ap)))
 	case int32(_ULLONG):
-		(*Targ)(unsafe.Pointer(arg)).Fi = VaUint64(&*(*Tva_list)(unsafe.Pointer(ap)))
+		(*Targ)(unsafe.Pointer(arg)).Fi = uint64(VaUint64(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_SHORT):
 		(*Targ)(unsafe.Pointer(arg)).Fi = Uint64FromInt16(int16(VaInt32(&*(*Tva_list)(unsafe.Pointer(ap)))))
 	case int32(_USHORT):
@@ -140470,7 +140470,7 @@ func _pop_arg(tls *TLS, arg uintptr, type1 int32, ap uintptr) {
 	case int32(_UIPTR):
 		(*Targ)(unsafe.Pointer(arg)).Fi = uint64(VaUintptr(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_DBL):
-		*(*float64)(unsafe.Pointer(arg)) = VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap)))
+		*(*float64)(unsafe.Pointer(arg)) = float64(VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_LDBL):
 		*(*float64)(unsafe.Pointer(arg)) = VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap)))
 	}
@@ -140659,7 +140659,7 @@ _4:
 		}
 		return v7
 	}
-	y = Xfrexpl(tls, y, bp+512) * Float64FromInt32(2)
+	y = float64(Xfrexpl(tls, y, bp+512) * Float64FromInt32(2))
 	if y != 0 {
 		*(*int32)(unsafe.Pointer(bp + 512))--
 	}
@@ -140722,7 +140722,7 @@ _4:
 			v14 = s
 			s++
 			*(*uint8)(unsafe.Pointer(v14)) = Uint8FromInt32(Int32FromUint8(_xdigits1[x]) | t&int32(32))
-			y = Float64FromInt32(16) * (y - float64(x))
+			y = float64(Float64FromInt32(16) * (y - float64(x)))
 			if int64(s)-t__predefined_ptrdiff_t(bp+516) == int64(1) && (y != 0 || p > 0 || Uint32FromInt32(fl)&(Uint32FromUint32(1)<<(Int32FromUint8('#')-Int32FromUint8(' '))) != 0) {
 				v15 = s
 				s++
@@ -140775,7 +140775,7 @@ _4:
 		*(*Tuint32_t)(unsafe.Pointer(z)) = uint32(y)
 		v21 = z
 		z += 4
-		y = Float64FromInt32(1000000000) * (y - float64(*(*Tuint32_t)(unsafe.Pointer(v21))))
+		y = float64(Float64FromInt32(1000000000) * (y - float64(*(*Tuint32_t)(unsafe.Pointer(v21)))))
 	}
 	for *(*int32)(unsafe.Pointer(bp + 512)) > 0 {
 		carry = uint32(0)
@@ -142625,7 +142625,7 @@ func _pop_arg1(tls *TLS, arg uintptr, type1 int32, ap uintptr) {
 	case int32(_ULONG):
 		(*Targ)(unsafe.Pointer(arg)).Fi = VaUint64(&*(*Tva_list)(unsafe.Pointer(ap)))
 	case int32(_ULLONG):
-		(*Targ)(unsafe.Pointer(arg)).Fi = VaUint64(&*(*Tva_list)(unsafe.Pointer(ap)))
+		(*Targ)(unsafe.Pointer(arg)).Fi = uint64(VaUint64(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_SHORT):
 		(*Targ)(unsafe.Pointer(arg)).Fi = Uint64FromInt16(int16(VaInt32(&*(*Tva_list)(unsafe.Pointer(ap)))))
 	case int32(_USHORT):
@@ -142647,7 +142647,7 @@ func _pop_arg1(tls *TLS, arg uintptr, type1 int32, ap uintptr) {
 	case int32(_UIPTR):
 		(*Targ)(unsafe.Pointer(arg)).Fi = uint64(VaUintptr(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_DBL):
-		*(*float64)(unsafe.Pointer(arg)) = VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap)))
+		*(*float64)(unsafe.Pointer(arg)) = float64(VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap))))
 	case int32(_LDBL):
 		*(*float64)(unsafe.Pointer(arg)) = VaFloat64(&*(*Tva_list)(unsafe.Pointer(ap)))
 	}
@@ -144818,7 +144818,7 @@ func Xstrtoul(tls *TLS, s uintptr, p uintptr, base int32) (r uint64) {
 		trc("tls=%v s=%v p=%v base=%v, (%v:)", tls, s, p, base, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return _strtox1(tls, s, p, base, Uint64FromUint64(2)*Uint64FromInt64(0x7fffffffffffffff)+Uint64FromInt32(1))
+	return _strtox1(tls, s, p, base, uint64(Uint64FromUint64(2)*Uint64FromInt64(0x7fffffffffffffff)+Uint64FromInt32(1)))
 }
 
 func Xstrtol(tls *TLS, s uintptr, p uintptr, base int32) (r int64) {
@@ -144826,7 +144826,7 @@ func Xstrtol(tls *TLS, s uintptr, p uintptr, base int32) (r int64) {
 		trc("tls=%v s=%v p=%v base=%v, (%v:)", tls, s, p, base, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return Int64FromUint64(_strtox1(tls, s, p, base, Uint64FromUint64(0)+Uint64FromInt64(-Int64FromInt64(0x7fffffffffffffff)-Int64FromInt32(1))))
+	return Int64FromUint64(_strtox1(tls, s, p, base, uint64(Uint64FromUint64(0)+Uint64FromInt64(-Int64FromInt64(0x7fffffffffffffff)-Int64FromInt32(1)))))
 }
 
 func Xstrtoimax(tls *TLS, s uintptr, p uintptr, base int32) (r Tintmax_t) {
@@ -145098,7 +145098,7 @@ func Xwcstoul(tls *TLS, s uintptr, p uintptr, base int32) (r uint64) {
 		trc("tls=%v s=%v p=%v base=%v, (%v:)", tls, s, p, base, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return _wcstox1(tls, s, p, base, Uint64FromUint64(2)*Uint64FromInt64(0x7fffffffffffffff)+Uint64FromInt32(1))
+	return _wcstox1(tls, s, p, base, uint64(Uint64FromUint64(2)*Uint64FromInt64(0x7fffffffffffffff)+Uint64FromInt32(1)))
 }
 
 func Xwcstol(tls *TLS, s uintptr, p uintptr, base int32) (r int64) {
@@ -145106,7 +145106,7 @@ func Xwcstol(tls *TLS, s uintptr, p uintptr, base int32) (r int64) {
 		trc("tls=%v s=%v p=%v base=%v, (%v:)", tls, s, p, base, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return Int64FromUint64(_wcstox1(tls, s, p, base, Uint64FromUint64(0)+Uint64FromInt64(-Int64FromInt64(0x7fffffffffffffff)-Int64FromInt32(1))))
+	return Int64FromUint64(_wcstox1(tls, s, p, base, uint64(Uint64FromUint64(0)+Uint64FromInt64(-Int64FromInt64(0x7fffffffffffffff)-Int64FromInt32(1)))))
 }
 
 func Xwcstoimax(tls *TLS, s uintptr, p uintptr, base int32) (r Tintmax_t) {
@@ -149198,7 +149198,7 @@ func _scan_trans(tls *TLS, t int64, local int32, alt uintptr) (r Tsize_t) {
 		if local != 0 {
 			off = Int32FromUint32(_zi_read32(tls, _types+uintptr(int32(6)*Int32FromUint8(*(*uint8)(unsafe.Pointer(_index + uintptr(m-uint64(1))))))))
 		}
-		if t-int64(off) < Int64FromUint64(x) {
+		if t-int64(off) < int64(Int64FromUint64(x)) {
 			n /= uint64(2)
 		} else {
 			a = m
@@ -149238,7 +149238,7 @@ func _scan_trans(tls *TLS, t int64, local int32, alt uintptr) (r Tsize_t) {
 		}
 		/* If t is before first transition, use the above-found type
 		 * and the index-zero (after transition) type as the alt. */
-		if t-int64(off) < Int64FromUint64(x) {
+		if t-int64(off) < int64(Int64FromUint64(x)) {
 			if alt != 0 {
 				*(*Tsize_t)(unsafe.Pointer(alt)) = uint64(*(*uint8)(unsafe.Pointer(_index)))
 			}
@@ -150359,7 +150359,7 @@ func Xstrftime(tls *TLS, s uintptr, n Tsize_t, f uintptr, tm uintptr) (r Tsize_t
 		trc("tls=%v s=%v n=%v f=%v tm=%v, (%v:)", tls, s, n, f, tm, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__strftime_l(tls, s, n, f, tm, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__strftime_l(tls, s, n, f, tm, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 func Xstrftime_l(tls *TLS, s uintptr, n Tsize_t, f uintptr, tm uintptr, loc Tlocale_t) (r Tsize_t) {
@@ -151103,7 +151103,7 @@ func Xwcsftime(tls *TLS, wcs uintptr, n Tsize_t, f uintptr, tm uintptr) (r Tsize
 		trc("tls=%v wcs=%v n=%v f=%v tm=%v, (%v:)", tls, wcs, n, f, tm, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
-	return X__wcsftime_l(tls, wcs, n, f, tm, (*t__pthread)(unsafe.Pointer(___get_tp(tls))).Flocale)
+	return X__wcsftime_l(tls, wcs, n, f, tm, (*t__pthread)(unsafe.Pointer(uintptr(___get_tp(tls)))).Flocale)
 }
 
 func Xwcsftime_l(tls *TLS, s uintptr, n Tsize_t, f uintptr, tm uintptr, loc Tlocale_t) (r Tsize_t) {
@@ -152195,7 +152195,7 @@ var X__exp2f_data = Texp2f_data{
 		2: float64(0.6931471806916203),
 	},
 	Fshift:         float64(6.755399441055744e+15),
-	Finvln2_scaled: Float64FromFloat64(1.4426950408889634) * float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)),
+	Finvln2_scaled: float64(Float64FromFloat64(1.4426950408889634) * float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS))),
 	Fpoly_scaled: [3]float64{
 		0: Float64FromFloat64(0.05550361559341535) / float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)) / float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)) / float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)),
 		1: Float64FromFloat64(0.2402284522445722) / float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)) / float64(Int32FromInt32(1)<<Int32FromInt32(EXP2F_TABLE_BITS)),
@@ -152204,7 +152204,7 @@ var X__exp2f_data = Texp2f_data{
 }
 
 var X__exp_data = Texp_data{
-	Finvln2N:   Float64FromFloat64(1.4426950408889634) * float64(Int32FromInt32(1)<<Int32FromInt32(EXP_TABLE_BITS)),
+	Finvln2N:   float64(Float64FromFloat64(1.4426950408889634) * float64(Int32FromInt32(1)<<Int32FromInt32(EXP_TABLE_BITS))),
 	Fshift:     float64(6.755399441055744e+15),
 	Fnegln2hiN: -Float64FromFloat64(0.005415212348111709),
 	Fnegln2loN: -Float64FromFloat64(1.2864023111638346e-14),
@@ -153538,12 +153538,12 @@ var X__pow_log_data = Tpow_log_data{
 	Fln2lo: float64(5.497923018708371e-14),
 	Fpoly: [7]float64{
 		0: -Float64FromFloat64(0.5),
-		1: Float64FromFloat64(0.3333333333333339) * float64(-Int32FromInt32(2)),
-		2: -Float64FromFloat64(0.25000000000000033) * float64(-Int32FromInt32(2)),
-		3: Float64FromFloat64(0.1999999998830994) * Float64FromInt32(4),
-		4: -Float64FromFloat64(0.16666666658719348) * Float64FromInt32(4),
-		5: Float64FromFloat64(0.14286370355743763) * float64(-Int32FromInt32(8)),
-		6: -Float64FromFloat64(0.12500519079594427) * float64(-Int32FromInt32(8)),
+		1: float64(Float64FromFloat64(0.3333333333333339) * float64(-Int32FromInt32(2))),
+		2: float64(-Float64FromFloat64(0.25000000000000033) * float64(-Int32FromInt32(2))),
+		3: float64(Float64FromFloat64(0.1999999998830994) * Float64FromInt32(4)),
+		4: float64(-Float64FromFloat64(0.16666666658719348) * Float64FromInt32(4)),
+		5: float64(Float64FromFloat64(0.14286370355743763) * float64(-Int32FromInt32(8))),
+		6: float64(-Float64FromFloat64(0.12500519079594427) * float64(-Int32FromInt32(8))),
 	},
 	Ftab: [128]struct {
 		Finvc     float64
@@ -154197,75 +154197,75 @@ var X__powf_log2_data = Tpowf_log2_data{
 	}{
 		0: {
 			Finvc: float64(1.398907162146528),
-			Flogc: -Float64FromFloat64(0.48430022186289673) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.48430022186289673) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		1: {
 			Finvc: float64(1.3403141896637998),
-			Flogc: -Float64FromFloat64(0.42257122959194704) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.42257122959194704) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		2: {
 			Finvc: float64(1.286432210124115),
-			Flogc: -Float64FromFloat64(0.3633754347673556) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.3633754347673556) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		3: {
 			Finvc: float64(1.2367150214269895),
-			Flogc: -Float64FromFloat64(0.30651309567405577) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.30651309567405577) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		4: {
 			Finvc: float64(1.1906977166711752),
-			Flogc: -Float64FromFloat64(0.25180720160537634) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.25180720160537634) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		5: {
 			Finvc: float64(1.1479821020556429),
-			Flogc: -Float64FromFloat64(0.19910014943794563) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.19910014943794563) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		6: {
 			Finvc: float64(1.1082251448272158),
-			Flogc: -Float64FromFloat64(0.14825100623281615) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.14825100623281615) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		7: {
 			Finvc: float64(1.0711297413057381),
-			Flogc: -Float64FromFloat64(0.09913323807318392) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.09913323807318392) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		8: {
 			Finvc: float64(1.036437278977283),
-			Flogc: -Float64FromFloat64(0.051632812977629436) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(-Float64FromFloat64(0.051632812977629436) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		9: {
 			Finvc: float64(1),
-			Flogc: float64(0) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		10: {
 			Finvc: float64(0.9492859795739057),
-			Flogc: float64(0.07508531937943004) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.07508531937943004) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		11: {
 			Finvc: float64(0.8951049428609004),
-			Flogc: float64(0.15987125980713107) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.15987125980713107) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		12: {
 			Finvc: float64(0.8476821620351103),
-			Flogc: float64(0.2384046664317681) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.2384046664317681) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		13: {
 			Finvc: float64(0.8050314851692001),
-			Flogc: float64(0.31288288605863257) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.31288288605863257) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		14: {
 			Finvc: float64(0.7664671008843108),
-			Flogc: float64(0.38370422656453185) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.38370422656453185) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 		15: {
 			Finvc: float64(0.731428603316328),
-			Flogc: float64(0.451211048935815) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+			Flogc: float64(float64(0.451211048935815) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 		},
 	},
 	Fpoly: [5]float64{
-		0: float64(0.288457581109214) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
-		1: -Float64FromFloat64(0.36092606229713164) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
-		2: float64(0.480898481472577) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
-		3: -Float64FromFloat64(0.7213474675006291) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
-		4: float64(1.4426950408774342) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS)),
+		0: float64(float64(0.288457581109214) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
+		1: float64(-Float64FromFloat64(0.36092606229713164) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
+		2: float64(float64(0.480898481472577) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
+		3: float64(-Float64FromFloat64(0.7213474675006291) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
+		4: float64(float64(1.4426950408774342) * float64(Int32FromInt32(1)<<Int32FromInt32(POWF_SCALE_BITS))),
 	},
 }
 

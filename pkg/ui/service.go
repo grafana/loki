@@ -20,6 +20,11 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
+
+	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
+	_ "github.com/go-sql-driver/mysql" //nolint:revive
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
@@ -34,9 +39,10 @@ type Service struct {
 	client    *http.Client
 	localAddr string
 
-	cfg    Config
-	logger log.Logger
-	reg    prometheus.Registerer
+	cfg             Config
+	logger          log.Logger
+	reg             prometheus.Registerer
+	goldfishStorage goldfish.Storage
 }
 
 func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
@@ -87,15 +93,16 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 	if err := svc.initUIFs(); err != nil {
 		return nil, err
 	}
+	if err := svc.initGoldfishDB(); err != nil {
+		return nil, err
+	}
 	svc.RegisterHandler()
 	return svc, nil
 }
 
 func (s *Service) run(ctx context.Context) error {
-	if err := s.node.ChangeState(ctx, peer.StateParticipant); err != nil {
-		level.Error(s.logger).Log("msg", "failed to change state to participant", "err", err)
-		return err
-	}
+	var joinOnce sync.Once
+
 	peers, err := s.getBootstrapPeers()
 	if err != nil {
 		// Warn when failed to get peers on startup as it can result in a split brain. We do not fail hard here
@@ -141,6 +148,23 @@ func (s *Service) run(ctx context.Context) error {
 							continue
 						}
 					}
+
+					// Only change state to participant after we've had a chance to join
+					// the cluster. This is an optional small optimization to reduce the
+					// total amount of network traffic required to synchronize with the
+					// cluster state; see [ckit.Node.ChangeState] for more details.
+					joinOnce.Do(func() {
+						if err := s.node.ChangeState(ctx, peer.StateParticipant); err != nil {
+							level.Error(s.logger).Log("msg", "failed to change state to participant", "err", err)
+
+							// ChangeState only fails when making an invalid state
+							// transition. We can log the error but otherwise safely avoid
+							// it, since the error means that either:
+							//
+							// 1. We're already in the participant state, or
+							// 2. We're immediately terminating and shouldn't change state.
+						}
+					})
 				}
 			}
 		}()
@@ -159,6 +183,9 @@ func (s *Service) stop(_ error) error {
 	}
 	if s.reg != nil {
 		s.reg.Unregister(s.node.Metrics())
+	}
+	if s.goldfishStorage != nil {
+		s.goldfishStorage.Close()
 	}
 	return s.node.Stop()
 }
@@ -190,4 +217,36 @@ func deadlineDuration(ctx context.Context) (d time.Duration, ok bool) {
 		return time.Until(t), true
 	}
 	return 0, false
+}
+
+// initGoldfishDB initializes the database connection for goldfish features
+func (s *Service) initGoldfishDB() error {
+	if !s.cfg.Goldfish.Enable {
+		level.Info(s.logger).Log("msg", "goldfish feature disabled, using noop storage")
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	// Create storage configuration
+	storageConfig := goldfish.StorageConfig{
+		Type:             "cloudsql",
+		CloudSQLHost:     s.cfg.Goldfish.CloudSQLHost,
+		CloudSQLPort:     s.cfg.Goldfish.CloudSQLPort,
+		CloudSQLDatabase: s.cfg.Goldfish.CloudSQLDatabase,
+		CloudSQLUser:     s.cfg.Goldfish.CloudSQLUser,
+		MaxConnections:   s.cfg.Goldfish.MaxConnections,
+		MaxIdleTime:      s.cfg.Goldfish.MaxIdleTime,
+	}
+
+	storage, err := goldfish.NewMySQLStorage(storageConfig, s.logger)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to create goldfish storage, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	s.goldfishStorage = storage
+	level.Info(s.logger).Log("msg", "goldfish storage initialized successfully")
+	return nil
 }

@@ -217,34 +217,34 @@ func parseNetstatLine(line string) (ConnectionStat, error) {
 	return n, nil
 }
 
-func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, raddr Addr, err error) {
-	parse := func(l string) (Addr, error) {
-		matches := portMatch.FindStringSubmatch(l)
-		if matches == nil {
-			return Addr{}, fmt.Errorf("wrong addr, %s", l)
-		}
-		host := matches[1]
-		port := matches[2]
-		if host == "*" {
-			switch family {
-			case syscall.AF_INET:
-				host = "0.0.0.0"
-			case syscall.AF_INET6:
-				host = "::"
-			default:
-				return Addr{}, fmt.Errorf("unknown family, %d", family)
-			}
-		}
-		lport, err := strconv.ParseInt(port, 10, 32)
-		if err != nil {
-			return Addr{}, err
-		}
-		return Addr{IP: host, Port: uint32(lport)}, nil
+func parseAddr(l string, family uint32) (Addr, error) {
+	matches := portMatch.FindStringSubmatch(l)
+	if matches == nil {
+		return Addr{}, fmt.Errorf("wrong addr, %s", l)
 	}
+	host := matches[1]
+	port := matches[2]
+	if host == "*" {
+		switch family {
+		case syscall.AF_INET:
+			host = "0.0.0.0"
+		case syscall.AF_INET6:
+			host = "::"
+		default:
+			return Addr{}, fmt.Errorf("unknown family, %d", family)
+		}
+	}
+	lport, err := strconv.ParseInt(port, 10, 32)
+	if err != nil {
+		return Addr{}, err
+	}
+	return Addr{IP: host, Port: uint32(lport)}, nil
+}
 
-	laddr, err = parse(local)
+func parseNetstatAddr(local, remote string, family uint32) (laddr, raddr Addr, err error) {
+	laddr, err = parseAddr(local, family)
 	if remote != "*.*" { // remote addr exists
-		raddr, err = parse(remote)
+		raddr, err = parseAddr(remote, family)
 		if err != nil {
 			return laddr, raddr, err
 		}
@@ -260,11 +260,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	switch strings.ToLower(kind) {
 	default:
 		fallthrough
-	case "":
-		fallthrough
-	case "all":
-		fallthrough
-	case "inet":
+	case "", "all", "inet":
 		// nothing to add
 	case "inet4":
 		args = append(args, "-finet")
@@ -296,7 +292,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	}
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
-		if !(strings.HasPrefix(line, "tcp") || strings.HasPrefix(line, "udp")) {
+		if !strings.HasPrefix(line, "tcp") && !strings.HasPrefix(line, "udp") {
 			continue
 		}
 		n, err := parseNetstatLine(line)

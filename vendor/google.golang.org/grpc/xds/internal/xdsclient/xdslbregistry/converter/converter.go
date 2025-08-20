@@ -30,11 +30,11 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/leastrequest"
 	"google.golang.org/grpc/balancer/pickfirst"
+	"google.golang.org/grpc/balancer/ringhash"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/balancer/weightedroundrobin"
-	"google.golang.org/grpc/internal/envconfig"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/balancer/wrrlocality"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/protobuf/proto"
@@ -83,7 +83,7 @@ func convertRingHashProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessag
 		maxSize = max.GetValue()
 	}
 
-	rhCfg := &ringhash.LBConfig{
+	rhCfg := &iringhash.LBConfig{
 		MinRingSize: minSize,
 		MaxRingSize: maxSize,
 	}
@@ -176,9 +176,6 @@ func convertWeightedRoundRobinProtoToServiceConfig(rawProto []byte, _ int) (json
 }
 
 func convertLeastRequestProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessage, error) {
-	if !envconfig.LeastRequestLB {
-		return nil, nil
-	}
 	lrProto := &v3leastrequestpb.LeastRequest{}
 	if err := proto.Unmarshal(rawProto, lrProto); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal resource: %v", err)

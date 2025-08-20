@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
@@ -21,14 +20,14 @@ func TestCheckDuplicates(t *testing.T) {
 			in: []rwrulefmt.RuleGroup{{
 				RuleGroup: rulefmt.RuleGroup{
 					Name: "rulegroup",
-					Rules: []rulefmt.RuleNode{
+					Rules: []rulefmt.Rule{
 						{
-							Record: yaml.Node{Value: "up"},
-							Expr:   yaml.Node{Value: "up==1"},
+							Record: "up",
+							Expr:   "up==1",
 						},
 						{
-							Record: yaml.Node{Value: "down"},
-							Expr:   yaml.Node{Value: "up==0"},
+							Record: "down",
+							Expr:   "up==0",
 						},
 					},
 				},
@@ -41,14 +40,14 @@ func TestCheckDuplicates(t *testing.T) {
 			in: []rwrulefmt.RuleGroup{{
 				RuleGroup: rulefmt.RuleGroup{
 					Name: "rulegroup",
-					Rules: []rulefmt.RuleNode{
+					Rules: []rulefmt.Rule{
 						{
-							Record: yaml.Node{Value: "up"},
-							Expr:   yaml.Node{Value: "up==1"},
+							Record: "up",
+							Expr:   "up==1",
 						},
 						{
-							Record: yaml.Node{Value: "up"},
-							Expr:   yaml.Node{Value: "up==0"},
+							Record: "up",
+							Expr:   "up==0",
 						},
 					},
 				},

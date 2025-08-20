@@ -275,7 +275,7 @@ services:
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   toxiproxy:
     container_name: 'toxiproxy'
-    image: 'ghcr.io/shopify/toxiproxy:2.4.0'
+    image: 'ghcr.io/shopify/toxiproxy:2.12.0'
     init: true
     healthcheck:
       test: ['CMD', '/toxiproxy-cli', 'l']

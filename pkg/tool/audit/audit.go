@@ -105,10 +105,10 @@ func ValidateCompactedIndex(ctx context.Context, objClient client.ObjectClient, 
 		bar.Add(1) // nolint:errcheck
 		g.Go(func() error {
 			for _, c := range s.Chunks() {
-				exists, err := CheckChunkExistance(string(c.ChunkID), objClient)
+				exists, err := CheckChunkExistance(c.ChunkID, objClient)
 				if err != nil || !exists {
 					missingChunks.Add(1)
-					logger.Log("msg", "chunk is missing", "err", err, "chunk_id", string(c.ChunkID))
+					logger.Log("msg", "chunk is missing", "err", err, "chunk_id", c.ChunkID)
 					return nil
 				}
 				foundChunks.Add(1)

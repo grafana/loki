@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"os"
@@ -18,8 +17,9 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,16 +41,29 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket)
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
+		// NOTE(rfratto): Do not add tests for shards without a way to have
+		// consistently hashed objects!
+		//
+		// dataobj/querier is only used for testing dataobjs on the old engine, and
+		// will never hit production. We previously had tests for individual shards
+		// (which sharded based on the SHA-224 of the dataobjs), but it broke every
+		// time we updated the dataobj format, since the checksums would change.
+		//
+		// This meant constantly updating these tests, which was annoying.
+		//
+		// If you need to reintroduce tests for the shards, please first find a way
+		// to make sure the dataobj hashes are consistent (potentially via mocking)
+		// regardless of the fomrat so we don't have to keep updating these tests.
+
 		name     string
 		selector string
 		start    time.Time
 		end      time.Time
-		shards   []string
 		want     []sampleWithLabels
 	}{
 		{
@@ -127,45 +140,6 @@ func TestStore_SelectSamples(t *testing.T) {
 			},
 		},
 		{
-			name:     "select first shard",
-			selector: `rate({app=~".+"}[1h])`,
-			start:    now,
-			end:      now.Add(time.Hour),
-			shards:   []string{"0_of_2"},
-			want: []sampleWithLabels{
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(8 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(18 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(38 * time.Second).UnixNano(), Value: 1}},
-
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(5 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(15 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(25 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="bar", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(40 * time.Second).UnixNano(), Value: 1}},
-
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(10 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(20 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="dev"}`, Samples: logproto.Sample{Timestamp: now.Add(35 * time.Second).UnixNano(), Value: 1}},
-
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(30 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(45 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="foo", env="prod"}`, Samples: logproto.Sample{Timestamp: now.Add(50 * time.Second).UnixNano(), Value: 1}},
-			},
-		},
-		{
-			name:     "select second shard",
-			selector: `rate({app=~".+"}[1h])`,
-			start:    now,
-			end:      now.Add(time.Hour),
-			shards:   []string{"1_of_2"},
-			want: []sampleWithLabels{
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(12 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(22 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(32 * time.Second).UnixNano(), Value: 1}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Samples: logproto.Sample{Timestamp: now.Add(42 * time.Second).UnixNano(), Value: 1}},
-			},
-		},
-		{
 			name:     "select all samples in range with a filter",
 			selector: `count_over_time({app=~".+"} |= "bar2"[1h])`,
 			start:    now,
@@ -197,7 +171,6 @@ func TestStore_SelectSamples(t *testing.T) {
 					End:      tt.end,
 					Plan:     planFromString(tt.selector),
 					Selector: tt.selector,
-					Shards:   tt.shards,
 				},
 			})
 			require.NoError(t, err)
@@ -229,16 +202,29 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(builder.bucket)
+	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
+		// NOTE(rfratto): Do not add tests for shards without a way to have
+		// consistently hashed objects!
+		//
+		// dataobj/querier is only used for testing dataobjs on the old engine, and
+		// will never hit production. We previously had tests for individual shards
+		// (which sharded based on the SHA-224 of the dataobjs), but it broke every
+		// time we updated the dataobj format, since the checksums would change.
+		//
+		// This meant constantly updating these tests, which was annoying.
+		//
+		// If you need to reintroduce tests for the shards, please first find a way
+		// to make sure the dataobj hashes are consistent (potentially via mocking)
+		// regardless of the fomrat so we don't have to keep updating these tests.
+
 		name      string
 		selector  string
 		start     time.Time
 		end       time.Time
-		shards    []string
 		limit     uint32
 		direction logproto.Direction
 		want      []entryWithLabels
@@ -306,49 +292,6 @@ func TestStore_SelectLogs(t *testing.T) {
 			},
 		},
 		{
-			name:      "select first shard",
-			selector:  `{app=~".+"}`,
-			start:     now,
-			end:       now.Add(time.Hour),
-			shards:    []string{"0_of_2"},
-			limit:     100,
-			direction: logproto.FORWARD,
-			want: []entryWithLabels{
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
-				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
-
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
-				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
-
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
-				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
-
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
-				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
-			},
-		},
-		{
-			name:      "select second shard",
-			selector:  `{app=~".+"}`,
-			start:     now,
-			end:       now.Add(time.Hour),
-			shards:    []string{"1_of_2"},
-			limit:     100,
-			direction: logproto.FORWARD,
-			want: []entryWithLabels{
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
-				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
-			},
-		},
-		{
 			name:      "select with line filter",
 			selector:  `{app=~".+"} |= "bar2"`,
 			start:     now,
@@ -376,15 +319,27 @@ func TestStore_SelectLogs(t *testing.T) {
 		},
 	}
 
+	emptyLabelAdapters := logproto.EmptyLabelAdapters()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Make sure all empty label sets use an empty slice, rather than nil, to make assertions below easier.
+			for i := range tt.want {
+				if len(tt.want[i].Entry.Parsed) == 0 {
+					tt.want[i].Entry.Parsed = emptyLabelAdapters
+				}
+
+				if len(tt.want[i].Entry.StructuredMetadata) == 0 {
+					tt.want[i].Entry.StructuredMetadata = emptyLabelAdapters
+				}
+			}
+
 			it, err := store.SelectLogs(ctx, logql.SelectLogParams{
 				QueryRequest: &logproto.QueryRequest{
 					Start:     tt.start,
 					End:       tt.end,
 					Plan:      planFromString(tt.selector),
 					Selector:  tt.selector,
-					Shards:    tt.shards,
 					Limit:     tt.limit,
 					Direction: tt.direction,
 				},
@@ -496,8 +451,8 @@ type testDataBuilder struct {
 	dir    string
 
 	tenantID string
-	builder  *dataobj.Builder
-	meta     *metastore.Updater
+	builder  *logsobj.Builder
+	meta     *metastore.TableOfContentsWriter
 	uploader *uploader.Uploader
 }
 
@@ -510,20 +465,20 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
-	builder, err := dataobj.NewBuilder(dataobj.BuilderConfig{
+	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:    1024 * 1024,      // 1MB
 		TargetObjectSize:  10 * 1024 * 1024, // 10MB
 		TargetSectionSize: 1024 * 1024,      // 1MB
 		BufferSize:        1024 * 1024,      // 1MB
 
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
-	meta := metastore.NewUpdater(bucket, tenantID, log.NewNopLogger())
+	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewRegistry()))
 
 	return &testDataBuilder{
@@ -546,16 +501,17 @@ func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
 }
 
 func (b *testDataBuilder) flush() {
-	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
-	stats, err := b.builder.Flush(buf)
+	minTime, maxTime := b.builder.TimeRange()
+	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
+	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := b.uploader.Upload(context.Background(), buf)
+	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.Update(context.Background(), path, stats)
+	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
 	require.NoError(b.t, err)
 
 	b.builder.Reset()
@@ -596,13 +552,13 @@ func readAllEntries(it iter.EntryIterator) ([]entryWithLabels, error) {
 func TestShardSections(t *testing.T) {
 	tests := []struct {
 		name      string
-		metadatas []dataobj.Metadata
+		metadatas []sectionsStats
 		shard     logql.Shard
 		want      [][]int
 	}{
 		{
 			name: "single section, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -617,7 +573,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, no sharding",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -634,7 +590,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -651,7 +607,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple sections, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 3},
 				{LogsSections: 2},
 			},
@@ -668,7 +624,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 0 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -683,7 +639,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "more sections than shards, shard 1 of 2",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 5},
 			},
 			shard: logql.Shard{
@@ -698,7 +654,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 0,4
 				{LogsSections: 5}, // sections 0,4
 				{LogsSections: 3}, // sections 0
@@ -717,7 +673,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 1,5
 				{LogsSections: 5}, // sections 1
 				{LogsSections: 3}, // sections 1
@@ -736,7 +692,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 2 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 2,6
 				{LogsSections: 5}, // sections 2
 				{LogsSections: 3}, // sections 2
@@ -755,7 +711,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "complex case, shard 3 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 7}, // sections 3
 				{LogsSections: 5}, // sections 3
 				{LogsSections: 3}, // no sections
@@ -774,7 +730,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 1 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -787,7 +743,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "less sections than shards, shard 0 of 4",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1},
 			},
 			shard: logql.Shard{
@@ -800,7 +756,7 @@ func TestShardSections(t *testing.T) {
 		},
 		{
 			name: "multiple streams sections not supported",
-			metadatas: []dataobj.Metadata{
+			metadatas: []sectionsStats{
 				{LogsSections: 1, StreamsSections: 2},
 			},
 			shard: logql.Shard{
@@ -865,12 +821,12 @@ func TestShardSections(t *testing.T) {
 }
 
 func TestBuildLogsPredicateFromPipeline(t *testing.T) {
-	var evalPredicate func(p dataobj.Predicate, item []byte) bool
-	evalPredicate = func(p dataobj.Predicate, line []byte) bool {
+	var evalPredicate func(p logs.RowPredicate, item []byte) bool
+	evalPredicate = func(p logs.RowPredicate, line []byte) bool {
 		switch p := p.(type) {
-		case dataobj.LogMessageFilterPredicate:
+		case logs.LogMessageFilterRowPredicate:
 			return p.Keep(line)
-		case dataobj.AndPredicate[dataobj.LogsPredicate]:
+		case logs.AndRowPredicate:
 			return evalPredicate(p.Left, line) && evalPredicate(p.Right, line)
 		default:
 			t.Fatalf("unsupported predicate type: %T", p)
@@ -879,7 +835,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 	}
 
 	// helper function to test predicates against sample data
-	testPredicate := func(t *testing.T, pred dataobj.Predicate, testData [][]byte, expected []bool) {
+	testPredicate := func(t *testing.T, pred logs.RowPredicate, testData [][]byte, expected []bool) {
 		t.Helper()
 		require.Equal(t, len(testData), len(expected), "test data and expected results must have the same length")
 
@@ -901,15 +857,15 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 		name         string
 		query        syntax.LogSelectorExpr
 		expectedExpr syntax.LogSelectorExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "single line match equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -920,9 +876,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "single line match not equal filter",
 			query:        mustParseLogSelector(t, `{app="foo"} != "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{false, false, true, true}
@@ -933,11 +889,11 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "multiple line filters",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"}`), // Both line filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
 				// we might expect AND predicate here, but the original expression
 				// only contains a single Filterer stage with chained OR filters
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// The result should match logs containing both "error" and "critical"
 				expected := []bool{false, true, false, false}
@@ -948,7 +904,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after line_format",
 			query:        mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | line_format "{{.message}}" |= "error"`), // No filters should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				// Line filters after stages that mutate the line should be ignored
 				require.Nil(t, pred, "expected nil predicate for line filter after parser")
 			},
@@ -957,7 +913,7 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "no line filter",
 			query:        mustParseLogSelector(t, `{app="foo"} | json | bar>100`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | bar>100`), // No filters to remove
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.Nil(t, pred, "expected nil predicate for query without line filter")
 			},
 		},
@@ -965,9 +921,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "line filter stage after label_fmt",
 			query:        mustParseLogSelector(t, `{app="foo"} | label_format foo=bar |= "error"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | label_format foo=bar`), // Line filter should be removed
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, pred)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, pred)
 
 				// Verify the predicate works correctly
 				expected := []bool{true, true, false, false}
@@ -978,9 +934,9 @@ func TestBuildLogsPredicateFromPipeline(t *testing.T) {
 			name:         "mixed filters with some removable",
 			query:        mustParseLogSelector(t, `{app="foo"} |= "error" | json | status="critical" |= "critical"`),
 			expectedExpr: mustParseLogSelector(t, `{app="foo"} | json | status="critical"`),
-			testFunc: func(t *testing.T, pred dataobj.Predicate) {
+			testFunc: func(t *testing.T, pred logs.RowPredicate) {
 				require.NotNil(t, pred)
-				require.IsType(t, dataobj.AndPredicate[dataobj.LogsPredicate]{}, pred)
+				require.IsType(t, logs.AndRowPredicate{}, pred)
 				expected := []bool{false, true, false, false}
 				testPredicate(t, pred, testData, expected)
 			},
@@ -1002,31 +958,31 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 		name         string
 		query        syntax.SampleExpr
 		expectedExpr syntax.SampleExpr
-		testFunc     func(t *testing.T, pred dataobj.Predicate)
+		testFunc     func(t *testing.T, pred logs.RowPredicate)
 	}{
 		{
 			name:         "range aggregation with line filter",
 			query:        mustParseSampleExpr(t, `count_over_time({app="foo"} |= "error" [5m])`),
 			expectedExpr: mustParseSampleExpr(t, `count_over_time({app="foo"}[5m])`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "vector aggregation with line filter",
 			query:        mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"} |= "error"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `sum by (app)(count_over_time({app="foo"}[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 		{
 			name:         "binary expressions are not modified",
 			query:        mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
 			expectedExpr: mustParseSampleExpr(t, `(count_over_time({app="foo"} |= "error"[5m]) + count_over_time({app="bar"} |= "info"[5m]))`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.Nil(t, p)
 			},
 		},
@@ -1034,9 +990,9 @@ func TestBuildLogsPredicateFromSampleExpr(t *testing.T) {
 			name:         "label replace with line filter",
 			query:        mustParseSampleExpr(t, `label_replace(rate({app="foo"} |= "error"[5m]), "new_label", "new_value", "old_label", "old_value")`),
 			expectedExpr: mustParseSampleExpr(t, `label_replace(rate({app="foo"}[5m]),"new_label","new_value","old_label","old_value")`),
-			testFunc: func(t *testing.T, p dataobj.Predicate) {
+			testFunc: func(t *testing.T, p logs.RowPredicate) {
 				require.NotNil(t, p)
-				require.IsType(t, dataobj.LogMessageFilterPredicate{}, p)
+				require.IsType(t, logs.LogMessageFilterRowPredicate{}, p)
 			},
 		},
 	} {

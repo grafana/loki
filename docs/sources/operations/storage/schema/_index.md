@@ -18,7 +18,7 @@ Use of a schema allows Loki to iterate over the storage layer without requiring 
 For a new Loki install with no previous data, here is an example schema configuration with recommended values
 
 ```
-schema_config:
+schemaConfig:
   configs:
     - from: 2024-04-01
       object_store: s3
@@ -58,7 +58,7 @@ Here are items to consider when changing the schema; if schema changes are not d
 ## Schema configuration example
 
 ```
-schema_config:
+schemaConfig:
   configs:
     - from: "2020-07-31"
       index:

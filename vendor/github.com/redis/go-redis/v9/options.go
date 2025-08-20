@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal/pool"
 )
 
@@ -29,10 +30,13 @@ type Limiter interface {
 
 // Options keeps the settings to set up redis connection.
 type Options struct {
-	// The network type, either tcp or unix.
-	// Default is tcp.
+
+	// Network type, either tcp or unix.
+	//
+	// default: is tcp.
 	Network string
-	// host:port address.
+
+	// Addr is the address formated as host:port
 	Addr string
 
 	// ClientName will execute the `CLIENT SETNAME ClientName` command for each conn.
@@ -46,17 +50,21 @@ type Options struct {
 	OnConnect func(ctx context.Context, cn *Conn) error
 
 	// Protocol 2 or 3. Use the version to negotiate RESP version with redis-server.
-	// Default is 3.
+	//
+	// default: 3.
 	Protocol int
-	// Use the specified Username to authenticate the current connection
+
+	// Username is used to authenticate the current connection
 	// with one of the connections defined in the ACL list when connecting
 	// to a Redis 6.0 instance, or greater, that is using the Redis ACL system.
 	Username string
-	// Optional password. Must match the password specified in the
-	// requirepass server configuration option (if connecting to a Redis 5.0 instance, or lower),
+
+	// Password is an optional password. Must match the password specified in the
+	// `requirepass` server configuration option (if connecting to a Redis 5.0 instance, or lower),
 	// or the User Password when connecting to a Redis 6.0 instance, or greater,
 	// that is using the Redis ACL system.
 	Password string
+
 	// CredentialsProvider allows the username and password to be updated
 	// before reconnecting. It should return the current username and password.
 	CredentialsProvider func() (username string, password string)
@@ -67,85 +75,126 @@ type Options struct {
 	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
 	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
 
-	// Database to be selected after connecting to the server.
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+
+	// DB is the database to be selected after connecting to the server.
 	DB int
 
-	// Maximum number of retries before giving up.
-	// Default is 3 retries; -1 (not 0) disables retries.
+	// MaxRetries is the maximum number of retries before giving up.
+	// -1 (not 0) disables retries.
+	//
+	// default: 3 retries
 	MaxRetries int
-	// Minimum backoff between each retry.
-	// Default is 8 milliseconds; -1 disables backoff.
+
+	// MinRetryBackoff is the minimum backoff between each retry.
+	// -1 disables backoff.
+	//
+	// default: 8 milliseconds
 	MinRetryBackoff time.Duration
-	// Maximum backoff between each retry.
-	// Default is 512 milliseconds; -1 disables backoff.
+
+	// MaxRetryBackoff is the maximum backoff between each retry.
+	// -1 disables backoff.
+	// default: 512 milliseconds;
 	MaxRetryBackoff time.Duration
 
-	// Dial timeout for establishing new connections.
-	// Default is 5 seconds.
+	// DialTimeout for establishing new connections.
+	//
+	// default: 5 seconds
 	DialTimeout time.Duration
-	// Timeout for socket reads. If reached, commands will fail
+
+	// ReadTimeout for socket reads. If reached, commands will fail
 	// with a timeout instead of blocking. Supported values:
-	//   - `0` - default timeout (3 seconds).
-	//   - `-1` - no timeout (block indefinitely).
-	//   - `-2` - disables SetReadDeadline calls completely.
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetReadDeadline calls completely.
+	//
+	// default: 3 seconds
 	ReadTimeout time.Duration
-	// Timeout for socket writes. If reached, commands will fail
+
+	// WriteTimeout for socket writes. If reached, commands will fail
 	// with a timeout instead of blocking.  Supported values:
-	//   - `0` - default timeout (3 seconds).
-	//   - `-1` - no timeout (block indefinitely).
-	//   - `-2` - disables SetWriteDeadline calls completely.
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetWriteDeadline calls completely.
+	//
+	// default: 3 seconds
 	WriteTimeout time.Duration
+
 	// ContextTimeoutEnabled controls whether the client respects context timeouts and deadlines.
 	// See https://redis.uptrace.dev/guide/go-redis-debugging.html#timeouts
 	ContextTimeoutEnabled bool
 
-	// Type of connection pool.
-	// true for FIFO pool, false for LIFO pool.
+	// PoolFIFO type of connection pool.
+	//
+	//	- true for FIFO pool
+	//	- false for LIFO pool.
+	//
 	// Note that FIFO has slightly higher overhead compared to LIFO,
 	// but it helps closing idle connections faster reducing the pool size.
 	PoolFIFO bool
-	// Base number of socket connections.
+
+	// PoolSize is the base number of socket connections.
 	// Default is 10 connections per every available CPU as reported by runtime.GOMAXPROCS.
 	// If there is not enough connections in the pool, new connections will be allocated in excess of PoolSize,
 	// you can limit it through MaxActiveConns
+	//
+	// default: 10 * runtime.GOMAXPROCS(0)
 	PoolSize int
-	// Amount of time client waits for connection if all connections
+
+	// PoolTimeout is the amount of time client waits for connection if all connections
 	// are busy before returning an error.
-	// Default is ReadTimeout + 1 second.
+	//
+	// default: ReadTimeout + 1 second
 	PoolTimeout time.Duration
-	// Minimum number of idle connections which is useful when establishing
-	// new connection is slow.
-	// Default is 0. the idle connections are not closed by default.
+
+	// MinIdleConns is the minimum number of idle connections which is useful when establishing
+	// new connection is slow. The idle connections are not closed by default.
+	//
+	// default: 0
 	MinIdleConns int
-	// Maximum number of idle connections.
-	// Default is 0. the idle connections are not closed by default.
+
+	// MaxIdleConns is the maximum number of idle connections.
+	// The idle connections are not closed by default.
+	//
+	// default: 0
 	MaxIdleConns int
-	// Maximum number of connections allocated by the pool at a given time.
+
+	// MaxActiveConns is the maximum number of connections allocated by the pool at a given time.
 	// When zero, there is no limit on the number of connections in the pool.
+	// If the pool is full, the next call to Get() will block until a connection is released.
 	MaxActiveConns int
+
 	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
 	// Should be less than server's timeout.
 	//
 	// Expired connections may be closed lazily before reuse.
 	// If d <= 0, connections are not closed due to a connection's idle time.
+	// -1 disables idle timeout check.
 	//
-	// Default is 30 minutes. -1 disables idle timeout check.
+	// default: 30 minutes
 	ConnMaxIdleTime time.Duration
+
 	// ConnMaxLifetime is the maximum amount of time a connection may be reused.
 	//
 	// Expired connections may be closed lazily before reuse.
 	// If <= 0, connections are not closed due to a connection's age.
 	//
-	// Default is to not close idle connections.
+	// default: 0
 	ConnMaxLifetime time.Duration
 
-	// TLS Config to use. When set, TLS will be negotiated.
+	// TLSConfig to use. When set, TLS will be negotiated.
 	TLSConfig *tls.Config
 
 	// Limiter interface used to implement circuit breaker or rate limiter.
 	Limiter Limiter
 
-	// Enables read only queries on slave/follower nodes.
+	// readOnly enables read only queries on slave/follower nodes.
 	readOnly bool
 
 	// DisableIndentity - Disable set-lib on connect.
@@ -161,9 +210,11 @@ type Options struct {
 	DisableIdentity bool
 
 	// Add suffix to client name. Default is empty.
+	// IdentitySuffix - add suffix to client name.
 	IdentitySuffix string
 
 	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
+	// When unstable mode is enabled, the client will use RESP3 protocol and only be able to use RawResult
 	UnstableResp3 bool
 }
 
@@ -177,6 +228,9 @@ func (opt *Options) init() {
 		} else {
 			opt.Network = "tcp"
 		}
+	}
+	if opt.Protocol < 2 {
+		opt.Protocol = 3
 	}
 	if opt.DialTimeout == 0 {
 		opt.DialTimeout = 5 * time.Second

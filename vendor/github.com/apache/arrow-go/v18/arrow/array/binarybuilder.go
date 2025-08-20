@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -72,8 +71,8 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 		offsetByteWidth = arrow.Int64SizeBytes
 	}
 
-	b := &BinaryBuilder{
-		builder:         builder{refCount: 1, mem: mem},
+	bb := &BinaryBuilder{
+		builder:         builder{mem: mem},
 		dtype:           dtype,
 		offsets:         offsets,
 		values:          newByteBufferBuilder(mem),
@@ -82,7 +81,8 @@ func NewBinaryBuilder(mem memory.Allocator, dtype arrow.BinaryDataType) *BinaryB
 		offsetByteWidth: offsetByteWidth,
 		getOffsetVal:    getOffsetVal,
 	}
-	return b
+	bb.refCount.Add(1)
+	return bb
 }
 
 func (b *BinaryBuilder) Type() arrow.DataType { return b.dtype }
@@ -91,9 +91,9 @@ func (b *BinaryBuilder) Type() arrow.DataType { return b.dtype }
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (b *BinaryBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -162,7 +162,7 @@ func (b *BinaryBuilder) AppendValues(v [][]byte, valid []bool) {
 		b.values.Append(vv)
 	}
 
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 // AppendStringValues will append the values in the v slice. The valid slice determines which values
@@ -183,7 +183,7 @@ func (b *BinaryBuilder) AppendStringValues(v []string, valid []bool) {
 		b.values.Append([]byte(vv))
 	}
 
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *BinaryBuilder) UnsafeAppend(v []byte) {
@@ -218,7 +218,7 @@ func (b *BinaryBuilder) DataCap() int { return b.values.capacity }
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *BinaryBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // ReserveData ensures there is enough space for appending n bytes
@@ -236,7 +236,7 @@ func (b *BinaryBuilder) Resize(n int) {
 	if (n * b.offsetByteWidth) < b.offsets.Len() {
 		b.offsets.SetLength(n * b.offsetByteWidth)
 	}
-	b.builder.resize(n, b.init)
+	b.resize(n, b.init)
 }
 
 func (b *BinaryBuilder) ResizeData(n int) {
@@ -291,7 +291,7 @@ func (b *BinaryBuilder) newData() (data *Data) {
 		values.Release()
 	}
 
-	b.builder.reset()
+	b.reset()
 
 	return
 }
@@ -387,18 +387,19 @@ type BinaryViewBuilder struct {
 }
 
 func NewBinaryViewBuilder(mem memory.Allocator) *BinaryViewBuilder {
-	return &BinaryViewBuilder{
+	bvb := &BinaryViewBuilder{
 		dtype: arrow.BinaryTypes.BinaryView,
 		builder: builder{
-			refCount: 1,
-			mem:      mem,
+			mem: mem,
 		},
 		blockBuilder: multiBufferBuilder{
-			refCount:  1,
 			blockSize: dfltBlockSize,
 			mem:       mem,
 		},
 	}
+	bvb.refCount.Add(1)
+	bvb.blockBuilder.refCount.Add(1)
+	return bvb
 }
 
 func (b *BinaryViewBuilder) SetBlockSize(sz uint) {
@@ -408,9 +409,9 @@ func (b *BinaryViewBuilder) SetBlockSize(sz uint) {
 func (b *BinaryViewBuilder) Type() arrow.DataType { return b.dtype }
 
 func (b *BinaryViewBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) != 0 {
+	if b.refCount.Add(-1) != 0 {
 		return
 	}
 
@@ -444,7 +445,7 @@ func (b *BinaryViewBuilder) Resize(n int) {
 		return
 	}
 
-	b.builder.resize(nbuild, b.init)
+	b.resize(nbuild, b.init)
 	b.data.Resize(arrow.ViewHeaderTraits.BytesRequired(n))
 	b.rawData = arrow.ViewHeaderTraits.CastFromBytes(b.data.Bytes())
 }
@@ -458,7 +459,7 @@ func (b *BinaryViewBuilder) ReserveData(length int) {
 }
 
 func (b *BinaryViewBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 func (b *BinaryViewBuilder) Append(v []byte) {
@@ -553,7 +554,7 @@ func (b *BinaryViewBuilder) AppendValues(v [][]byte, valid []bool) {
 		}
 	}
 
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *BinaryViewBuilder) AppendStringValues(v []string, valid []bool) {
@@ -586,7 +587,7 @@ func (b *BinaryViewBuilder) AppendStringValues(v []string, valid []bool) {
 		}
 	}
 
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 // AppendValueFromString is paired with ValueStr for fulfilling the
@@ -673,7 +674,8 @@ func (b *BinaryViewBuilder) newData() (data *Data) {
 
 	dataBuffers := b.blockBuilder.Finish()
 	data = NewData(b.dtype, b.length, append([]*memory.Buffer{
-		b.nullBitmap, b.data}, dataBuffers...), nil, b.nulls, 0)
+		b.nullBitmap, b.data,
+	}, dataBuffers...), nil, b.nulls, 0)
 	b.reset()
 
 	if b.data != nil {
@@ -698,7 +700,18 @@ func (b *BinaryViewBuilder) NewArray() arrow.Array {
 	return b.NewBinaryViewArray()
 }
 
+type BinaryLikeBuilder interface {
+	Builder
+	Append([]byte)
+	AppendValues([][]byte, []bool)
+	UnsafeAppend([]byte)
+	ReserveData(int)
+}
+
 var (
 	_ Builder = (*BinaryBuilder)(nil)
 	_ Builder = (*BinaryViewBuilder)(nil)
+
+	_ BinaryLikeBuilder = (*BinaryBuilder)(nil)
+	_ BinaryLikeBuilder = (*BinaryViewBuilder)(nil)
 )

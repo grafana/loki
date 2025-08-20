@@ -2,30 +2,31 @@ package doublestar
 
 import (
 	"path/filepath"
+	"unicode"
 	"unicode/utf8"
 )
 
 // Match reports whether name matches the shell pattern.
 // The pattern syntax is:
 //
-//  pattern:
-//    { term }
-//  term:
-//    '*'         matches any sequence of non-path-separators
-//    '/**/'      matches zero or more directories
-//    '?'         matches any single non-path-separator character
-//    '[' [ '^' '!' ] { character-range } ']'
-//                character class (must be non-empty)
-//                starting with `^` or `!` negates the class
-//    '{' { term } [ ',' { term } ... ] '}'
-//                alternatives
-//    c           matches character c (c != '*', '?', '\\', '[')
-//    '\\' c      matches character c
+//	pattern:
+//	  { term }
+//	term:
+//	  '*'         matches any sequence of non-path-separators
+//	  '/**/'      matches zero or more directories
+//	  '?'         matches any single non-path-separator character
+//	  '[' [ '^' '!' ] { character-range } ']'
+//	              character class (must be non-empty)
+//	              starting with `^` or `!` negates the class
+//	  '{' { term } [ ',' { term } ... ] '}'
+//	              alternatives
+//	  c           matches character c (c != '*', '?', '\\', '[')
+//	  '\\' c      matches character c
 //
-//  character-range:
-//    c           matches character c (c != '\\', '-', ']')
-//    '\\' c      matches character c
-//    lo '-' hi   matches character c for lo <= c <= hi
+//	character-range:
+//	  c           matches character c (c != '\\', '-', ']')
+//	  '\\' c      matches character c
+//	  lo '-' hi   matches character c for lo <= c <= hi
 //
 // Match returns true if `name` matches the file name `pattern`. `name` and
 // `pattern` are split on forward slash (`/`) characters and may be relative or
@@ -48,9 +49,8 @@ import (
 //
 // Note: users should _not_ count on the returned error,
 // doublestar.ErrBadPattern, being equal to path.ErrBadPattern.
-//
 func Match(pattern, name string) (bool, error) {
-	return matchWithSeparator(pattern, name, '/', true)
+	return matchWithSeparator(pattern, name, '/', true, false)
 }
 
 // MatchUnvalidated can provide a small performance improvement if you don't
@@ -60,7 +60,7 @@ func Match(pattern, name string) (bool, error) {
 // of `name` before reaching the end of `pattern`, such as `Match("a/b/c",
 // "a")`.
 func MatchUnvalidated(pattern, name string) bool {
-	matched, _ := matchWithSeparator(pattern, name, '/', false)
+	matched, _ := matchWithSeparator(pattern, name, '/', false, false)
 	return matched
 }
 
@@ -73,9 +73,8 @@ func MatchUnvalidated(pattern, name string) bool {
 // assumes that both `pattern` and `name` are using the system's path
 // separator. If you can't be sure of that, use filepath.ToSlash() on both
 // `pattern` and `name`, and then use the Match() function instead.
-//
 func PathMatch(pattern, name string) (bool, error) {
-	return matchWithSeparator(pattern, name, filepath.Separator, true)
+	return matchWithSeparator(pattern, name, filepath.Separator, true, false)
 }
 
 // PathMatchUnvalidated can provide a small performance improvement if you
@@ -85,15 +84,15 @@ func PathMatch(pattern, name string) (bool, error) {
 // end of `name` before reaching the end of `pattern`, such as `Match("a/b/c",
 // "a")`.
 func PathMatchUnvalidated(pattern, name string) bool {
-	matched, _ := matchWithSeparator(pattern, name, filepath.Separator, false)
+	matched, _ := matchWithSeparator(pattern, name, filepath.Separator, false, false)
 	return matched
 }
 
-func matchWithSeparator(pattern, name string, separator rune, validate bool) (matched bool, err error) {
-	return doMatchWithSeparator(pattern, name, separator, validate, -1, -1, -1, -1, 0, 0)
+func matchWithSeparator(pattern, name string, separator rune, validate bool, caseInsensitive bool) (matched bool, err error) {
+	return doMatchWithSeparator(pattern, name, separator, validate, caseInsensitive, -1, -1, -1, -1, 0, 0)
 }
 
-func doMatchWithSeparator(pattern, name string, separator rune, validate bool, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, patIdx, nameIdx int) (matched bool, err error) {
+func doMatchWithSeparator(pattern, name string, separator rune, validate bool, caseInsensitive bool, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, patIdx, nameIdx int) (matched bool, err error) {
 	patLen := len(pattern)
 	nameLen := len(name)
 	startOfSegment := true
@@ -194,7 +193,7 @@ MATCH:
 					}
 
 					// check if the rune matches
-					if patRune == nameRune {
+					if matchRune(patRune, nameRune, caseInsensitive) {
 						matched = true
 						break
 					}
@@ -240,14 +239,14 @@ MATCH:
 					}
 					commaIdx += patIdx
 
-					result, err := doMatchWithSeparator(pattern[:beforeIdx]+pattern[patIdx:commaIdx]+pattern[closingIdx+1:], name, separator, validate, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, beforeIdx, nameIdx)
+					result, err := doMatchWithSeparator(pattern[:beforeIdx]+pattern[patIdx:commaIdx]+pattern[closingIdx+1:], name, separator, validate, caseInsensitive, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, beforeIdx, nameIdx)
 					if result || err != nil {
 						return result, err
 					}
 
 					patIdx = commaIdx + 1
 				}
-				return doMatchWithSeparator(pattern[:beforeIdx]+pattern[patIdx:closingIdx]+pattern[closingIdx+1:], name, separator, validate, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, beforeIdx, nameIdx)
+				return doMatchWithSeparator(pattern[:beforeIdx]+pattern[patIdx:closingIdx]+pattern[closingIdx+1:], name, separator, validate, caseInsensitive, doublestarPatternBacktrack, doublestarNameBacktrack, starPatternBacktrack, starNameBacktrack, beforeIdx, nameIdx)
 
 			case '\\':
 				if separator != '\\' {
@@ -262,7 +261,7 @@ MATCH:
 			default:
 				patRune, patRuneLen := utf8.DecodeRuneInString(pattern[patIdx:])
 				nameRune, nameRuneLen := utf8.DecodeRuneInString(name[nameIdx:])
-				if patRune != nameRune {
+				if !matchRune(patRune, nameRune, caseInsensitive) {
 					if separator != '\\' && patIdx > 0 && pattern[patIdx-1] == '\\' {
 						// if this rune was meant to be escaped, we need to move patIdx
 						// back to the backslash before backtracking or validating below
@@ -311,27 +310,44 @@ MATCH:
 		return false, nil
 	}
 
-	if nameIdx < nameLen {
-		// we reached the end of `pattern` before the end of `name`
-		return false, nil
-	}
-
 	// we've reached the end of `name`; we've successfully matched if we've also
 	// reached the end of `pattern`, or if the rest of `pattern` can match a
 	// zero-length string
 	return isZeroLengthPattern(pattern[patIdx:], separator, validate)
 }
 
+func matchRune(a, b rune, caseInsensitive bool) bool {
+	if caseInsensitive {
+		return unicode.ToLower(a) == unicode.ToLower(b)
+	}
+	return a == b
+}
+
 func isZeroLengthPattern(pattern string, separator rune, validate bool) (ret bool, err error) {
 	// `/**`, `**/`, and `/**/` are special cases - a pattern such as `path/to/a/**` or `path/to/a/**/`
-	// *should* match `path/to/a` because `a` might be a directory
-	if pattern == "" ||
-		pattern == "*" ||
-		pattern == "**" ||
-		pattern == string(separator)+"**" ||
-		pattern == "**"+string(separator) ||
-		pattern == string(separator)+"**"+string(separator) {
+	// *should* match `path/to/a` because `a` might be a directory.
+	// This code is optimized to avoid string concatenation, giving a little performance bump.
+	switch len(pattern) {
+	case 0:
 		return true, nil
+	case 1:
+		if pattern == "*" {
+			return true, nil
+		}
+	case 2:
+		if pattern == "**" {
+			return true, nil
+		}
+	case 3:
+		if pattern[1:] == "**" && rune(pattern[0]) == separator {
+			return true, nil
+		} else if pattern[:2] == "**" && rune(pattern[2]) == separator {
+			return true, nil
+		}
+	case 4:
+		if pattern[1:3] == "**" && rune(pattern[0]) == separator && rune(pattern[3]) == separator {
+			return true, nil
+		}
 	}
 
 	if pattern[0] == '{' {

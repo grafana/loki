@@ -4,11 +4,11 @@ import (
 	"context"
 
 	instr "github.com/grafana/dskit/instrument"
-	ot "github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -74,12 +74,12 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 
 	method := i.name + ".store"
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
-		sp := ot.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys", len(keys)))
+		sp := trace.SpanFromContext(ctx)
+		sp.SetAttributes(attribute.Int("keys", len(keys)))
 		storeErr := i.Cache.Store(ctx, keys, bufs)
 		if storeErr != nil {
-			ext.Error.Set(sp, true)
-			sp.LogFields(otlog.String("event", "error"), otlog.String("message", storeErr.Error()))
+			sp.SetStatus(codes.Error, storeErr.Error())
+			sp.RecordError(storeErr)
 		}
 		return storeErr
 	})
@@ -95,15 +95,20 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 	)
 
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
-		sp := ot.SpanFromContext(ctx)
-		sp.LogFields(otlog.Int("keys requested", len(keys)))
+		sp := trace.SpanFromContext(ctx)
+		sp.SetAttributes(attribute.Int("keys requested", len(keys)))
 		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
 		if fetchErr != nil {
-			ext.Error.Set(sp, true)
-			sp.LogFields(otlog.String("event", "error"), otlog.String("message", fetchErr.Error()))
+			sp.SetStatus(codes.Error, fetchErr.Error())
+			sp.RecordError(fetchErr)
+			return fetchErr
 		}
-		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
-		return fetchErr
+
+		sp.SetAttributes(
+			attribute.Int("keys found", len(found)),
+			attribute.Int("keys missing", len(keys)-len(found)),
+		)
+		return nil
 	})
 
 	i.fetchedKeys.Add(float64(len(keys)))

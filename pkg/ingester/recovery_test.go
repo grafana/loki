@@ -294,11 +294,13 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 			Labels: lbls.String(),
 			Entries: []logproto.Entry{
 				{
-					Timestamp: time.Unix(1, 0),
-					Line:      "line 1",
+					Timestamp:          time.Unix(1, 0),
+					Line:               "line 1",
+					StructuredMetadata: logproto.EmptyLabelAdapters(),
+					Parsed:             logproto.EmptyLabelAdapters(),
 				},
 			},
-			Hash: lbls.Hash(),
+			Hash: labels.StableHash(lbls),
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)

@@ -20,14 +20,19 @@ common:
 
 kafka_config:
   topic: "loki"
+  reader_config:
+    address: localhost:9092
+  writer_config:
+    address: localhost:9092
 
 querier:
   query_partition_ingesters: true
 
 ingest_limits:
   enabled: true
-  window_size: 1h
+  active_window: 1h
   num_partitions: 1
+  topic: "loki.metadata"
   lifecycler:
     ring:
       kvstore:

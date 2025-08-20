@@ -1,0 +1,13 @@
+// metastore.proto holds types for describing metastore events
+syntax = "proto3";
+
+package dataobj.metastore;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/metastore";
+
+// ColumnInfo describes an individual column within a data set.
+message ObjectWrittenEvent {
+  string tenant = 1;
+  string objectPath = 2;
+  string writeTime = 3;
+}

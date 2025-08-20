@@ -267,8 +267,8 @@ func (s *StreamingReader) addSignedTrailer(h http.Header) {
 
 // setStreamingAuthHeader - builds and sets authorization header value
 // for streaming signature.
-func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
-	credential := GetCredential(s.accessKeyID, s.region, s.reqTime, ServiceTypeS3)
+func (s *StreamingReader) setStreamingAuthHeader(req *http.Request, serviceType string) {
+	credential := GetCredential(s.accessKeyID, s.region, s.reqTime, serviceType)
 	authParts := []string{
 		signV4Algorithm + " Credential=" + credential,
 		"SignedHeaders=" + getSignedHeaders(*req, ignoredStreamingHeaders),
@@ -278,6 +278,54 @@ func (s *StreamingReader) setStreamingAuthHeader(req *http.Request) {
 	// Set authorization header.
 	auth := strings.Join(authParts, ",")
 	req.Header.Set("Authorization", auth)
+}
+
+// StreamingSignV4Express - provides chunked upload signatureV4 support by
+// implementing io.Reader.
+func StreamingSignV4Express(req *http.Request, accessKeyID, secretAccessKey, sessionToken,
+	region string, dataLen int64, reqTime time.Time, sh256 md5simd.Hasher,
+) *http.Request {
+	// Set headers needed for streaming signature.
+	prepareStreamingRequest(req, sessionToken, dataLen, reqTime)
+
+	if req.Body == nil {
+		req.Body = io.NopCloser(bytes.NewReader([]byte("")))
+	}
+
+	stReader := &StreamingReader{
+		baseReadCloser:  req.Body,
+		accessKeyID:     accessKeyID,
+		secretAccessKey: secretAccessKey,
+		sessionToken:    sessionToken,
+		region:          region,
+		reqTime:         reqTime,
+		chunkBuf:        make([]byte, payloadChunkSize),
+		contentLen:      dataLen,
+		chunkNum:        1,
+		totalChunks:     int((dataLen+payloadChunkSize-1)/payloadChunkSize) + 1,
+		lastChunkSize:   int(dataLen % payloadChunkSize),
+		sh256:           sh256,
+	}
+	if len(req.Trailer) > 0 {
+		stReader.trailer = req.Trailer
+		// Remove...
+		req.Trailer = nil
+	}
+
+	// Add the request headers required for chunk upload signing.
+
+	// Compute the seed signature.
+	stReader.setSeedSignature(req)
+
+	// Set the authorization header with the seed signature.
+	stReader.setStreamingAuthHeader(req, ServiceTypeS3Express)
+
+	// Set seed signature as prevSignature for subsequent
+	// streaming signing process.
+	stReader.prevSignature = stReader.seedSignature
+	req.Body = stReader
+
+	return req
 }
 
 // StreamingSignV4 - provides chunked upload signatureV4 support by
@@ -318,7 +366,7 @@ func StreamingSignV4(req *http.Request, accessKeyID, secretAccessKey, sessionTok
 	stReader.setSeedSignature(req)
 
 	// Set the authorization header with the seed signature.
-	stReader.setStreamingAuthHeader(req)
+	stReader.setStreamingAuthHeader(req, ServiceTypeS3)
 
 	// Set seed signature as prevSignature for subsequent
 	// streaming signing process.

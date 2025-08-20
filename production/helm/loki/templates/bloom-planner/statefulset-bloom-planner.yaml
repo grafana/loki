@@ -72,7 +72,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-planner
-            {{- with .Values.bloomPlanner.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.bloomPlanner.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -95,7 +95,9 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.bloomPlanner.livenessProbe" . | nindent 10 }}
           {{- include "loki.bloomPlanner.readinessProbe" . | nindent 10 }}
+          {{- include "loki.bloomPlanner.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
@@ -109,7 +111,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.bloomPlanner.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomPlanner.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.bloomPlanner.resources }}
@@ -152,7 +154,7 @@ spec:
         - name: data
           emptyDir: {}
         {{- end }}
-        {{- with .Values.bloomPlanner.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomPlanner.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if .Values.bloomPlanner.persistence.enabled }}

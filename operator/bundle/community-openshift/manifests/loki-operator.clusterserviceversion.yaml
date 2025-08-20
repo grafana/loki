@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-03-17T11:00:08Z"
+    createdAt: "2025-06-11T13:21:37Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -898,6 +898,17 @@ spec:
         path: template.ruler.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: |-
+          When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+          requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+          spikes, whether on the ingestion or query side.
+
+
+          Note: This is currently a tech-preview feature.
+        displayName: Use resource requests as limits
+        path: template.useRequestsAsLimits
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Tenants defines the per-tenant authentication and authorization
           spec for the lokistack-gateway component.
         displayName: Tenants Configuration
@@ -1014,16 +1025,32 @@ spec:
           DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 
 
-          Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-          some stream labels to disappear from the index, potentially making queries more expensive and less performant.
+          Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+          to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
 
 
-          Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-          added to the configuration, even if this field is set to true.
+          The recommended attributes are:
+
+
+           - k8s.container.name
+           - k8s.cronjob.name
+           - k8s.daemonset.name
+           - k8s.deployment.name
+           - k8s.job.name
+           - k8s.node.name
+           - k8s.pod.name
+           - k8s.statefulset.name
+           - kubernetes.container_name
+           - kubernetes.host
+           - kubernetes.pod_name
+           - service.name
 
 
           This option is supposed to be combined with a custom attribute configuration listing the stream labels that
           should continue to exist.
+
+
+          See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
         displayName: Disable recommended OTLP attributes
         path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:
@@ -1850,7 +1877,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:3.4.2
+                  value: docker.io/grafana/loki:3.4.3
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1980,7 +2007,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:3.4.2
+  - image: docker.io/grafana/loki:3.4.3
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

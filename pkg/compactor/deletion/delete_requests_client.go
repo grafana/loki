@@ -7,18 +7,19 @@ import (
 
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type CompactorClient interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
 	Name() string
 	Stop()
 }
 
 type DeleteRequestsClient interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error)
 	Stop()
 }
 
@@ -26,7 +27,7 @@ type deleteRequestsClient struct {
 	compactorClient CompactorClient
 	mu              sync.RWMutex
 
-	cache         map[string][]DeleteRequest
+	cache         map[string][]deletionproto.DeleteRequest
 	cacheDuration time.Duration
 
 	metrics    *DeleteRequestClientMetrics
@@ -47,7 +48,7 @@ func NewDeleteRequestsClient(compactorClient CompactorClient, deleteClientMetric
 	client := &deleteRequestsClient{
 		compactorClient: compactorClient,
 		cacheDuration:   5 * time.Minute,
-		cache:           make(map[string][]DeleteRequest),
+		cache:           make(map[string][]deletionproto.DeleteRequest),
 		clientType:      clientType,
 		metrics:         deleteClientMetrics,
 		stopChan:        make(chan struct{}),
@@ -61,7 +62,7 @@ func NewDeleteRequestsClient(compactorClient CompactorClient, deleteClientMetric
 	return client, nil
 }
 
-func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
 	if cachedRequests, ok := c.getCachedRequests(userID); ok {
 		return cachedRequests, nil
 	}
@@ -80,7 +81,7 @@ func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, 
 	return requests, nil
 }
 
-func (c *deleteRequestsClient) getCachedRequests(userID string) ([]DeleteRequest, bool) {
+func (c *deleteRequestsClient) getCachedRequests(userID string) ([]deletionproto.DeleteRequest, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -110,7 +111,7 @@ func (c *deleteRequestsClient) updateLoop() {
 func (c *deleteRequestsClient) updateCache() error {
 	userIDs := c.currentUserIDs()
 
-	newCache := make(map[string][]DeleteRequest)
+	newCache := make(map[string][]deletionproto.DeleteRequest)
 	for _, userID := range userIDs {
 		deleteReq, err := c.compactorClient.GetAllDeleteRequestsForUser(context.Background(), userID)
 		if err != nil {
@@ -144,7 +145,7 @@ func NewNoOpDeleteRequestsClient() DeleteRequestsClient {
 
 type noOpDeleteRequestsClient struct{}
 
-func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]deletionproto.DeleteRequest, error) {
 	return nil, nil
 }
 

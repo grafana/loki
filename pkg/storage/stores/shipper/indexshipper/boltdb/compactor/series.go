@@ -46,7 +46,7 @@ func (us *userSeries) Reset(seriesID []byte, userID []byte) {
 
 type seriesLabels struct {
 	userSeries
-	lbs labels.Labels
+	builder *labels.Builder
 }
 
 type seriesLabelsMapper struct {
@@ -74,7 +74,7 @@ func (sm *seriesLabelsMapper) Get(seriesID []byte, userID []byte) labels.Labels 
 	sm.bufKey.Reset(seriesID, userID)
 	lbs, ok := sm.mapping[sm.bufKey.Key()]
 	if ok {
-		return lbs.lbs
+		return lbs.builder.Labels()
 	}
 	return labels.Labels{}
 }
@@ -95,17 +95,16 @@ Outer:
 			k := newUserSeries(ref.SeriesID, ref.UserID)
 			lbs = &seriesLabels{
 				userSeries: k,
-				lbs:        make(labels.Labels, 0, 15),
+				builder:    labels.NewBuilder(labels.EmptyLabels()),
 			}
 			sm.mapping[k.Key()] = lbs
 		}
 		// add the labels if it doesn't exist.
-		for _, l := range lbs.lbs {
-			if l.Name == unsafeGetString(ref.Name) {
-				continue Outer
-			}
+
+		if lbs.builder.Get(unsafeGetString(ref.Name)) != "" {
+			continue Outer
 		}
-		lbs.lbs = append(lbs.lbs, labels.Label{Name: string(ref.Name), Value: string(v)})
+		lbs.builder.Set(unsafeGetString(ref.Name), unsafeGetString(v))
 	}
 	return nil
 }

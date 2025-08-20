@@ -6,8 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/grafana/dskit/backoff"
-	ot "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Map Cortex Backoff into AWS Retryer interface
@@ -33,9 +33,7 @@ func (r *retryer) withRetries(req *request.Request) {
 // making another request attempt for the failed request.
 func (r *retryer) RetryRules(req *request.Request) time.Duration {
 	duration := r.Backoff.NextDelay()
-	if sp := ot.SpanFromContext(req.Context()); sp != nil {
-		sp.LogFields(otlog.Int("retry", r.NumRetries()))
-	}
+	trace.SpanFromContext(req.Context()).SetAttributes(attribute.Int("retry", r.NumRetries()))
 	return duration
 }
 

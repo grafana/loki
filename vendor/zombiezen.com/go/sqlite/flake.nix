@@ -15,7 +15,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.go-tools # staticcheck
-            pkgs.go_1_20
+            pkgs.go_1_24
             pkgs.gotools  # godoc, etc.
           ];
 

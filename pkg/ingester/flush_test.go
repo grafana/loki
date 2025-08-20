@@ -568,6 +568,19 @@ func buildTestStreams(offset int) []logproto.Stream {
 // check that the store is holding data equivalent to what we expect
 func (s *testStore) checkData(t *testing.T, testData map[string][]logproto.Stream) {
 	for userID, expected := range testData {
+		// Ensure all empty label sets use an empty set of adapters, rather than a nil slice, to make the assertion below easier.
+		for _, stream := range expected {
+			for i := range stream.Entries {
+				if len(stream.Entries[i].Parsed) == 0 {
+					stream.Entries[i].Parsed = logproto.EmptyLabelAdapters()
+				}
+
+				if len(stream.Entries[i].StructuredMetadata) == 0 {
+					stream.Entries[i].StructuredMetadata = logproto.EmptyLabelAdapters()
+				}
+			}
+		}
+
 		streams := s.getStreamsForUser(t, userID)
 		require.Equal(t, expected, streams)
 	}

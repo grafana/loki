@@ -79,16 +79,17 @@ func NewColumnFromArr(field Field, arr Array) Column {
 	}
 
 	arr.Retain()
-	return Column{
+	col := Column{
 		field: field,
 		data: &Chunked{
-			refCount: 1,
-			chunks:   []Array{arr},
-			length:   arr.Len(),
-			nulls:    arr.NullN(),
-			dtype:    field.Type,
+			chunks: []Array{arr},
+			length: arr.Len(),
+			nulls:  arr.NullN(),
+			dtype:  field.Type,
 		},
 	}
+	col.data.refCount.Add(1)
+	return col
 }
 
 // NewColumn returns a column from a field and a chunked data array.
@@ -132,7 +133,7 @@ func (col *Column) DataType() DataType { return col.field.Type }
 
 // Chunked manages a collection of primitives arrays as one logical large array.
 type Chunked struct {
-	refCount int64 // refCount must be first in the struct for 64 bit alignment and sync/atomic (https://github.com/golang/go/issues/37262)
+	refCount atomic.Int64
 
 	chunks []Array
 
@@ -146,10 +147,11 @@ type Chunked struct {
 // NewChunked panics if the chunks do not have the same data type.
 func NewChunked(dtype DataType, chunks []Array) *Chunked {
 	arr := &Chunked{
-		chunks:   make([]Array, 0, len(chunks)),
-		refCount: 1,
-		dtype:    dtype,
+		chunks: make([]Array, 0, len(chunks)),
+		dtype:  dtype,
 	}
+	arr.refCount.Add(1)
+
 	for _, chunk := range chunks {
 		if chunk == nil {
 			continue
@@ -169,16 +171,16 @@ func NewChunked(dtype DataType, chunks []Array) *Chunked {
 // Retain increases the reference count by 1.
 // Retain may be called simultaneously from multiple goroutines.
 func (a *Chunked) Retain() {
-	atomic.AddInt64(&a.refCount, 1)
+	a.refCount.Add(1)
 }
 
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (a *Chunked) Release() {
-	debug.Assert(atomic.LoadInt64(&a.refCount) > 0, "too many releases")
+	debug.Assert(a.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&a.refCount, -1) == 0 {
+	if a.refCount.Add(-1) == 0 {
 		for _, arr := range a.chunks {
 			arr.Release()
 		}

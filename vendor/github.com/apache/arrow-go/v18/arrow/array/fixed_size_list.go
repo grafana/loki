@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -41,7 +40,7 @@ var _ ListLike = (*FixedSizeList)(nil)
 // NewFixedSizeListData returns a new List array value, from data.
 func NewFixedSizeListData(data arrow.ArrayData) *FixedSizeList {
 	a := &FixedSizeList{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -54,6 +53,7 @@ func (a *FixedSizeList) ValueStr(i int) string {
 	}
 	return string(a.GetOneForMarshal(i).(json.RawMessage))
 }
+
 func (a *FixedSizeList) String() string {
 	o := new(strings.Builder)
 	o.WriteString("[")
@@ -108,7 +108,7 @@ func (a *FixedSizeList) Len() int { return a.array.Len() }
 
 func (a *FixedSizeList) ValueOffsets(i int) (start, end int64) {
 	n := int64(a.n)
-	off := int64(a.array.data.offset)
+	off := int64(a.data.offset)
 	start, end = (off+int64(i))*n, (off+int64(i+1))*n
 	return
 }
@@ -169,28 +169,33 @@ type FixedSizeListBuilder struct {
 // NewFixedSizeListBuilder returns a builder, using the provided memory allocator.
 // The created list builder will create a list whose elements will be of type etype.
 func NewFixedSizeListBuilder(mem memory.Allocator, n int32, etype arrow.DataType) *FixedSizeListBuilder {
-	return &FixedSizeListBuilder{
+	fslb := &FixedSizeListBuilder{
 		baseListBuilder{
-			builder: builder{refCount: 1, mem: mem},
+			builder: builder{mem: mem},
 			values:  NewBuilder(mem, etype),
 			dt:      arrow.FixedSizeListOf(n, etype),
 		},
 		n,
 	}
+	fslb.refCount.Add(1)
+	return fslb
 }
 
 // NewFixedSizeListBuilderWithField returns a builder similarly to
 // NewFixedSizeListBuilder, but it accepts a child rather than just a datatype
 // to ensure nullability context is preserved.
 func NewFixedSizeListBuilderWithField(mem memory.Allocator, n int32, field arrow.Field) *FixedSizeListBuilder {
-	return &FixedSizeListBuilder{
+	fslb := &FixedSizeListBuilder{
 		baseListBuilder{
-			builder: builder{refCount: 1, mem: mem},
+			builder: builder{mem: mem},
 			values:  NewBuilder(mem, field.Type),
 			dt:      arrow.FixedSizeListOfField(n, field),
 		},
 		n,
 	}
+
+	fslb.refCount.Add(1)
+	return fslb
 }
 
 func (b *FixedSizeListBuilder) Type() arrow.DataType { return b.dt }
@@ -198,9 +203,9 @@ func (b *FixedSizeListBuilder) Type() arrow.DataType { return b.dt }
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *FixedSizeListBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -249,7 +254,7 @@ func (b *FixedSizeListBuilder) AppendEmptyValues(n int) {
 
 func (b *FixedSizeListBuilder) AppendValues(valid []bool) {
 	b.Reserve(len(valid))
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(valid))
+	b.unsafeAppendBoolsToBitmap(valid, len(valid))
 }
 
 func (b *FixedSizeListBuilder) unsafeAppendBoolToBitmap(isValid bool) {
@@ -268,7 +273,7 @@ func (b *FixedSizeListBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *FixedSizeListBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -281,7 +286,7 @@ func (b *FixedSizeListBuilder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(n, b.builder.init)
+		b.resize(n, b.builder.init)
 	}
 }
 

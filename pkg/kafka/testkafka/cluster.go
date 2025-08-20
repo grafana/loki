@@ -27,9 +27,12 @@ func createTestKafkaConfig(clusterAddr, topicName string) kafka.Config {
 	cfg := kafka.Config{}
 	flagext.DefaultValues(&cfg)
 
-	cfg.Address = clusterAddr
+	cfg.WriterConfig.Address = clusterAddr
+	cfg.WriterConfig.ClientID = "test-writer"
 	cfg.Topic = topicName
 	cfg.WriteTimeout = 2 * time.Second
+	cfg.ReaderConfig.Address = clusterAddr
+	cfg.ReaderConfig.ClientID = "test-reader"
 
 	return cfg
 }

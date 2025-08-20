@@ -5,8 +5,8 @@
 package memory // import "modernc.org/memory"
 
 import (
-	"os"
 	syscall "golang.org/x/sys/windows"
+	"os"
 )
 
 const (

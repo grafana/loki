@@ -29,7 +29,9 @@ type int64BufferBuilder struct {
 }
 
 func newInt64BufferBuilder(mem memory.Allocator) *int64BufferBuilder {
-	return &int64BufferBuilder{bufferBuilder: bufferBuilder{refCount: 1, mem: mem}}
+	b := &int64BufferBuilder{bufferBuilder: bufferBuilder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 // AppendValues appends the contents of v to the buffer, growing the buffer as needed.
@@ -62,7 +64,9 @@ type int32BufferBuilder struct {
 }
 
 func newInt32BufferBuilder(mem memory.Allocator) *int32BufferBuilder {
-	return &int32BufferBuilder{bufferBuilder: bufferBuilder{refCount: 1, mem: mem}}
+	b := &int32BufferBuilder{bufferBuilder: bufferBuilder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 // AppendValues appends the contents of v to the buffer, growing the buffer as needed.
@@ -95,7 +99,9 @@ type int8BufferBuilder struct {
 }
 
 func newInt8BufferBuilder(mem memory.Allocator) *int8BufferBuilder {
-	return &int8BufferBuilder{bufferBuilder: bufferBuilder{refCount: 1, mem: mem}}
+	b := &int8BufferBuilder{bufferBuilder: bufferBuilder{mem: mem}}
+	b.refCount.Add(1)
+	return b
 }
 
 // AppendValues appends the contents of v to the buffer, growing the buffer as needed.

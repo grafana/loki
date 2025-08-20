@@ -195,12 +195,10 @@ func (e *messageParser) getTime(messageTime time.Time, useIncomingTimestamp bool
 }
 
 func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelConfig []*relabel.Config) model.LabelSet {
-	lbs := labels.Labels{
-		{
-			Name:  "__azure_event_hubs_category",
-			Value: logRecord.Category,
-		},
-	}
+	lbs := labels.New(labels.Label{
+		Name:  "__azure_event_hubs_category",
+		Value: logRecord.Category,
+	})
 
 	var processed labels.Labels
 	// apply relabeling
@@ -212,17 +210,18 @@ func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelCon
 
 	// final labelset that will be sent to loki
 	resultLabels := make(model.LabelSet)
-	for _, lbl := range processed {
+
+	processed.Range(func(lbl labels.Label) {
 		// ignore internal labels
 		if strings.HasPrefix(lbl.Name, "__") {
-			continue
+			return // (will continue Range loop, not abort)
 		}
 		// ignore invalid labels
 		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
-			continue
+			return // (will continue Range loop, not abort)
 		}
 		resultLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-	}
+	})
 
 	return resultLabels
 }

@@ -9,8 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/util/constants"
-
 	"github.com/dustin/go-humanize"
 )
 
@@ -37,8 +35,8 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutates the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool)
-	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool)
+	Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
+	ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
 	ReferencedStructuredMetadata() bool
 }
 
@@ -101,7 +99,7 @@ func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.builder.referencedStructuredMetadata
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
 
@@ -122,9 +120,9 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMet
 	return []ExtractedSample{{Value: value, Labels: labels}}, true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -201,7 +199,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
@@ -232,9 +230,9 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 	return []ExtractedSample{{Value: v, Labels: l.builder.GroupedLabels()}}, true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -285,7 +283,7 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -297,10 +295,10 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 		}
 	}
 
-	return sp.extractor.Process(ts, line, structuredMetadata...)
+	return sp.extractor.Process(ts, line, structuredMetadata)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -312,7 +310,7 @@ func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structu
 		}
 	}
 
-	return sp.extractor.ProcessString(ts, line, labels.EmptyLabels()...)
+	return sp.extractor.ProcessString(ts, line, structuredMetadata)
 }
 
 func convertFloat(v string) (float64, error) {
@@ -333,96 +331,4 @@ func convertBytes(v string) (float64, error) {
 		return 0, err
 	}
 	return float64(b), nil
-}
-
-type variantsSampleExtractorWrapper struct {
-	SampleExtractor
-	index int
-}
-
-func NewVariantsSampleExtractorWrapper(
-	index int,
-	extractor SampleExtractor,
-) SampleExtractor {
-	return &variantsSampleExtractorWrapper{
-		SampleExtractor: extractor,
-		index:           index,
-	}
-}
-
-func (v *variantsSampleExtractorWrapper) ForStream(labels labels.Labels) StreamSampleExtractor {
-	return NewVariantsStreamSampleExtractorWrapper(v.index, v.SampleExtractor.ForStream(labels))
-}
-
-type variantsStreamSampleExtractorWrapper struct {
-	StreamSampleExtractor
-	index int
-}
-
-func NewVariantsStreamSampleExtractorWrapper(
-	index int,
-	extractor StreamSampleExtractor,
-) StreamSampleExtractor {
-	return &variantsStreamSampleExtractorWrapper{
-		StreamSampleExtractor: extractor,
-		index:                 index,
-	}
-}
-
-func (v *variantsStreamSampleExtractorWrapper) BaseLabels() LabelsResult {
-	return appendVariantLabel(v.StreamSampleExtractor.BaseLabels(), v.index)
-}
-
-func (v *variantsStreamSampleExtractorWrapper) Process(
-	ts int64,
-	line []byte,
-	structuredMetadata ...labels.Label,
-) ([]ExtractedSample, bool) {
-	samples, ok := v.StreamSampleExtractor.Process(ts, line, structuredMetadata...)
-	if !ok {
-		return nil, false
-	}
-
-	// Add variant label to each sample
-	result := make([]ExtractedSample, len(samples))
-	for i, sample := range samples {
-		result[i] = ExtractedSample{
-			Value:  sample.Value,
-			Labels: appendVariantLabel(sample.Labels, v.index),
-		}
-	}
-	return result, true
-}
-
-func (v *variantsStreamSampleExtractorWrapper) ProcessString(
-	ts int64,
-	line string,
-	structuredMetadata ...labels.Label,
-) ([]ExtractedSample, bool) {
-	samples, ok := v.StreamSampleExtractor.ProcessString(ts, line, structuredMetadata...)
-	if !ok {
-		return nil, false
-	}
-
-	// Add variant label to each sample
-	result := make([]ExtractedSample, len(samples))
-	for i, sample := range samples {
-		result[i] = ExtractedSample{
-			Value:  sample.Value,
-			Labels: appendVariantLabel(sample.Labels, v.index),
-		}
-	}
-	return result, true
-}
-
-func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
-	newLbls := lbls.Stream()
-	newLbls = append(newLbls, labels.Label{
-		Name:  constants.VariantLabel,
-		Value: strconv.Itoa(variantIndex),
-	})
-	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
-	builder.Add(StructuredMetadataLabel, lbls.StructuredMetadata())
-	builder.Add(ParsedLabel, lbls.Parsed())
-	return builder.LabelsResult()
 }

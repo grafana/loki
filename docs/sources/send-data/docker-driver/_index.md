@@ -10,13 +10,13 @@ weight:  400
 
 Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
-to a private Loki instance or [Grafana Cloud](/oss/loki).
+to a private Loki instance or Grafana Cloud.
 
 {{< admonition type="note" >}}
 Docker plugins are not supported on Windows; see the [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
 {{< /admonition >}}
 
-Documentation on configuring the Loki Docker Driver can be found on the
+Documentation on configuring the Loki Docker Driver can be found on the [configuration page](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/configuration/).
 If you have any questions or issues using the Docker plugin, open an issue in
 the [Loki repository](https://github.com/grafana/loki/issues).
 

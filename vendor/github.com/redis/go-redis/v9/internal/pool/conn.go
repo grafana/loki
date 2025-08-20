@@ -23,6 +23,8 @@ type Conn struct {
 	Inited    bool
 	pooled    bool
 	createdAt time.Time
+
+	onClose func() error
 }
 
 func NewConn(netConn net.Conn) *Conn {
@@ -44,6 +46,10 @@ func (cn *Conn) UsedAt() time.Time {
 
 func (cn *Conn) SetUsedAt(tm time.Time) {
 	atomic.StoreInt64(&cn.usedAt, tm.Unix())
+}
+
+func (cn *Conn) SetOnClose(fn func() error) {
+	cn.onClose = fn
 }
 
 func (cn *Conn) SetNetConn(netConn net.Conn) {
@@ -95,6 +101,10 @@ func (cn *Conn) WithWriter(
 }
 
 func (cn *Conn) Close() error {
+	if cn.onClose != nil {
+		// ignore error
+		_ = cn.onClose()
+	}
 	return cn.netConn.Close()
 }
 

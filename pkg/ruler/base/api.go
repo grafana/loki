@@ -151,6 +151,11 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
+		if errors.Is(err, user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondServerError(logger, w, "no valid org id found")
 		return
@@ -177,8 +182,12 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	rgs, err := a.ruler.GetRules(req.Context(), &rulesReq)
-
 	if err != nil {
+		if errors.Is(err, user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		respondServerError(logger, w, err.Error())
 		return
 	}
@@ -263,6 +272,11 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
+		if errors.Is(err, user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondServerError(logger, w, "no valid org id found")
 		return
@@ -272,6 +286,11 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := a.ruler.GetRules(req.Context(), &RulesRequest{Filter: AlertingRule})
 
 	if err != nil {
+		if errors.Is(err, user.ErrTooManyOrgIDs) {
+			respondInvalidRequest(logger, w, "too many org ids found")
+			return
+		}
+
 		respondServerError(logger, w, err.Error())
 		return
 	}

@@ -69,6 +69,26 @@ const (
 	NAMESPACE_BUCKET   = "namespace"
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
+
+	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
+	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
+	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+
+	INVENTORY_FILE_FORMAT_CSV = "CSV"
+
+	INVENTORY_OBJECT_VERSIONS_ALL     = "All"
+	INVENTORY_OBJECT_VERSIONS_CURRENT = "Current"
+
+	REQUEST_PAYMENT_REQUESTER    = "Requester"
+	REQUEST_PAYMENT_BUCKET_OWNER = "BucketOwner"
+
+	EVENT_FROM_CLIENT      = "Client"
+	EVENT_FROM_LIFECYCLE   = "Lifecycle"
+	EVENT_FROM_REPLICATION = "Replication"
+	EVENT_FROM_BATCH       = "Batch"
+
+	// BOS Client error message format
+	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -162,6 +182,15 @@ func validCannedAcl(val string) bool {
 	return false
 }
 
+func isAclHeaderkey(key string) bool {
+	if key == http.BCE_ACL ||
+		key == http.BCE_GRANT_READ ||
+		key == http.BCE_GRANT_FULL_CONTROL {
+		return true
+	}
+	return false
+}
+
 func validObjectTagging(tagging string) (bool, string) {
 	if len(tagging) > 4000 {
 		return false, ""
@@ -185,6 +214,23 @@ func validObjectTagging(tagging string) (bool, string) {
 	return true, strings.Join(encodeTagging, "&")
 }
 
+func taggingMapToStr(tags map[string]string) string {
+	var values []string
+	for k, v := range tags {
+		encodeKey := url.QueryEscape(k)
+		encodeValue := url.QueryEscape(v)
+		if len(encodeKey) > 128 || len(encodeValue) > 256 ||
+			len(encodeKey) == 0 || len(encodeValue) == 0 {
+			continue
+		}
+		values = append(values, encodeKey+"="+encodeValue)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, "&")
+}
+
 func toHttpHeaderKey(key string) string {
 	var result bytes.Buffer
 	needToUpper := true
@@ -197,14 +243,15 @@ func toHttpHeaderKey(key string) string {
 			needToUpper = true
 		} else {
 			result.WriteByte(c)
+			needToUpper = false
 		}
 	}
 	return result.String()
 }
 
-func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
+func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 	for k, v := range args {
-		if len(v) == 0 {
+		if len(v) == 0 || v == "false" {
 			continue
 		}
 		switch k {
@@ -237,9 +284,6 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 		case http.BCE_CONTENT_CRC32C:
 			fallthrough
 		case http.BCE_CONTENT_CRC32C_FLAG:
-			if v == "false" {
-				continue
-			}
 			fallthrough
 		case http.BCE_COPY_SOURCE_RANGE:
 			fallthrough
@@ -250,12 +294,24 @@ func setOptionalNullHeaders(req *bce.BceRequest, args map[string]string) {
 		case http.BCE_COPY_SOURCE_IF_MODIFIED_SINCE:
 			fallthrough
 		case http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5:
+			fallthrough
+		case http.BCE_FORBID_OVERWRITE:
+			fallthrough
+		case http.BCE_OBJECT_EXPIRES:
 			req.SetHeader(k, v)
 		}
 	}
 }
 
-func setUserMetadata(req *bce.BceRequest, meta map[string]string) error {
+func setUserMetadata(req *BosRequest, meta map[string]string) error {
 	if meta == nil {
 		return nil
 	}
@@ -283,13 +339,14 @@ func isCnameLikeHost(host string) bool {
 	return false
 }
 
-func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext) error {
+func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
-	if err = cli.SendRequest(req, resp); err != nil {
+	req.SetContext(ctx.Ctx)
+	if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -304,7 +361,7 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequest(req, resp); err != nil {
+			if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
 				return err
 			}
 		}
@@ -312,13 +369,13 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 	return err
 }
 
-func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext, content []byte) error {
+func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosContext, content []byte) error {
 	var (
 		err        error
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
-	if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -333,7 +390,7 @@ func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResp
 		// retry backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+			if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 				return err
 			}
 		}
@@ -404,9 +461,9 @@ func replaceEndpointByBucket(bucket, endpoint string) string {
 	return strings.Join(arr, ".")
 }
 
-func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, endpoint string) {
+func setUriAndEndpoint(cli bce.Client, req *BosRequest, ctx *BosContext, endpoint string) {
 	origin_uri := req.Uri()
-	bucket := ctx.Bucket
+	bucket := req.Bucket()
 	protocol := bce.DEFAULT_PROTOCOL
 	// deal with protocal
 	if strings.HasPrefix(endpoint, "https://") {
@@ -477,4 +534,11 @@ func ParseObjectTagResult(rawData []byte) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("decode tags error")
 	}
 	return tags, nil
+}
+
+func joinUserIds(ids []string) string {
+	for i := range ids {
+		ids[i] = "id=\"" + ids[i] + "\""
+	}
+	return strings.Join(ids, ",")
 }

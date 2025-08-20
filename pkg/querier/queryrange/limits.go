@@ -15,12 +15,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -35,13 +35,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
-	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
+	limitErrTmpl                             = "maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()"
 	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
@@ -150,9 +151,10 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 }
 
 func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
-	defer span.Finish()
-	log := spanlogger.FromContext(ctx)
+	ctx, span := tracer.Start(ctx, "limits")
+	defer span.End()
+
+	log := spanlogger.FromContext(ctx, util_log.Logger)
 	defer log.Finish()
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -276,8 +278,8 @@ func NewQuerySizeLimiterMiddleware(
 //   - {job="foo"}
 //   - {job="bar"}
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
+	defer sp.End()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -339,7 +341,7 @@ func (q *querySizeLimiter) guessLimitName() string {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	log := spanlogger.FromContext(ctx)
+	log := spanlogger.FromContext(ctx, q.logger)
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
@@ -409,7 +411,7 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 
 func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	// no need to fire a request if the limit is already reached.
-	if sl.isLimitReached() {
+	if sl.isLimitReached() && !httpreq.IsLogsDrilldownRequest(ctx) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
 
@@ -473,10 +475,13 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 				continue
 			}
 		} else {
+			if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+				metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
+				return res, nil
+			}
+
 			// For non-variant series, track them in the global hashes map
 			sl.hashes[hash] = struct{}{}
-
-			// Check if adding this series would exceed the global limit
 			if len(sl.hashes) > sl.maxSeries {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 			}
@@ -540,11 +545,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		cancel()
 	}()
 
-	span := opentracing.SpanFromContext(ctx)
-
-	if span != nil {
-		request.LogToSpan(span)
-	}
+	span := trace.SpanFromContext(ctx)
+	request.LogToSpan(span)
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -580,12 +582,10 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
 
-			if span != nil {
-				span.LogFields(
-					otlog.String("wait_time", elapsed.String()),
-					otlog.Int64("max_parallelism", int64(parallelism)),
-				)
-			}
+			span.SetAttributes(
+				attribute.String("wait_time", elapsed.String()),
+				attribute.Int64("max_parallelism", int64(parallelism)),
+			)
 
 			defer semWithTiming.sem.Release(int64(1))
 

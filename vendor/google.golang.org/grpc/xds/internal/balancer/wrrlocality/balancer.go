@@ -154,6 +154,10 @@ type wrrLocalityBalancer struct {
 	logger *grpclog.PrefixLogger
 }
 
+func (b *wrrLocalityBalancer) ExitIdle() {
+	b.child.ExitIdle()
+}
+
 func (b *wrrLocalityBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
 	lbCfg, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
@@ -167,11 +171,7 @@ func (b *wrrLocalityBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		// shouldn't happen though (this attribute that is set actually gets
 		// used to build localities in the first place), and thus don't error
 		// out, and just build a weighted target with undefined behavior.
-		locality, err := internal.GetLocalityID(addr).ToString()
-		if err != nil {
-			// Should never happen.
-			logger.Errorf("Failed to marshal LocalityID: %v, skipping this locality in weighted target")
-		}
+		locality := internal.LocalityString(internal.GetLocalityID(addr))
 		ai, ok := getAddrInfo(addr)
 		if !ok {
 			return fmt.Errorf("xds_wrr_locality: missing locality weight information in address %q", addr)

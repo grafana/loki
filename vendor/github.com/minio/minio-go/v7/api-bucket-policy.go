@@ -104,7 +104,7 @@ func (c *Client) GetBucketPolicy(ctx context.Context, bucketName string) (string
 	bucketPolicy, err := c.getBucketPolicy(ctx, bucketName)
 	if err != nil {
 		errResponse := ToErrorResponse(err)
-		if errResponse.Code == "NoSuchBucketPolicy" {
+		if errResponse.Code == NoSuchBucketPolicy {
 			return "", nil
 		}
 		return "", err

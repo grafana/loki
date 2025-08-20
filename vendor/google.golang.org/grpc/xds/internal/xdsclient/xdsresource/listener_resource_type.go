@@ -22,6 +22,7 @@ import (
 
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/internal/xds/bootstrap"
+	xdsclient "google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -103,7 +104,6 @@ func (listenerResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*D
 	}
 
 	return &DecodeResult{Name: name, Resource: &ListenerResourceData{Resource: listener}}, nil
-
 }
 
 // ListenerResourceData wraps the configuration of a Listener resource as
@@ -127,7 +127,6 @@ func (l *ListenerResourceData) RawEqual(other ResourceData) bool {
 		return false
 	}
 	return proto.Equal(l.Resource.Raw, other.Raw())
-
 }
 
 // ToJSON returns a JSON string representation of the resource data.
@@ -141,41 +140,39 @@ func (l *ListenerResourceData) Raw() *anypb.Any {
 }
 
 // ListenerWatcher wraps the callbacks to be invoked for different
-// events corresponding to the listener resource being watched.
+// events corresponding to the listener resource being watched. gRFC A88
+// contains an exhaustive list of what method is invoked under what conditions.
 type ListenerWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ListenerResourceData, OnDoneFunc)
+	// ResourceChanged indicates a new version of the resource is available.
+	ResourceChanged(resource *ListenerResourceData, done func())
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error, OnDoneFunc)
+	// ResourceError indicates an error occurred while trying to fetch or
+	// decode the associated resource. The previous version of the resource
+	// should be considered invalid.
+	ResourceError(err error, done func())
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist(OnDoneFunc)
+	// AmbientError indicates an error occurred after a resource has been
+	// received that should not modify the use of that resource but may provide
+	// useful information about the state of the XDSClient for debugging
+	// purposes. The previous version of the resource should still be
+	// considered valid.
+	AmbientError(err error, done func())
 }
 
 type delegatingListenerWatcher struct {
 	watcher ListenerWatcher
 }
 
-func (d *delegatingListenerWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
+func (d *delegatingListenerWatcher) ResourceChanged(data ResourceData, onDone func()) {
 	l := data.(*ListenerResourceData)
-	d.watcher.OnUpdate(l, onDone)
+	d.watcher.ResourceChanged(l, onDone)
+}
+func (d *delegatingListenerWatcher) ResourceError(err error, onDone func()) {
+	d.watcher.ResourceError(err, onDone)
 }
 
-func (d *delegatingListenerWatcher) OnError(err error, onDone OnDoneFunc) {
-	d.watcher.OnError(err, onDone)
-}
-
-func (d *delegatingListenerWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
-	d.watcher.OnResourceDoesNotExist(onDone)
+func (d *delegatingListenerWatcher) AmbientError(err error, onDone func()) {
+	d.watcher.AmbientError(err, onDone)
 }
 
 // WatchListener uses xDS to discover the configuration associated with the
@@ -183,4 +180,10 @@ func (d *delegatingListenerWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
 func WatchListener(p Producer, name string, w ListenerWatcher) (cancel func()) {
 	delegator := &delegatingListenerWatcher{watcher: w}
 	return p.WatchResource(listenerType, name, delegator)
+}
+
+// NewGenericListenerResourceTypeDecoder returns a xdsclient.Decoder that wraps
+// the xdsresource.listenerType.
+func NewGenericListenerResourceTypeDecoder(bc *bootstrap.Config) xdsclient.Decoder {
+	return &GenericResourceTypeDecoder{ResourceType: listenerType, BootstrapConfig: bc}
 }

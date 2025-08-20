@@ -3,4 +3,4 @@
 package ssooidc
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.28.14"
+const goModuleVersion = "1.30.3"

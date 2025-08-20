@@ -178,7 +178,7 @@ func Test_Retention(t *testing.T) {
 			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
+				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
 				require.Nil(t, err)
 			}
 
@@ -584,7 +584,7 @@ func TestChunkRewriter(t *testing.T) {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
 				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(tt.chunk.UserID), Chunk{
-					ChunkID: []byte(getChunkID(tt.chunk.ChunkRef)),
+					ChunkID: getChunkID(tt.chunk.ChunkRef),
 					From:    tt.chunk.From,
 					Through: tt.chunk.Through,
 				}, ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
@@ -631,6 +631,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
+							Parsed:             logproto.EmptyLabelAdapters(),
 						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
@@ -658,7 +659,7 @@ func newSeriesCleanRecorder(indexProcessor IndexProcessor) *seriesCleanedRecorde
 }
 
 func (s *seriesCleanedRecorder) CleanupSeries(userID []byte, lbls labels.Labels) error {
-	s.deletedSeries[string(userID)] = map[uint64]struct{}{lbls.Hash(): {}}
+	s.deletedSeries[string(userID)] = map[uint64]struct{}{labels.StableHash(lbls): {}}
 	return s.IndexProcessor.CleanupSeries(userID, lbls)
 }
 
@@ -684,7 +685,7 @@ func (m *mockExpirationChecker) Expired(_ []byte, chk Chunk, _ labels.Labels, _ 
 	time.Sleep(m.delay)
 	m.numExpiryChecks++
 
-	ce := m.chunksExpiry[string(chk.ChunkID)]
+	ce := m.chunksExpiry[chk.ChunkID]
 	return ce.isExpired, ce.filterFunc
 }
 
@@ -843,7 +844,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -872,7 +873,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -1184,7 +1185,7 @@ func TestDuplicateSeriesDetection(t *testing.T) {
 			labels:   chk.Metric,
 			chunks: []Chunk{
 				{
-					ChunkID: []byte(getChunkID(chk.ChunkRef)),
+					ChunkID: getChunkID(chk.ChunkRef),
 					From:    chk.From,
 					Through: chk.Through,
 				},

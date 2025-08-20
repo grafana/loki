@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -16,9 +15,12 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 const (
@@ -32,33 +34,28 @@ type Service struct {
 	reg    prometheus.Registerer
 	client *consumer.Client
 
-	cfg    Config
-	bucket objstore.Bucket
-	codec  distributor.TenantPrefixCodec
+	eventsProducerClient *kgo.Client
+	eventConsumerClient  *kgo.Client
+
+	cfg   Config
+	codec distributor.TenantPrefixCodec
 
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
-
-	bufPool *sync.Pool
+	processorFactory  *partitionProcessorFactory
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
-		bucket:            bucket,
 		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
-		bufPool: &sync.Pool{
-			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 0, cfg.BuilderConfig.TargetObjectSize))
-			},
-		},
 	}
 
-	client, err := consumer.NewGroupClient(
+	consumerClient, err := consumer.NewGroupClient(
 		kafkaCfg,
 		partitionRing,
 		groupName,
@@ -76,12 +73,26 @@ func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.
 		level.Error(logger).Log("msg", "failed to create consumer", "err", err)
 		return nil
 	}
-	s.client = client
+
+	eventsKafkaCfg := kafkaCfg
+	eventsKafkaCfg.Topic = "loki.metastore-events"
+	eventsKafkaCfg.AutoCreateTopicDefaultPartitions = 1
+	eventsProducerClient, err := client.NewWriterClient("loki.metastore-events", eventsKafkaCfg, 50, logger, reg)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to create producer", "err", err)
+		return nil
+	}
+	s.client = consumerClient
+	s.eventsProducerClient = eventsProducerClient
+
+	s.processorFactory = newPartitionProcessorFactory(
+		cfg, mCfg, consumerClient.Client, eventsProducerClient, bucket, scratchStore, logger, reg)
+
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 	return s
 }
 
-func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
+func (s *Service) handlePartitionsAssigned(ctx context.Context, _ *kgo.Client, partitions map[string][]int32) {
 	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
@@ -99,7 +110,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout)
+			processor := s.processorFactory.New(ctx, tenant, virtualShard, topic, partition)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
@@ -172,6 +183,15 @@ func (s *Service) run(ctx context.Context) error {
 			if len(records) == 0 {
 				return
 			}
+
+			// Calculate total bytes in this batch
+			var totalBytes int64
+			for _, record := range records {
+				totalBytes += int64(len(record.Value))
+			}
+
+			// Update metrics
+			processor.metrics.addBytesProcessed(totalBytes)
 
 			_ = processor.Append(records)
 		})

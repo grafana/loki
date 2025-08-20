@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -110,10 +109,17 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
 	}
 
-	// Avoid a nil entries slice to be consistent with the decoding
-	entries := []loghttp.Entry{}
-	if len(s.Entries) > 0 {
-		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries)) //#nosec G103 -- Just preventing an allocation, safe. Entry types are the same.
+	// Always use a non-nil slice (even if it's length 0) to be consistent with
+	// the decoding.
+	entries := make([]loghttp.Entry, 0, len(s.Entries))
+	for _, ent := range s.Entries {
+		conv := loghttp.Entry{
+			Timestamp:          ent.Timestamp,
+			Line:               ent.Line,
+			StructuredMetadata: logproto.FromLabelAdaptersToLabels(ent.StructuredMetadata),
+			Parsed:             logproto.FromLabelAdaptersToLabels(ent.Parsed),
+		}
+		entries = append(entries, conv)
 	}
 
 	ret := loghttp.Stream{
@@ -185,9 +191,9 @@ func NewSampleStream(s promql.Series) model.SampleStream {
 func NewMetric(l labels.Labels) model.Metric {
 	ret := make(map[model.LabelName]model.LabelValue)
 
-	for _, label := range l {
+	l.Range(func(label labels.Label) {
 		ret[model.LabelName(label.Name)] = model.LabelValue(label.Value)
-	}
+	})
 
 	return ret
 }
@@ -508,14 +514,16 @@ func encodeValue(T int64, V float64, s *jsoniter.Stream) {
 
 func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
 	s.WriteObjectStart()
-	for i, label := range l {
+	i := 0
+	l.Range(func(label labels.Label) {
 		if i > 0 {
 			s.WriteMore()
 		}
 
 		s.WriteObjectField(label.Name)
 		s.WriteString(label.Value)
-	}
+		i++
+	})
 	s.WriteObjectEnd()
 }
 

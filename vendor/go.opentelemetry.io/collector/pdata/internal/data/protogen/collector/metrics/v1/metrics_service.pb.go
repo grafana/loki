@@ -254,8 +254,6 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type MetricsServiceClient interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(ctx context.Context, in *ExportMetricsServiceRequest, opts ...grpc.CallOption) (*ExportMetricsServiceResponse, error)
 }
 
@@ -278,8 +276,6 @@ func (c *metricsServiceClient) Export(ctx context.Context, in *ExportMetricsServ
 
 // MetricsServiceServer is the server API for MetricsService service.
 type MetricsServiceServer interface {
-	// For performance reasons, it is recommended to keep this RPC
-	// alive for the entire life of the application.
 	Export(context.Context, *ExportMetricsServiceRequest) (*ExportMetricsServiceResponse, error)
 }
 

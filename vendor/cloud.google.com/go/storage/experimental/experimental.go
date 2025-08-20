@@ -77,11 +77,25 @@ type ReadStallTimeoutConfig struct {
 // WithGRPCBidiReads provides an [option.ClientOption] that may be passed to
 // [cloud.google.com/go/storage.NewGRPCClient].
 // It enables the client to use bi-directional gRPC APIs for downloads rather than the
-// server streaming API. In particular, it allows users to use the [storage.MultiRangeDownloader]
+// server streaming API. In particular, it allows users to use the
+// [cloud.google.com/go/storage.MultiRangeDownloader]
 // surface, which requires bi-directional streaming.
 //
 // The bi-directional API is in private preview; please contact your account manager if
 // interested.
 func WithGRPCBidiReads() option.ClientOption {
 	return internal.WithGRPCBidiReads.(func() option.ClientOption)()
+}
+
+// WithZonalBucketAPIs provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+// It enables the client to use bi-directional gRPC APIs for downloads rather than the
+// server streaming API (same as [WithGRPCBidiReads]) as well as appendable
+// object semantics for uploads. By setting this option, both upload and download
+// paths will use zonal bucket compatible APIs by default.
+//
+// Zonal buckets and rapid storage is in private preview; please contact your
+// account manager if interested.
+func WithZonalBucketAPIs() option.ClientOption {
+	return internal.WithZonalBucketAPIs.(func() option.ClientOption)()
 }

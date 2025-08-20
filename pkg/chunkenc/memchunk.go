@@ -1297,7 +1297,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func (hb *headBlock) SampleIterator(
@@ -1317,7 +1317,7 @@ func (hb *headBlock) SampleIterator(
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
-			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
 			if !ok || len(samples) == 0 {
 				continue
 			}
@@ -1348,7 +1348,6 @@ func (hb *headBlock) SampleIterator(
 				})
 			}
 
-			//TODO(twhitney): will need to solve for this with multivariate extractor
 			if extractor.ReferencedStructuredMetadata() {
 				setQueryReferencedStructuredMetadata = true
 			}
@@ -1402,13 +1401,12 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:                  stats,
-		origBytes:              b,
-		reader:                 nil, // will be initialized later
-		pool:                   pool,
-		format:                 format,
-		symbolizer:             symbolizer,
-		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
+		stats:      stats,
+		origBytes:  b,
+		reader:     nil, // will be initialized later
+		pool:       pool,
+		format:     format,
+		symbolizer: symbolizer,
 	}
 }
 
@@ -1623,8 +1621,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if err != nil {
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
+		return 0, nil, labels.EmptyLabels(), false
+	}
+	return ts, si.buf[:lineSize], lbls, true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1654,7 +1656,6 @@ func (si *bufferedIterator) close() {
 	}
 
 	if !si.currStructuredMetadata.IsEmpty() {
-		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
 		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 
@@ -1770,7 +1771,7 @@ func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		e.stats.AddPostFilterLines(1)
 
-		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !ok || len(samples) == 0 {
 			continue
 		}

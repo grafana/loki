@@ -88,6 +88,42 @@ resultsCache:
 
 With these caches disabled, Loki will return to defaults which enables an in-memory results and chunks cache, so you will still get some caching.
 
+#### BREAKING: Zone-aware ingester StatefulSet serviceName fix (6.34.0+)
+
+**Affected users**: Only deployments using zone-aware ingester replication (`ingester.zoneAwareReplication.enabled: true`)
+
+In Helm chart version 6.34.0, [PR #18558](https://github.com/grafana/loki/pull/18558) fixed the `serviceName` field in zone-aware ingester StatefulSets to correctly reference headless services. However, since `serviceName` is an immutable field in Kubernetes StatefulSets, upgrading to 6.34.0 requires manual intervention.
+
+**Required action before upgrading to 6.34.0**:
+
+1. **Check if you're affected**:
+   ```bash
+   helm get values <release-name> | grep -A5 zoneAwareReplication
+   ```
+   If `enabled: true` appears, you need to follow these steps.
+
+2. **Delete the StatefulSets** (data will be preserved):
+   ```bash
+   kubectl delete statefulset \
+     <release-name>-ingester-zone-a \
+     <release-name>-ingester-zone-b \
+     <release-name>-ingester-zone-c \
+     --cascade=orphan
+   ```
+
+3. **Proceed with the Helm upgrade**:
+   ```bash
+   helm upgrade <release-name> grafana/loki --version 6.34.0
+   ```
+
+**What happens**: 
+- PersistentVolumeClaims and data are preserved
+- New StatefulSets will be created with correct service references
+- Pods will restart and reattach to existing storage
+
+**Why this change was necessary**: 
+The previous configuration caused ingester scaling operations to fail because the rollout-operator couldn't find the correct headless services for the `/ingester/prepare-downscale` endpoint.
+
 #### Distributed mode
 
 This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode). Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly.

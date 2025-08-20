@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
-	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/dskit/server"
 
@@ -63,8 +62,9 @@ func (t Tracer) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		route := DefaultCodec.Path(r)
 		route = middleware.MakeLabelValue(route)
-		span, ctx := opentracing.StartSpanFromContext(ctx, route)
-		defer span.Finish()
+		ctx, span := tracer.Start(ctx, route)
+		defer span.End()
+
 		return next.Do(ctx, r)
 	})
 }

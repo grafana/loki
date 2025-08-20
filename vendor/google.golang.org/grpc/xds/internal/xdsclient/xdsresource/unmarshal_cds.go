@@ -133,10 +133,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
 	case v3clusterpb.Cluster_LEAST_REQUEST:
-		if !envconfig.LeastRequestLB {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
-
 		// "The configuration for the Least Request LB policy is the
 		// least_request_lb_config field. The field is optional; if not present,
 		// defaults will be assumed for all of its values." - A48

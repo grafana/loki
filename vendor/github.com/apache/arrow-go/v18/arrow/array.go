@@ -127,3 +127,15 @@ type Array interface {
 	// When the reference count goes to zero, the memory is freed.
 	Release()
 }
+
+// ValueType is a generic constraint for valid Arrow primitive types
+type ValueType interface {
+	bool | FixedWidthType | string | []byte
+}
+
+// TypedArray is an interface representing an Array of a particular type
+// allowing for easy propagation of generics
+type TypedArray[T ValueType] interface {
+	Array
+	Value(int) T
+}

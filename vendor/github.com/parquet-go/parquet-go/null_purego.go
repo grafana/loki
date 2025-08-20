@@ -49,7 +49,7 @@ func nullIndexString(bits []uint64, rows sparse.Array) {
 }
 
 func nullIndexSlice(bits []uint64, rows sparse.Array) {
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		p := *(**struct{})(rows.Index(i))
 		b := uint64(0)
 		if p != nil {

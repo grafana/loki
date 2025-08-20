@@ -20,21 +20,23 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distributor.KeyedStream, streamIdx int, batchSize int, tenant string, errCh chan error) {
+func (s *Generator) sendStreamMetadata(ctx context.Context, tenant string, batch []distributor.KeyedStream, errCh chan<- error) {
+	batchSize := len(batch)
+
 	client, err := s.getFrontendClient()
 	if err != nil {
-		errCh <- fmt.Errorf("failed to get ingest limits frontend client (tenant: %s, stream_idx: %d, batch_size: %d): %w", tenant, streamIdx, batchSize, err)
+		errCh <- fmt.Errorf("failed to get ingest limits frontend client (tenant: %s, batch_size: %d): %w", tenant, batchSize, err)
 		return
 	}
 
 	userCtx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenant))
 	if err != nil {
-		errCh <- fmt.Errorf("failed to inject user context (tenant: %s, stream_idx: %d, batch_size: %d): %w", tenant, streamIdx, batchSize, err)
+		errCh <- fmt.Errorf("failed to inject user context (tenant: %s, batch_size: %d): %w", tenant, batchSize, err)
 		return
 	}
 
 	var streamMetadata []*proto.StreamMetadata
-	for _, stream := range streamsBatch {
+	for _, stream := range batch {
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash: stream.HashKeyNoShard,
 		})
@@ -47,13 +49,13 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distr
 
 	// Check if the stream exceeds limits
 	if client == nil {
-		errCh <- fmt.Errorf("no ingest limits frontend client (tenant: %s, stream_idx: %d, batch_size: %d)", tenant, streamIdx, batchSize)
+		errCh <- fmt.Errorf("no ingest limits frontend client (tenant: %s, batch_size: %d)", tenant, batchSize)
 		return
 	}
 
 	resp, err := client.ExceedsLimits(userCtx, req)
 	if err != nil {
-		errCh <- fmt.Errorf("failed to check if stream exceeds limits (tenant: %s, stream_idx: %d, batch_size: %d): %w", tenant, streamIdx, batchSize, err)
+		errCh <- fmt.Errorf("failed to check if stream exceeds limits (tenant: %s, batch_size: %d): %w", tenant, batchSize, err)
 		return
 	}
 
@@ -69,18 +71,17 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, streamsBatch []distr
 			results += fmt.Sprintf("%s: %d, ", reason, count)
 		}
 
-		level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenant, "batch_size", batchSize, "stream_idx", streamIdx, "rejected", results)
+		level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenant, "batch_size", batchSize, "rejected", results)
 		return
 	case len(resp.Results) == 0:
-		level.Debug(s.logger).Log("msg", "Stream accepted", "tenant", tenant, "batch_size", batchSize, "stream_idx", streamIdx)
+		level.Debug(s.logger).Log("msg", "Stream accepted", "tenant", tenant, "batch_size", batchSize)
 	}
 
 	// Send single stream to Kafka
-	s.sendStreamsToKafka(ctx, streamsBatch, tenant, errCh)
-	level.Debug(s.logger).Log("msg", "Sent streams to Kafka", "tenant", tenant, "batch_size", batchSize, "stream_idx", streamIdx)
+	s.sendStreamsToKafka(ctx, batch, tenant, errCh)
 }
 
-func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string, errCh chan error) {
+func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string, errCh chan<- error) {
 	for _, stream := range streams {
 		go func(stream distributor.KeyedStream) {
 			partitionID := int32(stream.HashKeyNoShard % uint64(s.cfg.NumPartitions))
@@ -107,7 +108,7 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 				Key:       []byte(tenant),
 				Value:     b,
 				Partition: partitionID,
-				Topic:     limits.MetadataTopic(s.cfg.Kafka.Topic),
+				Topic:     s.cfg.Kafka.Topic,
 			}
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})

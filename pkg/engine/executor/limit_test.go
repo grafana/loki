@@ -7,31 +7,34 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func TestExecuteLimit(t *testing.T) {
 	// Simple test to verify the Context.executeLimit method
-	ctx := context.Background()
 	c := &Context{}
 
 	t.Run("with no inputs", func(t *testing.T) {
+		ctx := t.Context()
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
-		err := pipeline.Read()
+		err := pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
+		ctx := t.Context()
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read()
+		err := pipeline.Read(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "limit expects exactly one input, got 2")
 	})
 
 	t.Run("with valid input", func(t *testing.T) {
+		ctx := t.Context()
 		// Create test data
 		fields := []arrow.Field{
-			{Name: "name", Type: arrow.BinaryTypes.String},
+			{Name: "name", Type: datatype.Arrow.String},
 		}
 		csvData := "Alice\nBob\nCharlie"
 		record, err := CSVToArrow(fields, csvData)
@@ -47,7 +50,7 @@ func TestExecuteLimit(t *testing.T) {
 		defer pipeline.Close()
 
 		// Read from the pipeline
-		err = pipeline.Read()
+		err = pipeline.Read(ctx)
 		require.NoError(t, err)
 
 		batch, err := pipeline.Value()
@@ -61,15 +64,16 @@ func TestExecuteLimit(t *testing.T) {
 		require.Equal(t, "Bob", batch.Column(0).ValueStr(0))
 
 		// Next read should return EOF
-		err = pipeline.Read()
+		err = pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	// Test with desired rows split across 2 batches
 	t.Run("with rows split across batches", func(t *testing.T) {
+		ctx := t.Context()
 		// Create schema with a single string column
 		fields := []arrow.Field{
-			{Name: "letter", Type: arrow.BinaryTypes.String},
+			{Name: "letter", Type: datatype.Arrow.String},
 		}
 
 		// Create first batch with letters A-C
@@ -97,7 +101,7 @@ func TestExecuteLimit(t *testing.T) {
 
 		// First read should give us C from batch1
 		expectedFields := []arrow.Field{
-			{Name: "letter", Type: arrow.BinaryTypes.String},
+			{Name: "letter", Type: datatype.Arrow.String},
 		}
 
 		expectedData := "C\nD\nE"
@@ -115,7 +119,7 @@ func TestExecuteLimit(t *testing.T) {
 func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	// Create test pipeline with known data
 	fields := []arrow.Field{
-		{Name: "id", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "id", Type: datatype.Arrow.Integer},
 	}
 
 	// Create a pipeline with numbers 1-10
@@ -135,8 +139,10 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	limit := NewLimitPipeline(source, 3, 4)
 	defer limit.Close()
 
+	ctx := t.Context()
+
 	// Test first read
-	err = limit.Read()
+	err = limit.Read(ctx)
 	require.NoError(t, err)
 
 	batch, err := limit.Value()
@@ -152,14 +158,14 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	}
 
 	// Next read should be EOF
-	err = limit.Read()
+	err = limit.Read(ctx)
 	require.Equal(t, EOF, err)
 }
 
 func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	// Create test pipeline with multiple batches
 	fields := []arrow.Field{
-		{Name: "id", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "id", Type: datatype.Arrow.Integer},
 	}
 
 	// First batch: 1-5
@@ -183,7 +189,7 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	defer limit.Close()
 
 	expectedFields := []arrow.Field{
-		{Name: "id", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "id", Type: datatype.Arrow.Integer},
 	}
 
 	expectedData := "4\n5\n6\n7\n8\n"

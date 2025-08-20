@@ -38,8 +38,9 @@ const (
 
 // Different service types
 const (
-	ServiceTypeS3  = "s3"
-	ServiceTypeSTS = "sts"
+	ServiceTypeS3        = "s3"
+	ServiceTypeSTS       = "sts"
+	ServiceTypeS3Express = "s3express"
 )
 
 // Excerpts from @lsegal -
@@ -229,7 +230,11 @@ func PreSignV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, loc
 	query.Set("X-Amz-Credential", credential)
 	// Set session token if available.
 	if sessionToken != "" {
-		query.Set("X-Amz-Security-Token", sessionToken)
+		if v := req.Header.Get("x-amz-s3session-token"); v != "" {
+			query.Set("X-Amz-S3session-Token", sessionToken)
+		} else {
+			query.Set("X-Amz-Security-Token", sessionToken)
+		}
 	}
 	req.URL.RawQuery = query.Encode()
 
@@ -281,7 +286,11 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 
 	// Set session token if available.
 	if sessionToken != "" {
-		req.Header.Set("X-Amz-Security-Token", sessionToken)
+		// S3 Express token if not set then set sessionToken
+		// with older x-amz-security-token header.
+		if v := req.Header.Get("x-amz-s3session-token"); v == "" {
+			req.Header.Set("X-Amz-Security-Token", sessionToken)
+		}
 	}
 
 	if len(trailer) > 0 {
@@ -365,6 +374,18 @@ func UnsignedTrailer(req http.Request, trailer http.Header) *http.Request {
 // http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html.
 func SignV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string) *http.Request {
 	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3, nil)
+}
+
+// SignV4Express sign the request before Do(), in accordance with
+// http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html.
+func SignV4Express(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string) *http.Request {
+	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3Express, nil)
+}
+
+// SignV4TrailerExpress sign the request before Do(), in accordance with
+// http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
+func SignV4TrailerExpress(req http.Request, accessKeyID, secretAccessKey, sessionToken, location string, trailer http.Header) *http.Request {
+	return signV4(req, accessKeyID, secretAccessKey, sessionToken, location, ServiceTypeS3Express, trailer)
 }
 
 // SignV4Trailer sign the request before Do(), in accordance with
