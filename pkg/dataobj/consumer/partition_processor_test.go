@@ -30,7 +30,7 @@ var testBuilderConfig = logsobj.BuilderConfig{
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {
-	t.Run("has expected metastore time range", func(t *testing.T) {
+	t.Run("has expected table of contents", func(t *testing.T) {
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 
@@ -71,7 +71,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		})
 
 		// No flush should have occurred, we will flush ourselves instead.
-		require.True(t, p.lastFlush.IsZero())
+		require.True(t, p.lastFlushed.IsZero())
 
 		// Get the time range. We will use this to check that the metastore has
 		// the correct time range.
@@ -81,7 +81,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 		// Flush the data object.
 		require.NoError(t, p.flush())
-		require.Equal(t, now2, p.lastFlush)
+		require.Equal(t, now2, p.lastFlushed)
 
 		// Flush should produce two uploads, the data object and the metastore
 		// object.
@@ -101,7 +101,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		p := newTestPartitionProcessor(t, clock)
 
 		// All timestamps should be zero.
-		require.True(t, p.lastFlush.IsZero())
+		require.True(t, p.lastFlushed.IsZero())
 		require.True(t, p.lastModified.IsZero())
 
 		// Push a stream.
@@ -122,14 +122,14 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		})
 
 		// No flush should have occurred, we will flush ourselves instead.
-		require.True(t, p.lastFlush.IsZero())
+		require.True(t, p.lastFlushed.IsZero())
 
 		// The last modified timestamp should be the time of the last append.
 		require.Equal(t, now, p.lastModified)
 
 		// Flush the data object. The last modified time should also be reset.
 		require.NoError(t, p.flush())
-		require.Equal(t, now, p.lastFlush)
+		require.Equal(t, now, p.lastFlushed)
 		require.True(t, p.lastModified.IsZero())
 	})
 }
@@ -144,20 +144,20 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	p.committer = committer
 
 	// Last flush time should be initialized to the zero time.
-	require.True(t, p.lastFlush.IsZero())
+	require.True(t, p.lastFlushed.IsZero())
 
 	// Should not flush when builder is un-initialized.
 	flushed, err := p.idleFlush()
 	require.NoError(t, err)
 	require.False(t, flushed)
-	require.True(t, p.lastFlush.IsZero())
+	require.True(t, p.lastFlushed.IsZero())
 
 	// Should not flush if no records have been consumed.
 	require.NoError(t, p.initBuilder())
 	flushed, err = p.idleFlush()
 	require.NoError(t, err)
 	require.False(t, flushed)
-	require.True(t, p.lastFlush.IsZero())
+	require.True(t, p.lastFlushed.IsZero())
 
 	// Should not flush if idle timeout is not reached.
 	s := logproto.Stream{
@@ -180,43 +180,14 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	flushed, err = p.idleFlush()
 	require.NoError(t, err)
 	require.False(t, flushed)
-	require.True(t, p.lastFlush.IsZero())
+	require.True(t, p.lastFlushed.IsZero())
 
 	// Advance the clock. The idle timeout should have been reached.
 	clock.Advance((60 * time.Minute) + 1)
 	flushed, err = p.idleFlush()
 	require.NoError(t, err)
 	require.True(t, flushed)
-	require.Equal(t, clock.Now(), p.lastFlush)
-}
-
-func TestPartitionProcessor_ProcessRecord(t *testing.T) {
-	clock := quartz.NewMock(t)
-	p := newTestPartitionProcessor(t, clock)
-
-	// The builder is initialized to nil until the first record.
-	require.Nil(t, p.builder)
-	require.True(t, p.lastModified.IsZero())
-
-	// Push a record.
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
-		Entries: []push.Entry{{
-			Timestamp: time.Now().UTC(),
-			Line:      "abc",
-		}},
-	}
-	b, err := s.Marshal()
-	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: clock.Now(),
-	})
-
-	// The builder should be initialized and last modified timestamp updated.
-	require.NotNil(t, p.builder)
-	require.Equal(t, clock.Now(), p.lastModified)
+	require.Equal(t, clock.Now(), p.lastFlushed)
 }
 
 func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
@@ -251,7 +222,7 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		})
 
 		// No flush should have occurred and no offsets should be committed.
-		require.True(t, p.lastFlush.IsZero())
+		require.True(t, p.lastFlushed.IsZero())
 		require.Nil(t, committer.records)
 
 		// Mark the builder as full.
@@ -268,7 +239,7 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		})
 
 		// A flush should have occurred and offsets should be committed.
-		require.Equal(t, now2, p.lastFlush)
+		require.Equal(t, now2, p.lastFlushed)
 		require.Len(t, committer.records, 1)
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
@@ -302,7 +273,7 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		})
 
 		// No flush should have occurred and no offsets should be committed.
-		require.True(t, p.lastFlush.IsZero())
+		require.True(t, p.lastFlushed.IsZero())
 		require.Nil(t, committer.records)
 
 		// Advance the clock past the idle timeout.
@@ -313,13 +284,42 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		require.True(t, flushed)
 
 		// A flush should have occurred and offsets should be committed.
-		require.Equal(t, now2, p.lastFlush)
+		require.Equal(t, now2, p.lastFlushed)
 		require.Len(t, committer.records, 1)
 
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
 		require.Equal(t, int64(1), committer.records[0].Offset)
 	})
+}
+
+func TestPartitionProcessor_ProcessRecord(t *testing.T) {
+	clock := quartz.NewMock(t)
+	p := newTestPartitionProcessor(t, clock)
+
+	// The builder is initialized to nil until the first record.
+	require.Nil(t, p.builder)
+	require.True(t, p.lastModified.IsZero())
+
+	// Push a record.
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: time.Now().UTC(),
+			Line:      "abc",
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+	p.processRecord(&kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: clock.Now(),
+	})
+
+	// The builder should be initialized and last modified timestamp updated.
+	require.NotNil(t, p.builder)
+	require.Equal(t, clock.Now(), p.lastModified)
 }
 
 func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {
