@@ -6,23 +6,22 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/Azure/go-autorest/autorest/adal"
-	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -45,40 +44,13 @@ const (
 
 var (
 	supportedEnvironments = []string{azureGlobal, azureChinaCloud, azureGermanCloud, azureUSGovernment}
-	noClientKey           = azblob.ClientProvidedKeyOptions{}
+	//noClientKey           = azblob.ClientProvidedKeyOptions{}
 
 	defaultEndpoints = map[string]string{
 		azureGlobal:       "blob.core.windows.net",
 		azureChinaCloud:   "blob.core.chinacloudapi.cn",
 		azureGermanCloud:  "blob.core.cloudapi.de",
 		azureUSGovernment: "blob.core.usgovcloudapi.net",
-	}
-
-	defaultAuthFunctions = authFunctions{
-		NewOAuthConfigFunc: adal.NewOAuthConfig,
-		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken, //nolint:staticcheck // SA1019: use of deprecated function.
-	}
-
-	// default Azure http client.
-	defaultClientFactory = func() *http.Client {
-		return &http.Client{
-			Transport: &http.Transport{
-				Proxy: ieproxy.GetProxyFunc(),
-				Dial: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-					DualStack: true,
-				}).Dial,
-				MaxIdleConns:           200,
-				MaxIdleConnsPerHost:    200,
-				IdleConnTimeout:        90 * time.Second,
-				TLSHandshakeTimeout:    10 * time.Second,
-				ExpectContinueTimeout:  1 * time.Second,
-				DisableKeepAlives:      false,
-				DisableCompression:     false,
-				MaxResponseHeaderBytes: 0,
-			},
-		}
 	}
 )
 
@@ -105,11 +77,7 @@ type BlobStorageConfig struct {
 	MaxRetries          int            `yaml:"max_retries"`
 	MinRetryDelay       time.Duration  `yaml:"min_retry_delay"`
 	MaxRetryDelay       time.Duration  `yaml:"max_retry_delay"`
-}
-
-type authFunctions struct {
-	NewOAuthConfigFunc                             func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error)
-	NewServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)
+	MaxResults          int            `yaml:"max_results"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -140,6 +108,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.TenantID, prefix+"azure.tenant-id", "", "Azure Tenant ID is used to authenticate through Azure OAuth.")
 	f.StringVar(&c.ClientID, prefix+"azure.client-id", "", "Azure Service Principal ID(GUID).")
 	f.Var(&c.ClientSecret, prefix+"azure.client-secret", "Azure Service Principal secret key.")
+	f.IntVar(&c.MaxResults, prefix+"azure.max-results", 5000, "Max number of results to return at once when listing container contents.")
 }
 
 type BlobStorageMetrics struct {
@@ -184,12 +153,8 @@ type BlobStorage struct {
 
 	metrics BlobStorageMetrics
 
-	containerURL azblob.ContainerURL
-
-	pipeline        pipeline.Pipeline
-	hedgingPipeline pipeline.Pipeline
-	tc              azblob.TokenCredential
-	lock            sync.Mutex
+	tc   azcore.TokenCredential
+	lock sync.Mutex
 }
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
@@ -198,17 +163,7 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 		cfg:     cfg,
 		metrics: metrics,
 	}
-	pipeline, err := blobStorage.newPipeline(hedgingCfg, false)
-	if err != nil {
-		return nil, err
-	}
-	blobStorage.pipeline = pipeline
-	hedgingPipeline, err := blobStorage.newPipeline(hedgingCfg, true)
-	if err != nil {
-		return nil, err
-	}
-	blobStorage.hedgingPipeline = hedgingPipeline
-	blobStorage.containerURL, err = blobStorage.buildContainerURL()
+	_, err := blobStorage.getOAuthToken()
 	if err != nil {
 		return nil, err
 	}
@@ -236,21 +191,15 @@ func (b *BlobStorage) GetAttributes(ctx context.Context, objectKey string) (clie
 func (b *BlobStorage) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
 	var objectSize int64
 	err := loki_instrument.TimeRequest(ctx, source, instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
-		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		client, err := b.getBlobClient(objectKey)
 		if err != nil {
 			return err
 		}
-
-		response, err := blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		prop, err := client.GetProperties(ctx, &blob.GetPropertiesOptions{})
 		if err != nil {
 			return err
 		}
-		if response != nil {
-			rawResponse := response.Response()
-			if rawResponse != nil {
-				objectSize = rawResponse.ContentLength
-			}
-		}
+		objectSize = *prop.ContentLength
 		return nil
 	})
 	if err != nil {
@@ -314,234 +263,102 @@ func (b *BlobStorage) GetObjectRange(ctx context.Context, objectKey string, offs
 
 func (b *BlobStorage) getObject(ctx context.Context, objectKey string, offset, length int64) (rc io.ReadCloser, size int64, err error) {
 	if offset == 0 && length == 0 {
-		length = azblob.CountToEnd // azblob.CountToEnd == 0 but leaving this here for clarity
+		length = blob.CountToEnd // blob.CountToEnd == 0 but leaving this here for clarity
 	}
-	blockBlobURL, err := b.getBlobURL(objectKey, true)
+
+	client, err := b.getClient(objectKey)
+	if err != nil {
+		return nil, 0, err
+	}
+	downloadResponse, err := client.DownloadStream(ctx, b.cfg.ContainerName, objectKey, &azblob.DownloadStreamOptions{Range: blob.HTTPRange{Offset: offset, Count: length}})
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, offset, length, azblob.BlobAccessConditions{}, false, noClientKey)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), downloadResponse.ContentLength(), nil
+	return downloadResponse.NewRetryReader(ctx, &blob.RetryReaderOptions{MaxRetries: int32(b.cfg.MaxRetries)}), *downloadResponse.ContentLength, nil
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
-		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		client, err := b.getClient(objectKey)
 		if err != nil {
 			return err
 		}
 
 		bufferSize := b.cfg.UploadBufferSize
 		maxBuffers := b.cfg.UploadBufferCount
-		_, err = azblob.UploadStreamToBlockBlob(ctx, object, blockBlobURL,
-			azblob.UploadStreamToBlockBlobOptions{BufferSize: bufferSize, MaxBuffers: maxBuffers})
-
+		_, err = client.UploadStream(ctx, b.cfg.ContainerName, objectKey, object, &blockblob.UploadStreamOptions{BlockSize: int64(bufferSize), Concurrency: maxBuffers})
 		return err
 	})
 }
 
-func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobURL, error) {
-	blobID = strings.Replace(blobID, ":", b.cfg.ChunkDelimiter, -1)
-
-	// generate url for new chunk blob
-	u, err := url.Parse(b.fmtBlobURL(blobID))
-	if err != nil {
-		return azblob.BlockBlobURL{}, err
+func (b *BlobStorage) getClient(blobID string) (azblob.Client, error) {
+	var client *azblob.Client
+	var err error
+	if b.cfg.UseManagedIdentity {
+		client, err = azblob.NewClient(b.fmtBlobURL(blobID), b.tc, nil)
+	} else {
+		cred, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
+		if err != nil {
+			return azblob.Client{}, err
+		}
+		client, err = azblob.NewClientWithSharedKeyCredential(b.fmtResourceURL(), cred, nil)
+		if err != nil {
+			return azblob.Client{}, err
+		}
 	}
-	pipeline := b.pipeline
-	if hedging {
-		pipeline = b.hedgingPipeline
-	}
-
-	return azblob.NewBlockBlobURL(*u, pipeline), nil
+	return *client, err
 }
 
-func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
-	u, err := url.Parse(b.fmtContainerURL())
-	if err != nil {
-		return azblob.ContainerURL{}, err
-	}
-
-	return azblob.NewContainerURL(*u, b.pipeline), nil
+func (b *BlobStorage) getBlobClient(blobID string) (blob.Client, error) {
+	client, err := blob.NewClient(b.fmtBlobURL(blobID), b.tc, nil)
+	return *client, err
 }
 
-func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipeline.Pipeline, error) {
-	// defining the Azure Pipeline Options
-	opts := azblob.PipelineOptions{
-		Retry: azblob.RetryOptions{
-			Policy:        azblob.RetryPolicyExponential,
-			MaxTries:      (int32)(b.cfg.MaxRetries),
-			TryTimeout:    b.cfg.RequestTimeout,
-			RetryDelay:    b.cfg.MinRetryDelay,
-			MaxRetryDelay: b.cfg.MaxRetryDelay,
-		},
-	}
-
-	client := defaultClientFactory()
-
-	opts.HTTPSender = pipeline.FactoryFunc(func(_ pipeline.Policy, _ *pipeline.PolicyOptions) pipeline.PolicyFunc {
-		return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-			resp, err := client.Do(request.WithContext(ctx))
-			return pipeline.NewHTTPResponse(resp), err
-		}
-	})
-
-	if hedging {
-		client, err := hedgingCfg.ClientWithRegisterer(client, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
-		if err != nil {
-			return nil, err
-		}
-		opts.HTTPSender = pipeline.FactoryFunc(func(_ pipeline.Policy, _ *pipeline.PolicyOptions) pipeline.PolicyFunc {
-			return func(ctx context.Context, request pipeline.Request) (pipeline.Response, error) {
-				resp, err := client.Do(request.WithContext(ctx))
-				return pipeline.NewHTTPResponse(resp), err
-			}
-		})
-	}
-
-	if b.cfg.ConnectionString != "" {
-		parsed, err := parseConnectionString(b.cfg.ConnectionString)
-		if err != nil {
-			return nil, err
-		}
-		credential, err := azblob.NewSharedKeyCredential(parsed.AccountName, parsed.AccountKey)
-		if err != nil {
-			return nil, err
-		}
-		return azblob.NewPipeline(credential, opts), nil
-	}
-
-	if !b.cfg.UseFederatedToken && !b.cfg.UseManagedIdentity && !b.cfg.UseServicePrincipal && b.cfg.UserAssignedID == "" {
-		credential, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
-		if err != nil {
-			return nil, err
-		}
-
-		return azblob.NewPipeline(credential, opts), nil
-	}
-
-	tokenCredential, err := b.getOAuthToken()
-	if err != nil {
-		return nil, err
-	}
-
-	return azblob.NewPipeline(tokenCredential, opts), nil
-}
-
-func (b *BlobStorage) getOAuthToken() (azblob.TokenCredential, error) {
+func (b *BlobStorage) getOAuthToken() (azcore.TokenCredential, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-
 	// this method is called a few times when we create each Pipeline, so we need to re-use TokenCredentials.
 	if b.tc != nil {
 		return b.tc, nil
 	}
-	spt, err := b.getServicePrincipalToken(defaultAuthFunctions)
-	if err != nil {
-		return nil, err
-	}
-
-	// Refresh obtains a fresh token
-	err = spt.Refresh()
-	if err != nil {
-		return nil, err
-	}
-
-	b.tc = azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
-		err := spt.Refresh()
-		if err != nil {
-			// something went wrong, prevent the refresher from being triggered again
-			return 0
-		}
-
-		// set the new token value
-		tc.SetToken(spt.Token().AccessToken)
-
-		// get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 10*time.Second
-	})
-	return b.tc, nil
-}
-
-func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*adal.ServicePrincipalToken, error) {
-	resource := b.fmtResourceURL()
 
 	if b.cfg.UseFederatedToken {
-		token, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
+		jwtBytes, err := os.ReadFile(os.Getenv("AZURE_FEDERATED_TOKEN_FILE"))
 		if err != nil {
 			return nil, err
 		}
-
-		var customRefreshFunc adal.TokenRefresh = func(_ context.Context, resource string) (*adal.Token, error) {
-			newToken, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
-			if err != nil {
-				return nil, err
-			}
-
-			err = newToken.Refresh()
-			if err != nil {
-				return nil, err
-			}
-
-			token := newToken.Token()
-
-			return &token, nil
+		tokenCredential, err := azidentity.NewClientSecretCredential(b.cfg.TenantID, b.cfg.ClientID, string(jwtBytes), nil)
+		if err != nil {
+			return nil, err
 		}
-
-		token.SetCustomRefreshFunc(customRefreshFunc)
-		return token, err
+		b.tc = tokenCredential
+		return b.tc, nil
+	} else if b.cfg.UseServicePrincipal {
+		tokenCredential, err := azidentity.NewClientSecretCredential(b.cfg.TenantID, b.cfg.ClientID, b.cfg.ClientSecret.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		b.tc = tokenCredential
+		return b.tc, nil
+	} else {
+		if b.cfg.UserAssignedID != "" {
+			opts := azidentity.ManagedIdentityCredentialOptions{ID: azidentity.ClientID(b.cfg.UserAssignedID)}
+			tokenCredential, err := azidentity.NewManagedIdentityCredential(&opts)
+			if err != nil {
+				return nil, err
+			}
+			b.tc = tokenCredential
+			return b.tc, nil
+		} else {
+			tokenCredential, err := azidentity.NewManagedIdentityCredential(nil)
+			if err != nil {
+				return nil, err
+			}
+			b.tc = tokenCredential
+			return b.tc, nil
+		}
 	}
-
-	if b.cfg.UseServicePrincipal {
-		config := auth.NewClientCredentialsConfig(b.cfg.ClientID, b.cfg.ClientSecret.String(), b.cfg.TenantID)
-		config.Resource = resource
-		return config.ServicePrincipalToken()
-	}
-
-	msiConfig := auth.MSIConfig{
-		Resource: resource,
-	}
-
-	if b.cfg.UserAssignedID != "" {
-		msiConfig.ClientID = b.cfg.UserAssignedID
-	}
-
-	return msiConfig.ServicePrincipalToken()
-}
-
-func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, newOAuthConfigFunc func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error), newServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)) (*adal.ServicePrincipalToken, error) {
-	environmentName := azurePublicCloud
-	if b.cfg.Environment != azureGlobal {
-		environmentName = b.cfg.Environment
-	}
-
-	env, err := azure.EnvironmentFromName(environmentName)
-	if err != nil {
-		return nil, err
-	}
-
-	azClientID := os.Getenv("AZURE_CLIENT_ID")
-	azTenantID := os.Getenv("AZURE_TENANT_ID")
-
-	jwtBytes, err := os.ReadFile(os.Getenv("AZURE_FEDERATED_TOKEN_FILE"))
-	if err != nil {
-		return nil, err
-	}
-
-	jwt := string(jwtBytes)
-
-	oauthConfig, err := newOAuthConfigFunc(env.ActiveDirectoryEndpoint, azTenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	return newServicePrincipalTokenFromFederatedTokenFunc(*oauthConfig, azClientID, jwt, resource)
 }
 
 // List implements chunk.ObjectClient.
@@ -549,30 +366,34 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
 
-	for marker := (azblob.Marker{}); marker.NotDone(); {
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+	containerClient, err := container.NewClient(b.fmtContainerURL(), b.tc, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	maxResults := int32(b.cfg.MaxResults)
+	pager := containerClient.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+		Include:    container.ListBlobsInclude{Metadata: true, Tags: true},
+		MaxResults: &maxResults,
+		Prefix:     &prefix,
+	})
+	for pager.More() {
+		resp, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, nil, err
 		}
 
-		err := loki_instrument.TimeRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
-			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
-			if err != nil {
-				return err
-			}
-
-			marker = listBlob.NextMarker
-
+		err = loki_instrument.TimeRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 			// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-			for _, blobInfo := range listBlob.Segment.BlobItems {
+			for _, blobInfo := range resp.Segment.BlobItems {
 				storageObjects = append(storageObjects, client.StorageObject{
-					Key:        blobInfo.Name,
-					ModifiedAt: blobInfo.Properties.LastModified,
+					Key:        *blobInfo.Name,
+					ModifiedAt: *blobInfo.Properties.LastModified,
 				})
 			}
 
 			// Process the BlobPrefixes so called commonPrefixes or synthetic directories in the listed synthetic directory
-			for _, blobPrefix := range listBlob.Segment.BlobPrefixes {
-				commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(blobPrefix.Name))
+			for _, blobPrefix := range resp.Segment.BlobPrefixes {
+				commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(*blobPrefix.Name))
 			}
 
 			return nil
@@ -580,7 +401,6 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 		if err != nil {
 			return nil, nil, err
 		}
-
 	}
 
 	return storageObjects, commonPrefixes, nil
@@ -588,12 +408,11 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 	return loki_instrument.TimeRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
-		blockBlobURL, err := b.getBlobURL(blobID, false)
+		client, err := b.getBlobClient(blobID)
 		if err != nil {
 			return err
 		}
-
-		_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+		_, err = client.Delete(ctx, nil)
 		return err
 	})
 }
@@ -650,12 +469,7 @@ func (b *BlobStorage) fmtContainerURL() string {
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
-	var e azblob.StorageError
-	if errors.As(err, &e) && e.ServiceCode() == azblob.ServiceCodeBlobNotFound {
-		return true
-	}
-
-	return false
+	return bloberror.HasCode(err, bloberror.BlobNotFound)
 }
 
 var errConnectionString = errors.New("connection string is either blank or malformed. The expected connection string " +
