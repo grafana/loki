@@ -5169,7 +5169,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
-  "serviceType": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -5454,10 +5454,10 @@ null
 		</tr>
 		<tr>
 			<td>indexGateway.serviceType</td>
-			<td>object</td>
+			<td>string</td>
 			<td>Service type for index-gateway service</td>
 			<td><pre lang="json">
-{}
+"ClusterIP"
 </pre>
 </td>
 		</tr>
