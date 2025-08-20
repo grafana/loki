@@ -560,9 +560,69 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ---
 
-## Section 10: Fallback & Feature Gating
+## Section 10: Error Handling & v1 Compatibility ✅ COMPLETE
 
-### 10.1 Fallback for Line Format
+### 10.1 Preserve v1 Error Column Names
+
+**Behavior**: The v2 parser should preserve the `__error__` and `__error_details__` column naming convention from v1 for compatibility with existing queries and dashboards.
+
+**Integration with v2 Engine**:
+- When parsing errors occur, they should be collected in a special column
+- The column should be named `__error__` to match v1 behavior
+- Error details should use the same format as v1 for consistency
+
+**v1 Error Name Mapping**:
+The v2 tokenizer needs to match v1 error names:
+- "malformed key-value pair" → v1 uses specific error text
+- "invalid UTF-8" → v1 error format
+- "unclosed quote" → v1 error format
+- "quote in key" → v1 may have different handling
+
+**Test Requirements**:
+- Compare error messages between v1 and v2 for same input
+- Ensure `__error__` column is created when errors occur
+- Verify `__error_details__` contains position information
+
+**Implementation Notes**:
+- The tokenizer currently collects errors with position information
+- These errors need to be formatted to match v1's error strings
+- Selective error reporting (only for requested keys) may differ from v1
+- Structural errors (unclosed quotes) are always reported
+
+**✅ Implemented**:
+- Updated `logfmt_tokenizer.go` to directly produce v1-compatible error messages:
+  - Double equals: "logfmt syntax error at pos X : unexpected '='"
+  - Quote in key: "logfmt syntax error at pos X : unexpected '\"'" or "unexpected '''" 
+  - Invalid UTF-8 in key: "logfmt syntax error at pos X : invalid key"
+  - Unclosed quote: "logfmt syntax error at pos X : unterminated quoted value"
+  - Invalid UTF-8 in value: "logfmt syntax error : invalid UTF-8 in value for key 'X'"
+- Error label will need to be set to "LogfmtParserErr" when integrating with v2 engine
+- Updated all tests in `logfmt_tokenizer_test.go` to expect v1 error formats
+
+### 10.2 Parse Error Column in Columnar Format
+
+**Behavior**: In the v2 engine's columnar format, parse errors should populate the `__error__` column while still returning partial results in other columns.
+
+**Column Behavior**:
+```
+Input: "level=info bad==value status=200"
+Columns:
+  level:     ["info"]
+  bad:       [""]        // Empty value due to error
+  status:    ["200"]
+  __error__: ["malformed input: key 'bad' has unexpected '==' at position 11"]
+```
+
+**Selective Error Reporting**:
+- When specific keys are requested, only report errors for those keys
+- When no keys specified (get all), report all errors
+- Structural errors (unclosed quotes) always reported regardless
+
+---
+
+## Section 11: Fallback & Feature Gating
+
+### 11.1 Fallback for Line Format
 
 **Behavior**: Queries with line_format after logfmt should fallback to v1.
 
@@ -578,7 +638,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Return special fallback error/flag
 - Engine routes to v1
 
-### 10.2 Fallback for Unknown Keys
+### 11.2 Fallback for Unknown Keys
 
 **Behavior**: When key collection returns empty/unknown, should fallback.
 
@@ -593,7 +653,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Trigger fallback
 - Clear error message
 
-### 10.3 Feature Gate Disables v2 Logfmt
+### 11.3 Feature Gate Disables v2 Logfmt
 
 **Behavior**: When feature flag off, all logfmt queries use v1.
 
@@ -609,7 +669,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Check early in planner
 - Skip v2 logic when disabled
 
-### 10.4 Non-Metric Queries Always Use v1
+### 11.4 Non-Metric Queries Always Use v1
 
 **Behavior**: Log queries (non-metric) should use v1 even with flag on.
 
