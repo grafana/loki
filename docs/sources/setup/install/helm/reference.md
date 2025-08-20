@@ -7018,6 +7018,47 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.kedaAutoscaling</td>
+			<td>object</td>
+			<td>KEDA Autoscaling configuration</td>
+			<td><pre lang="json">
+{
+  "authentication": {
+    "authModes": "",
+    "enabled": false,
+    "secretTargetRef": []
+  },
+  "ignoreNullValues": true,
+  "pollingInterval": 30,
+  "prometheusAddress": "",
+  "unsafeSsl": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.kedaAutoscaling.authentication</td>
+			<td>object</td>
+			<td>KEDA trigger authentication settings. ref: https://keda.sh/docs/2.16/scalers/pulsar/#authentication-parameters</td>
+			<td><pre lang="json">
+{
+  "authModes": "",
+  "enabled": false,
+  "secretTargetRef": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.kedaAutoscaling.prometheusAddress</td>
+			<td>string</td>
+			<td>A Prometheus-compatible URL. Metrics for the Loki pods are expected in this server.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.limits_config</td>
 			<td>object</td>
 			<td>Limits config</td>
