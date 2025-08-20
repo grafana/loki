@@ -88,12 +88,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -129,7 +129,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(metastore.StorageConfig{}, s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {
@@ -194,7 +194,7 @@ func (s *DataObjStore) buildIndex() error {
 		}
 		defer closer.Close()
 
-		key, err := index.ObjectKey(context.Background(), s.tenantID, obj)
+		key, err := index.ObjectKey(context.Background(), obj)
 		if err != nil {
 			return fmt.Errorf("failed to create object key: %w", err)
 		}

@@ -40,7 +40,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
 		tocBuilder.Reset()
 
-		writer := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+		writer := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
 				Tenant:  tenantID,
@@ -74,7 +74,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), tableOfContentsPath(tenantID, unixTime(0), ""))
+		reader, err := bucket.Get(context.Background(), tableOfContentsPath(unixTime(0)))
 		require.NoError(t, err)
 
 		object, err := io.ReadAll(reader)
@@ -111,7 +111,7 @@ func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, obj *dat
 
 	var (
 		bucket = objstore.NewInMemBucket()
-		path   = tableOfContentsPath(tenantID, window, "")
+		path   = tableOfContentsPath(window)
 	)
 
 	if obj != nil && obj.Size() > 0 {

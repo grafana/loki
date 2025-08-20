@@ -31,7 +31,7 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 		EnableV2Engine: true,
 		BatchSize:      512,
 		RangeConfig:    rangeio.DefaultConfig,
-	}, metastore.StorageConfig{})
+	}, metastore.Config{})
 }
 
 // NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
@@ -41,12 +41,12 @@ func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataO
 		EnableV2Engine: true,
 		BatchSize:      512,
 		RangeConfig:    rangeio.DefaultConfig,
-	}, metastore.StorageConfig{
+	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
 }
 
-func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.StorageConfig) (*DataObjV2EngineStore, error) {
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket

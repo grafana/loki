@@ -25,8 +25,8 @@ func TestStore_SelectSeries(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	now := setupTestData(t, builder)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {
@@ -170,8 +170,13 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
+<<<<<<< HEAD
 	now := setupTestData(ctx, t, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+=======
+	now := setupTestData(t, builder)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+>>>>>>> 032fd55624 (Connect up the index-builder service with the new index objects)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {
@@ -240,8 +245,13 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
+<<<<<<< HEAD
 	now := setupTestData(ctx, t, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+=======
+	now := setupTestData(t, builder)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+>>>>>>> 032fd55624 (Connect up the index-builder service with the new index objects)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {

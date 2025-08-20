@@ -137,7 +137,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(bucket, logger)
 	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
@@ -238,14 +238,12 @@ func (p *partitionProcessor) initBuilder() error {
 
 func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	event := &metastore.ObjectWrittenEvent{
-		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
 		WriteTime:  p.clock.Now().Format(time.RFC3339),
 	}
 
 	eventBytes, err := event.Marshal()
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to marshal metastore event", "err", err)
 		return err
 	}
 
@@ -354,7 +352,7 @@ func (p *partitionProcessor) flush() error {
 	}
 
 	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
-		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
+		level.Error(p.logger).Log("msg", "failed to emit metastore event", "err", err)
 		return err
 	}
 
