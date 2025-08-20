@@ -101,7 +101,7 @@ type Config struct {
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
 	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
-	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings"`
+	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings" doc:"description=Default policy stream mappings that are merged with per-tenant mappings."`
 
 	KafkaEnabled              bool `yaml:"kafka_writes_enabled"`
 	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
