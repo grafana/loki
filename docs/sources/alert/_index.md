@@ -21,9 +21,35 @@ There are two types of alerts in Grafana:
     These alert rules can query a wide range of backend data sources, including multiple data sources in a single alert rule. They support expression-based transformations, advanced alert conditions, images in notifications, handling of error and no data states, and more.
 - **Data-source-managed alerts:** These alert rules can only query Prometheus-based data sources such as Mimir, Loki, and Prometheus. The rules are stored in the data source.
 
-To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or take a short Learning Journey to learn how to
+To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or take a short Learning Journey.
 
 {{< docs/learning-journeys title="Create log alert rules with Grafana Alerting" url="https://grafana.com/docs/learning-journeys/logs-alert-creation/" >}}
+
+## Loki alerting and recording rules
+
+This section explains how to create Loki managed rules. We support two kinds of rules: [alerting](#alerting-rules) rules and [recording](#recording-rules) rules.
+
+An alert rule consists of one or more queries and expressions that select the data you want to measure. It also contains a condition, which is the threshold that an alert rule must meet or exceed to fire.
+
+Similar to alert rules, recording rules are evaluated periodically. A recording rule pre-computes frequently used or computationally expensive queries, and saves the results as a new time series metric.
+
+Grafana Loki includes a component called the ruler. The ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
+
+This example configuration sources rules from a local disk. [Ruler storage](#ruler-storage) provides further details.
+
+```yaml
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  rule_path: /tmp/scratch
+  alertmanager_url: http://localhost
+  ring:
+    kvstore:
+      store: inmemory
+  enable_api: true
+```
 
 ## Use cases
 
@@ -58,32 +84,6 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 {{< admonition type="note" >}}
 As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])`.
 {{< /admonition >}}
-
-## Loki alerting and recording rules
-
-This section explains how to create Loki managed rules. We support two kinds of rules: [alerting](#alerting-rules) rules and [recording](#recording-rules) rules.
-
-An alert rule consists of one or more queries and expressions that select the data you want to measure. It also contains a condition, which is the threshold that an alert rule must meet or exceed to fire.
-
-Similar to alert rules, recording rules are evaluated periodically. A recording rule pre-computes frequently used or computationally expensive queries, and saves the results as a new time series metric.
-
-Grafana Loki includes a component called the ruler. The ruler is responsible for continually evaluating a set of configurable queries and performing an action based on the result.
-
-This example configuration sources rules from a local disk. [Ruler storage](#ruler-storage) provides further details.
-
-```yaml
-ruler:
-  storage:
-    type: local
-    local:
-      directory: /tmp/rules
-  rule_path: /tmp/scratch
-  alertmanager_url: http://localhost
-  ring:
-    kvstore:
-      store: inmemory
-  enable_api: true
-```
 
 ## Alerting Rules
 
