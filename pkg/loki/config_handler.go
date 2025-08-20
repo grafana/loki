@@ -1,12 +1,17 @@
 package loki
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {
@@ -80,9 +85,69 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 	return output, nil
 }
 
-func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+// writeResponse writes the response in JSON or YAML based on Accept header
+func writeResponse(w http.ResponseWriter, r *http.Request, v interface{}) {
+	acceptHeader := r.Header.Get("Accept")
+
+	// Check if client accepts JSON
+	if strings.Contains(acceptHeader, "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+
+		// For JSON, we always convert through YAML first to ensure consistent behavior:
+		// 1. It handles function fields gracefully (via yaml:"-" tags)
+		// 2. It produces consistent output whether the input is a struct or map
+		// 3. It respects the same field visibility rules as YAML output
+
+		var dataToMarshal any
+
+		// Check if v is already a map (from diff mode)
+		if mapData, isMap := v.(map[any]any); isMap {
+			// Already a map, just convert to JSON-compatible format
+			dataToMarshal = convertToJSONMap(mapData)
+		} else {
+			// Convert struct to map via YAML roundtrip
+			mapData, err := yamlMarshalUnmarshal(v)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			dataToMarshal = convertToJSONMap(mapData)
+		}
+
+		data, err := json.Marshal(dataToMarshal)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(data)
+	} else {
+		// Default to YAML for backward compatibility
+		writeYAMLResponse(w, v)
+	}
+}
+
+// convertToJSONMap recursively converts map[interface{}]interface{} to map[string]interface{}
+func convertToJSONMap(v any) any {
+	switch x := v.(type) {
+	case map[any]any:
+		m := make(map[string]any)
+		for k, v := range x {
+			if ks, ok := k.(string); ok {
+				m[ks] = convertToJSONMap(v)
+			}
+		}
+		return m
+	case []any:
+		for i, v := range x {
+			x[i] = convertToJSONMap(v)
+		}
+	}
+	return v
+}
+
+func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var output interface{}
+		var output any
 		switch r.URL.Query().Get("mode") {
 		case "diff":
 			defaultCfgObj, err := yamlMarshalUnmarshal(defaultCfg)
@@ -114,24 +179,34 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 	}
 }
 
-func filterLimitFields(limits any, allowlist []string) (any, error) {
-	if len(allowlist) == 0 {
-		return limits, nil
-	}
-
-	limitsMap, err := yamlMarshalUnmarshal(limits)
+func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
+	// Convert limits to map via JSON marshaling to get proper field names
+	// This avoids YAML conversion and gives us the JSON field names directly
+	jsonBytes, err := json.Marshal(limits)
 	if err != nil {
 		return nil, err
 	}
 
+	var limitsMap map[string]any
+	if err := json.Unmarshal(jsonBytes, &limitsMap); err != nil {
+		return nil, err
+	}
+
+	// If no allowlist, return all fields
+	if len(allowlist) == 0 {
+		return limitsMap, nil
+	}
+
+	// Create allowlist set for O(1) lookup
 	allowSet := make(map[string]bool)
 	for _, field := range allowlist {
 		allowSet[field] = true
 	}
 
-	filtered := make(map[any]any)
+	// Filter to only allowed fields
+	filtered := make(map[string]any)
 	for key, value := range limitsMap {
-		if keyStr, ok := key.(string); ok && allowSet[keyStr] {
+		if allowSet[key] {
 			filtered[key] = value
 		}
 	}
@@ -175,8 +250,61 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+// drilldownConfigHandler returns a handler for the drilldown config endpoint
+func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract tenant ID from request
+		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		// Get tenant limits or defaults
+		var limit *validation.Limits
+		if t.TenantLimits != nil {
+			limit = t.TenantLimits.TenantLimits(user)
+		}
+		if limit == nil && t.Overrides != nil {
+			// There is no limit for this tenant, so we default to the default limits.
+			limit = t.Overrides.DefaultLimits()
+		}
+		if limit == nil {
+			// This should not happen, but we handle it gracefully.
+			http.Error(w, "No default limits configured", http.StatusNotFound)
+			return
+		}
+
+		// Apply allowlist filtering if configured
+		allowlist := t.Cfg.TenantLimitsAllowPublish
+		limitsMap, err := filterLimitFields(limit, allowlist)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Build response
+		version := build.GetVersion().Version
+		if version == "" {
+			version = "unknown"
+		}
+		response := DrilldownConfigResponse{
+			Limits:                 limitsMap,
+			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
+			Version:                version,
+		}
+
+		// Return JSON response
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 // writeYAMLResponse writes some YAML as a HTTP response.
-func writeYAMLResponse(w http.ResponseWriter, v interface{}) {
+func writeYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the
 	// YAML is displayed in the browser instead of offered as a download
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
