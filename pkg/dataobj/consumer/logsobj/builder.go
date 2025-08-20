@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // ErrBuilderFull is returned by [Builder.Append] when the buffer is
@@ -140,7 +141,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig) (*Builder, error) {
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -159,7 +160,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
-		builder: dataobj.NewBuilder(),
+		builder: dataobj.NewBuilder(scratchStore),
 		streams: streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
 		logs: logs.NewBuilder(metrics.logs, logs.BuilderOptions{
 			PageSizeHint:     int(cfg.TargetPageSize),

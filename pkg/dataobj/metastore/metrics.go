@@ -13,16 +13,16 @@ const (
 	statusFailure status = "failure"
 )
 
-type metastoreMetrics struct {
-	metastoreProcessingTime prometheus.Histogram
-	metastoreReplayTime     prometheus.Histogram
-	metastoreEncodingTime   prometheus.Histogram
-	metastoreWriteFailures  *prometheus.CounterVec
+type tocMetrics struct {
+	tocProcessingTime prometheus.Histogram
+	tocReplayTime     prometheus.Histogram
+	tocEncodingTime   prometheus.Histogram
+	tocWriteFailures  *prometheus.CounterVec
 }
 
-func newMetastoreMetrics() *metastoreMetrics {
-	metrics := &metastoreMetrics{
-		metastoreReplayTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+func newTableOfContentsMetrics() *tocMetrics {
+	metrics := &tocMetrics{
+		tocReplayTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_consumer_metastore_replay_seconds",
 			Help:                            "Time taken to replay existing metastore data into the in-memory builder in seconds",
 			Buckets:                         prometheus.DefBuckets,
@@ -30,7 +30,7 @@ func newMetastoreMetrics() *metastoreMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		metastoreEncodingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		tocEncodingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_consumer_metastore_encoding_seconds",
 			Help:                            "Time taken to add the new metadata & encode the new metastore data object in seconds",
 			Buckets:                         prometheus.DefBuckets,
@@ -38,7 +38,7 @@ func newMetastoreMetrics() *metastoreMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		metastoreProcessingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		tocProcessingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_consumer_metastore_processing_seconds",
 			Help:                            "Total time taken to update all metastores for a flushed dataobj in seconds",
 			Buckets:                         prometheus.DefBuckets,
@@ -46,7 +46,7 @@ func newMetastoreMetrics() *metastoreMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		metastoreWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+		tocWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_metastore_writes_total",
 			Help: "Total number of metastore writes",
 		}, []string{"status"}),
@@ -55,12 +55,12 @@ func newMetastoreMetrics() *metastoreMetrics {
 	return metrics
 }
 
-func (p *metastoreMetrics) register(reg prometheus.Registerer) error {
+func (p *tocMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		p.metastoreReplayTime,
-		p.metastoreEncodingTime,
-		p.metastoreProcessingTime,
-		p.metastoreWriteFailures,
+		p.tocReplayTime,
+		p.tocEncodingTime,
+		p.tocProcessingTime,
+		p.tocWriteFailures,
 	}
 
 	for _, collector := range collectors {
@@ -73,12 +73,12 @@ func (p *metastoreMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (p *metastoreMetrics) unregister(reg prometheus.Registerer) {
+func (p *tocMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
-		p.metastoreReplayTime,
-		p.metastoreEncodingTime,
-		p.metastoreProcessingTime,
-		p.metastoreWriteFailures,
+		p.tocReplayTime,
+		p.tocEncodingTime,
+		p.tocProcessingTime,
+		p.tocWriteFailures,
 	}
 
 	for _, collector := range collectors {
@@ -86,25 +86,25 @@ func (p *metastoreMetrics) unregister(reg prometheus.Registerer) {
 	}
 }
 
-func (p *metastoreMetrics) incMetastoreWrites(status status) {
-	p.metastoreWriteFailures.WithLabelValues(string(status)).Inc()
+func (p *tocMetrics) incMetastoreWrites(status status) {
+	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
-func (p *metastoreMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
+func (p *tocMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.metastoreReplayTime.Observe(time.Since(recordTimestamp).Seconds())
+		p.tocReplayTime.Observe(time.Since(recordTimestamp).Seconds())
 	}
 }
 
-func (p *metastoreMetrics) observeMetastoreEncoding(recordTimestamp time.Time) {
+func (p *tocMetrics) observeMetastoreEncoding(recordTimestamp time.Time) {
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.metastoreEncodingTime.Observe(time.Since(recordTimestamp).Seconds())
+		p.tocEncodingTime.Observe(time.Since(recordTimestamp).Seconds())
 	}
 }
 
-func (p *metastoreMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
+func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.metastoreProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
+		p.tocProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
 	}
 }
 

@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -92,6 +91,29 @@ func (ms ExponentialHistogramDataPoint) SetCount(v uint64) {
 	ms.orig.Count = v
 }
 
+// Sum returns the sum associated with this ExponentialHistogramDataPoint.
+func (ms ExponentialHistogramDataPoint) Sum() float64 {
+	return ms.orig.GetSum()
+}
+
+// HasSum returns true if the ExponentialHistogramDataPoint contains a
+// Sum value, false otherwise.
+func (ms ExponentialHistogramDataPoint) HasSum() bool {
+	return ms.orig.Sum_ != nil
+}
+
+// SetSum replaces the sum associated with this ExponentialHistogramDataPoint.
+func (ms ExponentialHistogramDataPoint) SetSum(v float64) {
+	ms.state.AssertMutable()
+	ms.orig.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: v}
+}
+
+// RemoveSum removes the sum associated with this ExponentialHistogramDataPoint.
+func (ms ExponentialHistogramDataPoint) RemoveSum() {
+	ms.state.AssertMutable()
+	ms.orig.Sum_ = nil
+}
+
 // Scale returns the scale associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Scale() int32 {
 	return ms.orig.Scale
@@ -124,11 +146,6 @@ func (ms ExponentialHistogramDataPoint) Negative() ExponentialHistogramDataPoint
 	return newExponentialHistogramDataPointBuckets(&ms.orig.Negative, ms.state)
 }
 
-// Exemplars returns the Exemplars associated with this ExponentialHistogramDataPoint.
-func (ms ExponentialHistogramDataPoint) Exemplars() ExemplarSlice {
-	return newExemplarSlice(&ms.orig.Exemplars, ms.state)
-}
-
 // Flags returns the flags associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Flags() DataPointFlags {
 	return DataPointFlags(ms.orig.Flags)
@@ -140,27 +157,9 @@ func (ms ExponentialHistogramDataPoint) SetFlags(v DataPointFlags) {
 	ms.orig.Flags = uint32(v)
 }
 
-// Sum returns the sum associated with this ExponentialHistogramDataPoint.
-func (ms ExponentialHistogramDataPoint) Sum() float64 {
-	return ms.orig.GetSum()
-}
-
-// HasSum returns true if the ExponentialHistogramDataPoint contains a
-// Sum value, false otherwise.
-func (ms ExponentialHistogramDataPoint) HasSum() bool {
-	return ms.orig.Sum_ != nil
-}
-
-// SetSum replaces the sum associated with this ExponentialHistogramDataPoint.
-func (ms ExponentialHistogramDataPoint) SetSum(v float64) {
-	ms.state.AssertMutable()
-	ms.orig.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: v}
-}
-
-// RemoveSum removes the sum associated with this ExponentialHistogramDataPoint.
-func (ms ExponentialHistogramDataPoint) RemoveSum() {
-	ms.state.AssertMutable()
-	ms.orig.Sum_ = nil
+// Exemplars returns the Exemplars associated with this ExponentialHistogramDataPoint.
+func (ms ExponentialHistogramDataPoint) Exemplars() ExemplarSlice {
+	return newExemplarSlice(&ms.orig.Exemplars, ms.state)
 }
 
 // Min returns the min associated with this ExponentialHistogramDataPoint.
@@ -223,107 +222,5 @@ func (ms ExponentialHistogramDataPoint) SetZeroThreshold(v float64) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogramDataPoint) CopyTo(dest ExponentialHistogramDataPoint) {
 	dest.state.AssertMutable()
-	copyOrigExponentialHistogramDataPoint(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ExponentialHistogramDataPoint) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.Attributes) > 0 {
-		dest.WriteObjectField("attributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Attributes, ms.state), dest)
-	}
-	if ms.orig.StartTimeUnixNano != 0 {
-		dest.WriteObjectField("startTimeUnixNano")
-		dest.WriteUint64(ms.orig.StartTimeUnixNano)
-	}
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	if ms.orig.Count != uint64(0) {
-		dest.WriteObjectField("count")
-		dest.WriteUint64(ms.orig.Count)
-	}
-	if ms.orig.Scale != int32(0) {
-		dest.WriteObjectField("scale")
-		dest.WriteInt32(ms.orig.Scale)
-	}
-	if ms.orig.ZeroCount != uint64(0) {
-		dest.WriteObjectField("zeroCount")
-		dest.WriteUint64(ms.orig.ZeroCount)
-	}
-	dest.WriteObjectField("positive")
-	ms.Positive().marshalJSONStream(dest)
-	dest.WriteObjectField("negative")
-	ms.Negative().marshalJSONStream(dest)
-	if len(ms.orig.Exemplars) > 0 {
-		dest.WriteObjectField("exemplars")
-		ms.Exemplars().marshalJSONStream(dest)
-	}
-	if ms.orig.Flags != 0 {
-		dest.WriteObjectField("flags")
-		dest.WriteUint32(ms.orig.Flags)
-	}
-	if ms.HasSum() {
-		dest.WriteObjectField("sum")
-		dest.WriteFloat64(ms.Sum())
-	}
-	if ms.HasMin() {
-		dest.WriteObjectField("min")
-		dest.WriteFloat64(ms.Min())
-	}
-	if ms.HasMax() {
-		dest.WriteObjectField("max")
-		dest.WriteFloat64(ms.Max())
-	}
-	if ms.orig.ZeroThreshold != float64(0.0) {
-		dest.WriteObjectField("zeroThreshold")
-		dest.WriteFloat64(ms.orig.ZeroThreshold)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigExponentialHistogramDataPoint(dest, src *otlpmetrics.ExponentialHistogramDataPoint) {
-	dest.Attributes = internal.CopyOrigMap(dest.Attributes, src.Attributes)
-	dest.StartTimeUnixNano = src.StartTimeUnixNano
-	dest.TimeUnixNano = src.TimeUnixNano
-	dest.Count = src.Count
-	dest.Scale = src.Scale
-	dest.ZeroCount = src.ZeroCount
-	copyOrigExponentialHistogramDataPointBuckets(&dest.Positive, &src.Positive)
-	copyOrigExponentialHistogramDataPointBuckets(&dest.Negative, &src.Negative)
-	dest.Exemplars = copyOrigExemplarSlice(dest.Exemplars, src.Exemplars)
-	dest.Flags = src.Flags
-	if srcSum, ok := src.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum); ok {
-		destSum, ok := dest.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum)
-		if !ok {
-			destSum = &otlpmetrics.ExponentialHistogramDataPoint_Sum{}
-			dest.Sum_ = destSum
-		}
-		destSum.Sum = srcSum.Sum
-	} else {
-		dest.Sum_ = nil
-	}
-	if srcMin, ok := src.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min); ok {
-		destMin, ok := dest.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min)
-		if !ok {
-			destMin = &otlpmetrics.ExponentialHistogramDataPoint_Min{}
-			dest.Min_ = destMin
-		}
-		destMin.Min = srcMin.Min
-	} else {
-		dest.Min_ = nil
-	}
-	if srcMax, ok := src.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max); ok {
-		destMax, ok := dest.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max)
-		if !ok {
-			destMax = &otlpmetrics.ExponentialHistogramDataPoint_Max{}
-			dest.Max_ = destMax
-		}
-		destMax.Max = srcMax.Max
-	} else {
-		dest.Max_ = nil
-	}
-	dest.ZeroThreshold = src.ZeroThreshold
+	internal.CopyOrigExponentialHistogramDataPoint(dest.orig, ms.orig)
 }

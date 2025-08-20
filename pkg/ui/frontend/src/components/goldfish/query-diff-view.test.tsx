@@ -29,6 +29,7 @@ describe('QueryDiffView - Trace ID Display', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -60,6 +61,10 @@ describe('QueryDiffView - Trace ID Display', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -71,6 +76,8 @@ describe('QueryDiffView - Trace ID Display', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
     };
 
     const { container } = render(<QueryDiffView query={queryWithTraceIDs} />);
@@ -80,8 +87,8 @@ describe('QueryDiffView - Trace ID Display', () => {
     if (trigger) await user.click(trigger);
 
     // Test that trace IDs are displayed
-    expect(screen.getByText('trace-123-abc')).toBeInTheDocument();
-    expect(screen.getByText('trace-456-def')).toBeInTheDocument();
+    expect(screen.getByText('span-abc-123')).toBeInTheDocument();
+    expect(screen.getByText('span-def-456')).toBeInTheDocument();
   });
 
   it('displays "N/A" when trace IDs are null', async () => {
@@ -105,6 +112,10 @@ describe('QueryDiffView - Trace ID Display', () => {
       ...baseQuery,
       cellATraceID: 'trace-only-a',
       cellBTraceID: null,
+      cellASpanID: 'span-only-a',
+      cellBSpanID: null,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
     };
 
     const { container } = render(<QueryDiffView query={queryWithCellATrace} />);
@@ -113,7 +124,7 @@ describe('QueryDiffView - Trace ID Display', () => {
     const trigger = container.querySelector('[type="button"]');
     if (trigger) await user.click(trigger);
 
-    expect(screen.getByText('trace-only-a')).toBeInTheDocument();
+    expect(screen.getByText('span-only-a')).toBeInTheDocument();
     // Should still have at least one N/A for Cell B
     expect(screen.getByText('N/A')).toBeInTheDocument();
   });
@@ -155,6 +166,7 @@ describe('QueryDiffView - Trace ID Links', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -186,6 +198,10 @@ describe('QueryDiffView - Trace ID Links', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -197,6 +213,8 @@ describe('QueryDiffView - Trace ID Links', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
       cellATraceLink: 'https://grafana.example.com/explore?trace-123-abc',
       cellBTraceLink: 'https://grafana.example.com/explore?trace-456-def',
     };
@@ -208,8 +226,8 @@ describe('QueryDiffView - Trace ID Links', () => {
     if (trigger) await user.click(trigger);
 
     // Find the links by their text content
-    const cellALink = screen.getByText('trace-123-abc');
-    const cellBLink = screen.getByText('trace-456-def');
+    const cellALink = screen.getByText('span-abc-123');
+    const cellBLink = screen.getByText('span-def-456');
 
     // Test that they are wrapped in anchor tags
     expect(cellALink.closest('a')).toBeInTheDocument();
@@ -243,6 +261,10 @@ describe('QueryDiffView - Trace ID Links', () => {
       ...baseQuery,
       cellATraceID: 'trace-exists',
       cellBTraceID: null,
+      cellASpanID: 'span-exists',
+      cellBSpanID: null,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
       cellATraceLink: 'https://grafana.example.com/explore?trace-exists',
       cellBTraceLink: null,
     };
@@ -254,7 +276,7 @@ describe('QueryDiffView - Trace ID Links', () => {
     if (trigger) await user.click(trigger);
 
     // The existing trace ID should be a link
-    const traceLink = screen.getByText('trace-exists');
+    const traceLink = screen.getByText('span-exists');
     expect(traceLink.closest('a')).toBeInTheDocument();
 
     // The N/A should not be a link
@@ -280,6 +302,7 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -311,6 +334,10 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
     cellBStatusCode: 200,
     cellATraceID: null,
     cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -322,6 +349,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
     };
 
     const { container } = render(<QueryDiffView query={queryWithTraceIDs} />);
@@ -344,6 +373,8 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
       ...baseQuery,
       cellATraceID: 'trace-123-abc',
       cellBTraceID: 'trace-456-def',
+      cellASpanID: 'span-abc-123',
+      cellBSpanID: 'span-def-456',
       cellATraceLink: 'https://grafana.example.com/explore?trace-123-abc',
       cellBTraceLink: 'https://grafana.example.com/explore?trace-456-def',
     };
@@ -354,7 +385,7 @@ describe('QueryDiffView - Trace ID Visual Indicators', () => {
     const trigger = container.querySelector('[type="button"]');
     if (trigger) await user.click(trigger);
 
-    const traceLink = screen.getByText('trace-123-abc').closest('a');
+    const traceLink = screen.getByText('span-abc-123').closest('a');
     
     // Check that link has appropriate styling classes
     expect(traceLink).toHaveClass('text-blue-600');
@@ -367,6 +398,7 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
   const baseQuery: SampledQuery = {
     correlationId: 'test-correlation-1',
     tenantId: 'test-tenant',
+    user: 'test.user@example.com',
     query: 'sum(rate(http_requests_total[5m]))',
     queryType: 'instant',
     startTime: '2024-01-01T00:00:00Z',
@@ -398,6 +430,10 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
     cellBStatusCode: 200,
     cellATraceID: 'trace-123',
     cellBTraceID: 'trace-456',
+    cellASpanID: 'span-123',
+    cellBSpanID: 'span-456',
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
     sampledAt: '2024-01-01T00:00:00Z',
     createdAt: '2024-01-01T00:00:00Z',
     comparisonStatus: 'match',
@@ -510,5 +546,129 @@ describe('QueryDiffView - Namespace Display in Cell Labels', () => {
     expect(screen.queryByText(/Cell A \(/)).not.toBeInTheDocument();
     // Cell B should have namespace
     expect(screen.getByText('Cell B (loki-ops-003)')).toBeInTheDocument();
+  });
+});
+
+describe('QueryDiffView - New Engine Badge Display', () => {
+  beforeEach(() => {
+    mockUseFeatureFlags.mockReturnValue({
+      features: {
+        goldfish: {
+          enabled: true,
+        },
+      },
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  const baseQuery: SampledQuery = {
+    correlationId: 'test-correlation-1',
+    tenantId: 'test-tenant',
+    user: 'test.user@example.com',
+    query: 'sum(rate(http_requests_total[5m]))',
+    queryType: 'instant',
+    startTime: '2024-01-01T00:00:00Z',
+    endTime: '2024-01-01T01:00:00Z',
+    stepDuration: null,
+    cellAExecTimeMs: 100,
+    cellBExecTimeMs: 120,
+    cellAQueueTimeMs: 5,
+    cellBQueueTimeMs: 6,
+    cellABytesProcessed: 1000,
+    cellBBytesProcessed: 1100,
+    cellALinesProcessed: 50,
+    cellBLinesProcessed: 55,
+    cellABytesPerSecond: 1000,
+    cellBBytesPerSecond: 1100,
+    cellALinesPerSecond: 50,
+    cellBLinesPerSecond: 55,
+    cellAEntriesReturned: 10,
+    cellBEntriesReturned: 10,
+    cellASplits: 1,
+    cellBSplits: 1,
+    cellAShards: 2,
+    cellBShards: 2,
+    cellAResponseHash: 'hash-a',
+    cellBResponseHash: 'hash-a',
+    cellAResponseSize: 500,
+    cellBResponseSize: 550,
+    cellAStatusCode: 200,
+    cellBStatusCode: 200,
+    cellATraceID: null,
+    cellBTraceID: null,
+    cellASpanID: null,
+    cellBSpanID: null,
+    cellAUsedNewEngine: false,
+    cellBUsedNewEngine: false,
+    sampledAt: '2024-01-01T00:00:00Z',
+    createdAt: '2024-01-01T00:00:00Z',
+    comparisonStatus: 'match',
+  };
+
+  it('displays new engine badge when either cell used new engine', () => {
+    // Test case 1: Both cells using new engine
+    const bothNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: true,
+    };
+    const { rerender } = render(<QueryDiffView query={bothNewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 2: Only cell A using new engine
+    const onlyANewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: false,
+    };
+    rerender(<QueryDiffView query={onlyANewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 3: Only cell B using new engine
+    const onlyBNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: true,
+    };
+    rerender(<QueryDiffView query={onlyBNewEngine} />);
+    expect(screen.getByText('New Engine')).toBeInTheDocument();
+
+    // Test case 4: Neither cell using new engine
+    const neitherNewEngine: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: false,
+      cellBUsedNewEngine: false,
+    };
+    rerender(<QueryDiffView query={neitherNewEngine} />);
+    expect(screen.queryByText('New Engine')).not.toBeInTheDocument();
+  });
+
+  it('displays engine details for each cell in expanded view', async () => {
+    const user = userEvent.setup();
+    const queryWithEngineInfo: SampledQuery = {
+      ...baseQuery,
+      cellAUsedNewEngine: true,
+      cellBUsedNewEngine: false,
+    };
+
+    const { container } = render(<QueryDiffView query={queryWithEngineInfo} />);
+
+    // Expand the collapsible content to see the engine details
+    const trigger = container.querySelector('[type="button"]');
+    if (trigger) await user.click(trigger);
+
+    // Find the query engine section and verify both cells show their engine status
+    expect(screen.getByText('Query Engine')).toBeInTheDocument();
+    
+    // Look for the engine status text in the expanded view
+    // Cell A should show "New Engine"
+    screen.getAllByText(/Engine/);
+    const textContent = container.textContent || '';
+    
+    // Verify that we can see indications of new engine for Cell A
+    expect(textContent).toContain('New Engine');
+    // Verify that we can see indications of legacy engine for Cell B
+    expect(textContent).toContain('Legacy Engine');
   });
 });

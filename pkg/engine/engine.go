@@ -195,8 +195,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		case syntax.LogSelectorExpr:
 			builder = newStreamsResultBuilder()
 		case syntax.SampleExpr:
-			// assume instant query since logical planning would fail for range queries.
-			builder = newVectorResultBuilder()
+			if params.Step() > 0 {
+				builder = newMatrixResultBuilder()
+			} else {
+				builder = newVectorResultBuilder()
+			}
 		default:
 			// should never happen as we already check the expression type in the logical planner
 			panic(fmt.Sprintf("failed to execute. Invalid exprression type (%T)", params.GetExpression()))

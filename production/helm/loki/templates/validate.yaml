@@ -54,3 +54,9 @@
 {{- fail "Please define loki.storage.bucketNames.admin" }}
 {{- end }}
 {{- end }}
+
+{{- if and .Values.enterprise.enabled .Values.enterprise.provisioner.enabled }}
+{{- if not .Values.enterprise.adminToken.secret }}
+{{- fail "enterprise.adminToken.secret must be set when enterprise.provisioner.enabled is true. Please create an admin token secret and specify its name." }}
+{{- end }}
+{{- end }}

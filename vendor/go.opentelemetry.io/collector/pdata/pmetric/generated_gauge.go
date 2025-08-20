@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // Gauge represents the type of a numeric metric that always exports the "current value" for every data point.
@@ -58,19 +57,5 @@ func (ms Gauge) DataPoints() NumberDataPointSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Gauge) CopyTo(dest Gauge) {
 	dest.state.AssertMutable()
-	copyOrigGauge(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Gauge) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if len(ms.orig.DataPoints) > 0 {
-		dest.WriteObjectField("dataPoints")
-		ms.DataPoints().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigGauge(dest, src *otlpmetrics.Gauge) {
-	dest.DataPoints = copyOrigNumberDataPointSlice(dest.DataPoints, src.DataPoints)
+	internal.CopyOrigGauge(dest.orig, ms.orig)
 }

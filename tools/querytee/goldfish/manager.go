@@ -15,6 +15,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+)
+
+const (
+	unknownUser      = "unknown"
+	unknownQueryType = "unknown"
 )
 
 // Manager coordinates Goldfish sampling and comparison operations.
@@ -116,6 +123,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           extractTenant(req),
+		User:               extractUserFromQueryTags(req, m.logger),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          getQueryType(req.URL.Path),
 		StartTime:          startTime,
@@ -131,6 +139,8 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CellBStatusCode:    cellBResp.StatusCode,
 		CellATraceID:       cellAResp.TraceID,
 		CellBTraceID:       cellBResp.TraceID,
+		CellASpanID:        cellAResp.SpanID,
+		CellBSpanID:        cellBResp.SpanID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
 		SampledAt:          time.Now(),
@@ -159,6 +169,12 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	m.metrics.comparisonDuration.Observe(time.Since(start).Seconds())
 
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
+
+	// Log user extraction debug info
+	user := sample.User
+	if user != "" && user != unknownUser {
+		level.Info(m.logger).Log("msg", "captured user info", "correlation_id", correlationID, "user", user)
+	}
 
 	// Log comparison results with stats
 	logLevel := level.Info
@@ -255,10 +271,11 @@ type ResponseData struct {
 	Size          int64
 	UsedNewEngine bool
 	TraceID       string
+	SpanID        string
 }
 
-// CaptureResponse captures response data for comparison including trace ID
-func CaptureResponse(resp *http.Response, duration time.Duration, traceID string) (*ResponseData, error) {
+// CaptureResponse captures response data for comparison including trace ID and span ID
+func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanID string) (*ResponseData, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -291,6 +308,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID string
 		Size:          size,
 		UsedNewEngine: usedNewEngine,
 		TraceID:       traceID,
+		SpanID:        spanID,
 	}, nil
 }
 
@@ -317,7 +335,7 @@ func getQueryType(path string) string {
 	case "/loki/api/v1/label":
 		return "label_values"
 	default:
-		return "unknown"
+		return unknownQueryType
 	}
 }
 
@@ -350,4 +368,45 @@ func parseDuration(s string) time.Duration {
 	}
 	d, _ := time.ParseDuration(s)
 	return d
+}
+
+func extractUserFromQueryTags(req *http.Request, logger log.Logger) string {
+	tags := httpreq.ExtractQueryTagsFromHTTP(req)
+
+	// Debug logging for user extraction
+	if tags != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "query-tags", tags)
+	}
+
+	// Also check for X-Grafana-User header directly
+	grafanaUser := req.Header.Get("X-Grafana-User")
+	if grafanaUser != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "x-grafana-user", grafanaUser)
+	}
+
+	// Log all headers for debugging
+	level.Debug(logger).Log("goldfish", "user-extraction", "all-headers", fmt.Sprintf("%v", req.Header))
+
+	kvs := httpreq.TagsToKeyValues(tags)
+
+	// Iterate through key-value pairs (keys at even indices, values at odd)
+	for i := 0; i < len(kvs); i += 2 {
+		if i+1 < len(kvs) {
+			key, keyOK := kvs[i].(string)
+			value, valueOK := kvs[i+1].(string)
+			if keyOK && valueOK && key == "user" {
+				level.Debug(logger).Log("goldfish", "user-extraction", "found-user-in-tags", value)
+				return value
+			}
+		}
+	}
+
+	// Fallback to X-Grafana-User if not found in query tags
+	if grafanaUser != "" {
+		level.Debug(logger).Log("goldfish", "user-extraction", "using-x-grafana-user", grafanaUser)
+		return grafanaUser
+	}
+
+	level.Debug(logger).Log("goldfish", "user-extraction", "result", unknownUser)
+	return unknownUser
 }

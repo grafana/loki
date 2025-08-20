@@ -34,8 +34,9 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-addr>:3100/otlp
+    endpoint: http://<loki-addr>/otlp
 ```
+For Grafana Cloud users, refer to [https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/](https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/).
 
 And enable it in `service.pipelines`:
 
@@ -61,7 +62,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>:3100/otlp
+    endpoint: http://<loki-addr>/otlp
 
 service:
   extensions: [basicauth/otlp]
@@ -129,7 +130,8 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 ### Changing the default mapping of OTLP to Loki Format
 
 Loki supports [per tenant](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) OTLP config which lets you change the default mapping of OTLP to Loki format for each tenant.
-It currently only supports changing the storage of Attributes. Here is how the config looks like:
+It currently only supports changing the storage of Attributes.
+Here is what the configuration looks like:
 
 ```yaml
 # OTLP log ingestion configurations
@@ -167,9 +169,13 @@ limits_config:
     [regex: <Regexp>]
 ```
 
+{{< admonition type="note" >}}
+If you are a Grafana Cloud customer, open a support escalation listing the Attributes you want to promote to indexed labels, and any additional context.
+{{< /admonition >}}
+
 Here are some example configs to change the default mapping of OTLP to Loki format:
 
-#### Example 1:
+#### Example 1
 
 ```yaml
 limits_config:
@@ -186,7 +192,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 2:
+#### Example 2
 
 ```yaml
 limits_config:
@@ -203,7 +209,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 3:
+#### Example 3
 
 ```yaml
 limits_config:

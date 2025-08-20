@@ -189,7 +189,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 
 		BatchSize: c.batchSize,
 		CacheSize: int(c.dataobjScanPageCacheSize),
-	})
+	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
 	sortType, sortDirection, err := logsSection.PrimarySortOrder()
 	if err != nil {
@@ -364,7 +364,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       plan.Start,
 		endTs:         plan.End,
@@ -389,7 +389,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}

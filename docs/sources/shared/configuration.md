@@ -1146,11 +1146,6 @@ dataobj:
     [events_per_index: <int> | default = 32]
 
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
-
     storage:
       # Experimental: A prefix to use for storing indexes in object storage.
       # Used to separate the metastore & index files during initial testing.
@@ -2457,6 +2452,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2660,10 +2659,9 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of sub-workers to run for concurrent processing of jobs. Setting it
-  # to 0 will run a subworker per available CPU core.
+  # Number of sub-workers to run for concurrent processing of jobs.
   # CLI flag: -compactor.worker.num-sub-workers
-  [num_sub_workers: <int> | default = 0]
+  [num_sub_workers: <int> | default = 4]
 
 jobs_config:
   deletion:
