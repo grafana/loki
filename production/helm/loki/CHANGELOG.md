@@ -138,7 +138,6 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [ENHANCEMENT] Refactor loki health probes so `.Values.loki.livenessProbe` and `.Values.loki.startupProbe` can be unset with `{}` [#18575](https://github.com/grafana/loki/pull/18575)
 - [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [BUGFIX] Add comments, clarifying ruler setup. [#18607](https://github.com/grafana/loki/pull/18607)
-- [BUGFIX] make loki.storage.bucketNames are optional, if builtin minio is enabled.
 - [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.34.0
