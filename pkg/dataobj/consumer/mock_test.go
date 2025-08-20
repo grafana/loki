@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// A mockBucket implements objstore.Bucket interface for tests.
+// A mockBucket mocks an [objstore.Bucket].
 type mockBucket struct {
 	uploads map[string][]byte
 	mu      sync.Mutex
@@ -96,6 +96,7 @@ func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
 	return nil
 }
 
+// mockBuilder mocks a [logsobj.Builder].
 type mockBuilder struct {
 	builder *logsobj.Builder
 	nextErr error
@@ -141,19 +142,146 @@ func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record)
 	return nil
 }
 
-// A mockProducer implements the producer interface for tests.
-type mockProducer struct {
-	results []*kgo.Record
+// mockKafka mocks a [kgo.Client]. The zero value is usable.
+type mockKafka struct {
+	fetches  []kgo.Fetches
+	produced []*kgo.Record
+
+	// produceFailer is an (optional) callback executed in [Produce] that
+	// can be used to fail producing certain records. If it is non-nil and
+	// returns a non-nil error, the record will be failed, and the error
+	// be passed to the promise.
+	produceFailer func(r *kgo.Record) error
+
+	// Internal, should not be accessed from tests.
+	fetchesIdx int
+	mtx        sync.Mutex
 }
 
-func (m *mockProducer) ProduceSync(_ context.Context, records ...*kgo.Record) kgo.ProduceResults {
-	m.results = append(m.results, records...)
-	return kgo.ProduceResults{
-		{
-			Err: nil,
-		},
+// PollFetches implements [kgo.Client.PollFetches].
+func (m *mockKafka) PollFetches(_ context.Context) kgo.Fetches {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	if m.fetchesIdx >= len(m.fetches) {
+		return kgo.Fetches{}
+	}
+	fetches := m.fetches[m.fetchesIdx]
+	m.fetchesIdx++
+	return fetches
+}
+
+// Produce implements [kgo.Client.Produce].
+func (m *mockKafka) Produce(
+	_ context.Context,
+	r *kgo.Record,
+	promise func(*kgo.Record, error),
+) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	var err error
+	// Check if producing the record should fail.
+	if m.produceFailer != nil {
+		err = m.produceFailer(r)
+	}
+	if err != nil {
+		promise(nil, err)
+		return
+	}
+	m.produced = append(m.produced, r)
+	promise(r, nil)
+}
+
+// ProduceSync implements [kgo.Client.ProduceSync].
+func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.ProduceResults {
+	m.produced = append(m.produced, rs...)
+	return kgo.ProduceResults{{Err: nil}}
+}
+
+// mockPartitionProcessor mocks a [partitionProcessor].
+type mockPartitionProcessor struct {
+	records          []*kgo.Record
+	started, stopped bool
+}
+
+func (m *mockPartitionProcessor) Append(records []*kgo.Record) bool {
+	m.records = append(m.records, records...)
+	return true
+}
+
+func (m *mockPartitionProcessor) start() {
+	m.started = true
+}
+
+func (m *mockPartitionProcessor) stop() {
+	m.stopped = true
+}
+
+// mockPartitionProcessorFactory mocks a [partitionProcessorFactory].
+type mockPartitionProcessorFactory struct {
+	calls int
+}
+
+func (m *mockPartitionProcessorFactory) New(_ context.Context, _ *kgo.Client, _ string, _ int32, _ string, _ int32) processor {
+	m.calls++
+	return &mockPartitionProcessor{}
+}
+
+type mockPartitionProcessorListener struct {
+	processors map[string]map[int32]processor
+}
+
+func (m *mockPartitionProcessorListener) OnRegister(topic string, partition int32, p processor) {
+	if m.processors == nil {
+		m.processors = make(map[string]map[int32]processor)
+	}
+	processorsByTopic, ok := m.processors[topic]
+	if !ok {
+		processorsByTopic = make(map[int32]processor)
+		m.processors[topic] = processorsByTopic
+	}
+	processorsByTopic[partition] = p
+}
+func (m *mockPartitionProcessorListener) OnDeregister(topic string, partition int32) {
+	processorsByTopic, ok := m.processors[topic]
+	if !ok {
+		return
+	}
+	delete(processorsByTopic, partition)
+	if len(processorsByTopic) == 0 {
+		delete(m.processors, topic)
 	}
 }
+
+// mockPartitionProcessorLifecycler mocks a [partitionProcessorLifecycler].
+type mockPartitionProcessorLifecycler struct {
+	processors map[string]map[int32]struct{}
+}
+
+func (m *mockPartitionProcessorLifecycler) Register(_ context.Context, _ *kgo.Client, _ string, _ int32, topic string, partition int32) {
+	if m.processors == nil {
+		m.processors = make(map[string]map[int32]struct{})
+	}
+	processorsByTopic, ok := m.processors[topic]
+	if !ok {
+		processorsByTopic = make(map[int32]struct{})
+		m.processors[topic] = processorsByTopic
+	}
+	processorsByTopic[partition] = struct{}{}
+}
+func (m *mockPartitionProcessorLifecycler) Deregister(_ context.Context, topic string, partition int32) {
+	if m.processors == nil {
+		return
+	}
+	processorsByTopic, ok := m.processors[topic]
+	if !ok {
+		return
+	}
+	delete(processorsByTopic, partition)
+	if len(processorsByTopic) == 0 {
+		delete(m.processors, topic)
+	}
+}
+func (m *mockPartitionProcessorLifecycler) Stop(_ context.Context) {}
 
 type recordedTocEntry struct {
 	DataObjectPath string
