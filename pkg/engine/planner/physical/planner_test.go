@@ -276,6 +276,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 	).Parse(
 		logical.ParserLogfmt,
 		[]string{"level", "status"},
+		nil,
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("level", types.ColumnTypeParsed),

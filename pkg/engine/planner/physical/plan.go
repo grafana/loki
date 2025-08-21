@@ -18,6 +18,7 @@ const (
 	NodeTypeVectorAggregation
 	NodeTypeMerge
 	NodeTypeParse
+	NodeTypeCast
 )
 
 func (t NodeType) String() string {
@@ -40,6 +41,8 @@ func (t NodeType) String() string {
 		return "VectorAggregation"
 	case NodeTypeParse:
 		return "Parse"
+	case NodeTypeCast:
+		return "Cast"
 	default:
 		return "Undefined"
 	}

@@ -22,7 +22,7 @@ func TestConvertLogicalParseToPhysicalParseNode(t *testing.T) {
 			Shard: logical.NewShard(0, 1),
 		},
 	)
-	builder = builder.Parse(logical.ParserLogfmt, []string{"level", "status"})
+	builder = builder.Parse(logical.ParserLogfmt, []string{"level", "status"}, nil)
 	logicalPlan, err := builder.ToPlan()
 	require.NoError(t, err)
 
@@ -73,6 +73,7 @@ func (c *parseNodeCollector) VisitParse(n *ParseNode) error {
 	c.parseNode = n
 	return nil
 }
+func (c *parseNodeCollector) VisitCast(_ *CastNode) error { return nil }
 
 // Mock catalog for testing
 type mockCatalog struct {
