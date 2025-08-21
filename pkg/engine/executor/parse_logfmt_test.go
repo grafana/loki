@@ -11,11 +11,11 @@ import (
 
 func TestBuildLogfmtColumns(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         []string
-		requestedKeys []string
+		name            string
+		input           []string
+		requestedKeys   []string
 		expectedHeaders []string
-		expected      []struct {
+		expected        []struct {
 			values []string
 			nulls  []bool // true means NULL at that position
 		}
@@ -27,7 +27,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"level=info",
 				"level=debug",
 			},
-			requestedKeys: []string{"level"},
+			requestedKeys:   []string{"level"},
 			expectedHeaders: []string{"level"},
 			expected: []struct {
 				values []string
@@ -46,7 +46,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"status=200",
 				"level=info",
 			},
-			requestedKeys: []string{"level"},
+			requestedKeys:   []string{"level"},
 			expectedHeaders: []string{"level"},
 			expected: []struct {
 				values []string
@@ -64,7 +64,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"level=error status=500",
 				"level=info",
 			},
-			requestedKeys: []string{"level", "status"},
+			requestedKeys:   []string{"level", "status"},
 			expectedHeaders: []string{"level", "status"},
 			expected: []struct {
 				values []string
@@ -87,7 +87,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"status==value level=error",   // Double equals error on requested key
 				"level=\"unclosed status=500", // Unclosed quote error
 			},
-			requestedKeys: []string{"level", "status"},
+			requestedKeys:   []string{"level", "status"},
 			expectedHeaders: []string{"level", "status", "__error__", "__error_details__"},
 			expected: []struct {
 				values []string
@@ -120,7 +120,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"level=warn status=304",
 				"level=debug status=201",
 			},
-			requestedKeys: []string{"level", "status"},
+			requestedKeys:   []string{"level", "status"},
 			expectedHeaders: []string{"level", "status"},
 			expected: []struct {
 				values []string
@@ -144,7 +144,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"level=warn code=304",
 				"level=error status=500 method=POST duration=123ms",
 			},
-			requestedKeys: nil, // nil means extract all keys
+			requestedKeys:   nil, // nil means extract all keys
 			expectedHeaders: []string{"code", "duration", "level", "method", "status"},
 			expected: []struct {
 				values []string
@@ -185,7 +185,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"a=1 b=2",
 				"b=3 c=4",
 			},
-			requestedKeys: []string{}, // empty slice also means extract all keys
+			requestedKeys:   []string{}, // empty slice also means extract all keys
 			expectedHeaders: []string{"a", "b", "c"},
 			expected: []struct {
 				values []string
@@ -216,7 +216,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"msg=\"unclosed duration=100ms code=400", // Unclosed quote error
 				"level=debug method=POST",                // Valid line
 			},
-			requestedKeys: nil, // nil means extract all keys
+			requestedKeys:   nil, // nil means extract all keys
 			expectedHeaders: []string{"code", "level", "method", "msg", "status", "__error__", "__error_details__"},
 			expected: []struct {
 				values []string

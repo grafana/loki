@@ -105,7 +105,7 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 			if p.registry != nil {
 				p.registerColumns(inst.Value)
 			}
-			
+
 			nodes, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
@@ -135,7 +135,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 		}
 		// Fall back to original logic if resolution fails
 	}
-	
+
 	// Original conversion logic (used when no registry or as fallback)
 	switch inst := inst.(type) {
 	case *logical.UnaryOp:
@@ -374,12 +374,12 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		RequestedKeys: lp.RequestedKeys,
 	}
 	p.plan.addNode(node)
-	
+
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for i := range children {
 		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
@@ -425,12 +425,12 @@ func (p *Planner) registerColumns(inst logical.Value) {
 		// Register stream labels from selector
 		labels := extractLabelsFromSelector(inst.Selector)
 		if len(labels) > 0 {
-			p.registry.RegisterLabelColumns(labels)
+			_ = p.registry.RegisterLabelColumns(labels)
 		}
 	case *logical.Parse:
 		// Register parsed columns
 		if len(inst.RequestedKeys) > 0 {
-			p.registry.RegisterParsedColumns(inst.RequestedKeys)
+			_ = p.registry.RegisterParsedColumns(inst.RequestedKeys)
 		}
 		// Continue traversing
 		p.registerColumns(inst.Table)
@@ -449,7 +449,7 @@ func (p *Planner) registerColumns(inst logical.Value) {
 	case *logical.VectorAggregation:
 		// Continue traversing
 		p.registerColumns(inst.Table)
-	// Other node types don't have child tables or don't need registration
+		// Other node types don't have child tables or don't need registration
 	}
 }
 
@@ -457,7 +457,7 @@ func (p *Planner) registerColumns(inst logical.Value) {
 func extractLabelsFromSelector(selector logical.Value) []string {
 	labels := make(map[string]bool)
 	extractLabelsRecursive(selector, labels)
-	
+
 	result := make([]string, 0, len(labels))
 	for label := range labels {
 		result = append(result, label)
@@ -474,6 +474,6 @@ func extractLabelsRecursive(val logical.Value, labels map[string]bool) {
 		if v.Ref.Type == types.ColumnTypeLabel {
 			labels[v.Ref.Column] = true
 		}
-	// Literals and other types don't have labels
+		// Literals and other types don't have labels
 	}
 }
