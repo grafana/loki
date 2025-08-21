@@ -94,7 +94,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 
 		// Create the new record
 		newRecord := array.NewRecord(newSchema, allColumns, int64(stringCol.Len()))
-		
+
 		// Release the columns we retained/created
 		for _, col := range allColumns {
 			col.Release()

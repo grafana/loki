@@ -31,7 +31,7 @@ func CollectRequestedKeys(expr syntax.Expr) ([]string, map[string]string) {
 
 	// Use the visitor pattern to walk the AST
 	visitor := &syntax.DepthFirstTraversal{
-		VisitLogfmtParserFn: func(_ syntax.RootVisitor, e *syntax.LogfmtParserExpr) {
+		VisitLogfmtParserFn: func(_ syntax.RootVisitor, _ *syntax.LogfmtParserExpr) {
 			foundLogfmt = true
 		},
 		VisitLabelFilterFn: func(_ syntax.RootVisitor, e *syntax.LabelFilterExpr) {
@@ -109,21 +109,27 @@ func CollectRequestedKeys(expr syntax.Expr) ([]string, map[string]string) {
 	return keys, hints
 }
 
+const (
+	typeHintFloat64  = "float64"
+	typeHintInt64    = "int64"
+	typeHintDuration = "duration"
+)
+
 // getUnwrapTypeHint determines the type hint based on the unwrap operation
 func getUnwrapTypeHint(unwrap *syntax.UnwrapExpr) string {
 	if unwrap == nil {
-		return "float64"
+		return typeHintFloat64
 	}
 
 	// Check for conversion operation like bytes() or duration()
 	if unwrap.Operation != "" {
 		switch unwrap.Operation {
 		case "bytes":
-			return "int64"
-		case "duration", "duration_seconds":
-			return "duration"
+			return typeHintInt64
+		case typeHintDuration, "duration_seconds":
+			return typeHintDuration
 		default:
-			return "float64"
+			return typeHintFloat64
 		}
 	}
 
@@ -131,11 +137,10 @@ func getUnwrapTypeHint(unwrap *syntax.UnwrapExpr) string {
 	// This is a heuristic for fields like "bytes" or "duration"
 	switch unwrap.Identifier {
 	case "bytes":
-		return "int64"
-	case "duration":
-		return "duration"
+		return typeHintInt64
+	case typeHintDuration:
+		return typeHintDuration
 	default:
-		return "float64"
+		return typeHintFloat64
 	}
 }
-
