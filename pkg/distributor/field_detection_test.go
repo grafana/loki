@@ -517,16 +517,68 @@ func Test_DetectLogLevelFromStructuredMetadata(t *testing.T) {
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
 		})
 
-	entry := logproto.Entry{
-		Line: "this is a log line",
-		StructuredMetadata: push.LabelsAdapter{
-			{Name: "severity_text", Value: "info"},
-			{Name: "severity_number", Value: "9"},
+	for _, tc := range []struct {
+		name             string
+		entry            logproto.Entry
+		expectedLogLevel string
+	}{
+		{
+			name: "severity_number",
+			entry: logproto.Entry{
+				Line: "this is a log line",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "severity_number", Value: "9"},
+				},
+			},
+			expectedLogLevel: constants.LogLevelInfo,
 		},
+		{
+			name: "severity_number",
+			entry: logproto.Entry{
+				Line: "this is a log line",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "severity_number", Value: "1"},
+				},
+			},
+			expectedLogLevel: constants.LogLevelTrace,
+		},
+		{
+			name: "severity_number",
+			entry: logproto.Entry{
+				Line: "this is a log line",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "severity_number", Value: "13"},
+				},
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "severity_number",
+			entry: logproto.Entry{
+				Line: "this is a log line",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "severity_number", Value: "21"},
+				},
+			},
+			expectedLogLevel: constants.LogLevelFatal,
+		},
+		{
+			name: "severity_number",
+			entry: logproto.Entry{
+				Line: "this is a log line",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "severity_number", Value: "0"},
+				},
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			labels := logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata)
+			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, labels)
+			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
+		})
 	}
-	labels := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-	detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, labels)
-	require.Equal(t, constants.LogLevelInfo, detectedLogLevel)
 }
 
 func Test_DetectGenericFields_Enabled(t *testing.T) {
