@@ -401,56 +401,75 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ---
 
-## Section 7: Column Resolution & Binding
+## Section 7: Column Resolution & Binding ✅
 
-### 7.1 Register Parsed Columns in Catalog
+### 7.1 Register Parsed Columns in Catalog ✅
 
 **Behavior**: Parsed columns should be registered for expression resolution.
 
-**Test** (NEW):
+**Test** (NEW): ✅
 - File: `pkg/engine/planner/physical/catalog_test.go`
 - Add parsed column "level" to catalog
 - Resolve identifier "level"
 - Assert resolves to ColumnTypeParsed
 
-**Expected Failure**: Parsed columns not in catalog
+**Expected Failure**: Parsed columns not in catalog ✅
 
-**Implementation**:
+**Implementation**: ✅
 - Update catalog to track parsed columns
 - Register during planning phase
 - Set correct ColumnType
 
-### 7.2 Resolve Parsed Columns in Filter Expressions
+### 7.2 Resolve Parsed Columns in Filter Expressions ✅
 
 **Behavior**: Filter expressions should resolve parsed column references.
 
-**Test** (NEW):
+**Test** (NEW): ✅
 - Create filter: level="error"
 - With "level" as parsed column
 - Assert expression has ColumnExpr with ColumnTypeParsed
 
-**Expected Failure**: Identifier not resolved
+**Expected Failure**: Identifier not resolved ✅
 
-**Implementation**:
+**Implementation**: ✅
 - Update expression builder
 - Check parsed columns during resolution
 - Create appropriate ColumnExpr
 
-### 7.3 Ambiguous Column Resolution
+### 7.3 Ambiguous Column Resolution ✅
 
 **Behavior**: When column exists as both label and parsed, parsed should win.
 
-**Test** (NEW):
+**Test** (NEW): ✅
 - Register "app" as both label and parsed column
 - Resolve "app"
 - Assert resolves to parsed (higher precedence)
 
-**Expected Failure**: Wrong precedence
+**Expected Failure**: Wrong precedence ✅
 
-**Implementation**:
+**Implementation**: ✅
 - Use ColumnTypePrecedence
 - Parsed has higher precedence than Label
 - Return highest precedence match
+
+### 7.4 Parse Node Registers Columns During Planning ✅
+
+**Behavior**: When the physical planner creates a ParseNode, it should register the parsed columns with the column registry so downstream operations can resolve them.
+
+**Test** (NEW): ✅
+- Create logical plan with Parse instruction followed by Select with filter
+- During physical planning, Parse should register its columns
+- Filter expressions in Select should resolve parsed columns correctly
+- Assert end-to-end: Parse → registered columns → resolved filter
+
+**Expected Failure**: ParseNode doesn't interact with registry ✅
+
+**Implementation**: ✅
+- Physical planner maintains a ColumnRegistry during planning
+- Pre-pass traversal to register all columns before conversion
+- When processing Parse instruction, register requested keys
+- Pass registry to expression resolver for downstream nodes
+- Ensure registry is threaded through planning context
 
 ---
 
