@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -95,5 +96,29 @@ func TestExecutor_Projection(t *testing.T) {
 		pipeline := c.executeProjection(ctx, &physical.Projection{}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "projection expects exactly one input, got 2")
+	})
+}
+
+func TestExecutor_Parse(t *testing.T) {
+	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
+		ctx := t.Context()
+		c := &Context{}
+		pipeline := c.executeParse(ctx, &physical.ParseNode{
+			Kind:          logical.ParserLogfmt,
+			RequestedKeys: []string{"level", "status"},
+		}, nil)
+		err := pipeline.Read(ctx)
+		require.ErrorContains(t, err, EOF.Error())
+	})
+
+	t.Run("multiple inputs result in error", func(t *testing.T) {
+		ctx := t.Context()
+		c := &Context{}
+		pipeline := c.executeParse(ctx, &physical.ParseNode{
+			Kind:          logical.ParserLogfmt,
+			RequestedKeys: []string{"level"},
+		}, []Pipeline{emptyPipeline(), emptyPipeline()})
+		err := pipeline.Read(ctx)
+		require.ErrorContains(t, err, "parse expects exactly one input, got 2")
 	})
 }
