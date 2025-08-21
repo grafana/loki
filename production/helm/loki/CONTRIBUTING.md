@@ -21,7 +21,7 @@ We encourage contributions that:
 
 To keep the chart maintainable and broadly useful, we avoid:
 
-- **Project-specific integrations**: Features specific to other projects that serve only a small part of users
+- **Project-specific integrations**: Features specific to other projects that serve only a small group of users
 - **Company/individual-specific requirements**: Customizations that serve only specific organizations
 - **Bizarre constraints**: Unusual or overly complex requirements that don't serve the general community
 - **Breaking changes**: Changes that would break existing deployments without clear migration paths
@@ -48,7 +48,7 @@ When reviewing contributions, we ask:
 
 2. **Update the changelog**: Add an entry to [CHANGELOG.md](./CHANGELOG.md) in the `Unreleased` section using the format:
    ```
-   - [CHANGE|FEATURE|BUGFIX|ENHANCEMENT] Brief description of your change
+   - [CHANGE|FEATURE|BUGFIX|ENHANCEMENT] Brief description of your change, and a link to the PR number. For examples, see the CHANGELOG.
    ```
 
 3. **Test your changes**: The CICD workflow will run comprehensive tests, however it's a good idea to run a few "quick and dirty" tests locally before committing, as those workflows can take quite a while in comparison.
@@ -57,7 +57,7 @@ When reviewing contributions, we ask:
    - Distributed: `helm template --values distributed-values.yaml`
 
 4. **Commit your changes**: Our commits follow the style of [Conventional Commits](https://www.conventionalcommits.org/).  High level this looks like `<type>: description`.  For example:
-   - `feat: add resource limits to querier`
-   - `fix: correct service selector`
+   - `feat(helm): add resource limits to querier`
+   - `fix(helm): correct service selector`
 
 Thank you for contributing to the Loki Helm Chart! Your contributions help make log aggregation accessible to the entire community.
