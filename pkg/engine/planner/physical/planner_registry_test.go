@@ -23,8 +23,8 @@ func TestPlanner_ParseNodeRegistersColumns(t *testing.T) {
 		})
 
 		// Add Parse instruction that will extract "level" and "status"
-		builder = builder.Parse(logical.ParserLogfmt, []string{"level", "status"})
-		
+		builder = builder.Parse(logical.ParserLogfmt, []string{"level", "status"}, nil)
+
 		// Add Select with filter on parsed column
 		builder = builder.Select(&logical.BinOp{
 			Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous), // Ambiguous at logical level
@@ -86,11 +86,11 @@ func TestPlanner_ParseNodeRegistersColumns(t *testing.T) {
 		})
 
 		// First parse extracts "level"
-		builder = builder.Parse(logical.ParserLogfmt, []string{"level"})
-		
-		// Second parse extracts "status"  
-		builder = builder.Parse(logical.ParserLogfmt, []string{"status"})
-		
+		builder = builder.Parse(logical.ParserLogfmt, []string{"level"}, nil)
+
+		// Second parse extracts "status"
+		builder = builder.Parse(logical.ParserLogfmt, []string{"status"}, nil)
+
 		// Filter uses both parsed columns
 		builder = builder.Select(&logical.BinOp{
 			Left: &logical.BinOp{
@@ -167,8 +167,8 @@ func TestPlanner_ParseNodeRegistersColumns(t *testing.T) {
 		})
 
 		// Parse also extracts "app" (same name as label)
-		builder = builder.Parse(logical.ParserLogfmt, []string{"app", "level"})
-		
+		builder = builder.Parse(logical.ParserLogfmt, []string{"app", "level"}, nil)
+
 		// Filter on "app" - should resolve to parsed (higher precedence)
 		builder = builder.Select(&logical.BinOp{
 			Left:  logical.NewColumnRef("app", types.ColumnTypeAmbiguous),
@@ -259,5 +259,9 @@ func (v *testVisitor) VisitVectorAggregation(*VectorAggregation) error {
 }
 
 func (v *testVisitor) VisitMerge(*Merge) error {
+	return nil
+}
+
+func (v *testVisitor) VisitCast(*CastNode) error {
 	return nil
 }

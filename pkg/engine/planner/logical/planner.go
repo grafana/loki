@@ -223,7 +223,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 	// Add Parse operation if we found logfmt and have keys to extract
 	if hasLogfmtParser && len(requestedKeys) > 0 {
-		builder = builder.Parse(ParserLogfmt, requestedKeys)
+		builder = builder.Parse(ParserLogfmt, requestedKeys, nil)
 	}
 
 	builder = builder.RangeAggregation(
